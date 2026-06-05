@@ -1,0 +1,35 @@
+{
+  "name": "@eventmodelers/agent-modeling-kit",
+  "version": "0.1.56",
+  "description": "Real-time Claude agent + skill kit for the Eventmodelers platform",
+  "type": "module",
+  "bin": {
+    "eventmodelers": "cli.js",
+    "agent-modeling-kit": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "templates",
+    "README.md"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "eventmodelers",
+    "event-storming",
+    "event-driven",
+    "realtime-agent",
+    "ddd"
+  ],
+  "author": "Martin Dilger",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

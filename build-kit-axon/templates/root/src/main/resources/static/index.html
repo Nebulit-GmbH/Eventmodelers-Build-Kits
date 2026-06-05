@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AxonIQ Gift Card Management</title>
+
+    <!-- Vuetify CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.min.css" rel="stylesheet">
+    <!-- Material Design Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <!-- Arimo Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Arimo:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --v-font-family: 'Arimo', sans-serif;
+        }
+
+        * {
+            font-family: 'Arimo', sans-serif !important;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-image: url('./bg-body.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+            font-family: 'Arimo', sans-serif;
+            font-size: 1rem;
+        }
+
+        .v-main, .v-application {
+            background: transparent !important;
+        }
+
+        .app-header {
+            background-image: url('./bg-header.png') !important;
+            background-size: cover !important;
+            background-position: center !important;
+            background-color: transparent !important;
+            position: relative;
+        }
+
+        .app-header .v-toolbar__content {
+            background: transparent !important;
+        }
+
+        .header-content {
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Typography overrides matching SASS config */
+        .v-application .text-h1 {
+            font-size: 2.25rem !important;
+            font-weight: 900 !important;
+            line-height: 2.75rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-h2 {
+            font-size: 1.875rem !important;
+            font-weight: 800 !important;
+            line-height: 2.25rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-h3 {
+            font-size: 1.5rem !important;
+            font-weight: 700 !important;
+            line-height: 2rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-h4 {
+            font-size: 1.3125rem !important;
+            font-weight: 600 !important;
+            line-height: 1.6rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-h5 {
+            font-size: 1.125rem !important;
+            font-weight: 600 !important;
+            line-height: 1.6rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-h6 {
+            font-size: 1rem !important;
+            font-weight: 600 !important;
+            line-height: 1.2rem !important;
+            text-transform: capitalize !important;
+        }
+
+        .v-application .text-subtitle-1 {
+            font-size: 0.875rem !important;
+            font-weight: 400 !important;
+            line-height: 1.1rem !important;
+        }
+
+        .v-application .text-subtitle-2 {
+            font-size: 0.75rem !important;
+            font-weight: 400 !important;
+            line-height: 1rem !important;
+        }
+
+        .v-application .text-body-1 {
+            font-size: 0.875rem !important;
+            font-weight: 400 !important;
+        }
+
+        .v-application .text-body-2 {
+            font-size: 0.75rem !important;
+            font-weight: 400 !important;
+        }
+
+        .v-application .text-caption {
+            font-size: 0.75rem !important;
+            font-weight: 400 !important;
+        }
+
+        /* Card styling matching SASS config */
+        .v-card {
+            border-radius: 12px !important;
+            border: 1px solid #D5D7DA !important;
+            box-shadow: none !important;
+            background: #FFFFFF !important;
+        }
+
+        .v-card-title {
+            padding: 16px !important;
+            font-size: 18px !important;
+        }
+
+        .v-card-text {
+            padding: 16px !important;
+        }
+
+        /* Button styling */
+        .v-btn {
+            border-radius: 12px !important;
+            font-weight: 400 !important;
+            letter-spacing: 0 !important;
+            text-transform: none !important;
+            font-size: 0.875rem !important;
+        }
+
+        .v-btn:hover {
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12) !important;
+        }
+
+        .v-btn:active {
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.16) !important;
+        }
+
+        /* Text field styling */
+        .v-text-field {
+            border-radius: 12px !important;
+        }
+
+        .v-text-field .v-field {
+            border-radius: 12px !important;
+        }
+
+        .floating-card {
+            background: #FFFFFF !important;
+            border: 1px solid #D5D7DA !important;
+            border-radius: 12px !important;
+            box-shadow: none !important;
+        }
+
+        .gift-card-item {
+            background: #FFFFFF !important;
+            border-radius: 12px !important;
+            border: 1px solid #D5D7DA !important;
+            box-shadow: none !important;
+            transition: all 0.3s ease;
+        }
+
+        .gift-card-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
+        }
+
+        /* Custom theme colors */
+        .axoniq-primary {
+            background-color: #06AED4 !important;
+            color: white !important;
+        }
+
+        .axoniq-secondary {
+            background-color: #6840c5 !important;
+            color: white !important;
+        }
+
+        .status-chip-active {
+            background-color: #12B76A !important;
+            color: white !important;
+        }
+
+        .status-chip-empty {
+            background-color: #B00020 !important;
+            color: white !important;
+        }
+
+        .status-chip-tertiary {
+            background-color: #15B79E !important;
+            color: white !important;
+        }
+
+        /* Progress bar colors */
+        .v-progress-linear.success {
+            background-color: #12B76A !important;
+        }
+
+        /* Alert styling */
+        .v-alert {
+            border-radius: 12px !important;
+        }
+
+        /* Chip styling */
+        .v-chip {
+            border-radius: 6px !important;
+        }
+
+        /* Text field focus colors */
+        .v-text-field--focused .v-field__outline {
+            color: #06AED4 !important;
+        }
+
+        .v-text-field--focused .v-label {
+            color: #06AED4 !important;
+        }
+
+        /* Sidebar background variable support */
+        .sidebar-bg {
+            background: rgba(242, 246, 250, 0.7) !important;
+        }
+
+        /* Border color variable */
+        .border-custom {
+            border-color: #e5eaef !important;
+        }
+
+        /* Primary grey text */
+        .text-primary-grey {
+            color: #717680 !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <v-app>
+            <!-- Header -->
+            <v-app-bar class="app-header" height="120" flat>
+                <template v-slot:default>
+                    <div class="header-content w-100 d-flex align-center justify-center">
+                        <div class="text-center">
+                            <h1 class="text-h3 font-weight-bold mb-2">
+                                <v-icon size="large" class="mr-3">mdi-gift</v-icon>
+                                Axoniq Platform Quickstart
+                            </h1>
+                            <p class="text-h6 opacity-90">Powered by Axon Framework & Server</p>
+                        </div>
+                    </div>
+                </template>
+            </v-app-bar>
+
+            <v-main>
+                <v-container fluid class="pa-6">
+                    <!-- Alert Messages -->
+                    <v-alert
+                        v-if="message"
+                        :type="message.type === 'success' ? 'success' : 'error'"
+                        :text="message.text"
+                        variant="tonal"
+                        closable
+                        class="mb-6"
+                        @click:close="message = null"
+                    ></v-alert>
+
+                    <v-row>
+                        <!-- Issue Gift Card Form -->
+                        <v-col cols="12" md="4">
+                            <v-card class="floating-card" elevation="0">
+                                <v-card-title class="text-h5 pb-2">
+                                    <v-icon class="mr-2">mdi-plus-circle</v-icon>
+                                    Issue New Gift Card
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-text-field
+                                        v-model="issueAmount"
+                                        label="Amount"
+                                        prefix="$"
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        variant="outlined"
+                                        density="comfortable"
+                                        :rules="[v => !!v && v > 0 || 'Amount must be greater than 0']"
+                                    ></v-text-field>
+                                </v-card-text>
+                                <v-card-actions class="px-6 pb-6">
+                                    <v-btn
+                                        @click="issueGiftCard"
+                                        :disabled="!issueAmount || issueAmount <= 0"
+                                        class="axoniq-primary"
+                                        size="large"
+                                        block
+                                        :loading="issuingCard"
+                                    >
+                                        <v-icon class="mr-2">mdi-credit-card-plus</v-icon>
+                                        Issue Gift Card
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-col>
+
+                        <!-- Gift Cards List -->
+                        <v-col cols="12" md="8">
+                            <v-card class="floating-card" elevation="0">
+                                <v-card-title class="text-h5 pb-2">
+                                    <v-icon class="mr-2">mdi-wallet-giftcard</v-icon>
+                                    Gift Cards
+                                    <v-chip class="ml-3" color="primary" size="small">{{ giftCards.length }}</v-chip>
+                                </v-card-title>
+
+                                <v-card-text v-if="giftCards.length === 0" class="text-center py-8">
+                                    <v-icon size="64" color="grey-lighten-2" class="mb-4">mdi-gift-outline</v-icon>
+                                    <p class="text-h6 text-grey">No gift cards yet!</p>
+                                    <p class="text-body-2 text-grey">Issue your first gift card to get started.</p>
+                                </v-card-text>
+
+                                <v-card-text v-else class="pa-2">
+                                    <v-row>
+                                        <v-col
+                                            v-for="giftCard in giftCards"
+                                            :key="giftCard.giftCardId"
+                                            cols="12"
+                                            class="pa-2"
+                                        >
+                                            <v-card class="gift-card-item pa-4">
+                                                <v-row align="center">
+                                                    <v-col cols="12" sm="6">
+                                                        <div class="text-body-2 text-grey mb-1">Gift Card ID</div>
+                                                        <div class="text-caption font-mono">{{ giftCard.giftCardId }}</div>
+
+                                                        <v-row class="mt-3" no-gutters>
+                                                            <v-col cols="6">
+                                                                <div class="text-body-2 text-grey">Remaining</div>
+                                                                <div class="text-h6 font-weight-bold text-success">
+                                                                    ${{ giftCard.remainingValue.toFixed(2) }}
+                                                                </div>
+                                                            </v-col>
+                                                            <v-col cols="6">
+                                                                <div class="text-body-2 text-grey">Initial</div>
+                                                                <div class="text-body-1">
+                                                                    ${{ giftCard.initialValue.toFixed(2) }}
+                                                                </div>
+                                                            </v-col>
+                                                        </v-row>
+                                                    </v-col>
+
+                                                    <v-col cols="12" sm="3" class="text-center">
+                                                        <v-chip
+                                                            :class="giftCard.remainingValue <= 0 ? 'status-chip-empty' : 'status-chip-active'"
+                                                            size="small"
+                                                        >
+                                                            <v-icon class="mr-1">
+                                                                {{ giftCard.remainingValue <= 0 ? 'mdi-close-circle' : 'mdi-check-circle' }}
+                                                            </v-icon>
+                                                            {{ giftCard.remainingValue <= 0 ? 'EMPTY' : 'ACTIVE' }}
+                                                        </v-chip>
+
+                                                        <v-progress-linear
+                                                            :model-value="(giftCard.remainingValue / giftCard.initialValue) * 100"
+                                                            color="success"
+                                                            class="mt-2"
+                                                            height="4"
+                                                        ></v-progress-linear>
+                                                    </v-col>
+
+                                                    <v-col cols="12" sm="3" v-if="giftCard.remainingValue > 0">
+                                                        <v-text-field
+                                                            v-model="redeemAmounts[giftCard.giftCardId]"
+                                                            label="Redeem Amount"
+                                                            prefix="$"
+                                                            type="number"
+                                                            step="0.01"
+                                                            :max="giftCard.remainingValue"
+                                                            min="0.01"
+                                                            variant="outlined"
+                                                            density="compact"
+                                                            hide-details
+                                                        ></v-text-field>
+
+                                                        <v-btn
+                                                            @click="redeemGiftCard(giftCard.giftCardId)"
+                                                            :disabled="!redeemAmounts[giftCard.giftCardId] ||
+                                                                      redeemAmounts[giftCard.giftCardId] <= 0 ||
+                                                                      redeemAmounts[giftCard.giftCardId] > giftCard.remainingValue"
+                                                            class="axoniq-secondary mt-2"
+                                                            size="small"
+                                                            block
+                                                            :loading="redeemingCards[giftCard.giftCardId]"
+                                                        >
+                                                            <v-icon class="mr-1">mdi-cash-minus</v-icon>
+                                                            Redeem
+                                                        </v-btn>
+                                                    </v-col>
+                                                </v-row>
+                                            </v-card>
+                                        </v-col>
+                                    </v-row>
+                                </v-card-text>
+                            </v-card>
+                        </v-col>
+                    </v-row>
+                </v-container>
+            </v-main>
+        </v-app>
+    </div>
+
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Vuetify JS -->
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@3/dist/vuetify.min.js"></script>
+
+    <script>
+        const { createApp, ref, reactive, onMounted, onUnmounted } = Vue;
+        const { createVuetify } = Vuetify;
+
+        const vuetify = createVuetify({
+            theme: {
+                defaultTheme: 'LIGHT_THEME',
+                themes: {
+                    LIGHT_THEME: {
+                        dark: false,
+                        colors: {
+                            background: '#fff',
+                            surface: '#FFFFFF',
+                            primary: '#06AED4',
+                            secondary: '#6840c5',
+                            tertiary: '#15B79E',
+                            error: '#B00020',
+                            info: '#2196F3',
+                            success: '#12B76A',
+                            warning: '#FB8C00',
+                            'primary-grey': '#717680',
+                            'border-color': '#e5eaef',
+                        }
+                    }
+                }
+            }
+        });
+
+        createApp({
+            setup() {
+                const giftCards = ref([]);
+                const issueAmount = ref('');
+                const redeemAmounts = reactive({});
+                const redeemingCards = reactive({});
+                const issuingCard = ref(false);
+                const message = ref(null);
+                let eventSource = null;
+
+                const showMessage = (text, type = 'success') => {
+                    message.value = { text, type };
+                    setTimeout(() => {
+                        message.value = null;
+                    }, 5000);
+                };
+
+                const issueGiftCard = async () => {
+                    issuingCard.value = true;
+                    try {
+                        const response = await fetch('/api/giftcards', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                amount: parseFloat(issueAmount.value)
+                            })
+                        });
+
+                        if (response.ok) {
+                            const giftCardId = await response.text();
+                            showMessage(`Gift card issued successfully! ID: ${giftCardId.substring(0, 8)}...`);
+                            issueAmount.value = '';
+                        } else {
+                            showMessage('Failed to issue gift card', 'error');
+                        }
+                    } catch (error) {
+                        showMessage('Error issuing gift card: ' + error.message, 'error');
+                    } finally {
+                        issuingCard.value = false;
+                    }
+                };
+
+                const redeemGiftCard = async (giftCardId) => {
+                    redeemingCards[giftCardId] = true;
+                    try {
+                        const amount = redeemAmounts[giftCardId];
+                        const response = await fetch(`/api/giftcards/${giftCardId}/redeem`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                amount: parseFloat(amount)
+                            })
+                        });
+
+                        if (response.ok) {
+                            showMessage(`Successfully redeemed $${amount} from gift card!`);
+                            redeemAmounts[giftCardId] = '';
+                        } else {
+                            const errorText = await response.text();
+                            showMessage('Failed to redeem: ' + errorText, 'error');
+                        }
+                    } catch (error) {
+                        showMessage('Error redeeming gift card: ' + error.message, 'error');
+                    } finally {
+                        redeemingCards[giftCardId] = false;
+                    }
+                };
+
+                const loadGiftCards = async () => {
+                    try {
+                        const response = await fetch('/api/giftcards');
+                        if (response.ok) {
+                            giftCards.value = await response.json();
+                        }
+                    } catch (error) {
+                        console.error('Error loading gift cards:', error);
+                    }
+                };
+
+                const setupEventSource = () => {
+                    eventSource = new EventSource('/api/giftcards/updates');
+
+                    eventSource.onmessage = (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if(data.updatedGiftCard) {
+                                const giftCard = data.updatedGiftCard;
+                            const existingIndex = giftCards.value.findIndex(gc => gc.giftCardId === giftCard.giftCardId);
+
+                            if (existingIndex >= 0) {
+                                giftCards.value[existingIndex] = giftCard;
+                            } else {
+                                giftCards.value.push(giftCard);
+                            }
+                            }
+                        } catch (error) {
+                            console.error('Error parsing SSE data:', error);
+                        }
+                    };
+
+                    eventSource.onerror = (error) => {
+                        console.error('SSE connection error:', error);
+                    };
+                };
+
+                onMounted(() => {
+                    loadGiftCards();
+                    setupEventSource();
+                });
+
+                onUnmounted(() => {
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                });
+
+                return {
+                    giftCards,
+                    issueAmount,
+                    redeemAmounts,
+                    redeemingCards,
+                    issuingCard,
+                    message,
+                    issueGiftCard,
+                    redeemGiftCard
+                };
+            }
+        }).use(vuetify).mount('#app');
+    </script>
+</body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "name": "project",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "flyway:migrate": "dotenv -e .env -- flyway -baselineOnMigrate=true migrate",
+    "dev": "node --env-file=.env --require ts-node/register server.ts",
+    "build": "tsc",
+    "start": "NODE_ENV=production node --env-file=.env --require ts-node/register server.ts",
+    "test": "tsx --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@event-driven-io/emmett": "^0.42.1-alpha.1",
+    "@event-driven-io/emmett-expressjs": "^0.42.1-alpha.1",
+    "@event-driven-io/emmett-postgresql": "^0.42.1-alpha.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@resvg/resvg-js": "^2.6.2",
+    "@supabase/ssr": "^0.10.0",
+    "@supabase/supabase-js": "^2.100.1",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^4.18.2",
+    "glob": "^11.0.3",
+    "isomorphic-git": "^1.37.6",
+    "jose": "^6.2.3",
+    "knex": "^3.1.0",
+    "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
+    "pg": "^8.17.2",
+    "sharp": "^0.34.5",
+    "simple-git": "^3.36.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "url": "^0.11.4"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3",
+    "@testcontainers/postgresql": "^11.0.3",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^20",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/swagger-ui-express": "^4.1.8",
+    "dotenv-cli": "^11.0.0",
+    "eslint": "^9",
+    "sql-formatter": "^15.7.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.3",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,74 @@
+#!/bin/bash
+# Ralph agent loop — two independent phases, each triggered by their own condition
+#
+# Phase 1: tasks.json has entries  → load slice from board, update .build-kit-axon/slices/
+# Phase 2: $KIT_DIR/slices/**/index.json has a "Planned" slice → build it
+#
+# The phases are NOT causally linked — either can trigger on its own.
+#
+# Usage: ./ralph.sh [iterations] [project_dir]
+#   iterations  — number of loop cycles to run; 0 or omitted means run forever
+#   project_dir — path to the project root; defaults to ../  (parent of .build-kit-axon)
+
+set -euo pipefail
+
+KIT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ITERATIONS="${1:-0}"
+PROJECT_DIR="${2:-"$KIT_DIR/.."}"
+TASKS_FILE="$KIT_DIR/tasks.json"
+PROMPT_FILE="$PROJECT_DIR/prompt.md"
+BACKEND_PROMPT_FILE="$PROJECT_DIR/backend-prompt.md"
+AGENT_SCRIPT="$KIT_DIR/agent.sh"
+
+if [[ ! -f "$KIT_DIR/.eventmodelers/config.json" ]]; then
+  echo "ERROR: No .eventmodelers/config.json found in $KIT_DIR"
+  exit 1
+fi
+
+echo "Ralph — kit: $KIT_DIR  project: $PROJECT_DIR"
+
+# Returns 0 if tasks.json has at least one task
+has_pending_tasks() {
+  [[ -f "$TASKS_FILE" ]] || return 1
+  local content
+  content=$(cat "$TASKS_FILE")
+  [[ "$content" != "[]" && -n "$content" ]]
+}
+
+# Returns 0 if any JSON under .build-kit-axon/slices/ contains a "Planned" status
+has_planned_slices() {
+  grep -rqi '"status"[[:space:]]*:[[:space:]]*"planned"' "$KIT_DIR/slices/" 2>/dev/null
+}
+
+# Runs agent.sh with the given prompt; retries on non-zero exit
+run_agent() {
+  local label="$1"
+  local prompt="$2"
+  while true; do
+    echo "[$(date -u +%H:%M:%S)] $label"
+    (cd "$PROJECT_DIR" && bash "$AGENT_SCRIPT" "$prompt") 2>&1 && return 0
+    echo "[$(date -u +%H:%M:%S)] Agent error — retrying in 60s..."
+    sleep 60
+  done
+}
+
+cycle=0
+while [[ "$ITERATIONS" -eq 0 || "$cycle" -lt "$ITERATIONS" ]]; do
+  ran_something=false
+
+  if has_pending_tasks; then
+    run_agent "Phase 1: loading slice from board..." "$(cat "$PROMPT_FILE")"
+    ran_something=true
+  fi
+
+  if has_planned_slices; then
+    run_agent "Phase 2: building slice..." "$(cat "$BACKEND_PROMPT_FILE")"
+    ran_something=true
+  fi
+
+  if [[ "$ran_something" == false ]]; then
+    sleep 3
+  fi
+
+  (( cycle++ )) || true
+done

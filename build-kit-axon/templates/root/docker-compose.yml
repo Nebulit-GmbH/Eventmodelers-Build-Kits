@@ -1,0 +1,46 @@
+services:
+  axon-server:
+    image: axoniq/axonserver:latest-jdk-17
+    ports:
+      - "8024:8024"
+      - "8124:8124"
+      - '8224:8224'
+    hostname: axonserver-1
+    environment:
+      - axoniq_platform_authentication=e6953958-0-asc:c390b8df56ce43c981cdea24799497cf
+      - axoniq.axonserver.autocluster.dcb=true
+    volumes:
+      - data:/axonserver/data
+      - events:/axonserver/events
+    networks:
+      - axon-server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8024/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  axoniq-insights:
+    image: docker.axoniq.io/axoniq/axoniq-insights:1.0.0
+    ports:
+      - "8090:8080"
+    environment:
+      - insights.platform.authentication=e6953958-0:a93cda9533a248fb97d5011ccfd539ca
+      - insights.axonserver.routing-servers=axonserver-1:8124
+      - insights.axonserver.auto-subscribe=true
+    depends_on:
+      axon-server:
+        condition: service_healthy
+    networks:
+      - axon-server
+
+
+networks:
+  axon-server:
+
+volumes:
+  data:
+    driver: local
+  events:
+    driver: local

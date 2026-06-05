@@ -1,0 +1,42 @@
+{
+<<<<<<< HEAD
+  "name": "@eventmodelers/node-kit",
+  "version": "0.0.14",
+  "description": "Real-time Claude agent that reacts to slice:changed events on an Eventmodelers board",
+=======
+  "name": "@eventmodelers/agent-kit",
+  "version": "0.1.26",
+  "description": "Real-time Claude agent + skill kit for the Eventmodelers platform",
+>>>>>>> 43152f6 (0.1.26)
+  "type": "module",
+  "bin": {
+    "ralph-li": "src/cli.js"
+  },
+  "scripts": {
+    "prepublishOnly": "chmod +x src/cli.js"
+  },
+  "files": [
+    "src",
+    "templates",
+    "README.md"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "eventmodelers",
+    "slice-changed",
+    "realtime-agent",
+    "ralph-li"
+  ],
+  "author": "Martin Dilger",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
