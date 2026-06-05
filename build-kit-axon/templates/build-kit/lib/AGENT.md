@@ -22,13 +22,22 @@ timestamp       unix ms when the change was emitted
 
 ## Slice files
 
-The realtime agent writes `slices/<sliceId>.json` for every slice on startup and after each `slice:changed` event. These files are always up to date — read them directly before invoking any skill.
+The realtime agent writes one file per slice on startup and after each `slice:changed` event:
+
+```
+slices/<context>/<sliceName>/slice.json
+```
+
+- `<context>` is the slice's context value, or `default` if none.
+- `<sliceName>` is the slice title lowercased with spaces removed (e.g. `"Enable User"` → `enableuser`).
+
+These files are always up to date — read them directly before invoking any skill.
 
 ## Skill Usage
 
 - Always run `/connect` first to load credentials from `.eventmodelers/config.json` before calling any other skill.
-- `/load-slice sliceId=<uuid>` re-fetches all slices from the API, refreshes `slices/*.json`, and returns the requested slice. Use it when you need a guaranteed-fresh view of a specific slice.
-- Read `slices/<sliceId>.json` directly when you already know the ID and the file is recent enough.
+- `/load-slice sliceId=<uuid>` re-fetches all slices from the API, refreshes the slice files, and returns the requested slice. Use it when you need a guaranteed-fresh view of a specific slice.
+- Read `slices/<context>/<sliceName>/slice.json` directly when you already know the context and name and the file is recent enough.
 
 ## Board API
 

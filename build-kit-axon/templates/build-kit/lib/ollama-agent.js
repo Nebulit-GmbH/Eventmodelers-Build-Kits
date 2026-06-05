@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Ollama agent with MCP tool support for eventmodelers.de
+// Ollama agent with MCP tool support for eventmodelers.ai
 // Usage: node ollama-agent.js [model]
 //        OLLAMA_URL=http://host:11434 node ollama-agent.js
 // Reads tasks.json, picks the next task, and passes its prompts directly to Ollama.
@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const configPath = resolve(__dirname, '.eventmodelers', 'config.json');
+const configPath = resolve(__dirname, '..', '.eventmodelers', 'config.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { token, baseUrl } = config;
 const defaultBoardId = config.boardId;
@@ -70,7 +70,7 @@ async function runAgent(userPrompt, boardId) {
     {
       role: 'system',
       content:
-        `You are an event modeling assistant for the eventmodelers.de platform.\n` +
+        `You are an event modeling assistant for the eventmodelers.ai platform.\n` +
         `Board ID: ${boardId}\n` +
         `Use the provided tools to fulfill the user's request. Always pass boardId="${boardId}" ` +
         `to tools that require it. Do not guess node IDs — use list/get tools first.\n` +
@@ -121,7 +121,7 @@ async function runAgent(userPrompt, boardId) {
 }
 
 async function runNextTask() {
-  const tasksPath = resolve(__dirname, 'tasks.json');
+  const tasksPath = resolve(__dirname, '..', 'tasks.json');
   let tasks = [];
   try { tasks = JSON.parse(readFileSync(tasksPath, 'utf8')); } catch {}
 

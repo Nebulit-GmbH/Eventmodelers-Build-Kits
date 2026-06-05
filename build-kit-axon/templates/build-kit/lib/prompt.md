@@ -42,17 +42,47 @@ Run `/load-slice sliceId=<payload.sliceId>` to fetch full slice details (title, 
 
 ### Step 3 — Act on the change
 
-Inspect the `sliceStatus` in the payload and take appropriate action based on its value. Common responses:
+Inspect the `sliceStatus` in the payload:
 
-| Status | Example response |
-|--------|-----------------|
-| `InProgress` | Fetch the slice details and log that work has started |
-| `Done` | Summarize what was completed and update `progress.txt` |
-| `Blocked` | Log the blocker and note it in `progress.txt` |
-| `Review` | Fetch slice details and prepare a summary for review |
-| Any other | Load the slice and log the state transition |
+#### `Planned` — build the slice
 
-Use the skills available in `.claude/skills/` to interact with the board if needed.
+This is the build trigger. Setting `InProgress` and building are one atomic step:
+
+1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
+
+2. Read the slice definition from `.build-kit-axon/slices/<contextSlug>/<sliceFolder>/slice.json` (written by `/load-slice`).
+
+3. Determine the **slice type** from the slice.json:
+   - **Automation** — `processors` array is non-empty → invoke `/build-automation`
+   - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
+   - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
+
+4. Invoke the matching skill and follow its instructions **completely**. Do NOT implement the slice manually.
+
+5. Run quality checks:
+   - Compile: `./mvnw compile -q`
+   - Test (slice only): `./mvnw test -Dtest="<SliceName>*" -q`
+
+6. If checks pass, commit all changes with message: `feat: [Slice Name]`.
+
+7. Call `/update-slice-status` to set the slice to `Done` on the board.
+
+#### `InProgress`
+Another agent is already building this slice. Log it and skip — do not build.
+
+#### `Done`
+Summarize what was completed and update `progress.txt`.
+
+#### `Blocked`
+Log the blocker in `progress.txt`.
+
+#### `Review`
+Fetch slice details and prepare a review summary in `progress.txt`.
+
+#### Any other status (`Created`, etc.)
+Load the slice and log the state transition in `progress.txt`. No build action.
+
+Use the skills available in `.claude/skills/` to interact with the board.
 
 ## Updating tasks.json
 

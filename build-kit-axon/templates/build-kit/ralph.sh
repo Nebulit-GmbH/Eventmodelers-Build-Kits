@@ -1,14 +1,14 @@
 #!/bin/bash
-# Ralph agent loop — two independent phases, each triggered by their own condition
+# Ralph agent loop — two independent loops, each triggered by their own condition
 #
-# Phase 1: tasks.json has entries  → load slice from board, update .build-kit-axon/slices/
-# Phase 2: $KIT_DIR/slices/**/index.json has a "Planned" slice → build it
+# onTask:        tasks.json has entries  → load slice from board, update .build-kit-axon/slices/
+# onPlannedSlice: .build-kit-axon/slices/ has a "Planned" slice → build it
 #
-# The phases are NOT causally linked — either can trigger on its own.
+# The loops are NOT causally linked — either can trigger on its own.
 #
 # Usage: ./ralph.sh [iterations] [project_dir]
 #   iterations  — number of loop cycles to run; 0 or omitted means run forever
-#   project_dir — path to the project root; defaults to ../  (parent of .build-kit-axon)
+#   project_dir — path to the project root; defaults to the parent of .build-kit-axon
 
 set -euo pipefail
 
@@ -16,13 +16,16 @@ KIT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ITERATIONS="${1:-0}"
 PROJECT_DIR="${2:-"$KIT_DIR/.."}"
 TASKS_FILE="$KIT_DIR/tasks.json"
-PROMPT_FILE="$PROJECT_DIR/prompt.md"
-BACKEND_PROMPT_FILE="$PROJECT_DIR/backend-prompt.md"
-AGENT_SCRIPT="$KIT_DIR/agent.sh"
+PROMPT_FILE="$KIT_DIR/lib/prompt.md"
+BACKEND_PROMPT_FILE="$KIT_DIR/lib/backend-prompt.md"
+AGENT_SCRIPT="$KIT_DIR/lib/agent.sh"
 
+HAS_CREDENTIALS=true
 if [[ ! -f "$KIT_DIR/.eventmodelers/config.json" ]]; then
-  echo "ERROR: No .eventmodelers/config.json found in $KIT_DIR"
-  exit 1
+  echo "[ralph] Note: no .eventmodelers/config.json found — platform sync disabled." >&2
+  echo "        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-axon" >&2
+  echo "        Code generation from local slice definitions will still run." >&2
+  HAS_CREDENTIALS=false
 fi
 
 echo "Ralph — kit: $KIT_DIR  project: $PROJECT_DIR"
@@ -56,13 +59,13 @@ cycle=0
 while [[ "$ITERATIONS" -eq 0 || "$cycle" -lt "$ITERATIONS" ]]; do
   ran_something=false
 
-  if has_pending_tasks; then
-    run_agent "Phase 1: loading slice from board..." "$(cat "$PROMPT_FILE")"
+  if [[ "$HAS_CREDENTIALS" == true ]] && has_pending_tasks; then
+    run_agent "onTask: loading slice from board..." "$(cat "$PROMPT_FILE")"
     ran_something=true
   fi
 
   if has_planned_slices; then
-    run_agent "Phase 2: building slice..." "$(cat "$BACKEND_PROMPT_FILE")"
+    run_agent "onPlannedSlice: building slice..." "$(cat "$BACKEND_PROMPT_FILE")"
     ran_something=true
   fi
 

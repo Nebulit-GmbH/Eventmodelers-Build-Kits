@@ -43,7 +43,8 @@ program
   .action(async () => {
     console.log('🚀 ralph-li\n');
 
-    const targetDir = join(process.cwd(), '.build-kit-axon');
+    const rootDir = process.cwd();
+    const targetDir = join(rootDir, '.build-kit-axon');
     mkdirSync(targetDir, { recursive: true });
 
     const templatesSource = join(__dirname, '..', 'templates');
@@ -59,12 +60,12 @@ program
     for (const item of items) {
       const sourcePath = join(templatesSource, item);
 
-      // templates/root/ contents are spread directly into the project root
+      // templates/root/ contents spread into the project root
       if (item === 'root' && statSync(sourcePath).isDirectory()) {
         const rootItems = readdirSync(sourcePath);
         for (const rootItem of rootItems) {
           const rootSourcePath = join(sourcePath, rootItem);
-          const rootTargetPath = join(targetDir, rootItem);
+          const rootTargetPath = join(rootDir, rootItem);
           try {
             if (statSync(rootSourcePath).isDirectory()) {
               cpSync(rootSourcePath, rootTargetPath, {
@@ -82,6 +83,29 @@ program
         continue;
       }
 
+      // templates/build-kit/ contents spread into .build-kit-axon/
+      if (item === 'build-kit' && statSync(sourcePath).isDirectory()) {
+        const kitItems = readdirSync(sourcePath);
+        for (const kitItem of kitItems) {
+          const kitSourcePath = join(sourcePath, kitItem);
+          const kitTargetPath = join(targetDir, kitItem);
+          try {
+            if (statSync(kitSourcePath).isDirectory()) {
+              cpSync(kitSourcePath, kitTargetPath, {
+                recursive: true,
+                filter: (s) => !relative(kitSourcePath, s).split(sep).includes('node_modules'),
+              });
+            } else {
+              cpSync(kitSourcePath, kitTargetPath);
+            }
+            console.log(`  ✓ Installed .build-kit-axon/${kitItem}`);
+          } catch (err) {
+            console.error(`  ❌ Failed to copy ${kitItem}:`, err?.message);
+          }
+        }
+        continue;
+      }
+
       const targetPath = join(targetDir, item);
       try {
         if (statSync(sourcePath).isDirectory()) {
@@ -92,26 +116,23 @@ program
         } else {
           cpSync(sourcePath, targetPath);
         }
-        console.log(`  ✓ Installed ${item}`);
+        console.log(`  ✓ Installed .build-kit-axon/${item}`);
       } catch (err) {
         console.error(`  ❌ Failed to copy ${item}:`, err?.message);
       }
     }
 
-    // Install realtime-agent dependencies
-    const agentDir = join(targetDir, 'realtime-agent');
-    if (existsSync(agentDir)) {
-      console.log('\n📦 Installing realtime-agent dependencies...');
-      try {
-        execSync('npm install', { cwd: agentDir, stdio: 'inherit' });
-        console.log('  ✓ realtime-agent dependencies installed');
-      } catch {
-        console.error('  ⚠️  npm install failed in realtime-agent — run it manually');
-      }
+    // Install .build-kit-axon dependencies
+    console.log('\n📦 Installing .build-kit-axon dependencies...');
+    try {
+      execSync('npm install', { cwd: targetDir, stdio: 'inherit' });
+      console.log('  ✓ .build-kit-axon dependencies installed');
+    } catch {
+      console.error('  ⚠️  npm install failed in .build-kit-axon — run it manually');
     }
 
     // Add .build-kit-axon/ to project root .gitignore
-    const gitignorePath = join(process.cwd(), '.gitignore');
+    const gitignorePath = join(rootDir, '.gitignore');
     const gitignoreEntry = '.build-kit-axon/';
     if (existsSync(gitignorePath)) {
       const content = readFileSync(gitignorePath, 'utf-8');
@@ -127,7 +148,7 @@ program
     const configPath = join(configDir, 'config.json');
     mkdirSync(configDir, { recursive: true });
 
-    const hasExisting = await prompt('\nDo you have an existing config from app.eventmodelers.de/account? (y/n): ');
+    const hasExisting = await prompt('\nDo you have an existing config from app.eventmodelers.ai/account? (y/n): ');
     if (hasExisting.toLowerCase() === 'y' || hasExisting.toLowerCase() === 'yes') {
       console.log(`\n  Paste your config into:\n\n    ${configPath}\n\n  Then re-run this installer.\n`);
       process.exit(0);
@@ -168,7 +189,7 @@ program
       }
     }
 
-    const baseUrl = config.baseUrl || 'https://api.eventmodelers.de';
+    const baseUrl = config.baseUrl || 'https://api.eventmodelers.ai';
     settings.mcpServers = settings.mcpServers || {};
     settings.mcpServers.eventmodelers = {
       type: 'http',
@@ -180,12 +201,12 @@ program
 
     console.log('\n✅ Done!\n');
     console.log('Next steps:\n');
-    console.log('  Terminal 1 — realtime agent (optional — only needed for automatic board notifications):');
-    console.log('       cd .build-kit-axon/realtime-agent && npm run dev\n');
-    console.log('  Terminal 2 — ralph loop (reads tasks.json → executes via Claude):');
-    console.log('       cd .build-kit-axon && ./ralph.sh\n');
-    console.log('The loop waits when tasks.json is empty. Pass a path to target a different project:');
-    console.log('       ./ralph.sh 0 /path/to/project\n');
+    console.log('  Claude (default):');
+    console.log('       node .build-kit-axon/ralph-claude.js\n');
+    console.log('  Local Ollama model (run `ollama serve` first):');
+    console.log('       OLLAMA_MODEL=qwen3:8b node .build-kit-axon/ralph-ollama.js\n');
+    console.log('  Pass a custom project directory as the first argument:');
+    console.log('       node .build-kit-axon/ralph-claude.js /path/to/project\n');
     console.log('Skills are ready in .build-kit-axon/.claude/skills/ — use /connect to set a board ID.');
   });
 
@@ -214,13 +235,11 @@ program
     const kitDir = join(process.cwd(), '.build-kit-axon');
     const skillsDir = join(kitDir, '.claude', 'skills');
     const configPath = join(kitDir, '.eventmodelers', 'config.json');
-    const agentDir = join(kitDir, 'realtime-agent');
 
-    console.log('build-kit-node Status\n');
+    console.log('.build-kit-axon Status\n');
     console.log(`Kit dir:        ${existsSync(kitDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Config:         ${existsSync(configPath) ? '✅ present' : '❌ missing'}`);
-    console.log(`Realtime agent: ${existsSync(agentDir) ? '✅ present' : '❌ missing'}`);
 
     if (existsSync(configPath)) {
       try {

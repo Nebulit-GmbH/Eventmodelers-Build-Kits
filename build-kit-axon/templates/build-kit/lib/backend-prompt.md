@@ -10,8 +10,9 @@ The structure defined in the Project-Skills is relevant.
 1. Read `.build-kit-axon/slices/current_context.json` to find the active context name, then read `.build-kit-axon/slices/<contextName>/index.json`. Every item in status "planned" is a task.
 2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
-5. Pick the **highest priority** slice where status is "planned" ( case insensitive ). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available). If no slice has status planned, reply with:
-   <promise>NO_TASKS</promise> and stop. Do not work on other slices.
+5. Pick the **highest priority** slice where status is **exactly** "Planned" (case insensitive). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
+   **IMPORTANT: Only work on slices with status "Planned". Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned", reply with:**
+   <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices.
 6. Pick the slice definition from `.build-kit-axon/slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
 7. Define the slice type and load the matching skill:
@@ -63,9 +64,9 @@ learnings:
 
 ```
 ## Codebase Patterns
-- Example: Use `sql<number>` template for aggregations
-- Example: Always use `IF NOT EXISTS` for migrations
-- Example: Export types from actions.ts for UI components
+- Example: Use event sourcing aggregate patterns for all state changes
+- Example: Always use @CommandHandler on the aggregate for write slices
+- Example: Export query result types from the slice package
 ```
 
 Only add patterns that are **general and reusable**, not story-specific details.
@@ -95,15 +96,15 @@ Before committing, check if any edited files have learnings worth preserving in 
 - Story-specific implementation details
 - Temporary debugging notes
 - Information already in progress.txt
-- Task speecific learnings like "- Timesheet approval requires: submitted=true, reverted=false, approved=false, declined=false"
+- Task specific learnings
 
 Only update AGENTS.md if you have **genuinely reusable knowledge** that would help future work
 
 ## Quality Requirements
 
-- ALL commits must pass your project's quality checks (typecheck, lint, test)
-- run 'npm run build'
-- run 'npm run test'
+- ALL commits must pass your project's quality checks
+- Compile: `./mvnw compile -q`
+- Test: `./mvnw test -Dtest="<SliceName>*" -q`
 - Do NOT commit broken code
 - Keep changes focused and minimal
 - Follow existing code patterns
@@ -121,19 +122,20 @@ A Slice is not complete if specifications are missing or can´t be executed.
 
 ## Stop Condition
 
-After completing a user story, check if ALL slices have `status: Done`.
+**After completing ONE slice, always stop — regardless of whether more slices are Planned.** The ralph loop will invoke you again for the next slice. Never chain multiple slices in one iteration.
 
-If ALL stories are complete and passing, reply with:
-<promise>COMPLETE</promise>
+If the slice was completed and committed successfully, reply with:
+<promise>DONE</promise>
 
-If there are no stories with `status: Planned` (but not all are Done), reply with:
+If no slice has status "Planned", reply with:
 <promise>NO_TASKS</promise>
 
-If there are still stories with `status: Planned`, end your response normally (another iteration will pick up the next
-story).
+If ALL slices across the index are Done, reply with:
+<promise>COMPLETE</promise>
 
 ## Important
 
+- If `.build-kit-axon/.eventmodelers/config.json` is absent, skip all platform communication (MCP calls, `update-slice-status`, board sync) and continue working locally.
 - Work on ONE slice per iteration
 - Commit frequently
 - update progress.txt frequently
@@ -141,4 +143,4 @@ story).
 
 ## When an iteration completes
 
-Use all the key learnings from the project.txt and update the Agends.md file with those learning.
+Use all the key learnings from the progress.txt and update the AGENTS.md file with those learnings.
