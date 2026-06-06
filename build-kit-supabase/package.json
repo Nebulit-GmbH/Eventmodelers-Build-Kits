@@ -1,6 +1,6 @@
 {
   "name": "@eventmodelers/build-kit-supabase",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "description": "Real-time Claude agent that connects to the Eventmodelers Platform and generates Code from Eventmodels",
   "type": "module",
   "bin": {
