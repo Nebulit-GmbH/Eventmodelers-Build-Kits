@@ -143,16 +143,10 @@ program
       writeFileSync(gitignorePath, `${gitignoreEntry}\n`);
     }
 
-    // Create or populate config file
+    // Create config dir — credentials are optional, can be configured later
     const configDir = join(targetDir, '.eventmodelers');
     const configPath = join(configDir, 'config.json');
     mkdirSync(configDir, { recursive: true });
-
-    const hasExisting = await prompt('\nDo you have an existing config from app.eventmodelers.ai/account? (y/n): ');
-    if (hasExisting.toLowerCase() === 'y' || hasExisting.toLowerCase() === 'yes') {
-      console.log(`\n  Paste your config into:\n\n    ${configPath}\n\n  Then re-run this installer.\n`);
-      process.exit(0);
-    }
 
     let config = {};
     if (existsSync(configPath)) {
@@ -163,16 +157,20 @@ program
       }
     }
 
-    const hasConfig = config.organizationId && config.boardId && config.token;
-    if (!hasConfig) {
-      console.log('\n🔑 Enter your Eventmodelers credentials:\n');
-      config.organizationId = config.organizationId || await prompt('  Organization ID: ');
-      config.boardId        = config.boardId        || await prompt('  Board ID:        ');
-      config.token          = config.token          || await prompt('  Token:           ');
-      writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log('\n🔑 Eventmodelers connection (optional — press Enter to skip; only needed for platform/MCP features):\n');
+    const orgId  = await prompt(`  Organization ID ${config.organizationId ? `[${config.organizationId}]` : ''}: `);
+    const boardId = await prompt(`  Board ID        ${config.boardId        ? `[${config.boardId}]`        : ''}: `);
+    const token   = await prompt(`  Token           ${config.token          ? '[set]'                       : ''}: `);
+
+    if (orgId)   config.organizationId = orgId;
+    if (boardId) config.boardId        = boardId;
+    if (token)   config.token          = token;
+
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    if (config.organizationId && config.boardId && config.token) {
       console.log('\n  ✓ Credentials saved to .build-kit-axon/.eventmodelers/config.json');
     } else {
-      console.log('\n  ✓ Config already present — skipping credential prompt');
+      console.log('\n  ℹ️  Config saved — use /connect in Claude Code to add credentials later');
     }
 
     // Configure MCP server in .claude/settings.json
