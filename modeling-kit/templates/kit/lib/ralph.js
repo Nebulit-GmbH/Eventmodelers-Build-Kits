@@ -47,17 +47,18 @@ async function retryOn401(label, fn, maxRetries = 3) {
 function loadLocalConfig(kitDir) {
   const configPath = join(kitDir, '.eventmodelers', 'config.json');
   if (!existsSync(configPath)) {
-    console.error(`[ralph] Setup required: no .eventmodelers/config.json found.`);
-    console.error(`        Expected at: ${configPath}`);
-    console.error(`        Follow the setup guide: https://app.eventmodelers.ai/documentation`);
-    process.exit(1);
+    console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
+    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation`);
+    console.warn(`        Code generation from local slice definitions will still run.`);
+    return {};
   }
   const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-  for (const key of ['token', 'organizationId', 'baseUrl']) {
-    if (!cfg[key]) throw new Error(`Missing config field: ${key}`);
-  }
   if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
   return cfg;
+}
+
+function hasCredentials(cfg) {
+  return !!(cfg.token && cfg.organizationId && cfg.baseUrl);
 }
 
 async function fetchPlatformConfig(local) {
@@ -204,10 +205,17 @@ export { loadLocalConfig, fetchPlatformConfig, retryOn401 };
 
 export async function startRalph({ kitDir, projectDir, onTask }) {
   const local = loadLocalConfig(kitDir);
-  const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
+
+  if (!hasCredentials(local)) {
+    console.log(`         mode: local-only (no platform sync)\n`);
+    await ralphLoop(kitDir, onTask);
+    return;
+  }
+
+  const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
   console.log(`         org=${cfg.organizationId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([

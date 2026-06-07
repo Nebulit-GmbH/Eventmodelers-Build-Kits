@@ -48,17 +48,18 @@ async function retryOn401(label, fn, maxRetries = 3) {
 function loadLocalConfig(kitDir) {
   const configPath = join(kitDir, '.eventmodelers', 'config.json');
   if (!existsSync(configPath)) {
-    console.error(`[ralph] Setup required: no .eventmodelers/config.json found.`);
-    console.error(`        Expected at: ${configPath}`);
-    console.error(`        Follow the setup guide: https://app.eventmodelers.ai/documentation#build-node`);
-    process.exit(1);
+    console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
+    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-node`);
+    console.warn(`        Code generation from local slice definitions will still run.`);
+    return {};
   }
   const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-  for (const key of ['token', 'organizationId', 'boardId', 'baseUrl']) {
-    if (!cfg[key]) throw new Error(`Missing config field: ${key}`);
-  }
   if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
   return cfg;
+}
+
+function hasCredentials(cfg) {
+  return !!(cfg.token && cfg.organizationId && cfg.boardId && cfg.baseUrl);
 }
 
 async function fetchPlatformConfig(local) {
@@ -250,11 +251,12 @@ async function runWithRetry(label, fn) {
 async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
+  const credentialed = hasCredentials(cfg);
 
   while (true) {
     let didWork = false;
 
-    if (hasPendingTasks(kitDir)) {
+    if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8');
       await runWithRetry('onTask: loading slice from board...', () => onTask(prompt));
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
@@ -266,7 +268,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
       const prompt = readFileSync(backendPromptFile, 'utf-8');
       await runWithRetry(`onPlannedSlice: building slice "${plannedTitle}"...`, () => onPlannedSlice(prompt));
       console.log(`[ralph] Slice build complete — waiting for next slice`);
-      await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
+      if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }
 
@@ -280,10 +282,17 @@ export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice }) {
   const local = loadLocalConfig(kitDir);
-  const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
+
+  if (!hasCredentials(local)) {
+    console.log(`         mode: local-only (no platform sync)\n`);
+    await ralphLoop(kitDir, local, onTask, onPlannedSlice);
+    return;
+  }
+
+  const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([

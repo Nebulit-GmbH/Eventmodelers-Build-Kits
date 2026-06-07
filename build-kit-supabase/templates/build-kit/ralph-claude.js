@@ -11,7 +11,9 @@ const kitDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, '..');
 
 const cfg = loadLocalConfig(kitDir);
-const inlineHeader = `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`;
+const inlineHeader = cfg.boardId
+  ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
+  : '';
 
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
