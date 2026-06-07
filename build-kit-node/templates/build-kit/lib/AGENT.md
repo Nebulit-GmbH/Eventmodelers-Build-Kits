@@ -25,7 +25,7 @@ timestamp       unix ms when the change was emitted
 The realtime agent writes one file per slice on startup and after each `slice:changed` event:
 
 ```
-slices/<context>/<sliceName>.json
+.slices/<context>/<sliceName>.json
 ```
 
 - `<context>` is the slice's context value, or `default` if none.
@@ -37,7 +37,7 @@ These files are always up to date — read them directly before invoking any ski
 
 - Always run `/connect` first to load credentials from `.eventmodelers/config.json` before calling any other skill.
 - `/load-slice sliceId=<uuid>` re-fetches all slices from the API, refreshes the slice files, and returns the requested slice. Use it when you need a guaranteed-fresh view of a specific slice.
-- Read `slices/<context>/<sliceName>.json` directly when you already know the context and name and the file is recent enough.
+- Read `.slices/<context>/<sliceName>.json` directly when you already know the context and name and the file is recent enough.
 
 ## Board API
 

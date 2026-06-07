@@ -46,7 +46,7 @@ If the module is missing from the pom, add it before implementing any workflow.
 
 ## Step 1: Analyze Automation Slices — Which Ones Need a Workflow?
 
-Read every slice.json under `.build-kit-axon/slices/{context}/` where `processors` is not empty,
+Read every slice.json under `.build-kit-axon/.slices/{context}/` where `processors` is not empty,
 or where the user specifies a list of slices to analyze.
 
 For each automation slice, apply this decision table:

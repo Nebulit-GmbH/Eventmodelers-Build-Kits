@@ -3,7 +3,7 @@
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called when tasks.json has entries
-//   onPlannedSlice(prompt) — called when slices/ has a "Planned" entry (omit to skip)
+//   onPlannedSlice(prompt) — called when .slices/ has a "Planned" entry (omit to skip)
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
@@ -87,7 +87,7 @@ async function fetchAndPersistSlices(cfg, kitDir) {
   const { slices } = await fetchJSON(url, {
     headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId },
   });
-  const slicesDir = join(kitDir, 'slices');
+  const slicesDir = join(kitDir, '.slices');
   mkdirSync(slicesDir, { recursive: true });
 
   // Group by context slug
@@ -220,7 +220,7 @@ function hasPendingTasks(kitDir) {
 }
 
 function getFirstPlannedSliceTitle(kitDir) {
-  const slicesDir = join(kitDir, 'slices');
+  const slicesDir = join(kitDir, '.slices');
   if (!existsSync(slicesDir)) return null;
   for (const entry of readdirSync(slicesDir)) {
     const indexPath = join(slicesDir, entry, 'index.json');
@@ -265,7 +265,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
     if (plannedTitle) {
       const prompt = readFileSync(backendPromptFile, 'utf-8');
       await runWithRetry(`onPlannedSlice: building slice "${plannedTitle}"...`, () => onPlannedSlice(prompt));
-      console.log(`[ralph] slice Done: "${plannedTitle}"`);
+      console.log(`[ralph] Slice build complete — waiting for next slice`);
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }

@@ -1,8 +1,8 @@
 #!/bin/bash
 # Ralph agent loop — two independent loops, each triggered by their own condition
 #
-# onTask:        tasks.json has entries  → load slice from board, update .build-kit/slices/
-# onPlannedSlice: .build-kit/slices/ has a "Planned" slice → build it
+# onTask:        tasks.json has entries  → load slice from board, update .build-kit/.slices/
+# onPlannedSlice: .build-kit/.slices/ has a "Planned" slice → build it
 #
 # The loops are NOT causally linked — either can trigger on its own.
 #
@@ -38,9 +38,28 @@ has_pending_tasks() {
   [[ "$content" != "[]" && -n "$content" ]]
 }
 
-# Returns 0 if any JSON under .build-kit/slices/ contains a "Planned" status
+# Returns 0 if any JSON under .build-kit/.slices/ contains a "Planned" status
 has_planned_slices() {
-  grep -rqi '"status"[[:space:]]*:[[:space:]]*"planned"' "$KIT_DIR/slices/" 2>/dev/null
+  grep -rqi '"status"[[:space:]]*:[[:space:]]*"planned"' "$KIT_DIR/.slices/" --include='index.json' 2>/dev/null
+}
+
+# Returns the title of the first "Planned" slice, or empty string
+get_planned_slice_title() {
+  for index_file in "$KIT_DIR/.slices/"*/index.json; do
+    [[ -f "$index_file" ]] || continue
+    local title
+    title=$(node -e "
+      try {
+        const d = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf-8'));
+        const s = (d.slices||[]).find(s => (s.status||'').toLowerCase() === 'planned');
+        if (s) process.stdout.write(s.slice || s.id || '');
+      } catch(e) {}
+    " "$index_file" 2>/dev/null)
+    if [[ -n "$title" ]]; then
+      echo "$title"
+      return
+    fi
+  done
 }
 
 # Runs agent.sh with the given prompt; retries on non-zero exit
@@ -65,7 +84,9 @@ while [[ "$ITERATIONS" -eq 0 || "$cycle" -lt "$ITERATIONS" ]]; do
   fi
 
   if has_planned_slices; then
-    run_agent "onPlannedSlice: building slice..." "$(cat "$BACKEND_PROMPT_FILE")"
+    slice_title=$(get_planned_slice_title)
+    run_agent "onPlannedSlice: building \"$slice_title\"..." "$(cat "$BACKEND_PROMPT_FILE")"
+    echo "[$(date -u +%H:%M:%S)] Slice \"$slice_title\" build complete — waiting for next slice"
     ran_something=true
   fi
 

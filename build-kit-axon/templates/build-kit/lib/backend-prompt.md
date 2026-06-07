@@ -7,17 +7,18 @@ The structure defined in the Project-Skills is relevant.
 ## Your Task
 
 0. Do not read the entire code base. Focus on the tasks in this description.
-1. Read `.build-kit-axon/slices/current_context.json` to find the active context name, then read `.build-kit-axon/slices/<contextName>/index.json`. Every item in status "planned" is a task.
+1. Read `.build-kit-axon/.slices/current_context.json` to find the active context name, then read `.build-kit-axon/.slices/<contextName>/index.json`. Every item in status "planned" is a task.
 2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
 5. Pick the **highest priority** slice where status is **exactly** "Planned" (case insensitive). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
    **IMPORTANT: Only work on slices with status "Planned". Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned", reply with:**
    <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices.
-6. Pick the slice definition from `.build-kit-axon/slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
+6. Pick the slice definition from `.build-kit-axon/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
 7. Define the slice type and load the matching skill:
    - Write slice (has commands, no processors) → `build-state-change`
    - Read slice (has readModel / information flow) → `build-state-view`
+   - Translation slice (`sliceType === "TRANSLATION"`) → read `description` and `notes` from slice.json for hints; default to `build-automation` if nothing else is specified
    - Automation slice (processors-array is not empty) → `build-automation`
 8. Write a short progress one liner after each step to progress.txt
 9. Analyze and Implement that single slice, make use of the skills in the skills directory, but also your previsously collected

@@ -97,7 +97,7 @@ cd .build-kit-axon/realtime-agent && npm install && npm run dev
 On startup the realtime agent:
 1. Reads `.build-kit-axon/.eventmodelers/config.json`
 2. Fetches platform config and a short-lived realtime auth token from the API
-3. Persists all current board slices to `.build-kit-axon/slices/<id>.json`
+3. Persists all current board slices to `.build-kit-axon/.slices/<id>.json`
 4. Subscribes to the private channel `board:<boardId>-slicechanged`
 5. Refreshes the realtime token automatically every 10 minutes
 
@@ -140,7 +140,7 @@ The realtime agent receives the broadcast payload:
 ```
 
 It immediately:
-1. Re-fetches all slices and updates local `.build-kit-axon/slices/` snapshots
+1. Re-fetches all slices and updates local `.build-kit-axon/.slices/` snapshots
 2. Appends a new task entry to `.build-kit-axon/tasks.json`:
 
 ```json
@@ -245,6 +245,44 @@ The agent appends a final progress entry to `progress.txt` and updates `AGENT.md
 
 ---
 
+## Manual model export (code-export.mjs)
+
+`code-export.mjs` is an alternative to the realtime agent. Instead of reacting to individual slice status changes, it opens a local HTTP port that the Eventmodelers platform connects to and uses to **push the entire board model** — all slices, groups, context, and screen images — directly into your local file system in one shot.
+
+Start the server from your project root:
+
+```bash
+node .build-kit-axon/code-export.mjs
+```
+
+Then trigger an export from the Eventmodelers board UI. The platform will POST the full model to `http://localhost:3001/api/generate`, which writes:
+
+- `config.json` — the full board config at your project root
+- `.build-kit-axon/.slices/<context>/config.json` — config scoped to the context
+- `.build-kit-axon/.slices/<context>/index.json` — slice index with status and folder mappings
+- `.build-kit-axon/.slices/<context>/<slice>/slice.json` — one file per slice
+- `.build-kit-axon/.slices/<context>/<slice>/screen-<id>.png` — slice screenshots (if present)
+- `.build-kit-axon/.slices/current_context.json` — pointer to the active context
+
+Override the default port with an environment variable:
+
+```bash
+PORT=3002 node .build-kit-axon/code-export.mjs
+```
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `GET /api/ping` | GET | Health check |
+| `POST /api/generate` | POST | Receive and write the full board model to disk |
+| `GET /api/slices` | GET | Read slice definitions (supports `?revision=<git-ref>`) |
+| `GET /api/slice-info` | GET | Slice status summary |
+| `GET /api/config` | GET/POST | Project config |
+| `GET /api/progress` | GET | Agent progress log |
+| `POST /api/git` | POST | Commit `.slices/` to git |
+| `POST /api/delete-slice` | POST | Remove a code-slice.json by slice ID |
+
+---
+
 ## Project files reference
 
 All kit files live inside `.build-kit-axon/`:
@@ -253,7 +291,7 @@ All kit files live inside `.build-kit-axon/`:
 |------|-----------|---------|---------|
 | `.build-kit-axon/.eventmodelers/config.json` | installer / `/connect` | all skills, realtime agent | credentials |
 | `.build-kit-axon/tasks.json` | realtime agent | Phase 1 agent | task queue |
-| `.build-kit-axon/slices/<id>.json` | realtime agent | Phase 1 agent | raw board slice snapshots |
+| `.build-kit-axon/.slices/<id>.json` | realtime agent | Phase 1 agent | raw board slice snapshots |
 | `.build-kit-axon/.slices/<ctx>/index.json` | `/load-slice` skill | Phase 2 agent | slice metadata + status |
 | `.build-kit-axon/.slices/<ctx>/<folder>/slice.json` | `/load-slice` skill | build skills | full slice definition |
 | `.build-kit-axon/progress.txt` | Phase 1 + 2 agents | Phase 2 agent (patterns section) | work log |

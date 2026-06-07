@@ -50,9 +50,10 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
 
-2. Read the slice definition from `.build-kit-axon/slices/<contextSlug>/<sliceFolder>/slice.json` (written by `/load-slice`).
+2. Read the slice definition from `.build-kit-axon/.slices/<contextSlug>/<sliceFolder>/slice.json` (written by `/load-slice`).
 
 3. Determine the **slice type** from the slice.json:
+   - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
    - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`

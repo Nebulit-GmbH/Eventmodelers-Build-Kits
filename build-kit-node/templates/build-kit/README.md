@@ -42,9 +42,9 @@ node .build-kit/ralph-claude.js /path/to/project
 **Phase 1** — triggered when `tasks.json` has entries:
 - The realtime agent writes a task to `tasks.json` each time a `slice:changed` event arrives from the board
 - The loop picks it up and runs Claude (or Ollama) with `prompt.md`
-- Claude loads the slice data and updates `slices/`
+- Claude loads the slice data and updates `.slices/`
 
-**Phase 2** — triggered when any file in `slices/` contains `"status": "Planned"`:
+**Phase 2** — triggered when any file in `.slices/` contains `"status": "Planned"`:
 - The loop runs Claude with `backend-prompt.md`
 - Claude implements the slice in the project
 - Phase 2 is Claude-only; Ollama mode skips it (ollama-agent handles its own queue)

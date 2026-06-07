@@ -45,8 +45,9 @@ When starting to work on a slice, invoke the `update-slice-status` skill with `I
 
 When asked to build a slice, always follow this flow — do NOT implement manually:
 
-1. Read the slice definition from `.build-kit/slices/<context>/<slicename>/slice.json`.
+1. Read the slice definition from `.build-kit-node/.slices/<context>/<slicename>/slice.json`.
 2. Determine the slice type:
+   - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
    - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`

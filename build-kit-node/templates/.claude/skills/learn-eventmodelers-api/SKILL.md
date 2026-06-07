@@ -318,7 +318,7 @@ Create a SCREEN node from a sketch description.
 
 ## 5. Slices
 
-**File**: `src/slices/change/api-slices/routes.ts`
+**File**: `src/slices/change/api-.slices/routes.ts`
 
 ### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/slices`
 Create a complete slice (1 column + 3 nodes automatically placed).
@@ -597,7 +597,7 @@ All events support optional metadata: `user_id`, `correlation_id`, `causation_id
 | `src/slices/change/api-chapters/routes.ts` | Chapters, columns, lanes, cell drops |
 | `src/slices/change/api-nodes/routes.ts` | Node event sourcing |
 | `src/slices/change/api-images/routes.ts` | Image upload + sketch rendering |
-| `src/slices/change/api-slices/routes.ts` | Slice creation |
+| `src/slices/change/api-.slices/routes.ts` | Slice creation |
 | `src/slices/change/api-specs/routes.ts` | GWT scenario management |
 | `src/slices/change/config-import/routes.ts` | Config import |
 | `src/slices/slicedata/routes.ts` | Slice data read models |

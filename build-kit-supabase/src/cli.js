@@ -148,12 +148,6 @@ program
     const configPath = join(configDir, 'config.json');
     mkdirSync(configDir, { recursive: true });
 
-    const hasExisting = await prompt('\nDo you have platform credentials from app.eventmodelers.ai/account? (y/n): ');
-    if (hasExisting.toLowerCase() === 'y' || hasExisting.toLowerCase() === 'yes') {
-      console.log(`\n  Paste your config into:\n\n    ${configPath}\n\n  Then re-run this installer.\n`);
-      process.exit(0);
-    }
-
     let config = {};
     if (existsSync(configPath)) {
       try {
@@ -163,8 +157,18 @@ program
       }
     }
 
-    const hasConfig = config.organizationId && config.boardId && config.token;
-    if (!hasConfig) {
+    const wantCredentials = await prompt('\nDo you want to configure credentials now? (y/n): ');
+    if (wantCredentials.toLowerCase() !== 'y' && wantCredentials.toLowerCase() !== 'yes') {
+      console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
+    } else {
+      const copyFromPlatform = await prompt('\nDo you have platform credentials? Copy directly from app.eventmodelers.ai/account? (y/n): ');
+      if (copyFromPlatform.toLowerCase() === 'y' || copyFromPlatform.toLowerCase() === 'yes') {
+        console.log('\n  1. Open: https://app.eventmodelers.ai/account');
+        console.log(`  2. Copy your credentials JSON and paste it into:\n\n       ${configPath}\n`);
+        console.log('  3. Re-run this installer.\n');
+        process.exit(0);
+      }
+
       console.log('\n🔑 Enter your Eventmodelers credentials (press Enter to skip any field):\n');
       const orgId   = await prompt(`  Organization ID ${config.organizationId ? `[${config.organizationId}]` : ''}: `);
       const boardId = await prompt(`  Board ID        ${config.boardId        ? `[${config.boardId}]`        : ''}: `);
@@ -180,8 +184,6 @@ program
       } else {
         console.log('\n  ℹ️  Config saved — use /connect in Claude Code to add credentials later');
       }
-    } else {
-      console.log('\n  ✓ Config already present — skipping credential prompt');
     }
 
     // Configure MCP server in .claude/settings.json
@@ -264,4 +266,4 @@ program
     }
   });
 
-program.parse();
+program.parse(process.argv);
