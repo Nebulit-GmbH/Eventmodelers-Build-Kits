@@ -95,22 +95,21 @@ program
     }
 
     // Make scripts executable
-    for (const script of ['ralph.sh', 'agent.sh']) {
+    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-ollama.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
       }
     }
 
-    // --- 3. Install realtime-agent dependencies ---
-    const agentDir = join(kitDir, 'realtime-agent');
-    if (existsSync(agentDir)) {
-      console.log('\n📦 Installing realtime-agent dependencies...');
+    // --- 3. Install kit dependencies ---
+    if (existsSync(join(kitDir, 'package.json'))) {
+      console.log('\n📦 Installing kit dependencies...');
       try {
-        execSync('npm install', { cwd: agentDir, stdio: 'inherit' });
-        console.log('  ✓ realtime-agent dependencies installed');
+        execSync('npm install', { cwd: kitDir, stdio: 'inherit' });
+        console.log('  ✓ kit dependencies installed');
       } catch {
-        console.error('  ⚠️  npm install failed in realtime-agent — run it manually');
+        console.error('  ⚠️  npm install failed in kit — run it manually');
       }
     }
 
@@ -191,13 +190,13 @@ program
     }
 
     console.log('\n✅ Done!\n');
-    console.log('Next steps — run both in separate terminals:\n');
-    console.log('  Terminal 1 — realtime agent (picks up prompts → writes .agent-modeling-kit/tasks.json):');
-    console.log('       cd .agent-modeling-kit/realtime-agent && npm run dev\n');
-    console.log('  Terminal 2 — agent loop (reads tasks.json → executes tasks in project root):');
+    console.log('Start the agent (realtime + task loop in one process):');
+    console.log('       cd .agent-modeling-kit && node ralph-claude.js\n');
+    console.log('Or using Ollama (run `ollama serve` first):');
+    console.log('       cd .agent-modeling-kit && node ralph-ollama.js\n');
+    console.log('Or using the bash loop only (no realtime):');
     console.log('       cd .agent-modeling-kit && ./ralph.sh\n');
-    console.log('Both run indefinitely. The loop skips when tasks.json is empty.');
-    console.log('\nSkills are ready in .claude/skills/ — use /connect to set a board ID.');
+    console.log('Skills are ready in .claude/skills/ — use /connect to set a board ID.');
   });
 
 program
@@ -226,13 +225,13 @@ program
     const kitDir = join(process.cwd(), '.agent-modeling-kit');
     const skillsDir = join(process.cwd(), '.claude', 'skills');
     const configPath = join(kitDir, '.eventmodelers', 'config.json');
-    const agentDir = join(kitDir, 'realtime-agent');
+    const ralphPath = join(kitDir, 'ralph-claude.js');
 
     console.log('Eventmodelers Agent Modeling Kit Status\n');
     console.log(`Kit dir:        ${existsSync(kitDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Config:         ${existsSync(configPath) ? '✅ present' : '❌ missing'}`);
-    console.log(`Realtime agent: ${existsSync(agentDir) ? '✅ present' : '❌ missing'}`);
+    console.log(`Ralph agent:    ${existsSync(ralphPath) ? '✅ present' : '❌ missing'}`);
 
     if (existsSync(configPath)) {
       try {

@@ -10,13 +10,13 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const configPath = resolve(__dirname, '.eventmodelers', 'config.json');
+const configPath = resolve(__dirname, '..', '.eventmodelers', 'config.json');
 const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { token, baseUrl } = config;
 const defaultBoardId = config.boardId;
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const MODEL = process.argv[2] || process.env.OLLAMA_MODEL || 'qwen3.5:9b';
+const MODEL = process.argv[2] || process.env.OLLAMA_MODEL || 'qwen3:8b';
 
 function parseSse(text) {
   for (const line of text.split('\n')) {
@@ -121,7 +121,7 @@ async function runAgent(userPrompt, boardId) {
 }
 
 async function runNextTask() {
-  const tasksPath = resolve(__dirname, 'tasks.json');
+  const tasksPath = resolve(__dirname, '..', 'tasks.json');
   let tasks = [];
   try { tasks = JSON.parse(readFileSync(tasksPath, 'utf8')); } catch {}
 

@@ -10,7 +10,7 @@ KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ITERATIONS="${1:-0}"
 PROJECT_DIR="${2:-"$KIT_DIR/.."}"
 TASKS_FILE="$KIT_DIR/tasks.json"
-AGENT_SCRIPT="$KIT_DIR/agent.sh"
+AGENT_SCRIPT="$KIT_DIR/lib/agent.sh"
 
 if [[ ! -f "$KIT_DIR/.eventmodelers/config.json" ]]; then
   echo "ERROR: No .eventmodelers/config.json found in $KIT_DIR"

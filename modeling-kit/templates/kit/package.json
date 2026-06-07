@@ -1,10 +1,10 @@
 {
-  "name": "realtime-agent",
+  "name": "agent-modeling-kit",
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node src/index.js",
-    "start": "node src/index.js"
+    "start": "node ralph-claude.js",
+    "start:ollama": "node ralph-ollama.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0"

@@ -16,5 +16,5 @@ claude --dangerously-skip-permissions -p "$PROMPT"
 # --- To use a local Ollama model instead, comment out the line above
 #     and uncomment the block below. Run `ollama serve` first.
 #
-# MODEL="${OLLAMA_MODEL:-qwen3.5:9b}"
+# MODEL="${OLLAMA_MODEL:-qwen3:8b}"
 # node "$(dirname "$0")/ollama-agent.js" "$MODEL"
