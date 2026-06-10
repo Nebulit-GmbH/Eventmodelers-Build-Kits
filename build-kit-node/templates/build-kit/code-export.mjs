@@ -230,7 +230,7 @@ const server = createServer(async (req, res) => {
                             sliceIndex.group = groupId;
                         }
 
-                        const sliceId = sliceIndices.slices.findIndex(it => it.id == slice.id);
+                        const sliceId = sliceIndices.slices.findIndex(it => it.slice == slice.title);
                         if (sliceId == -1) {
                             sliceIndices.slices.push(sliceIndex);
                         } else {
