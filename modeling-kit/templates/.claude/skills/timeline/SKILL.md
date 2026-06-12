@@ -20,14 +20,33 @@ From `$ARGUMENTS` and the conversation, extract:
 | Field | How to find it | Default |
 |-------|---------------|---------|
 | `boardId` | a board UUID | from `connect` skill (`BOARD_ID`) — ask user only if explicitly overriding |
-| `timelineId` | an existing chapter UUID or chapter name to continue | omit = create new |
+| `timelineId` | an existing chapter UUID or chapter name to continue | omit = discover |
 | `baseUrl` | explicit URL override | from `connect` skill (`BASE_URL`) |
 
 `BOARD_ID` and `BASE_URL` come from the `connect` skill and do not need to be asked for.
 
 ---
 
-### 1a — Continuing an existing timeline
+### 1a — Discover existing timelines
+
+Before doing anything else, fetch all chapters (timelines) on the board:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+```
+
+**If `timelineId` was provided** (UUID or name), skip directly to [1b — Continuing an existing timeline](#1b--continuing-an-existing-timeline).
+
+**If `timelineId` was not provided:**
+
+- If one or more chapters exist, list them by name (falling back to ID if unnamed) and ask:
+  > "I found these timelines on the board: [list]. Which one do you want to continue, or should I create a new one?"
+  Wait for the user's answer before proceeding.
+- If no chapters exist, proceed directly to [1c — Creating a new timeline](#1c--creating-a-new-timeline).
+
+---
+
+### 1b — Continuing an existing timeline
 
 A chapter and a timeline are the same thing — the terms are interchangeable.
 
@@ -72,7 +91,7 @@ Tell the user which timeline was loaded and how many events already exist (one l
 
 ---
 
-### 1b — Creating a new timeline
+### 1c — Creating a new timeline
 
 If no `timelineId` is provided, **create the chapter immediately** — before any events are known:
 

@@ -1,6 +1,6 @@
 ---
 name: connect
-description: Resolve eventmodelers connection config (token, boardId, baseUrl) from inline params or .eventmodelers.ai/.eventmodelers/config.json — ask the user for missing values, persist them, and add the file to .gitignore. All other skills invoke this first.
+description: Resolve eventmodelers connection config (token, boardId, baseUrl) from inline params or .agent-modeling-kit/.eventmodelers/config.json — ask the user for missing values, persist them, and add the file to .gitignore. All other skills invoke this first.
 ---
 
 # Connect — Resolve Eventmodelers Config
@@ -48,16 +48,16 @@ If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priori
 
 ## Step 1 — Read config file
 
-Check whether `.eventmodelers.ai/.eventmodelers/config.json` exists in the current working directory:
+The config file is at `.agent-modeling-kit/.eventmodelers/config.json` when Claude runs from the project root, or `.eventmodelers/config.json` when running from inside the kit directory. Check both:
 
 ```bash
-cat .eventmodelers.ai/.eventmodelers/config.json 2>/dev/null
+cat .agent-modeling-kit/.eventmodelers/config.json 2>/dev/null || cat .eventmodelers/config.json 2>/dev/null
 ```
 
 If the file exists and is valid JSON, extract any values **not already set by Step 0**:
 - `token` → `TOKEN`
 - `boardId` → `BOARD_ID`
-- `organizationId` → `ORG_ID`
+- `organizationId` or `orgId` → `ORG_ID` (accept either field name)
 - `baseUrl` → `BASE_URL` (default: `https://api.eventmodelers.ai` if missing)
 
 Resolution priority: **inline param > config file > ask user**
@@ -94,33 +94,34 @@ Where to find the token: users generate API tokens in their workspace settings a
 
 ## Step 3 — Persist config
 
-Once all values are collected, write the config file. When writing, merge with any existing config — do **not** overwrite fields that were provided as inline params with values from a previous config (the inline param is the user's explicit intent for this session, but the persisted value should reflect the most recently user-supplied value):
+Once all values are collected, write the config file. Determine the write path: use `.agent-modeling-kit/.eventmodelers/config.json` if the `.agent-modeling-kit/` directory exists in cwd, otherwise use `.eventmodelers/config.json`. When writing, merge with any existing config — do **not** overwrite fields that were provided as inline params with values from a previous config (the inline param is the user's explicit intent for this session, but the persisted value should reflect the most recently user-supplied value):
 
 ```bash
-mkdir -p .eventmodelers.ai/.eventmodelers
-cat > .eventmodelers.ai/.eventmodelers/config.json << 'EOF'
+# From project root (most common):
+mkdir -p .agent-modeling-kit/.eventmodelers
+cat > .agent-modeling-kit/.eventmodelers/config.json << 'EOF'
 {
   "token": "<TOKEN>",
   "boardId": "<BOARD_ID>",
-  "orgId": "<ORG_ID>",
+  "organizationId": "<ORG_ID>",
   "baseUrl": "<BASE_URL>"
 }
 EOF
 ```
 
-Then ensure `.eventmodelers.ai/.eventmodelers/config.json` is in `.gitignore`. Check whether it is already present:
+Then ensure `.agent-modeling-kit/.eventmodelers/` is in `.gitignore`. Check whether it is already present:
 
 ```bash
-grep -q ".eventmodelers.ai/.eventmodelers/config.json" .gitignore 2>/dev/null || echo "MISSING"
+grep -q ".agent-modeling-kit/.eventmodelers/" .gitignore 2>/dev/null || echo "MISSING"
 ```
 
 If `MISSING`, append it:
 
 ```bash
-echo ".eventmodelers.ai/.eventmodelers/config.json" >> .gitignore
+echo ".agent-modeling-kit/.eventmodelers/" >> .gitignore
 ```
 
-Tell the user: `"Config saved to .eventmodelers.ai/.eventmodelers/config.json and added to .gitignore."`
+Tell the user: `"Config saved to .agent-modeling-kit/.eventmodelers/config.json and added to .gitignore."`
 
 ---
 
@@ -148,12 +149,12 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 ## Config file format
 
-`.eventmodelers.ai/.eventmodelers/config.json`:
+`.agent-modeling-kit/.eventmodelers/config.json`:
 ```json
 {
   "token": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "boardId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "orgId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "organizationId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "baseUrl": "http://localhost:3000"
 }
 ```
