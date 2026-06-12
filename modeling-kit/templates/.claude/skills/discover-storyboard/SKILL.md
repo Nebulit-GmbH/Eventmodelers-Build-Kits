@@ -106,11 +106,10 @@ Use the browser tools identified in Step 0. Process screens **one at a time** �
 1. Navigate to `startUrl` using `NAVIGATE_TOOL`
 2. Wait briefly for the page to settle
 3. Take a screenshot using `SCREENSHOT_TOOL` — save to `/tmp/discover-storyboard/screen-001.png`
-4. Use `CONTENT_TOOL` to read the page structure — find:
-   - Page title / main heading
-   - Top-level navigation links
-   - Prominent buttons and calls-to-action
-   - Any visible flows or sections
+4. Use `CONTENT_TOOL` to read the page structure and compose a `description` for this screen covering three things:
+   - **What it shows**: the main content and purpose of this screen
+   - **How the user got here**: `"Initial load"` for the entry screen
+   - **What actions are possible**: list the primary user actions available (buttons, forms, links that lead somewhere meaningful) — expressed as intent, not UI labels (e.g. "user can submit a new order", "user can filter products by category")
 
 Record this screen:
 ```
@@ -121,7 +120,7 @@ screens = [
     url: "<current url>",
     filepath: "/tmp/discover-storyboard/screen-001.png",
     flowHint: "<which flow this belongs to, e.g. 'Navigation / Home'>",
-    interactionTaken: "initial load"
+    description: "Shows <what>. Arrived via: initial load. Actions: <user can do X>, <user can do Y>, <user can do Z>."
   }
 ]
 ```
@@ -151,13 +150,16 @@ For each subsequent screen (up to `maxScreenshots`):
 
 After each interaction:
 1. Take a screenshot → save to `/tmp/discover-storyboard/screen-NNN.png` (increment counter)
-2. Read the page to find the title
+2. Use `CONTENT_TOOL` to read the page and compose a `description` covering:
+   - **What it shows**: the main content and purpose of this screen
+   - **How the user got here**: the action taken to reach this screen (e.g. "clicked 'Add to cart'", "submitted login form")
+   - **What actions are possible**: primary user actions expressed as intent (e.g. "user can confirm the order", "user can apply a discount code")
 3. Append to `screens` array with:
    - `title` — the page/modal title
    - `url` — current URL
    - `filepath` — local file path
-   - `flowHint` — which logical flow this screen belongs to (use URL path, page heading, or surrounding context to infer)
-   - `interactionTaken` — what was clicked/submitted to arrive here
+   - `flowHint` — which logical flow this screen belongs to
+   - `description` — "Shows <what>. Arrived via: <interaction>. Actions: <user can do X>, <user can do Y>."
 
 Continue until `maxScreenshots` is reached or no new screens are discoverable.
 
@@ -299,7 +301,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "meta":      {
       "type":        "SCREEN",
       "title":       "<screen.title>",
-      "description": "<screen.interactionTaken — how the user arrives here>"
+      "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"
     },
     "node":      { "id": "<SCREEN_NODE_ID>", "data": {} }
   }]'

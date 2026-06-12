@@ -52,7 +52,8 @@ program
     }
 
     // --- 1. Install skills and Claude settings into project root ---
-    console.log('📦 Installing Claude skills...\n');
+    console.log('📦 Installing Claude skills...');
+    console.log('   Copies skills and settings into .claude/ so Claude Code picks them up automatically.\n');
 
     const claudeSrc = join(templatesSource, '.claude');
     const claudeDest = join(targetDir, '.claude');
@@ -74,7 +75,8 @@ program
     // --- 2. Create .agent-modeling-kit/ and install all agent files ---
     const kitDir = join(targetDir, '.agent-modeling-kit');
     mkdirSync(kitDir, { recursive: true });
-    console.log('\n📦 Installing agent kit into .agent-modeling-kit/...\n');
+    console.log('\n📦 Installing agent kit into .agent-modeling-kit/...');
+    console.log('   Sets up the Ralph agent loop, scripts, and configuration that drive realtime modeling.\n');
 
     const kitSrc = join(templatesSource, 'kit');
     if (existsSync(kitSrc)) {
@@ -105,6 +107,7 @@ program
     // --- 3. Install kit dependencies ---
     if (existsSync(join(kitDir, 'package.json'))) {
       console.log('\n📦 Installing kit dependencies...');
+      console.log('   Installs npm packages required by the agent scripts (e.g. websocket client, utilities).');
       try {
         execSync('npm install', { cwd: kitDir, stdio: 'inherit' });
         console.log('  ✓ kit dependencies installed');
@@ -114,6 +117,8 @@ program
     }
 
     // --- 4. Credentials ---
+    console.log('\n🔐 Configuring credentials...');
+    console.log('   Stores your Organization ID and token so the agent can connect to app.eventmodelers.ai.\n');
     const gitignorePath = join(targetDir, '.gitignore');
     const gitignoreEntry = '.agent-modeling-kit/.eventmodelers/';
     if (existsSync(gitignorePath)) {
@@ -155,6 +160,8 @@ program
     }
 
     // --- 5. MCP server in .claude/settings.json ---
+    console.log('\n🔌 Configuring MCP server...');
+    console.log('   Registers the Eventmodelers MCP server in .claude/settings.json so Claude Code can call modeling tools directly.\n');
     const claudeSettingsDir = join(targetDir, '.claude');
     const settingsPath = join(claudeSettingsDir, 'settings.json');
     mkdirSync(claudeSettingsDir, { recursive: true });
@@ -196,7 +203,9 @@ program
     console.log('       cd .agent-modeling-kit && node ralph-ollama.js\n');
     console.log('Or using the bash loop only (no realtime):');
     console.log('       cd .agent-modeling-kit && ./ralph.sh\n');
-    console.log('Skills are ready in .claude/skills/ — use /connect to set a board ID.');
+    console.log('Skills are ready in .claude/skills/ — use /connect to set a board ID.\n');
+    console.log('💡 Recommended: add Chrome DevTools MCP for browser inspection:');
+    console.log('       claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest\n');
   });
 
 program
