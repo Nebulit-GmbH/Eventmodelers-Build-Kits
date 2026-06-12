@@ -276,13 +276,29 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 
 Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId`.
 
-### 7b — Create the SCREEN node
+### 7b — Generate UUID and upload the screenshot
 
 Generate UUIDs for `SCREEN_NODE_ID` and `EVT_ID`:
 
 ```bash
 python3 -c "import uuid; print(uuid.uuid4())"
 ```
+
+Upload the saved screenshot file using `SCREEN_NODE_ID` **before** creating the node:
+
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$SCREEN_NODE_ID" \
+  -H "x-token: $TOKEN" \
+  -F "file=@<screen.filepath>"
+```
+
+> **Note**: This uploads the real screenshot to the SCREEN node — it is a different endpoint from the sketch API. The sketch API (`/images/$NODE/sketch`) renders AI-generated wireframe elements. This endpoint (`/images/$NODE`) uploads an actual image file.
+
+Log success or failure. On failure, note it in the final report but continue.
+
+### 7c — Create the SCREEN node
+
+Now create the SCREEN node using the same `SCREEN_NODE_ID` (the image is already uploaded for it):
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
@@ -308,20 +324,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 ```
 
 Verify the response contains `"hashes"`. If it fails, log the error and continue to the next screen — do not stop the entire run.
-
-### 7c — Upload the screenshot
-
-Upload the saved screenshot file as the SCREEN node's image:
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$SCREEN_NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -F "file=@<screen.filepath>"
-```
-
-> **Note**: This uploads the real screenshot to the SCREEN node — it is a different endpoint from the sketch API. The sketch API (`/images/$NODE/sketch`) renders AI-generated wireframe elements. This endpoint (`/images/$NODE`) uploads an actual image file.
-
-Log success or failure. On failure, note it in the final report but continue.
 
 ### 7d — Report per-screen progress
 
