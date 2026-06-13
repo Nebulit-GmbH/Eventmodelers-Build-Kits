@@ -28,6 +28,8 @@ There are two kinds:
 
 ## Step 0: Discover Target Project Conventions
 
+> **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
+
 Read the target project's `CLAUDE.md` and explore existing slices. Look for:
 
 - File splitting conventions (one Java file per class vs inner classes)
