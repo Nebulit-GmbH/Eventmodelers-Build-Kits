@@ -40,6 +40,7 @@ Extract:
 - **commands[]** — command data fields (build the request body shape from these)
 - **events[]** — events emitted when the command succeeds
 - **endpoint** (if present) — preferred URL path; default to kebab-case slice name
+> **Comments & description**: Each element carries a `comments: string[]` array and a `description` field. The slice also has `comments: string[]`. Use as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
 
 ---
 

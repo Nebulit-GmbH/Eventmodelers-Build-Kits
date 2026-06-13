@@ -22,6 +22,8 @@ From the slice definition, extract:
 - **context** — bounded context
 - **events[]** — events this projection handles (its `canHandle` list)
 - **readModel / fields** — the columns of the output table
+> **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
+
 
 ---
 

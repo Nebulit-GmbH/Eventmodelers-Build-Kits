@@ -32,7 +32,7 @@ curl -s \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slicedata/slices"
 ```
 
-Response shape: `{ "slices": [ { "id": "...", "title": "...", "status": "...", "context": "...", ... } ] }`
+Response shape: `{ "slices": [ { "id": "...", "title": "...", "status": "...", "context": "...", "comments": ["..."], ... } ] }`
 
 Save the full array as `ALL_SLICES`.
 

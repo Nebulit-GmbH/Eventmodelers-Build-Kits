@@ -26,6 +26,8 @@ From the slice definition, extract:
 - **commands[]** — list of commands with their data fields
 - **events[]** — list of events emitted by each command
 - **specifications[]** — test scenarios (given/when/then)
+> **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
+
 
 ---
 
