@@ -60,13 +60,15 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 4. Invoke the matching skill and follow its instructions **completely**. Do NOT implement the slice manually.
 
-5. Run quality checks:
+5. **Verify against slice.json**: Cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code. No invented fields — if it is not in slice.json, it must not be in the code.
+
+6. Run quality checks:
    - Compile: `./mvnw compile -q`
    - Test (slice only): `./mvnw test -Dtest="<SliceName>*" -q`
 
-6. If checks pass, commit all changes with message: `feat: [Slice Name]`.
+7. If checks pass, commit all changes with message: `feat: [Slice Name]`.
 
-7. Call `/update-slice-status` to set the slice to `Done` on the board.
+8. Call `/update-slice-status` to set the slice to `Done` on the board.
 
 #### `InProgress`
 Another agent is already building this slice. Log it and skip — do not build.

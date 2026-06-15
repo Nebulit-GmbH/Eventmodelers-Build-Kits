@@ -9,6 +9,7 @@ description: Implements a webhook slice as a self-contained Supabase Edge Functi
 
 ---
 
+
 ## What a Webhook Slice is
 
 A webhook slice exposes an HTTP endpoint (Supabase Edge Function) that accepts an external request (e.g. payment provider callback), translates it into an Emmett command, and appends events to the PostgreSQL event store.

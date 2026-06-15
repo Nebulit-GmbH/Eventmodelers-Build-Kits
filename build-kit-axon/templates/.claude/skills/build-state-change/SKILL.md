@@ -437,3 +437,16 @@ See [references/rest-api-patterns.md](references/rest-api-patterns.md) for `@Web
 - [Command Handler Styles](references/command-handler-styles.md) — All three registration styles
 - [REST API Patterns](references/rest-api-patterns.md) — REST controller and test examples
 - [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
+
+---
+
+## Final Verification: Does the Implementation Match slice.json?
+
+Before marking this slice as `Done`, verify the implementation against slice.json:
+
+- [ ] Every field in `commands[]` has a corresponding field in the Command record — no invented fields, none missing
+- [ ] Every event in `events[]` exists in the context's sealed event interface — names match exactly
+- [ ] Every field in each event record matches slice.json — no invented fields
+- [ ] Every GWT scenario in `specifications[]` maps to a test method in the test class
+- [ ] No business rules or invariants were added to `decide()` that do not appear in slice.json `description` or `comments`
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

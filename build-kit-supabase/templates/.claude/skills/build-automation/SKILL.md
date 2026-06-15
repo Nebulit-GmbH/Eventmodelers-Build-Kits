@@ -260,3 +260,7 @@ src/common/
 - [ ] `schema.migrate()` is called in `loadPostgresEventstore.ts`
 - [ ] No `routes.ts` created (automations are not exposed via HTTP)
 - [ ] Command handler tests cover idempotency (what happens if the command fires twice)
+- [ ] Every processor in `processors[]` has a corresponding `processor.ts` implementation
+- [ ] Command data fields map exclusively from fields available on the trigger event per slice.json — no invented mappings
+- [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

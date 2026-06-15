@@ -384,3 +384,7 @@ src/common/
 - [ ] `finally { await db.destroy() }` present in every `evolve` handler
 - [ ] Tests use `runFlywayMigrations()` to apply the real schema
 - [ ] One test scenario per specification in slice.json
+o- [ ] Every field in the read model definition in slice.json has a column in the migration and a field in the TypeScript type — no invented columns
+- [ ] Every event type in `events[]` is listed in the projection's `canHandle` — no assumed events
+- [ ] No extra columns or fields were added beyond what slice.json defines
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

@@ -43,7 +43,10 @@ When starting to work on a slice, invoke the `update-slice-status` skill with `I
 
 ## Building a Slice
 
-When asked to build a slice, always follow this flow — do NOT implement manually:
+**CRITICAL: You MUST always use the provided skills to build slices. NEVER implement a slice manually.**
+**ALL fields, event names, command names, and business rules MUST come exclusively from slice.json. Do NOT invent, assume, or guess any field or logic not present in the slice definition.**
+
+When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<context>/<slicename>/slice.json`.
 2. Determine the slice type:
@@ -52,9 +55,10 @@ When asked to build a slice, always follow this flow — do NOT implement manual
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
    - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
-3. Invoke the matching skill and follow its instructions completely.
-4. Run quality checks (`npm run build`, then the slice tests only).
-5. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
+3. Invoke the matching skill and follow its instructions completely. Do not deviate.
+4. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation. No invented fields — if it is not in slice.json, it must not be in the code.
+5. Run quality checks (`npm run build`, then the slice tests only).
+6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
 
 After you are done, automatically run the tests for the slice that was edited.
 

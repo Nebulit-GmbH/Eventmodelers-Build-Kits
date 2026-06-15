@@ -392,3 +392,16 @@ class {AutomationName}ProcessorTest {
 - [Stateless Automation Example](references/automation-test-example.md) — Complete Java test example
 - [Automation with Read Model Example](references/automation-with-read-model-test-example.md) — Multi-command test
 - [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
+
+---
+
+## Final Verification: Does the Implementation Match slice.json?
+
+Before marking this slice as `Done`, verify the implementation against slice.json:
+
+- [ ] The trigger event in the processor matches the trigger event in slice.json exactly
+- [ ] The command dispatched matches the target command defined in slice.json
+- [ ] All fields mapped from trigger event to command come from the event fields defined in slice.json — no invented mappings
+- [ ] Every GWT scenario in `specifications[]` maps to a test case in the test class
+- [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

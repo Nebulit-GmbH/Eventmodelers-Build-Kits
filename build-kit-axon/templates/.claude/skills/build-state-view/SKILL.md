@@ -316,3 +316,15 @@ mocked `QueryGateway` example.
 - [Read Slice Test Example](references/read-slice-test-example.md) — Complete working example
 - [REST API Patterns](references/rest-api-patterns.md) — REST controller and test examples
 - [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
+
+---
+
+## Final Verification: Does the Implementation Match slice.json?
+
+Before marking this slice as `Done`, verify the implementation against slice.json:
+
+- [ ] Every field in the read model / query result definition in slice.json has a field in `{SliceName}Summary` — no invented fields
+- [ ] Every event type in `events[]` has an `@EventHandler` in the projector — no events missed or assumed
+- [ ] Every GWT scenario in `specifications[]` maps to a test case in `{SliceName}ProjectorTest`
+- [ ] No extra query parameters or filter logic were added beyond what slice.json defines
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

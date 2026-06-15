@@ -329,3 +329,16 @@ src/slices/{context}/{SliceName}/
 src/slices/{context}/
 └── {Context}Events.ts       ← add new event types here (update union)
 ```
+
+---
+
+## Final Verification: Does the Implementation Match slice.json?
+
+Before marking this slice as `Done`, verify the implementation against slice.json:
+
+- [ ] Every field in `commands[].data` has a corresponding field in the Command type — no invented fields, none missing
+- [ ] Every event in `events[]` has a corresponding type in `{Context}Events.ts` — names match exactly
+- [ ] Every field in each event's data has a corresponding field in the TypeScript event type
+- [ ] Every entry in `specifications[]` maps to a test case in `{SliceName}.test.ts`
+- [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
+- [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
