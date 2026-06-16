@@ -1,6 +1,6 @@
 # @eventmodelers/build-kit-node
 
-Real-time Claude agent + skill kit for the [Eventmodelers](https://eventmodelers.de) platform. Connect your board to a fully autonomous coding agent that picks up slice status changes, implements the code, and marks work done — all without manual intervention.
+Real-time Claude agent + skill kit for the [Eventmodelers](https://eventmodelers.ai) platform. Connect your board to a fully autonomous coding agent that picks up slice status changes, implements the code, and marks work done — all without manual intervention.
 
 ---
 
@@ -46,7 +46,7 @@ The installer will ask for three values:
 |--------|-----------------|
 | **API token** | Workspace Settings → API Tokens |
 | **Organization ID** | URL bar in your Eventmodelers workspace: `.../org/<UUID>/...` |
-| **Base URL** | Default: `https://api.eventmodelers.de` |
+| **Base URL** | Default: `https://api.eventmodelers.ai` |
 
 Everything is installed inside a `.build-kit-axon/` folder in your project root (gitignored automatically):
 
@@ -104,7 +104,7 @@ On startup the realtime agent:
 You should see output like:
 
 ```
-[agent] Starting — org=..., board=..., base=https://api.eventmodelers.de, cwd=...
+[agent] Starting — org=..., board=..., base=https://api.eventmodelers.ai, cwd=...
 [agent] Persisted 12 slice(s) to .../.build-kit-axon/slices
 [agent] Realtime channel "board:d886f...-slicechanged" status: SUBSCRIBED
 ```

@@ -29,7 +29,7 @@ You now have complete knowledge of the eventmodelers platform API. Use this refe
 | `x-causation-id` | Optional | Event causation tracing |
 | `x-correlation-id` | Optional | Correlation tracing |
 
-- CORS allowed origins: `localhost:3000`, `localhost:3001`, `https://app.eventmodelers.de`
+d- CORS allowed origins: `localhost:3000`, `localhost:3001`, `https://app.eventmodelers.ai`
 
 ---
 

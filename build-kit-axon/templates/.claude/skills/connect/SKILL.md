@@ -58,7 +58,7 @@ If the file exists and is valid JSON, extract any values **not already set by St
 - `token` → `TOKEN`
 - `boardId` → `BOARD_ID`
 - `organizationId` → `ORG_ID`
-- `baseUrl` → `BASE_URL` (default: `https://api.eventmodelers.de` if missing)
+- `baseUrl` → `BASE_URL` (default: `https://api.eventmodelers.ai` if missing)
 
 Resolution priority: **inline param > config file > ask user**
 
@@ -75,7 +75,7 @@ If after Steps 0 and 1 any required field is still missing, **ask the user one q
 **If the user answers yes:**
 Stop asking questions. Show this hint and wait for them to paste:
 
-> "Great — please paste your config from https://app.eventmodelers.de/account here."
+> "Great — please paste your config from https://app.eventmodelers.ai/account here."
 
 When they paste a JSON object, parse it immediately — accept both `orgId` and `organizationId` as the organization field — apply all values, and proceed directly to Step 3.
 
@@ -86,7 +86,7 @@ When they paste a JSON object, parse it immediately — accept both `orgId` and 
 | `token` | "Please provide your eventmodelers API token (a UUID from your workspace settings)." |
 | `boardId` | "Please provide the board ID you want to work with (the UUID from the board URL)." |
 | `orgId` | "Please provide your organization ID (the UUID from your organization settings)." |
-| `baseUrl` | Do **not** ask — default to `https://api.eventmodelers.de` silently. |
+| `baseUrl` | Do **not** ask — default to `https://api.eventmodelers.ai` silently. |
 
 Where to find the token: users generate API tokens in their workspace settings at the eventmodelers platform. The token is shown only once at creation time. It is a UUID and must belong to the same organization as the board.
 
