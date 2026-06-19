@@ -362,6 +362,32 @@ Commands go in the `interaction` lane — same column as their resulting event.
 
 ### Creating a COMMAND node with fields
 
+**Every `node:created` call MUST include `cellId`.** Without it the node has no cell reference and will appear stranded at position 0,0 — not in any timeline column.
+
+Commands go in the **interaction lane**, same column as the event they produce. Before creating each command:
+
+**Step A — Find the event's column ID.** Query the event node to read its current cell:
+```bash
+curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EVENT_NODE_ID"
+# → node.meta.cellId is "<someRowId>-<columnId>" — extract the columnId part
+```
+
+**Step B — Fetch the chapter to find the interaction row ID:**
+```bash
+curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+# → timelineData.rows — find the row where type === "interaction"
+```
+Save `interactionRow.id`.
+
+**Step C — Compute the cell ID:**
+```
+cellId = interactionRow.id + "-" + columnId
+```
+
+**Step D — Create the command with `cellId`:**
+
 ```bash
 curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: identifying-inputs" \
@@ -373,6 +399,7 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "boardId": "<boardId>",
     "timestamp": 1234567890,
     "chapterId": "<chapterId>",
+    "cellId": "<interactionRowId>-<columnId>",
     "meta": {
       "type": "COMMAND",
       "title": "ReserveBike",
@@ -384,6 +411,8 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     }
   }]'
 ```
+
+> **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
 ### Preventing backward arrows (mandatory pre-placement check)
 

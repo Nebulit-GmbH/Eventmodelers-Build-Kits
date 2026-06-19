@@ -416,9 +416,53 @@ Set the field's `generated` property according to this table. Fields projected d
 }
 ```
 
-Read models go in the `interaction` lane — **in the column immediately to the LEFT of the SCREEN or AUTOMATION they serve**. The screen (or automation) always occupies the next column to the right, so the read model is the last thing before the consumer.
+Read models go in the `interaction` lane — **in the same column as the SCREEN or AUTOMATION they serve** (READMODEL in interaction row, SCREEN in actor row of the same column).
 
-> **Timeline alignment rule**: Place the read model one column to the left of the SCREEN or AUTOMATION it feeds. If that position already holds a COMMAND (state-change slice), insert a new column between the event column and the screen column. Do not append read model columns to the end of the timeline — doing so severs the visual left→right flow from data projection to UI consumption.
+> **Timeline alignment rule**: Place the read model in the same column as its consumer screen/automation. If that column already holds a COMMAND (state-change slice occupies the interaction row), insert a new column immediately after (`{"index": N+1}`) and place both the READMODEL and any new SCREEN there. Do not append read model columns to the end of the timeline — doing so severs the visual left→right flow from data projection to UI consumption.
+
+### Placing READMODEL and AUTOMATION nodes with `cellId` (Mandatory)
+
+**Every `node:created` call MUST include `cellId`.** Without it the node has no cell reference and will appear stranded at position 0,0 — not in any timeline column.
+
+**For a READMODEL** (interaction lane):
+
+1. Find the column where the consumer SCREEN or AUTOMATION lives. Fetch the timeline to get the interaction row ID:
+   ```bash
+   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+   # → timelineData.rows — find the row where type === "interaction"
+   ```
+2. Check if the interaction cell is already occupied (existing COMMAND):
+   ```bash
+   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<interactionRowId>-<columnId>" \
+     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
+   ```
+   If a COMMAND occupies that cell, insert a new column immediately after (`{"index": currentIndex + 1}`) and use that column's ID instead.
+3. `cellId = interactionRow.id + "-" + columnId`
+4. Create the READMODEL:
+   ```bash
+   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: identifying-outputs" \
+     -H "Content-Type: application/json" \
+     -d '[{
+       "id": "<event-uuid>",
+       "eventType": "node:created",
+       "nodeId": "<node-uuid>",
+       "boardId": "<BOARD_ID>",
+       "timestamp": 1234567890,
+       "chapterId": "<CHAPTER_ID>",
+       "cellId": "<interactionRowId>-<columnId>",
+       "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}
+     }]'
+   ```
+
+**For an AUTOMATION** (actor lane, same column as its READMODEL):
+
+1. Get the actor row ID from the same timeline fetch (row where `type === "actor"`).
+2. `cellId = actorRow.id + "-" + columnId`
+3. Create the AUTOMATION node using the same `node:created` pattern above with `"type": "AUTOMATION"` in `meta`.
+
+> **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
 ### Preventing backward arrows (mandatory pre-placement check)
 

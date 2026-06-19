@@ -33,6 +33,38 @@ These rules govern how every element is placed on the board. Enforce them throug
 ### Never stack read models at the end
 Placing all read models in new columns at the very end of the timeline severs the visual connection to the events they're derived from. The board must show a coherent left-to-right narrative where each slice is self-contained.
 
+### No unplaced elements (0,0 nodes)
+
+After each step that creates elements (Steps 1–5), scan for any nodes that have no cell reference and are stranded at the default canvas position (0,0). These arise when `node:created` is called without `cellId`.
+
+For each timeline in scope, check all node types that should be in cells:
+```bash
+for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
+  curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+    "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE"
+done
+```
+
+For each returned node, check whether it has a valid cell assignment. A node without a `cellId` (or with `chapterId` missing) is unplaced.
+
+**For each unplaced node:**
+- **If it belongs in the current model** → compute the correct `cellId` and call `node:changed` to assign it:
+  ```bash
+  curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+    -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+    -H "Content-Type: application/json" \
+    -d '[{"id":"<uuid>","eventType":"node:changed","nodeId":"<nodeId>","boardId":"<BOARD_ID>",
+          "timestamp":1234567890,"chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
+          "meta":{"type":"<TYPE>","title":"<title>"}}]'
+  ```
+- **If it is an orphan (duplicate or no longer needed)** → delete it:
+  ```bash
+  curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<nodeId>" \
+    -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
+  ```
+
+Never leave an unplaced node on the board when proceeding to the next step.
+
 ### No backward arrows
 The timeline must always progress left-to-right. Every connection arrow — SCREEN→COMMAND, COMMAND→EVENT, EVENT→READMODEL, READMODEL→SCREEN — must point to the right or downward (within the same column). A right-to-left arrow is always a layout error.
 
@@ -295,6 +327,7 @@ specific needs:
 
 ## Quality Checklist
 
+- [ ] No elements stranded at 0,0 — every EVENT, COMMAND, READMODEL, SCREEN, and AUTOMATION has a valid `cellId` in its chapter
 - [ ] All 9 modeling steps completed — no step skipped without explicit reason
 - [ ] Role Catalog exists with named human roles and system processors
 - [ ] Every command is attributed to a specific role from the Role Catalog

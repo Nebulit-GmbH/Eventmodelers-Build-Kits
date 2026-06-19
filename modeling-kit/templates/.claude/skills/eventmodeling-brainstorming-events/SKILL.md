@@ -213,7 +213,34 @@ Fields use this structure inside `meta`:
 - If an event has no meaningful payload beyond its identity (e.g., a simple state transition), it is fine to have no fields or just the identity key
 - Do not pad events with fields just to reach a count — only add what the business needs
 
-**Full example for a node:created payload:**
+## Cell Placement
+
+Brainstorming events has two modes. Choose based on whether the chapter (timeline) already exists.
+
+### Mode A — Brainstorming inside a timeline (chapter exists)
+
+When a chapter is available, place each event directly into it. **Include `cellId` in `node:created`** — without it the node has no cell reference and will appear stranded at position 0,0 on the canvas.
+
+For each event:
+
+**Step A — Create a column** (append at end of the chapter):
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
+  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: brainstorming-events" \
+  -H "Content-Type: application/json" -d '{}'
+# → { "columnId": "<colUuid>", "index": <n>, "totalColumns": <n> }
+```
+
+**Step B — Fetch the chapter to find the swimlane row ID** (only needed once per chapter):
+```bash
+curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+# → node.meta.timelineData.rows — find the row where type === "swimlane"
+```
+
+**Step C — Compute:** `cellId = swimlaneRow.id + "-" + columnId`
+
+**Step D — Create the event with `cellId`:**
 ```json
 [{
   "id": "<event-uuid>",
@@ -222,6 +249,7 @@ Fields use this structure inside `meta`:
   "boardId": "<boardId>",
   "timestamp": 1234567890,
   "chapterId": "<chapterId>",
+  "cellId": "<swimlaneRowId>-<columnId>",
   "meta": {
     "type": "EVENT",
     "title": "BookReserved",
@@ -235,6 +263,19 @@ Fields use this structure inside `meta`:
   }
 }]
 ```
+
+> **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
+
+### Mode B — Free-form brainstorming (no chapter yet)
+
+When chapters have not been created yet, events may be created without `chapterId` or `cellId`. They appear as free-floating sticky notes on the canvas. This is valid during open discovery.
+
+**After free-form brainstorming completes**, all events MUST be assigned to a named chapter before Step 2 (Plotting) can begin:
+- Group events into workflows / bounded contexts (see "Timeline Discovery" above)
+- Create one chapter per group
+- Move each event into its chapter using `node:changed` to set `chapterId` and `cellId`
+
+An event left without a chapter and cell reference will never appear in any timeline column and cannot be sequenced, storyboarded, or used in scenarios.
 
 ## Swimlane Rules (Mandatory)
 

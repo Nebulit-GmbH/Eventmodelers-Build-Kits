@@ -383,11 +383,39 @@ A screen that only has a title and no fields is an empty placeholder — place t
 
 ## Mandatory Sketch Rendering
 
-**The wireframe MUST be rendered BEFORE the SCREEN node is dropped into its cell.** Never place a screen node that has no wireframe — it will appear as a broken placeholder to anyone watching the board. The correct order for every screen is:
+Every SCREEN node requires a wireframe sketch. The correct order for every screen is:
 
-1. Create the SCREEN node (`node:created`) — this registers the node and gives you its ID
-2. Render the wireframe sketch (`POST /images/$NODE/sketch`) — this attaches the visual before anyone sees the node
-3. Drop the node into its cell (`POST /timelines/$TL/cells/$CELL/drop`) — now the node is visible on the board with its wireframe already rendered
+**Step A — Compute the cell ID.** Screens go in the **actor lane** of their target column.
+
+1. Determine the target column (same column as the event/command, OR one column to the right of the read model).
+2. Fetch the chapter to find the actor row ID:
+   ```bash
+   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+   # → timelineData.rows — find the row where type === "actor"
+   ```
+3. `cellId = actorRow.id + "-" + columnId`
+
+**Step B — Create the SCREEN node with `cellId`** (`node:created`) — the node is immediately placed in the correct cell:
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "id": "<event-uuid>",
+    "eventType": "node:created",
+    "nodeId": "<node-uuid>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": 1234567890,
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorRowId>-<columnId>",
+    "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}
+  }]'
+```
+
+**Step C — Render the wireframe sketch immediately** (`POST /images/$NODE_ID/sketch`).
+
+> **Do NOT call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first, causing the node to appear in two columns simultaneously. `node:created + cellId` is the single placement step — render the sketch right after.
 
 > **CRITICAL: NEVER pass `"elements": []`. An empty elements array produces a blank, invisible screen and is always wrong. You MUST design and include actual wireframe elements before calling the sketch API.**
 
