@@ -1,0 +1,9 @@
+node_modules
+.idea
+.vscode
+.eventmodelers
+*.log
+
+# .NET build output (in case the starter is built in place during testing)
+bin/
+obj/
