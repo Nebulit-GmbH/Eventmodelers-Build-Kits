@@ -2,7 +2,7 @@
 // Ralph loop + realtime agent using Claude Code as the executor.
 // Usage: node ralph-claude.js [project_dir]
 
-import { startRalph } from './lib/ralph.js';
+import { startRalph, loadLocalConfig } from './lib/ralph.js';
 import { spawn } from 'child_process';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -10,9 +10,14 @@ import { fileURLToPath } from 'url';
 const kitDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, '..');
 
+const cfg = loadLocalConfig(kitDir);
+const inlineHeader = cfg.boardId
+  ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
+  : '';
+
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', ['--dangerously-skip-permissions', '-p', prompt], {
+    const proc = spawn('claude', ['--dangerously-skip-permissions', '-p', inlineHeader + prompt], {
       cwd: projectDir,
       stdio: 'inherit',
     });

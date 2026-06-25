@@ -219,7 +219,7 @@ async function ralphLoop(kitDir, onTask) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { loadLocalConfig, fetchPlatformConfig, retryOn401 };
+export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
 export async function startRalph({ kitDir, projectDir, onTask }) {
   const local = loadLocalConfig(kitDir);
