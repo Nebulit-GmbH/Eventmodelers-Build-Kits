@@ -1,6 +1,6 @@
 {
   "name": "@eventmodelers/build-kit-node",
-  "version": "0.2.21",
+  "version": "0.2.22",
   "description": "Real-time Claude agent that connects to the Eventmodelers Platform and generates Code from Eventmodels",
   "type": "module",
   "bin": {
