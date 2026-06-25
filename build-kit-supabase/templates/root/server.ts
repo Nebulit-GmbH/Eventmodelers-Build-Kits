@@ -24,9 +24,16 @@ async function startServer() {
     const processorFiles = await glob(processorPattern, {nodir: true});
     console.log('Found processor files:', processorFiles);
 
+    // Common routes (e.g. projection replay) are privileged/operational and are
+    // only mounted when explicitly enabled via env.
+    const commonRoutesEnabled = process.env.COMMON_ROUTES_ENABLED === 'true';
     const commonPattern = join(__dirname, 'src/common/routes{,-*}.@(ts|js)');
-    const commonRouteFiles = await glob(commonPattern, {nodir: true});
-    console.log('Found common route files:', commonRouteFiles);
+    const commonRouteFiles = commonRoutesEnabled
+        ? await glob(commonPattern, {nodir: true})
+        : [];
+    console.log(commonRoutesEnabled
+        ? `Found common route files: ${commonRouteFiles}`
+        : 'Common routes disabled (set COMMON_ROUTES_ENABLED=true to enable)');
 
 
     const rootApp: Application = express();
@@ -137,6 +144,20 @@ async function startServer() {
 
     rootApp.use(express.json());
 
+    // Closed-by-default auth gate: every route requires a valid Supabase JWT
+    // except the explicitly public paths below. This guarantees new slice
+    // routes are protected even if a handler forgets to call requireUser.
+    const PUBLIC_PATHS = ['/api-docs', '/swagger.json', '/health'];
+    const isPublicPath = (p: string): boolean =>
+        PUBLIC_PATHS.some(pub => p === pub || p.startsWith(pub + '/'));
+
+    rootApp.use(async (req: Request, res: Response, next) => {
+        if (req.method === 'OPTIONS') return next();      // CORS preflight
+        if (isPublicPath(req.path)) return next();        // docs / health
+        const {error} = await requireUser(req, res);      // sends 401 on failure
+        if (error) return;                                // response already sent
+        next();
+    });
 
     rootApp.use(childApp)
     // Start the main application

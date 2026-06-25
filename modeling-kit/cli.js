@@ -30,6 +30,17 @@ async function prompt(question) {
   });
 }
 
+function findConfigInParents(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, '.eventmodelers', 'config.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 const program = new Command();
 
 program
@@ -143,11 +154,25 @@ program
       }
     }
 
+    if (!config['organizationId'] && !config['token']) {
+      const parentConfigPath = findConfigInParents(targetDir);
+      if (parentConfigPath) {
+        try {
+          config = { ...JSON.parse(readFileSync(parentConfigPath, 'utf-8')) };
+          console.log(`\n  ✓ Found credentials in ${parentConfigPath}`);
+        } catch {}
+      }
+    }
+
     const hasConfig = config['organizationId'] && config['token'];
     if (!hasConfig) {
       const hasExisting = await prompt('\nDo you have an existing config from app.eventmodelers.ai/account? (y/n): ');
       if (hasExisting.toLowerCase() === 'y' || hasExisting.toLowerCase() === 'yes') {
-        console.log(`\n  Paste your config into:\n\n    ${configPath}\n`);
+        console.log(`\n  Paste your credentials JSON into one of these locations:\n`);
+        console.log(`    (a) ${configPath}`);
+        console.log(`    (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
+        console.log(`  The file should look like:`);
+        console.log(`  {\n    "token": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`);
       } else {
         console.log('\n🔑 Enter your Eventmodelers credentials:\n');
         config['organizationId'] = await prompt('  Organization ID: ');
@@ -235,16 +260,17 @@ program
     const skillsDir = join(process.cwd(), '.claude', 'skills');
     const configPath = join(kitDir, '.eventmodelers', 'config.json');
     const ralphPath = join(kitDir, 'ralph-claude.js');
+    const effectiveConfigPath = existsSync(configPath) ? configPath : findConfigInParents(process.cwd());
 
     console.log('Eventmodelers Agent Modeling Kit Status\n');
     console.log(`Kit dir:        ${existsSync(kitDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
-    console.log(`Config:         ${existsSync(configPath) ? '✅ present' : '❌ missing'}`);
+    console.log(`Config:         ${effectiveConfigPath ? `✅ present${effectiveConfigPath !== configPath ? ` (inherited: ${effectiveConfigPath})` : ''}` : '❌ missing'}`);
     console.log(`Ralph agent:    ${existsSync(ralphPath) ? '✅ present' : '❌ missing'}`);
 
-    if (existsSync(configPath)) {
+    if (effectiveConfigPath) {
       try {
-        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        const cfg = JSON.parse(readFileSync(effectiveConfigPath, 'utf-8'));
         console.log(`\nConnected to:   ${cfg.baseUrl || 'https://api.eventmodelers.ai'}`);
         console.log(`Organization:   ${cfg.organizationId}`);
       } catch {

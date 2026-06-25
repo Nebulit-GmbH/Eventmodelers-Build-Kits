@@ -27,6 +27,17 @@ async function prompt(question) {
   });
 }
 
+function findConfigInParents(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, '.eventmodelers', 'config.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -150,7 +161,12 @@ program
 
     const hasExisting = await prompt('\nDo you have platform credentials from app.eventmodelers.ai/account? (y/n): ');
     if (hasExisting.toLowerCase() === 'y' || hasExisting.toLowerCase() === 'yes') {
-      console.log(`\n  Paste your config into:\n\n    ${configPath}\n\n  Then re-run this installer.\n`);
+      console.log(`\n  Paste your credentials JSON into one of these locations:\n`);
+      console.log(`    (a) ${configPath}`);
+      console.log(`    (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
+      console.log(`  The file should look like:`);
+      console.log(`  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`);
+      console.log(`  Then re-run this installer.\n`);
       process.exit(0);
     }
 
@@ -160,6 +176,16 @@ program
         config = JSON.parse(readFileSync(configPath, 'utf-8'));
       } catch {
         config = {};
+      }
+    }
+
+    if (!config.organizationId && !config.boardId && !config.token) {
+      const parentConfigPath = findConfigInParents(rootDir);
+      if (parentConfigPath) {
+        try {
+          config = { ...JSON.parse(readFileSync(parentConfigPath, 'utf-8')) };
+          console.log(`\n  ✓ Found credentials in ${parentConfigPath}`);
+        } catch {}
       }
     }
 
@@ -244,15 +270,16 @@ program
     const kitDir = join(process.cwd(), '.build-kit-axon');
     const skillsDir = join(kitDir, '.claude', 'skills');
     const configPath = join(kitDir, '.eventmodelers', 'config.json');
+    const effectiveConfigPath = existsSync(configPath) ? configPath : findConfigInParents(process.cwd());
 
     console.log('.build-kit-axon Status\n');
     console.log(`Kit dir:        ${existsSync(kitDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
-    console.log(`Config:         ${existsSync(configPath) ? '✅ present' : '❌ missing'}`);
+    console.log(`Config:         ${effectiveConfigPath ? `✅ present${effectiveConfigPath !== configPath ? ` (inherited: ${effectiveConfigPath})` : ''}` : '❌ missing'}`);
 
-    if (existsSync(configPath)) {
+    if (effectiveConfigPath) {
       try {
-        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        const cfg = JSON.parse(readFileSync(effectiveConfigPath, 'utf-8'));
         console.log(`\nConnected to: ${cfg.baseUrl}`);
         console.log(`Organization: ${cfg.organizationId}`);
         console.log(`Board:        ${cfg.boardId}`);

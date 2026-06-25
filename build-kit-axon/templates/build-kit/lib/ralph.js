@@ -7,7 +7,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -45,17 +45,35 @@ async function retryOn401(label, fn, maxRetries = 3) {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+function findConfigInParents(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, '.eventmodelers', 'config.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 function loadLocalConfig(kitDir) {
   const configPath = join(kitDir, '.eventmodelers', 'config.json');
-  if (!existsSync(configPath)) {
-    console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
-    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-axon`);
-    console.warn(`        Code generation from local slice definitions will still run.`);
-    return {};
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
+    return cfg;
   }
-  const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-  if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
-  return cfg;
+  const parentConfigPath = findConfigInParents(dirname(kitDir));
+  if (parentConfigPath) {
+    console.log(`[ralph] Using credentials from ${parentConfigPath}`);
+    const cfg = JSON.parse(readFileSync(parentConfigPath, 'utf-8'));
+    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
+    return cfg;
+  }
+  console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
+  console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-axon`);
+  console.warn(`        Code generation from local slice definitions will still run.`);
+  return {};
 }
 
 function hasCredentials(cfg) {
@@ -99,11 +117,21 @@ async function fetchAndPersistSlices(cfg, kitDir) {
     contexts[contextSlug].slices.push(slice);
   }
 
-  // Write current_context.json pointing to the context with planned work (or first)
+  // current_context.json is STICKY. We work within ONE context at a time and must
+  // not auto-jump to another context just because it happens to have planned work.
+  // Keep the existing context if it still exists; only seed it when absent or stale.
   const ctxPath = join(slicesDir, 'current_context.json');
-  const plannedCtx = Object.keys(contexts).find(c => contexts[c].slices.some(s => (s.status || '').toLowerCase() === 'planned'));
-  const activeCtx = plannedCtx || Object.keys(contexts)[0] || 'default';
-  writeFileSync(ctxPath, JSON.stringify({ name: activeCtx }, null, 2), 'utf-8');
+  let activeCtx = null;
+  if (existsSync(ctxPath)) {
+    try { activeCtx = JSON.parse(readFileSync(ctxPath, 'utf-8')).name; } catch {}
+  }
+  if (!activeCtx || !contexts[activeCtx]) {
+    // First run (or the current context disappeared): seed with a context that
+    // has planned work, else the first one. This is the ONLY place we choose it.
+    const plannedCtx = Object.keys(contexts).find(c => contexts[c].slices.some(s => (s.status || '').toLowerCase() === 'planned'));
+    activeCtx = plannedCtx || Object.keys(contexts)[0] || 'default';
+    writeFileSync(ctxPath, JSON.stringify({ name: activeCtx }, null, 2), 'utf-8');
+  }
 
   // Write per-context index.json and per-slice slice.json
   for (const [contextSlug, { slices: ctxSlices }] of Object.entries(contexts)) {
@@ -220,18 +248,25 @@ function hasPendingTasks(kitDir) {
   }
 }
 
+function readCurrentContext(kitDir) {
+  const ctxPath = join(kitDir, '.slices', 'current_context.json');
+  if (!existsSync(ctxPath)) return null;
+  try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
+}
+
+// Returns the first Planned slice IN THE CURRENT CONTEXT ONLY. If the current
+// context has no planned work, returns null so the loop waits — it must NEVER
+// cross into another context to find something to build.
 function getFirstPlannedSliceTitle(kitDir) {
-  const slicesDir = join(kitDir, '.slices');
-  if (!existsSync(slicesDir)) return null;
-  for (const entry of readdirSync(slicesDir)) {
-    const indexPath = join(slicesDir, entry, 'index.json');
-    if (!existsSync(indexPath)) continue;
-    try {
-      const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
-      if (planned) return planned.slice || planned.id || null;
-    } catch {}
-  }
+  const currentCtx = readCurrentContext(kitDir);
+  if (!currentCtx) return null;
+  const indexPath = join(kitDir, '.slices', currentCtx, 'index.json');
+  if (!existsSync(indexPath)) return null;
+  try {
+    const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
+    const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
+    if (planned) return planned.slice || planned.id || null;
+  } catch {}
   return null;
 }
 
@@ -252,6 +287,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
   const credentialed = hasCredentials(cfg);
+  let lastIdleCtx;
 
   while (true) {
     let didWork = false;
@@ -272,7 +308,17 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
       didWork = true;
     }
 
-    if (!didWork) await new Promise((r) => setTimeout(r, 10_000));
+    if (!didWork) {
+      // No planned work in the current context — wait, do NOT switch contexts.
+      const ctx = readCurrentContext(kitDir);
+      if (ctx !== lastIdleCtx) {
+        console.log(`[ralph] No planned slices in current context "${ctx}" — waiting. Switch context on the board to continue.`);
+        lastIdleCtx = ctx;
+      }
+      await new Promise((r) => setTimeout(r, 10_000));
+    } else {
+      lastIdleCtx = undefined;
+    }
   }
 }
 

@@ -48,13 +48,22 @@ If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priori
 
 ## Step 1 — Read config file
 
-Check whether `.eventmodelers/config.json` exists in the current working directory:
+Search for `.eventmodelers/config.json` starting from the current working directory and walking up through all parent directories:
 
 ```bash
-cat .eventmodelers/config.json 2>/dev/null
+dir="$PWD"
+config_file=""
+while [ "$dir" != "/" ]; do
+  if [ -f "$dir/.eventmodelers/config.json" ]; then
+    config_file="$dir/.eventmodelers/config.json"
+    break
+  fi
+  dir="$(dirname "$dir")"
+done
+[ -n "$config_file" ] && cat "$config_file"
 ```
 
-If the file exists and is valid JSON, extract any values **not already set by Step 0**:
+If a file is found (at any level), note its path and extract any values **not already set by Step 0**:
 - `token` → `TOKEN`
 - `boardId` → `BOARD_ID`
 - `organizationId` → `ORG_ID`

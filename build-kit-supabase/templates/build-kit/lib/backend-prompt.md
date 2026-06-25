@@ -4,6 +4,15 @@ You are an autonomous coding agent working on a software project. You apply your
 
 The structure defined in the Project-Skills is relevant.
 
+## Context Boundary (READ FIRST — NON-NEGOTIABLE)
+
+You work within **exactly ONE context at a time** — the one named in `.build-kit/.slices/current_context.json`.
+
+- **ONLY** look for and build slices inside `.build-kit/.slices/<currentContext>/`.
+- **NEVER** read, scan, or build slices from any other context directory, even if it has "Planned" slices, and even if the current context has no work left.
+- A "Planned" slice in a *different* context (e.g. "Rename organization" while you are in "Board Invitations") is **NOT yours to build**. Ignore it completely.
+- If the current context has no "Planned" slice, you are **done for this iteration** — reply `<promise>NO_TASKS</promise>` and stop. Do not go looking elsewhere. The context is only ever changed on the board, never by you.
+
 ## Your Task
 
 0. Do not read the entire code base. Focus on the tasks in this description.
@@ -11,8 +20,8 @@ The structure defined in the Project-Skills is relevant.
 2. Read the progress log at `progress.txt` (check Codebase Patterns section first)
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
 5. Pick the **highest priority** slice where status is **exactly** "Planned" (case insensitive). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
-   **IMPORTANT: Only work on slices with status "Planned". Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned", reply with:**
-   <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices.
+   **IMPORTANT: Only work on slices with status "Planned" in the CURRENT context. Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned" in the current context, reply with:**
+   <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices and do not switch to another context.
 6. Pick the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
 7. Determine the slice type and invoke the matching skill as defined in the **Building a Slice** section of CLAUDE.md. Do NOT implement manually.
@@ -122,10 +131,11 @@ A Slice is not complete if specifications are missing or can´t be executed.
 If the slice was completed and committed successfully, reply with:
 <promise>DONE</promise>
 
-If no slice has status "Planned", reply with:
+If no slice has status "Planned" in the current context, reply with:
 <promise>NO_TASKS</promise>
+(Do NOT switch to another context to find work — stop here.)
 
-If ALL slices across the index are Done, reply with:
+If ALL slices in the current context are Done, reply with:
 <promise>COMPLETE</promise>
 
 ## Important

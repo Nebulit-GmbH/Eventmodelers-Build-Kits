@@ -48,13 +48,25 @@ If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priori
 
 ## Step 1 — Read config file
 
-The config file is at `.agent-modeling-kit/.eventmodelers/config.json` when Claude runs from the project root, or `.eventmodelers/config.json` when running from inside the kit directory. Check both:
+Search for `.eventmodelers/config.json` starting from the current working directory and walking up through all parent directories. Also check `.agent-modeling-kit/.eventmodelers/config.json` from the project root:
 
 ```bash
-cat .agent-modeling-kit/.eventmodelers/config.json 2>/dev/null || cat .eventmodelers/config.json 2>/dev/null
+# Walk parent directories for .eventmodelers/config.json
+dir="$PWD"
+config_file=""
+while [ "$dir" != "/" ]; do
+  if [ -f "$dir/.eventmodelers/config.json" ]; then
+    config_file="$dir/.eventmodelers/config.json"
+    break
+  fi
+  dir="$(dirname "$dir")"
+done
+[ -n "$config_file" ] && cat "$config_file"
+# Also check the kit subdirectory
+[ -z "$config_file" ] && cat .agent-modeling-kit/.eventmodelers/config.json 2>/dev/null
 ```
 
-If the file exists and is valid JSON, extract any values **not already set by Step 0**:
+If a file is found (at any level), note its path and extract any values **not already set by Step 0**:
 - `token` → `TOKEN`
 - `boardId` → `BOARD_ID`
 - `organizationId` or `orgId` → `ORG_ID` (accept either field name)

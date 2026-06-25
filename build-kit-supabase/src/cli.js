@@ -27,6 +27,17 @@ async function prompt(question) {
   });
 }
 
+function findConfigInParents(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, '.eventmodelers', 'config.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -157,6 +168,16 @@ program
       }
     }
 
+    if (!config.organizationId && !config.boardId && !config.token) {
+      const parentConfigPath = findConfigInParents(rootDir);
+      if (parentConfigPath) {
+        try {
+          config = { ...JSON.parse(readFileSync(parentConfigPath, 'utf-8')) };
+          console.log(`\n  ✓ Found credentials in ${parentConfigPath}`);
+        } catch {}
+      }
+    }
+
     const wantCredentials = await prompt('\nDo you want to configure credentials now? (y/n): ');
     if (wantCredentials.toLowerCase() !== 'y' && wantCredentials.toLowerCase() !== 'yes') {
       console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
@@ -164,7 +185,11 @@ program
       const copyFromPlatform = await prompt('\nDo you have platform credentials? Copy directly from app.eventmodelers.ai/account? (y/n): ');
       if (copyFromPlatform.toLowerCase() === 'y' || copyFromPlatform.toLowerCase() === 'yes') {
         console.log('\n  1. Open: https://app.eventmodelers.ai/account');
-        console.log(`  2. Copy your credentials JSON and paste it into:\n\n       ${configPath}\n`);
+        console.log(`  2. Paste your credentials JSON into one of these locations:\n`);
+        console.log(`     (a) ${configPath}`);
+        console.log(`     (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
+        console.log(`  The file should look like:`);
+        console.log(`  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`);
         console.log('  3. Re-run this installer.\n');
         process.exit(0);
       }
@@ -247,16 +272,17 @@ program
     const skillsDir = join(kitDir, '.claude', 'skills');
     const configPath = join(kitDir, '.eventmodelers', 'config.json');
     const agentDir = join(kitDir, 'realtime-agent');
+    const effectiveConfigPath = existsSync(configPath) ? configPath : findConfigInParents(process.cwd());
 
     console.log('.build-kit Status\n');
     console.log(`Kit dir:        ${existsSync(kitDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
-    console.log(`Config:         ${existsSync(configPath) ? '✅ present' : '❌ missing'}`);
+    console.log(`Config:         ${effectiveConfigPath ? `✅ present${effectiveConfigPath !== configPath ? ` (inherited: ${effectiveConfigPath})` : ''}` : '❌ missing'}`);
     console.log(`Realtime agent: ${existsSync(agentDir) ? '✅ present' : '❌ missing'}`);
 
-    if (existsSync(configPath)) {
+    if (effectiveConfigPath) {
       try {
-        const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+        const cfg = JSON.parse(readFileSync(effectiveConfigPath, 'utf-8'));
         console.log(`\nConnected to: ${cfg.baseUrl}`);
         console.log(`Organization: ${cfg.organizationId}`);
         console.log(`Board:        ${cfg.boardId}`);

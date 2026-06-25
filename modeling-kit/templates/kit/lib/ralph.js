@@ -6,7 +6,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { randomUUID } from 'crypto';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -44,17 +44,35 @@ async function retryOn401(label, fn, maxRetries = 3) {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+function findConfigInParents(startDir) {
+  let dir = startDir;
+  while (true) {
+    const candidate = join(dir, '.eventmodelers', 'config.json');
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
 function loadLocalConfig(kitDir) {
   const configPath = join(kitDir, '.eventmodelers', 'config.json');
-  if (!existsSync(configPath)) {
-    console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
-    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation`);
-    console.warn(`        Code generation from local slice definitions will still run.`);
-    return {};
+  if (existsSync(configPath)) {
+    const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
+    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
+    return cfg;
   }
-  const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-  if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
-  return cfg;
+  const parentConfigPath = findConfigInParents(dirname(kitDir));
+  if (parentConfigPath) {
+    console.log(`[ralph] Using credentials from ${parentConfigPath}`);
+    const cfg = JSON.parse(readFileSync(parentConfigPath, 'utf-8'));
+    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
+    return cfg;
+  }
+  console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
+  console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation`);
+  console.warn(`        Code generation from local slice definitions will still run.`);
+  return {};
 }
 
 function hasCredentials(cfg) {
