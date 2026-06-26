@@ -212,7 +212,7 @@ async function ralphLoop(kitDir, onTask) {
         onTask('Process the next task from tasks.json.'),
       );
     } else {
-      await new Promise((r) => setTimeout(r, 5_000));
+      await new Promise((r) => setTimeout(r, 2_000));
     }
   }
 }
