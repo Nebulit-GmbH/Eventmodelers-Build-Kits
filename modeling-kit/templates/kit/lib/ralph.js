@@ -86,6 +86,23 @@ async function fetchPlatformConfig(local) {
   return { ...local, ...remote };
 }
 
+// ── Wake-up trigger ───────────────────────────────────────────────────────────
+
+function makeTrigger() {
+  let wake = null;
+  return {
+    wait(ms) {
+      return new Promise((r) => {
+        wake = r;
+        setTimeout(r, ms);
+      });
+    },
+    fire() {
+      if (wake) { wake(); wake = null; }
+    },
+  };
+}
+
 // ── Realtime agent ────────────────────────────────────────────────────────────
 
 async function getRealtimeToken(cfg) {
@@ -105,7 +122,7 @@ async function fetchNextPrompt(cfg, jwtToken) {
   return res.json();
 }
 
-async function drainQueue(cfg, jwtToken, kitDir) {
+async function drainQueue(cfg, jwtToken, kitDir, trigger) {
   const prompts = [];
   let p;
   while ((p = await fetchNextPrompt(cfg, jwtToken)) !== null) {
@@ -119,10 +136,13 @@ async function drainQueue(cfg, jwtToken, kitDir) {
     existing.push(task);
     writeFileSync(tasksPath, JSON.stringify(existing, null, 2), 'utf-8');
     console.log(`[agent] Task written with ${prompts.length} prompt(s)`);
+    trigger?.fire();
+  } else {
+    console.log('[agent] Queue empty — nothing to process');
   }
 }
 
-async function startRealtimeAgent(cfg, kitDir) {
+async function startRealtimeAgent(cfg, kitDir, trigger) {
   let realtimeToken = await retryOn401('getRealtimeToken', () => getRealtimeToken(cfg));
 
   const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
@@ -142,12 +162,12 @@ async function startRealtimeAgent(cfg, kitDir) {
     })
     .on('broadcast', { event: 'prompt:created' }, async () => {
       console.log('[agent] New prompt received');
-      await drainQueue(cfg, realtimeToken, kitDir).catch((err) =>
+      await drainQueue(cfg, realtimeToken, kitDir, trigger).catch((err) =>
         console.error('[agent] Queue drain error:', err),
       );
     })
     .subscribe(async (status) => {
-      await drainQueue(cfg, realtimeToken, kitDir).catch((err) =>
+      await drainQueue(cfg, realtimeToken, kitDir, trigger).catch((err) =>
         console.error('[agent] Initial drain error:', err),
       );
       console.log(`[agent] Channel "${channelName}": ${status}`);
@@ -199,20 +219,20 @@ async function runWithRetry(label, fn) {
       await fn();
       return;
     } catch (err) {
-      console.error(`[ralph] Error — retrying in 60s:`, err.message);
-      await new Promise((r) => setTimeout(r, 60_000));
+      console.error(`[ralph] Error — retrying in 5s:`, err.message);
+      await new Promise((r) => setTimeout(r, 5_000));
     }
   }
 }
 
-async function ralphLoop(kitDir, onTask) {
+async function ralphLoop(kitDir, onTask, trigger) {
   while (true) {
     if (hasPendingTasks(kitDir)) {
       await runWithRetry('onTask: processing next task...', () =>
         onTask('Process the next task from tasks.json.'),
       );
     } else {
-      await new Promise((r) => setTimeout(r, 2_000));
+      await trigger.wait(2_000);
     }
   }
 }
@@ -227,9 +247,11 @@ export async function startRalph({ kitDir, projectDir, onTask }) {
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
 
+  const trigger = makeTrigger();
+
   if (!hasCredentials(local)) {
     console.log(`         mode: local-only (no platform sync)\n`);
-    await ralphLoop(kitDir, onTask);
+    await ralphLoop(kitDir, onTask, trigger);
     return;
   }
 
@@ -237,7 +259,7 @@ export async function startRalph({ kitDir, projectDir, onTask }) {
   console.log(`         org=${cfg.organizationId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([
-    startRealtimeAgent(cfg, kitDir),
-    ralphLoop(kitDir, onTask),
+    startRealtimeAgent(cfg, kitDir, trigger),
+    ralphLoop(kitDir, onTask, trigger),
   ]);
 }
