@@ -657,6 +657,50 @@ Empty list scenario:
 }
 ```
 
+### Step 4c — Error/rejection scenarios
+
+When a scenario represents a command being **rejected** (validation failure, state violation, or business rule rejection), set two fields **at the scenario level**:
+
+**`expectError: true`** — signals that the command should be rejected and no event is produced. Set this for every failure/rejection scenario.
+
+**`errorDescription`** — a short human-readable description of the expected error or rejection reason (e.g. `"missing required field: date"`, `"reservation already confirmed"`). Do not leave this empty when `expectError` is `true`.
+
+When `expectError` is `true`:
+- `then` must be `[]` — no events are produced on rejection
+- `when` contains the COMMAND being rejected
+- `given` contains any prerequisite EVENTs needed to establish the wrong state (may be empty for pure input-validation rejections)
+- Do **not** set `expectEmptyList` — that flag is only for list READMODELs
+
+Rejection scenario example:
+```json
+{
+  "id": "<uuid>",
+  "title": "Reject reservation with missing required date field",
+  "expectError": true,
+  "errorDescription": "missing required field: date",
+  "given": [],
+  "when": [{"id": "<commandNodeId>", "title": "Reservation Command", "type": "COMMAND"}],
+  "then": [],
+  "examples": [],
+  "expectEmptyList": false
+}
+```
+
+State-violation rejection (given events establish the wrong state):
+```json
+{
+  "id": "<uuid>",
+  "title": "Reject confirming an already-confirmed reservation",
+  "expectError": true,
+  "errorDescription": "reservation already confirmed",
+  "given": [{"id": "<eventNodeId>", "title": "ReservationConfirmed", "type": "EVENT"}],
+  "when": [{"id": "<commandNodeId>", "title": "Confirm Reservation", "type": "COMMAND"}],
+  "then": [],
+  "examples": [],
+  "expectEmptyList": false
+}
+```
+
 ### Step 5 — Report back
 
 After posting, tell the user:
