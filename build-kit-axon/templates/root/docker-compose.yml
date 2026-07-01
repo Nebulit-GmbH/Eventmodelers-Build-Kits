@@ -7,7 +7,7 @@ services:
       - '8224:8224'
     hostname: axonserver-1
     environment:
-      - axoniq_platform_authentication=e6953958-0-asc:c390b8df56ce43c981cdea24799497cf
+      - axoniq_platform_authentication=${AXONIQ_PLATFORM_AUTHENTICATION}
       - axoniq.axonserver.autocluster.dcb=true
     volumes:
       - data:/axonserver/data
@@ -26,7 +26,7 @@ services:
     ports:
       - "8090:8080"
     environment:
-      - insights.platform.authentication=e6953958-0:a93cda9533a248fb97d5011ccfd539ca
+      - insights.platform.authentication=${AXONIQ_INSIGHTS_AUTHENTICATION}
       - insights.axonserver.routing-servers=axonserver-1:8124
       - insights.axonserver.auto-subscribe=true
     depends_on:

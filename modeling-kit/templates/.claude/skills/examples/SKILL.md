@@ -134,7 +134,7 @@ Rules for generating examples:
   - `status` → a plausible status value derived from the element title
   - `boolean`, `*Enabled`, `*Active` → `"true"` or `"false"`
   - `count`, `quantity` → small realistic integer like `"3"`
-  - Arrays / `cardinality: "Multiple"` → JSON array with 1–2 representative items
+  - Arrays / `cardinality: "List"` → JSON array with 1–2 representative items
   - Unknown string fields → a short, realistic sentence or value matching the field name
 - Make examples **domain-specific**: if the element is called "Order Placed", use order-domain values; if it's "User Registered", use registration-domain values.
 - Keep examples **short** — one value per field, no paragraphs.

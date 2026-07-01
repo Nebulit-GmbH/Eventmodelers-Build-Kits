@@ -207,11 +207,12 @@ Fields use this structure inside `meta`:
 ```
 
 **Rules for fields:**
-- Include every field that makes sense from a **business perspective** — the facts that consumers of this event will care about
+- Start with **essential fields only** — the identity key(s) plus the one or two facts that make this event meaningful. Do not try to enumerate every field a consumer might eventually want; that enrichment happens later via `/attributes`.
 - Use domain names, not technical names (`memberId` not `userId`, `dueDate` not `due_at`)
 - Do **not** include computed or derived values — those belong in read models
 - If an event has no meaningful payload beyond its identity (e.g., a simple state transition), it is fine to have no fields or just the identity key
 - Do not pad events with fields just to reach a count — only add what the business needs
+- Every field must set `"cardinality"` — use `"Single"` unless the field is genuinely a list of values, in which case use `"List"`. Default to `"Single"` when unsure.
 
 ## Cell Placement
 

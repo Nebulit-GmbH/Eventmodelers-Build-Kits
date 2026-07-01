@@ -163,6 +163,30 @@ curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events \
 # Omitting or supplying an unknown type returns 400.
 ```
 
+#### Field object format (`meta.fields`)
+
+Each entry in `meta.fields` on a COMMAND/EVENT/READMODEL/SCREEN node:
+```json
+{
+  "name": "customerId",
+  "type": "String",
+  "cardinality": "Single",
+  "example": "cust-42",
+  "mapping": "session:customerId",
+  "generated": false,
+  "optional": false,
+  "query": false,
+  "edited": false,
+  "subfields": [],
+  "idAttribute": false,
+  "showAttributes": false,
+  "technicalAttribute": false
+}
+```
+`cardinality` is one of `"Single"` (default) or `"List"` — use `"List"` only when the field genuinely holds multiple values (an array, a repeated line item). When in doubt, use `"Single"`.
+
+Only add the fields an element actually needs at creation time — its identity key plus the facts the business/consumer cares about right now. Do not front-load every conceivable field; add more later with the `/attributes` skill as the model matures.
+
 ---
 
 ## Slices

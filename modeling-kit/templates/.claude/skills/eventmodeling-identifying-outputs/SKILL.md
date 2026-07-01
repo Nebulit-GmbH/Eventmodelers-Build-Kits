@@ -401,6 +401,8 @@ Set the field's `generated` property according to this table. Fields projected d
 
 > **Connected-element rule**: A read model's field `mapping` may only reference EVENTs that are connected to this READMODEL via a board `EVENT → READMODEL` arrow. If a field needs data from an event that is not connected, either add the connection or flag it as a gap. **If a mapping cannot be defined for a field, it signals missing data in the model, a missing event, or a modeling error.** Do not leave unmapped fields without a note.
 
+Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely holds a list of values (e.g. line items, a collection projected from multiple events), in which case use `"List"`. Default to `"Single"` when unsure. Include only the fields the consuming SCREEN or AUTOMATION actually displays or needs — do not add speculative fields; enrich later via `/attributes`.
+
 ```json
 {
   "type": "READMODEL",

@@ -323,6 +323,8 @@ Set the field's `generated` property according to this table. Fields typed by th
 
 The `mapping` traces the value all the way back to its origin. **If you cannot write a mapping for a field, that field has an unknown origin — treat it as a gap and resolve it.**
 
+Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely holds a list of values (e.g. multi-select), in which case use `"List"`. Default to `"Single"` when unsure. Only add fields the command actually needs to do its job — do not add speculative fields; enrich later via `/attributes`.
+
 ### Field traceability rule for events
 
 Every field in the resulting EVENT must either:

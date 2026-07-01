@@ -379,6 +379,8 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
 >
 > **When you encounter a mapping that cannot resolve to a connected element, write the mapping as-is but flag it as a gap in the completeness notes.** Do not invent connections that don't exist.
 
+Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely displays/collects a list of values (e.g. a repeated line-item row), in which case use `"List"`. Default to `"Single"` when unsure. Only add the fields the screen actually shows or captures — do not add speculative fields; enrich later via `/attributes`.
+
 A screen that only has a title and no fields is an empty placeholder — place the fields before moving on.
 
 ## Mandatory Sketch Rendering
