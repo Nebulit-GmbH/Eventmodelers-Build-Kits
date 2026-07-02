@@ -325,7 +325,18 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 Verify the response contains `"hashes"`. If it fails, log the error and continue to the next screen — do not stop the entire run.
 
-### 7d — Report per-screen progress
+### 7d — Verify the screen
+
+Confirm the node and its uploaded screenshot both actually exist:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \
+  -H "x-token: $TOKEN"
+```
+
+If `valid` is `false`, read the `error` field. If `imageExists` is `false`, the screenshot upload in 7b failed silently — retry it once. Log any screen that still fails verification in the final report and continue to the next screen.
+
+### 7e — Report per-screen progress
 
 After each screen: print one line, e.g.:
 ```
@@ -345,7 +356,7 @@ Flows created (N total):
   • "Login & Authentication" — chapter <id> — 3 screens
   • "Product Browsing" — chapter <id> — 5 screens
 
-Screens uploaded: N of M (list any failures)
+Screens uploaded: N of M (list any failures, including screens that failed 7d verification)
 
 Next steps:
   - Open the board to review the storyboard timelines

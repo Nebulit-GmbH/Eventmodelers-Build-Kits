@@ -118,9 +118,9 @@ Build an **empty-column queue**: for each column (in order), compute `actorCellI
 
 ---
 
-## SCREEN LOOP — repeat Steps 5a, 5b, and 5c once per screen (N iterations total)
+## SCREEN LOOP — repeat Steps 5a–5d once per screen (N iterations total)
 
-Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered).
+Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered + verified).
 
 **You have ONE chapter (`CHAPTER_ID`). All screens go into this same chapter. Do NOT call the chapter creation endpoint again inside this loop.**
 
@@ -186,9 +186,22 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$SCREEN_NODE_
   -d '{"description": "<screenTitle — what this screen shows>", "elements": [...]}'
 ```
 
-### Step 5c — Mark the task complete
+### Step 5c — Verify the screen
 
-After both the node and sketch calls succeed, mark the task for this screen as completed using TaskUpdate.
+Confirm the node and its rendered image both actually exist before moving on:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \
+  -H "x-token: $TOKEN"
+```
+
+Check the `valid` field in the response:
+- **`valid: true`** — proceed to Step 5d.
+- **`valid: false`** — read the `error` field. If `nodeExists` is `false`, the node creation in Step 5a failed; retry it. If `imageExists` is `false`, the sketch render in Step 5b failed silently; retry Step 5b once. If it fails verification again, log the error for this screen in the final report and move on to the next screen — do not get stuck retrying indefinitely.
+
+### Step 5d — Mark the task complete
+
+After the node, sketch, and verification all succeed, mark the task for this screen as completed using TaskUpdate.
 
 ---
 
@@ -197,4 +210,4 @@ After both the node and sketch calls succeed, mark the task for this screen as c
 After all screens are done, summarise:
 - Chapter ID
 - Numbered list: screen title
-- Any errors (with status codes)
+- Any errors (with status codes), including screens that failed the Step 5c verification

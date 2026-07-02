@@ -53,3 +53,4 @@ Outcome: [what changed on the board]
 - `/wdyt` posts QUESTION comments onto nodes — use for analysis only, not modifications.
 - The `board_id`, `timeline_id`, and `organization_id` from each prompt provide full context — pass them to skills that need them.
 - Node events POST to `/api/boards/:boardId/nodes/events` using `node:created`, `node:changed`, `node:deleted`.
+- `/update-slice-status` rejects moving a slice into a status it's already in — this is a concurrency guard so two agents can't both claim the same slice. Treat this as `ALREADY_IN_STATUS`, not a task failure: drop the prompt, move on to the next task, and do not retry the same update.

@@ -50,6 +50,8 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
 
+   **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
+
 2. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json` (written by `/load-slice`).
 
 3. Determine the **slice type** from the slice.json:

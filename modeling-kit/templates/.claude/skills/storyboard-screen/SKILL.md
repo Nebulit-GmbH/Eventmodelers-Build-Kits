@@ -7,7 +7,7 @@ description: Design and render a single AI-generated wireframe screen onto an ex
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
-> **MANDATORY RENDER**: The sketch API call in Step 3 is **not optional**. This skill exists solely to produce a rendered wireframe. A SCREEN node without a rendered sketch is an empty placeholder that adds no value to the model. If the sketch API call is skipped or fails, the task is incomplete — retry or report the error.
+> **MANDATORY RENDER + VERIFY**: The sketch API call in Step 3 and the verification in Step 4 are **not optional**. This skill exists solely to produce a rendered wireframe. A SCREEN node without a rendered sketch is an empty placeholder that adds no value to the model. If the sketch API call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
 
 Design a single wireframe screen and render it onto an existing SCREEN node. Use this to redesign a screen, add detail to a placeholder, or update a screen after a flow changes.
 
@@ -89,9 +89,20 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sket
 
 Expect `204 No Content` on success.
 
-## Step 4 — Report back
+## Step 4 — Verify the screen
+
+Confirm the node and its rendered image both actually exist:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$NODE_ID/verify" \
+  -H "x-token: $TOKEN"
+```
+
+If `valid` is `false`, read the `error` field and retry the failing step (Step 3 if `imageExists` is `false`) once before reporting failure.
+
+## Step 5 — Report back
 
 Tell the user:
 - The node ID that was updated
-- Whether the render succeeded (HTTP 204)
+- Whether the render succeeded (HTTP 204) and verification passed (`valid: true`)
 - Any errors
