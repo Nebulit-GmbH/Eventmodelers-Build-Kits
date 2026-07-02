@@ -11,7 +11,7 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
-Coordinates the 9-step Event Modeling workflow. Each step delegates to a
+Coordinates the 10-step Event Modeling workflow. Each step delegates to a
 specialized skill — this skill holds the sequence, transition conditions, and
 what to carry forward between steps.
 
@@ -293,9 +293,23 @@ required.
 
 ---
 
+### Step 10: Slice the Model
+
+Invoke `eventmodeling-slicing-event-models`.
+
+**Input**: Complete, validated event model (PASS from Step 9).
+**Output to carry forward**: One slice definition per COMMAND (state-change),
+per READMODEL (state-view), and per AUTOMATION on the board — the model's
+independently deployable feature boundaries, ready for implementation.
+**Gate**: Every COMMAND, READMODEL, and AUTOMATION on the timeline has a
+matching slice definition; no duplicates were created for elements that
+already had one.
+
+---
+
 ## Final Output
 
-A complete event model consisting of:
+A complete, sliced event model consisting of:
 - Role Catalog (human roles and system actors with permissions)
 - Chronological event timeline
 - UI storyboards with role-based swimlanes
@@ -305,10 +319,11 @@ A complete event model consisting of:
 - Given-When-Then scenarios
 - Completeness verification
 - Validation report with readiness verdict
+- Slice definitions marking every independently deployable feature boundary
 
 ### Optional Follow-on Skills
 
-These skills are not part of the 9-step main path but extend the model for
+These skills are not part of the 10-step main path but extend the model for
 specific needs:
 
 - **`eventmodeling-designing-event-models`** — Use when stream identity,
@@ -319,16 +334,14 @@ specific needs:
   complete to validate stream growth estimates and snapshotting decisions.
 - **`eventmodeling-translating-external-events`** — Use when external systems
   (webhooks, IoT, third-party APIs) need to feed into the domain model.
-- **`eventmodeling-slicing-event-models`** — Use after Step 9 PASS to break
-  the model into independently deployable feature slices and plan parallel
-  team implementation.
 
 ---
 
 ## Quality Checklist
 
 - [ ] No elements stranded at 0,0 — every EVENT, COMMAND, READMODEL, SCREEN, and AUTOMATION has a valid `cellId` in its chapter
-- [ ] All 9 modeling steps completed — no step skipped without explicit reason
+- [ ] All 10 modeling steps completed — no step skipped without explicit reason
+- [ ] Every COMMAND, READMODEL, and AUTOMATION has a matching slice definition on the board
 - [ ] Role Catalog exists with named human roles and system processors
 - [ ] Every command is attributed to a specific role from the Role Catalog
 - [ ] Every read model satisfies at least one UI or processor query need

@@ -74,26 +74,41 @@ curl "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" -H "x-
 
 Filter to `type` in `COMMAND`, `READMODEL`, `AUTOMATION`.
 
-Check which elements already have a slice, so you don't create duplicates:
+`spec-info` doesn't include the column each element sits in, so fetch the chapter node to resolve it:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TL" -H "x-token: $TOKEN"
+# → meta.timelineData.columns: [{ id, index }]
+# → meta.timelineData.cells:   [{ id: "<rowId>-<columnId>", nodeId }]
+```
+
+For each filtered element, find the cell whose `nodeId` matches the element's `id` — the `columnId` is the cell `id` with the leading `<rowId>-` (36 chars + hyphen) stripped off. Record `{ elementId, elementType, title, columnId }` for every COMMAND, READMODEL, and AUTOMATION.
+
+Check which columns already have a slice, so you don't create duplicates:
 
 ```bash
 curl $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices -H "x-token: $TOKEN"
+# → { slices: [{ id, title, status }] }
 ```
 
-## Step 3: Create One Slice Per Command / Read Model / Automation
+A column already has a slice if its element's title matches an existing slice's title.
 
-For each element that doesn't already have a slice, create it via the slices API:
+## Step 3: Define slices
+
+For each column from Step 2 that doesn't already have a matching slice, mark that **existing** column as a slice via the **slice-definitions** endpoint:
 
 ```bash
-# type: state-change (SCREEN+COMMAND+EVENT) | state-view (SCREEN+READMODEL+EVENT) | automation (AUTOMATION+COMMAND+EVENT)
-curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slices \
+curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-definitions \
   -H "x-token: $TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"state-change","nodes":{"swimlane":{"title":"PlaceOrder"}}}'
+  -d '{"columnId":"<colId>","title":"PlaceOrder"}'
+# → 200 { nodeId, timelineId, columnId, title }
 ```
 
-- COMMAND → `"type":"state-change"`, title = command name
-- READMODEL → `"type":"state-view"`, title = read model name
-- AUTOMATION → `"type":"automation"`, title = automation (or its issued command) name
+- COMMAND column → title = command name (state-change slice)
+- READMODEL column → title = read model name (state-view slice)
+- AUTOMATION column → title = automation name, or the command it issues (automation slice)
+
+Use **`slice-definitions`**, never the plain **`slices`** endpoint here — `slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `slice-definitions` only adds a `SLICE_BORDER` node to the column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
 
 ## Step 4 (Optional): Note Dependencies Between Slices
 

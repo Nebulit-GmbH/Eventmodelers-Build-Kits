@@ -68,6 +68,55 @@ Everything is installed inside a `.build-kit-node/` folder in your project root 
 
 ---
 
+## Claude execution & config resolution
+
+### Custom Anthropic endpoint / model
+
+During install you can optionally point the agent at a local LLM server (vLLM, Ollama) instead of the default Claude Code endpoint, and/or pin a specific model. The installer shows an arrow-key select:
+
+```
+🧠 Configuring Claude execution (optional)...
+  ● None — use the default Claude Code endpoint
+  ○ Local vLLM   (http://localhost:8000)
+  ○ Local Ollama (http://localhost:11434)
+  ○ Custom…
+```
+
+Pick an option, then optionally enter a model (e.g. `claude-sonnet-5`). Both are stored alongside your credentials in `.build-kit/.eventmodelers/config.json`:
+
+```json
+{
+  "token": "...",
+  "organizationId": "...",
+  "boardId": "...",
+  "baseUrl": "https://api.eventmodelers.ai",
+  "anthropicBaseUrl": "http://localhost:8000",
+  "model": "claude-sonnet-5"
+}
+```
+
+You can edit this file by hand at any time — `ralph-claude.js` re-reads it on every run. When `anthropicBaseUrl` is set it's exported as `ANTHROPIC_BASE_URL` for the `claude` process; when `model` is set it's passed as `claude --model <model>`. Omit or delete either field to fall back to the default Claude Code setup.
+
+### Hierarchical config resolution
+
+`.eventmodelers/config.json` is resolved by walking from `.build-kit/` up through every parent directory, merging fields as it goes:
+
+- A value set by a **closer** (more specific) directory always wins over one set farther up.
+- The walk stops as soon as `token`, `organizationId`, `boardId`, and `baseUrl` are all resolved — it won't keep climbing just to find `anthropicBaseUrl`/`model`.
+- `anthropicBaseUrl`/`model` are picked up along the way if a directory the walk passes through happens to set them, but they never force the walk to continue further up.
+
+This lets you keep a shared base config higher up the tree (org token, `anthropicBaseUrl`, `model`) and override just `boardId`/`token` per project closer to the code:
+
+```
+~/workspace/.eventmodelers/config.json                          ← shared: token, organizationId, anthropicBaseUrl, model
+~/workspace/project-a/.build-kit/.eventmodelers/config.json     ← just boardId
+~/workspace/project-b/.build-kit/.eventmodelers/config.json     ← just boardId
+```
+
+If a project's own config already has everything needed to connect, the walk stops there and the shared config higher up is never read.
+
+---
+
 ## Step 2 — Start the ralph loop
 
 Open a terminal, enter the kit folder, and start the loop:
