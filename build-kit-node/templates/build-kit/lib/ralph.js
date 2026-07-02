@@ -45,35 +45,56 @@ async function retryOn401(label, fn, maxRetries = 3) {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-function findConfigInParents(startDir) {
-  let dir = startDir;
+// Config is resolved by walking from the kit dir up through every ancestor
+// directory's .eventmodelers/config.json, merging fields as we go — a value
+// set by a closer (more specific) directory always wins over a farther one.
+// The walk stops as soon as the merged config has full connection credentials
+// (see hasCredentials); anthropicBaseUrl/model are picked up opportunistically
+// along the way but never force the walk to continue further up.
+function* configCandidates(kitDir) {
+  yield join(kitDir, '.eventmodelers', 'config.json');
+  let dir = dirname(kitDir);
   while (true) {
-    const candidate = join(dir, '.eventmodelers', 'config.json');
-    if (existsSync(candidate)) return candidate;
+    yield join(dir, '.eventmodelers', 'config.json');
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) return;
     dir = parent;
   }
 }
 
 function loadLocalConfig(kitDir) {
-  const configPath = join(kitDir, '.eventmodelers', 'config.json');
-  if (existsSync(configPath)) {
-    const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
-    return cfg;
+  const merged = {};
+  const sources = [];
+
+  for (const candidate of configCandidates(kitDir)) {
+    if (!existsSync(candidate)) continue;
+    let cfg;
+    try {
+      cfg = JSON.parse(readFileSync(candidate, 'utf-8'));
+    } catch {
+      console.warn(`[ralph] Skipping invalid config at ${candidate}`);
+      continue;
+    }
+    for (const [key, value] of Object.entries(cfg)) {
+      if (merged[key] === undefined) merged[key] = value;
+    }
+    sources.push(candidate);
+    if (hasCredentials(merged)) break;
   }
-  const parentConfigPath = findConfigInParents(dirname(kitDir));
-  if (parentConfigPath) {
-    console.log(`[ralph] Using credentials from ${parentConfigPath}`);
-    const cfg = JSON.parse(readFileSync(parentConfigPath, 'utf-8'));
-    if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
-    return cfg;
+
+  if (process.env.BASE_URL) merged.baseUrl = process.env.BASE_URL;
+
+  if (sources.length > 1) {
+    console.log(`[ralph] Merged config from: ${sources.join(', ')}`);
+  } else if (sources.length === 1 && sources[0] !== join(kitDir, '.eventmodelers', 'config.json')) {
+    console.log(`[ralph] Using credentials from ${sources[0]}`);
+  } else if (sources.length === 0) {
+    console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
+    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-node`);
+    console.warn(`        Code generation from local slice definitions will still run.`);
   }
-  console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
-  console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-node`);
-  console.warn(`        Code generation from local slice definitions will still run.`);
-  return {};
+
+  return merged;
 }
 
 function hasCredentials(cfg) {

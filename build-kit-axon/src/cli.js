@@ -15,7 +15,7 @@ import {
   appendFileSync,
 } from 'fs';
 import { execSync } from 'child_process';
-import { createInterface } from 'readline';
+import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 
 async function prompt(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -24,6 +24,61 @@ async function prompt(question) {
       rl.close();
       resolve(answer.trim());
     });
+  });
+}
+
+// Arrow-key single-select menu. Falls back to a numbered prompt on non-TTY stdin (e.g. piped input, CI).
+async function selectPrompt(question, choices, defaultIndex = 0) {
+  if (!process.stdin.isTTY) {
+    console.log(`\n${question}`);
+    choices.forEach((c, i) => console.log(`  ${i + 1}) ${c.label}`));
+    const answer = await prompt(`  Select [1-${choices.length}] (default ${defaultIndex + 1}): `);
+    const idx = parseInt(answer, 10) - 1;
+    return choices[Number.isInteger(idx) && idx >= 0 && idx < choices.length ? idx : defaultIndex].value;
+  }
+
+  return new Promise((resolve) => {
+    let index = defaultIndex;
+    const stdin = process.stdin;
+    const render = () => choices.map((c, i) => `  ${i === index ? '●' : '○'} ${c.label}`);
+
+    console.log(`\n${question}`);
+    let lines = render();
+    lines.forEach((l) => console.log(l));
+
+    emitKeypressEvents(stdin);
+    stdin.setRawMode(true);
+
+    const cleanup = () => {
+      stdin.removeListener('keypress', onKeypress);
+      stdin.setRawMode(false);
+      stdin.pause();
+    };
+
+    const onKeypress = (str, key) => {
+      if (key.ctrl && key.name === 'c') {
+        cleanup();
+        process.exit(1);
+      }
+      if (key.name === 'up' || key.name === 'k') {
+        index = (index - 1 + choices.length) % choices.length;
+      } else if (key.name === 'down' || key.name === 'j') {
+        index = (index + 1) % choices.length;
+      } else if (key.name === 'return') {
+        cleanup();
+        resolve(choices[index].value);
+        return;
+      } else {
+        return;
+      }
+      moveCursor(process.stdout, 0, -lines.length);
+      clearScreenDown(process.stdout);
+      lines = render();
+      lines.forEach((l) => console.log(l));
+    };
+
+    stdin.on('keypress', onKeypress);
+    stdin.resume();
   });
 }
 
@@ -209,6 +264,34 @@ program
     } else {
       console.log('\n  ✓ Config already present — skipping credential prompt');
     }
+
+    // Claude execution (optional)
+    console.log('\n🧠 Configuring Claude execution (optional)...');
+    console.log('   Point the agent at a local vLLM/Ollama endpoint and/or pin a specific model, instead of the default Claude Code setup.');
+
+    const presetUrls = ['', 'http://localhost:8000', 'http://localhost:11434'];
+    let defaultUrlIndex = presetUrls.indexOf(config.anthropicBaseUrl || '');
+    if (defaultUrlIndex === -1) defaultUrlIndex = 3;
+
+    let anthropicBaseUrl = await selectPrompt('Anthropic Base URL:', [
+      { label: 'None — use the default Claude Code endpoint', value: '' },
+      { label: 'Local vLLM   (http://localhost:8000)', value: 'http://localhost:8000' },
+      { label: 'Local Ollama (http://localhost:11434)', value: 'http://localhost:11434' },
+      { label: 'Custom…', value: '__custom__' },
+    ], defaultUrlIndex);
+
+    if (anthropicBaseUrl === '__custom__') {
+      anthropicBaseUrl = await prompt('  Custom Anthropic Base URL: ');
+    }
+
+    const claudeModel = await prompt(`  Model ${config.model ? `[${config.model}]` : '(optional, press Enter to skip)'}: `);
+
+    if (anthropicBaseUrl) config.anthropicBaseUrl = anthropicBaseUrl;
+    else delete config.anthropicBaseUrl;
+    if (claudeModel) config.model = claudeModel;
+
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log('\n  ✓ Saved to .build-kit-axon/.eventmodelers/config.json');
 
     // Configure MCP server in .claude/settings.json
     const claudeDir = join(targetDir, '.claude');
