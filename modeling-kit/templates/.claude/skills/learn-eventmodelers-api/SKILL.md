@@ -196,6 +196,18 @@ Only add the fields an element actually needs at creation time — its identity 
 curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slices \
   -H "x-token: $TOKEN" -H "Content-Type: application/json" \
   -d '{"type":"state-change","nodes":{"swimlane":{"title":"OrderPlaced"}}}'
+# MCP: create_slice
+
+# Mark an *existing* column as a slice (SLICE_BORDER node) — does not add a column
+# or any actor/interaction/swimlane content nodes. columnId must already exist
+# (e.g. created via POST .../slices above, or the column API).
+curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-definitions \
+  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"columnId":"<colId>","title":"OrderPlaced"}'
+# → 200 { nodeId, timelineId, columnId, title }
+# → 400 missing columnId/title or column not found · 404 timeline not found
+# title is always taken from the "title" field, never derived from a command/read model
+# MCP: create_slice_definition
 ```
 
 ---

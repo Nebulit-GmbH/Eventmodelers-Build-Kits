@@ -343,6 +343,22 @@ Create a complete slice (1 column + 3 nodes automatically placed).
 
 **Response**: `200` — slice data
 
+### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/slice-definitions`
+Create a standalone SLICE_BORDER node spanning an **existing** column. Unlike the endpoint above, this does not add a column or any actor/interaction/swimlane content nodes — the column must already exist (e.g. created via `POST .../slices` or the column API) and is referenced by `columnId`.
+
+**Request body**:
+```typescript
+{
+  columnId: string   // id of an existing column on this timeline
+  title: string      // slice title — always taken from this field, never derived
+  data?: Record<string, unknown>   // optional node.data payload
+  meta?: Record<string, unknown>   // optional extra meta fields (type, colId, title are always set explicitly and cannot be overridden here)
+}
+```
+
+**Response**: `200` — `{ nodeId, timelineId, columnId, title }`
+**Errors**: `400` missing `columnId`/`title` or column not found · `404` timeline not found
+
 ---
 
 ## 6. Specifications (GWT Scenarios)
@@ -597,7 +613,8 @@ All events support optional metadata: `user_id`, `correlation_id`, `causation_id
 | `src/slices/change/api-chapters/routes.ts` | Chapters, columns, lanes, cell drops |
 | `src/slices/change/api-nodes/routes.ts` | Node event sourcing |
 | `src/slices/change/api-images/routes.ts` | Image upload + sketch rendering |
-| `src/slices/change/api-.slices/routes.ts` | Slice creation |
+| `src/slices/change/api-.slices/routes.ts` | Slice creation + slice definitions (SLICE_BORDER) |
+| `src/slices/extensions/supabase/slices/CreateSliceDefinition.ts` | Slice definition (SLICE_BORDER) creation logic |
 | `src/slices/change/api-specs/routes.ts` | GWT scenario management |
 | `src/slices/change/config-import/routes.ts` | Config import |
 | `src/slices/slicedata/routes.ts` | Slice data read models |
