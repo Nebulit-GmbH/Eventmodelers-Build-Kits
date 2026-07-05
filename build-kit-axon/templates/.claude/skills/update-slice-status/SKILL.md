@@ -84,10 +84,6 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
 
 Response: `{ "hashes": { "<eventId>": "<hash>" } }`
 
-### If the API rejects the update because the slice is already in `newStatus`
-
-The API refuses to move a slice into a status it is already in — this is a deliberate concurrency guard so two agents racing to claim the same slice can't both succeed. If Step 3 fails with an error indicating the slice is already at `<newStatus>` (e.g. a `409`, or an error body mentioning "already"), this is **not a failure to surface as broken** — it means another agent already claimed or moved the slice first. Report this as a distinct `ALREADY_IN_STATUS` outcome (see Step 4) rather than a generic error, and do not retry the same update. Callers trying to claim a `Planned` slice for building should treat this as a signal to pick a different slice, not to stop.
-
 ---
 
 ## Step 4 — Report back
@@ -98,8 +94,7 @@ Tell the user:
 - **Previous status**: `CURRENT_STATUS`
 - **New status**: `newStatus`
 - **Node ID**: `SLICE_NODE_ID`
-- **Outcome**: `SUCCESS`, `ALREADY_IN_STATUS` (another agent got there first — see above), or `ERROR`
-- **Any errors**: raw API message if something failed for a reason other than `ALREADY_IN_STATUS`
+- **Any errors**: raw API message if something failed
 
 Example success output:
 ```

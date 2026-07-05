@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=quickstart
+      - POSTGRES_USER=quickstart
+      - POSTGRES_PASSWORD=quickstart
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quickstart"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   axon-server:
     image: axoniq/axonserver:latest-jdk-17
     ports:
@@ -43,4 +59,6 @@ volumes:
   data:
     driver: local
   events:
+    driver: local
+  postgres-data:
     driver: local
