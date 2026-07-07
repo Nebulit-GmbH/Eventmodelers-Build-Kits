@@ -59,8 +59,7 @@ Every screen's `elements` array **must start** with a full white background:
 | `circle` | gridX, gridY, gridRadius | fill, stroke |
 
 ### Colors
-Named: `black` `grey` `light-violet` `violet` `blue` `light-blue` `yellow` `orange` `green` `light-green` `light-red` `red` `white` `transparent`
-Or any hex code like `#3b82f6`.
+Limited to: `black` `grey` `light-violet` `violet` `blue` `light-blue` `yellow` `orange` `green` `light-green` `light-red` `red` `white`. No hex codes.
 
 Keep all coordinates within bounds: gridX 0–50, gridY 0–40.
 
