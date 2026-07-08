@@ -19,49 +19,22 @@ description: >
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
 
-Before writing any code, read the target project's `CLAUDE.md` and explore at least one existing
-read slice under `de.eventmodelers.slices`. Look for:
-
-- Feature flag pattern (`@ConditionalOnProperty` prefix structure)
-- Assertion library (AssertJ, etc.)
-- Whether projections use in-memory (`ConcurrentHashMap`) or JPA — default to **in-memory**
-  unless Spring Data JPA is present in the pom
-- Spring WebFlux vs MVC (this project uses WebFlux — `Mono`/`Flux` return types)
-- Metadata keys attached to events (`@MetadataValue` fields in existing projectors)
-
-Also identify the established convention for:
-- **REST API exposure** (Step 4 — optional)
-- **Feature flags** (Step 3 — optional)
+Before writing any code, read the target project's `CLAUDE.md`
 
 ## Step 1: Ensure Events Exist
 
 Before implementing the read slice, verify that all events the projector handles exist in the
 codebase. If they don't, create them **first**.
 
-### Event hierarchy
-
-```
-DomainEvent (optional project root marker)
-  └─ {Context}Event    ← sealed interface per bounded context
-       └─ {EventName}  ← concrete record
-```
-
-### Context event interface (if it doesn't exist)
-
-```java
-// File: de/eventmodelers/slices/{context}/events/{Context}Event.java
-public sealed interface {Context}Event permits {Event1}, {Event2} {}
-```
-
 ### Concrete event records
 
 ```java
 @Event(namespace = "{Context}", name = "{EventName}", version = "1.0.0")
 public record {EventName}(
-    @EventTag(EventTags.{TAG_CONSTANT})
+    @EventTag
     String {tagProperty},
     String field1
-) implements {Context}Event {}
+){}
 ```
 
 Key rules:
@@ -76,7 +49,7 @@ derive test cases. GWT format for read slices: `Given (events) → Then (informa
 Events in Given tell you which events the projector handles. The information element in Then
 describes the expected query result.
 
-If the slice details contain `## Implementation Guidelines`, **follow them**.
+If the slice description or comments contain `## Implementation Guidelines`, **follow them**.
 
 ### Query annotation
 
@@ -97,56 +70,70 @@ comments** — those are only for write slices.
 ### Slice package structure
 
 ```
-de/eventmodelers/slices/{context}/read/{slicename}/
+de/<package>/{context}/slices/{slicename}/
 ├── Get{SliceName}.java       ← query record + nested Result
 ├── {SliceName}Summary.java   ← read model (projection output shape)
 ├── {SliceName}Projector.java ← @Component with @EventHandler + @QueryHandler
 └── {SliceName}RestApi.java   ← @RestController (if REST chosen)
 ```
 
-### In-memory projector + query handler
+### Projector + query handler (JPA-backed)
+
+Projections persist to a database via Spring Data JPA — this is the only supported style.
 
 ```java
-// File: {SliceName}Projector.java
+public record AllCustomersSummary(String name, String email) {}
+
+@Query(namespace = "CustomerManagement", name = "GetAllCustomers", version = "1.0.0")
+public record GetAllCustomers() {
+    public record Result(List<AllCustomersSummary> items) {}
+}
+
+@Entity
+@Table(name = "customer_management_allcustomers")
+class AllCustomersEntity {
+
+    @Id
+    private String email;
+    private String name;
+
+    protected AllCustomersEntity() {
+    }
+
+    AllCustomersEntity(String email, String name) {
+        this.email = email;
+        this.name = name;
+    }
+
+    AllCustomersSummary toSummary() {
+        return new AllCustomersSummary(name, email);
+    }
+}
+
 @Component
-@ConditionalOnProperty(prefix = "slices.{context}.read", name = "{slicename}.enabled")
-@SequencingPolicy(type = MetadataSequencingPolicy.class, parameters = "{correlationKey}")
-public class {SliceName}Projector {
+public class AllCustomersProjector {
 
-    // ConcurrentHashMap: safe for concurrent reads and single-threaded @EventHandler writes
-    private final Map<String, {SliceName}Summary> store = new ConcurrentHashMap<>();
+    private final AllCustomersRepository repository;
 
-    @EventHandler
-    public void on({CreationEvent} event) {
-        store.put(event.{tagProperty}(), new {SliceName}Summary(
-            event.{tagProperty}(),
-            event.field1()
-            // map all fields from the event to the read model
-        ));
+    public AllCustomersProjector(AllCustomersRepository repository) {
+        this.repository = repository;
     }
 
     @EventHandler
-    public void on({UpdateEvent} event) {
-        var existing = store.get(event.{tagProperty}());
-        if (existing == null) return;
-        store.put(event.{tagProperty}(), new {SliceName}Summary(
-            existing.id(),
-            event.updatedField()
-        ));
-    }
-
-    @EventHandler
-    public void on({DeletionEvent} event) {
-        store.remove(event.{tagProperty}());
+    public void on(CustomerRegistered event) {
+        repository.save(new AllCustomersEntity(event.email(), event.name()));
     }
 
     @QueryHandler
-    public Get{SliceName}.Result handle(Get{SliceName} query) {
-        var items = store.values().stream()
-            .filter(item -> item.{filterField}().equals(query.{filterField}()))
-            .toList();
-        return new Get{SliceName}.Result(items);
+    public GetAllCustomers.Result handle(GetAllCustomers query) {
+        List<AllCustomersSummary> items = repository.findAll().stream()
+                .map(AllCustomersEntity::toSummary)
+                .toList();
+        return new GetAllCustomers.Result(items);
     }
+}
+
+interface AllCustomersRepository extends JpaRepository<AllCustomersEntity, String> {
 }
 ```
 
@@ -156,9 +143,9 @@ public class {SliceName}Projector {
 - If the read model contains fields the caller already knows from the query (e.g., the filter field),
   omit those from the `Result` and map from the projector's internal model.
 
-### JPA option (if Spring Data JPA is in the pom)
+### Entity + repository template
 
-If JPA is available, prefer it over in-memory for persistence across restarts:
+For filtered queries, add an index and a derived-query method instead of `findAll()`:
 
 ```java
 @Entity
@@ -173,7 +160,6 @@ public class {SliceName}Entity {
 }
 
 @Repository
-@ConditionalOnProperty(prefix = "slices.{context}.read", name = "{slicename}.enabled")
 interface {SliceName}Repository extends JpaRepository<{SliceName}Entity, String> {
     List<{SliceName}Entity> findAllBy{FilterField}(String {filterField});
 }
@@ -181,25 +167,13 @@ interface {SliceName}Repository extends JpaRepository<{SliceName}Entity, String>
 
 Use `findAllBy{FilterField}(...)` in the `@QueryHandler` — DB-level filtering, not client-side.
 
-## Step 3: Feature Flags (Optional)
-
-Check the target project's convention first. See
-[references/feature-flag-patterns.md](references/feature-flag-patterns.md) for the full
-`@ConditionalOnProperty` example and alternatives.
-
-Update ALL of these files when using `@ConditionalOnProperty`:
-- `src/main/resources/application.properties` — `slices.{context}.read.{slicename}.enabled=true`
-- `src/test/resources/application.properties` — `slices.{context}.read.{slicename}.enabled=false`
-- `META-INF/additional-spring-configuration-metadata.json` — add property entry
-
-## Step 4: REST API Exposure (Optional)
+## Step 3: REST API Exposure (Optional)
 
 Check the target project's convention first.
 
 ```java
 // File: {SliceName}RestApi.java
 @RestController
-@ConditionalOnProperty(prefix = "slices.{context}.read", name = "{slicename}.enabled")
 public class {SliceName}RestApi {
 
     private final QueryGateway queryGateway;
@@ -217,19 +191,10 @@ public class {SliceName}RestApi {
 }
 ```
 
-See [references/rest-api-patterns.md](references/rest-api-patterns.md) for `WebTestClient` test examples.
+## Step 4: Design Test Cases
 
-## Step 5: Design Test Cases
-
-Cover these scenarios (adapt to the specific slice):
-
-1. **Empty state**: No events → query returns empty result
-2. **Single entity**: One creation event → query returns single item
-3. **Multiple entities**: Multiple creation events → query returns all items
-4. **State updates**: Creation + update event → query returns updated state
-5. **Aggregation**: Same entity updated multiple times → values accumulated correctly
-6. **Deletion**: Entity added then removed → disappears from result
-7. **Isolation**: Multiple entities exist → query returns only matching ones
+Implement the test cases provided in the slice definition. 
+Do not design your own test cases unless specifically instructed to do so.
 
 ### Mapping GWT Scenarios to Tests
 
@@ -239,13 +204,13 @@ Cover these scenarios (adapt to the specific slice):
 | Event in Given | call `projector.on(event)` |
 | Information in Then | `assertThat(result.items()).containsExactlyInAnyOrder(...)` |
 
-## Step 6: Implement the Slice Test
+## Step 5: Implement the Slice Test
 
 Pure unit tests — instantiate the projector directly, no Spring context needed.
 Fast, no container startup.
 
 ```java
-// File: src/test/java/de/eventmodelers/slices/{context}/read/{slicename}/{SliceName}ProjectorTest.java
+// File: src/test/java/de/<package>/{context}/slices/{slicename}/{SliceName}ProjectorTest.java
 class {SliceName}ProjectorTest {
 
     private {SliceName}Projector projector;
@@ -305,19 +270,6 @@ class {SliceName}ProjectorTest {
   integration test approach in that case.
 - **Assert with full objects**: Use `containsExactlyInAnyOrder(new Summary(...))` rather than
   field-by-field assertions — catches serialization mismatches.
-
-## Step 7: REST API Test (Optional, only if Step 4 chosen REST)
-
-See [references/rest-api-patterns.md](references/rest-api-patterns.md) for a `WebTestClient` +
-mocked `QueryGateway` example.
-
-## References
-
-- [Read Slice Test Example](references/read-slice-test-example.md) — Complete working example
-- [REST API Patterns](references/rest-api-patterns.md) — REST controller and test examples
-- [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
-
----
 
 ## Final Verification: Does the Implementation Match slice.json?
 
