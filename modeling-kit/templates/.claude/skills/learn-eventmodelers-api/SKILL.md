@@ -187,6 +187,21 @@ Each entry in `meta.fields` on a COMMAND/EVENT/READMODEL/SCREEN node:
 
 Only add the fields an element actually needs at creation time — its identity key plus the facts the business/consumer cares about right now. Do not front-load every conceivable field; add more later with the `/attributes` skill as the model matures.
 
+#### Linked copies
+
+A node's `data.linkedTo` (mirrored at the top level as `linkedTo`) marks it as a **linked copy**, not an independent node. Users intentionally repeat the same EVENT/READMODEL/SCREEN at multiple points on a timeline for readability — to avoid crossing connections — rather than draw long edges across the board. The platform's UI keeps these copies in sync with the original.
+
+```json
+"data": {
+  "linkedTo": "/app/board/<originBoardId>/?moveToWidget=<originNodeId>",
+  ...
+}
+```
+
+- Presence of `linkedTo` (non-empty) → this node is a copy; the `moveToWidget` query param is the **original** node's ID (on `originBoardId`, which may or may not be the current board).
+- A node with no `linkedTo` is either a true standalone node or the original that other copies point to.
+- **Never treat two same-titled/same-type nodes as duplicates without first checking `linkedTo` on both.** If either carries `linkedTo`, they are an intentional linked pair, not a modeling defect — do not report it as a gap, and never propose deleting/merging either side. See `eventmodeling-checking-completeness` for how this applies during a completeness check.
+
 ---
 
 ## Slices

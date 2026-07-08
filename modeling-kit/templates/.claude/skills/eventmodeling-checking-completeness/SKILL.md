@@ -26,6 +26,11 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 
 Use these results as the source of truth for the completeness check.
 
+**Before treating any nodes as duplicates**: check each node's `data.linkedTo` field (see `learn-eventmodelers-api`). A node with `linkedTo` set is an intentional **linked copy** of another node — placed elsewhere on the timeline for readability, not a modeling defect. When two or more nodes share a title/type:
+- If any of them carries `linkedTo`, do not report a duplicate. This is expected, not a gap.
+- Never propose deleting, suppressing, or "cleaning up" either node in a linked pair. Specifically, never target the node that has *no* `linkedTo` (the original) for removal — copies reference it via `moveToWidget=<originNodeId>`, so deleting it breaks every copy.
+- Only flag same-titled nodes as an actual duplicate gap when **none** of them has `linkedTo` — i.e., they are genuinely two independent, unlinked nodes describing the same concept.
+
 After the analysis, use the `handle-comment` skill to post findings on relevant nodes — `TASK` for required fixes, `QUESTION` for gaps that need clarification.
 
 ## Workflow
@@ -563,6 +568,7 @@ The model is **complete** when:
 | Missing field | "View needs date, event has none" | Add field to event |
 | Unclear origin | "Where does this come from?" | Trace back to source |
 | **Calculated event** | SellerRatingCalculated, InventoryTotal | **Move to read model** (recalculated state is projection) |
+| **False duplicate** | Two nodes share a title | Check `data.linkedTo` on both before reporting — a linked copy is intentional, not a gap |
 
 ## Reference Documentation
 
