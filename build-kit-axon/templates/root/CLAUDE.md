@@ -33,7 +33,7 @@ Read Events in src/events to understand the global structure.
 Only check src/slices/{slice}/*.ts, do not check subfolders, if not explicitely tasked to build the UI.
 If not tasked explicitely to change routes, ignore routes*.ts
 
-Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitemsrun t"
+Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems"
 
 Do not change files with tests unless explicitely instructed: *.test.ts
 
