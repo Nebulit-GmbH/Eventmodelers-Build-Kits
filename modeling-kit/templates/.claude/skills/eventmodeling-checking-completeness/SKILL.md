@@ -148,7 +148,32 @@ Needs to display:
 Status: All fields sourced 
 ```
 
-### 4. Check Event Stream Completeness
+### 4. Check Slice Coverage
+
+Every column that holds a COMMAND or READMODEL node must have a slice defined (a SLICE_BORDER node on that column) — otherwise it can never be built as a feature. Skip columns whose COMMAND/READMODEL node has `data.linkedTo` set: it's a linked copy (see Board Context above), and only the original's column needs a slice.
+
+```bash
+curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SLICE_BORDER"
+```
+
+Cross-reference each COMMAND/READMODEL node's column against the `columnId` of the SLICE_BORDER nodes:
+
+```text
+Column: CreateOrder (COMMAND)
+Slice defined? Yes — "Place Order"
+Status: Covered
+
+Column: OrderStatusView (READMODEL)
+Slice defined? No
+Status: Missing slice — flag as gap
+
+Column: ConfirmOrder (COMMAND, linkedTo set — copy of the original in another column)
+Slice defined? N/A — linked copy, exempt
+Status: Skip
+```
+
+### 5. Check Event Stream Completeness
 Verify no "missing" events:
 
 ```text
@@ -172,7 +197,7 @@ Alternative paths:
 Status: All paths covered 
 ```
 
-### 5. Check System Boundaries
+### 6. Check System Boundaries
 Verify each system owns events:
 
 ```text
@@ -202,7 +227,7 @@ Processor: Notifier (listens to all events)
 Status: Cross-cutting concern 
 ```
 
-### 6. Define Workflow Step Contracts
+### 7. Define Workflow Step Contracts
 Each workflow step is a contract between the previous step and the next. Document preconditions and postconditions:
 
 ```text
@@ -216,7 +241,6 @@ Preconditions (what must exist before this step):
 Postconditions (what exists after this step):
     - OrderCreated event exists
     - Event contains: orderId, customerId, items, total, shippingAddress, createdAt
-    - Order state: Draft
 
 Contract: Any system can assume if these postconditions are true,
             the order has been properly created through this step.
@@ -225,13 +249,11 @@ Contract: Any system can assume if these postconditions are true,
 
 Preconditions (depends on Step 1 postcondition):
     - OrderCreated event must exist ( from Step 1 contract)
-    - Order must be in Draft state
     - Customer must select payment method
 
 Postconditions (what exists after this step):
     - OrderConfirmed event exists
     - Event contains: orderId, paymentMethod, confirmedAt
-    - Order state: Confirmed
 
 Contract: Any system can assume if these postconditions are true,
             the order has been properly confirmed.
@@ -240,13 +262,11 @@ Contract: Any system can assume if these postconditions are true,
 
 Preconditions (depends on Step 2 postcondition):
     - OrderConfirmed event must exist ( from Step 2 contract)
-    - Order must be in Confirmed state
     - Payment method must be valid
 
 Postconditions (what exists after this step):
     - PaymentAuthorized event exists
     - Event contains: paymentId, authCode, amount
-    - Payment state: Authorized
 
 Contract: Once this postcondition is true, next steps can proceed
             without re-checking payment (trust the contract).
@@ -271,53 +291,6 @@ Team C: Works on AuthorizePayment (Step 3)
 
 Result: 3 teams working in parallel instead of waiting sequentially!
 ```
-
-### 7. Check Role Coverage
-
-Verify that the **Role Catalog** (from Step 1) is fully exercised:
-
-```text
-Role Coverage Matrix:
-
-Human Roles:
-Customer
-     Has swimlane in storyboard (Step 3)
-     Commands attributed: CreateOrder, ConfirmOrder, CancelOrder
-     Read models consumed: OrderStatusView, OrderListView
-     Scenarios reference this role
-    Status:  Complete
-
-Seller
-     Has swimlane in storyboard (Step 3)
-     Commands attributed: RespondToReview, ConfirmStock
-     Read models consumed: SellerDashboardView
-     Scenarios reference this role
-    Status:  Complete
-
-Support Agent
-     Has swimlane in storyboard (Step 3)
-     Commands attributed: OverrideOrderStatus
-     No read models identified
-     No scenarios reference this role
-    Status:  Incomplete — needs read models and scenarios
-
-System Actors:
-Payment Gateway
-     Commands attributed: AuthorizePayment, FailPayment
-    Status:  Complete
-
-Inventory System
-     Commands attributed: ReserveInventory
-    Status:  Complete
-```
-
-**Validation rules**:
-- Every human role MUST have at least one command
-- Every human role MUST have at least one read model/view
-- Every human role MUST appear in at least one scenario (Step 7)
-- Every system actor MUST have at least one command or processor trigger
-
-If a role has zero commands → either the role is unnecessary (remove from catalog) or commands are missing (add them).
 
 ### 8. Check Field Traceability
 Matrix of all fields origin → destination:
@@ -379,7 +352,6 @@ Present as:
 
 **Postconditions**:
 - OrderCreated event exists with fields: [list]
-- Order state is Draft
 
 **Teams that depend on this contract**: [All downstream teams]
 
@@ -389,11 +361,9 @@ Present as:
 
 **Preconditions** (depends on Step 1):
 - OrderCreated event exists 
-- Order in Draft state
 
 **Postconditions**:
 - OrderConfirmed event exists with fields: [list]
-- Order state is Confirmed
 
 --- [Continue for each workflow step]
 
@@ -436,6 +406,16 @@ Present as:
 
 ---
 
+## Slice Coverage
+
+| Column | Node | Has Slice? | Status |
+|--------|------|-----------|--------|
+| 1 | CreateOrder (COMMAND) | Yes — "Place Order" |  |
+| 2 | OrderStatusView (READMODEL) | No |  Missing slice |
+| 3 | ConfirmOrder (COMMAND, linked copy) | N/A |  Exempt (linkedTo set) |
+
+---
+
 ## Read Model Coverage
 
 ### OrderStatusView
@@ -447,25 +427,6 @@ Present as:
 - Summary fields captured
 - Filtering/sorting fields present
 - Linked to OrderStatusView for details
-
----
-
-## Role Coverage
-
-### Human Roles
-
-| Role | Swimlane | Commands | Read Models | Scenarios | Status |
-|------|----------|----------|-------------|-----------|--------|
-| Customer |  | CreateOrder, ConfirmOrder, CancelOrder | OrderStatusView, OrderListView |  5 scenarios | Complete |
-| Seller |  | RespondToReview | SellerDashboardView |  2 scenarios | Complete |
-| Support Agent |  | OverrideOrderStatus |  None |  None | Incomplete |
-
-### System Actors
-
-| Actor | Commands/Triggers | Status |
-|-------|-------------------|--------|
-| Payment Gateway | AuthorizePayment, FailPayment |  |
-| Inventory System | ReserveInventory |  |
 
 ---
 
@@ -513,6 +474,7 @@ Present as:
 - [ ] Every field has identified destinations
 - [ ] All command inputs are captured
 - [ ] All read models have sources
+- [ ] **Every column with a COMMAND or READMODEL node has a slice defined (unless it's a linked copy)**
 - [ ] Event flow is complete
 - [ ] No events are missing
 - [ ] System boundaries are clear
@@ -526,11 +488,6 @@ Present as:
 - [ ] **Each contract has explicit postconditions**
 - [ ] **Dependencies between steps documented**
 - [ ] **Teams can work in parallel based on contracts**
-- [ ] **Every human role from the Role Catalog has at least one command**
-- [ ] **Every human role has at least one read model/view**
-- [ ] **Every human role appears in at least one scenario**
-- [ ] **Every system actor has at least one command or processor trigger**
-- [ ] **No role in the catalog is orphaned (zero usage across the model)**
 
 ### CRITICAL: Event vs Read Model Validation
 - [ ] **Reviewed every "calculated event"**: Is it a domain fact or pure calculation?
@@ -545,7 +502,7 @@ Present as:
 ## Completeness Criteria
 
 The model is **complete** when:
- Every event field has a source (command or system)
+ Every event field has a source (command or system or is marked as  generated)
  Every command input becomes event/state data
  Every read model field has event source
  All state transitions are covered
@@ -556,7 +513,7 @@ The model is **complete** when:
  Data flows logically end-to-end
  All stakeholder needs are met
  **Events are facts (immutable domain actions)** **Read models are projections (derived/calculated state)** **No calculated events exist** (aggregations/totals are read models)
- **Every role in the Role Catalog is exercised** (has commands, views, and scenarios)
+ **Every COMMAND/READMODEL column has a slice defined**, except linked copies
 
 ## Common Incompleteness Issues
 
@@ -569,6 +526,7 @@ The model is **complete** when:
 | Unclear origin | "Where does this come from?" | Trace back to source |
 | **Calculated event** | SellerRatingCalculated, InventoryTotal | **Move to read model** (recalculated state is projection) |
 | **False duplicate** | Two nodes share a title | Check `data.linkedTo` on both before reporting — a linked copy is intentional, not a gap |
+| **Missing slice** | COMMAND/READMODEL column with no SLICE_BORDER | Define a slice for that column (unless it's a linked copy) |
 
 ## Reference Documentation
 
