@@ -322,7 +322,6 @@ program
   .action(() => {
     const targets = [
       join(process.cwd(), '.agent-modeling-kit'),
-      join(process.cwd(), '.claude', 'skills'),
     ];
 
     for (const t of targets) {

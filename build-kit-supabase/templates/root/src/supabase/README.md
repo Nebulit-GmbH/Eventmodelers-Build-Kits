@@ -5,30 +5,15 @@ This backend API uses Supabase JWT tokens for authentication. Clients must inclu
 
 ## Quick Start
 
-1. **Set up environment variables** in `.env.local`:
+1. **Set up environment variables** in `.env`:
    ```env
-   NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+   SUPABASE_URL=http://127.0.0.1:54321
+   SUPABASE_PUBLISHABLE_KEY=your-anon-key-here
    ```
 
 2. **Start the server**: `npm run dev`
 
-3. **Get a test JWT token**:
-    - Visit http://localhost:3000/auth/login
-    - Create an account or login
-    - Copy the JWT token displayed
-    - Use it in your API requests
-
-## Test Login Page
-
-A simple test login page is available at `/auth/login` that:
-
-- Allows you to create accounts or login
-- Displays the JWT token after authentication
-- Provides a "Test API Call" button
-- Shows a cURL example for testing
-
-This page is for testing purposes only.
+3. **Get a test JWT token**: sign in a user via the Supabase client SDK or `supabase auth` CLI and use the returned `access_token` in your API requests.
 
 ## How It Works
 
@@ -57,22 +42,6 @@ app.get('/api/protected', async (req: Request, res: Response) => {
         message: 'Protected data',
         userId: user.id,
         email: user.email
-    });
-});
-```
-
-### Option 2: Using `authMiddleware`
-
-```typescript
-import {authMiddleware} from './src/supabase/authMiddleware';
-
-app.get('/api/protected', authMiddleware, (req, res) => {
-    // User is available on req.user after middleware
-    const user = (req as any).user;
-
-    res.json({
-        message: 'Protected data',
-        user: user
     });
 });
 ```
@@ -137,7 +106,8 @@ Returns current authenticated user information.
 
 - **`api.ts`**: Supabase client creation
 - **`requireUser.ts`**: JWT verification function
-- **`authMiddleware.ts`**: Express middleware for protecting routes
+- **`requireSysUser.ts`**: Requires an authenticated system ("sys") user
+- **`requireOrgaAdmin.ts`**: Requires the caller to be an org admin
 - **`README.md`**: This documentation
 
 ## Architecture
@@ -152,7 +122,7 @@ Authorization: Bearer <JWT>
 Express Route
     |
     v
-requireUser() / authMiddleware
+requireUser() / requireSysUser() / requireOrgaAdmin()
     |
     v
 Supabase JWT Verification
