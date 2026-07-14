@@ -42,7 +42,7 @@ never reuse a model across slices.
 
 ## Step 2 — Write the slice `.cs` file
 
-`<Module>/<Feature>/<Slice>/<Slice>.cs` — namespace `<Root>.<Feature>.<Slice>`.
+`<Module>/<Feature>/<Slice>/<Slice>.cs` — namespace `<Root>.<Module>.<Feature>.<Slice>` (mirror the folders; drop any `.Features.`).
 
 ### Read model + static query methods
 ```csharp

@@ -30,6 +30,11 @@ async function prompt(question) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Directories that must never be copied into the user's project (dependencies and build output
+// that may exist locally when installing from a source checkout — the published package excludes
+// them via .gitignore/.npmignore, but a local `node src/cli.js` run would otherwise carry them in).
+const IGNORED_COPY_DIRS = ['node_modules', 'obj', 'bin', 'wwwroot', '.vs'];
+
 const program = new Command();
 
 program
@@ -58,19 +63,21 @@ program
     console.log('📦 Installing files...\n');
     const items = readdirSync(templatesSource);
     for (const item of items) {
+      if (IGNORED_COPY_DIRS.includes(item)) continue;
       const sourcePath = join(templatesSource, item);
 
       // templates/root/ contents spread into the project root
       if (item === 'root' && statSync(sourcePath).isDirectory()) {
         const rootItems = readdirSync(sourcePath);
         for (const rootItem of rootItems) {
+          if (IGNORED_COPY_DIRS.includes(rootItem)) continue;
           const rootSourcePath = join(sourcePath, rootItem);
           const rootTargetPath = join(rootDir, rootItem);
           try {
             if (statSync(rootSourcePath).isDirectory()) {
               cpSync(rootSourcePath, rootTargetPath, {
                 recursive: true,
-                filter: (s) => !relative(rootSourcePath, s).split(sep).includes('node_modules'),
+                filter: (s) => !relative(rootSourcePath, s).split(sep).some((seg) => IGNORED_COPY_DIRS.includes(seg)),
               });
             } else {
               cpSync(rootSourcePath, rootTargetPath);
@@ -87,13 +94,14 @@ program
       if (item === 'build-kit' && statSync(sourcePath).isDirectory()) {
         const kitItems = readdirSync(sourcePath);
         for (const kitItem of kitItems) {
+          if (IGNORED_COPY_DIRS.includes(kitItem)) continue;
           const kitSourcePath = join(sourcePath, kitItem);
           const kitTargetPath = join(targetDir, kitItem);
           try {
             if (statSync(kitSourcePath).isDirectory()) {
               cpSync(kitSourcePath, kitTargetPath, {
                 recursive: true,
-                filter: (s) => !relative(kitSourcePath, s).split(sep).includes('node_modules'),
+                filter: (s) => !relative(kitSourcePath, s).split(sep).some((seg) => IGNORED_COPY_DIRS.includes(seg)),
               });
             } else {
               cpSync(kitSourcePath, kitTargetPath);
@@ -111,7 +119,7 @@ program
         if (statSync(sourcePath).isDirectory()) {
           cpSync(sourcePath, targetPath, {
             recursive: true,
-            filter: (s) => !relative(sourcePath, s).split(sep).includes('node_modules'),
+            filter: (s) => !relative(sourcePath, s).split(sep).some((seg) => IGNORED_COPY_DIRS.includes(seg)),
           });
         } else {
           cpSync(sourcePath, targetPath);
