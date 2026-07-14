@@ -1,7 +1,10 @@
 # Write Slice Patterns — Cratis Arc + Chronicle
 
 Complete code for state-change (write) slices. All artifacts go in a single
-`Features/<Feature>/<Slice>/<Slice>.cs` file. The example slices use no file header (match the project). Namespace drops `.Features.`.
+`<Module>/<Feature>/<Slice>/<Slice>.cs` file (the shipped starter uses `SomeModule/SomeFeature/...` —
+match whatever the existing slices use). The example slices use no file header (match the project).
+Namespace mirrors the folders and drops any `.Features.`. The examples below use short illustrative
+names (`MyApp.Authors.Registration`); mirror your project's actual module/feature layout instead.
 
 ---
 

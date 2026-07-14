@@ -27,8 +27,8 @@ file**:
 Before writing code, read the project's `CLAUDE.md` and **at least one existing slice** (the starter
 ships one under `SomeModule/SomeFeature/`). Confirm:
 
-- The namespace root (read `global.json` and existing `.cs` files — never hard-code it; drop the
-  `.Features.` segment).
+- The namespace root (read the `.csproj` `<RootNamespace>` and existing `.cs` files — never
+  hard-code it; the namespace mirrors the folders and drops any `.Features.` segment).
 - How existing commands return results (single event / tuple / `Result<,>` / `void`).
 - How `ConceptAs<T>` identity types are declared and where they live.
 - Whether existing `.cs` files use a file header (the starter uses none).

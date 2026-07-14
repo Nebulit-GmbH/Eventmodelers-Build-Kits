@@ -1,7 +1,10 @@
 # Read Slice Patterns — Cratis Arc + Chronicle
 
 Complete code for state-view (read) slices. All artifacts go in a single
-`Features/<Feature>/<Slice>/<Slice>.cs`. The example slices use no file header (match the project); namespace drops `.Features.`.
+`<Module>/<Feature>/<Slice>/<Slice>.cs` (the shipped starter uses `SomeModule/SomeFeature/...` — match
+whatever the existing slices use). The example slices use no file header (match the project); namespace
+mirrors the folders and drops any `.Features.`. Examples below use short illustrative names
+(`MyApp.Authors.Listing`); mirror your project's actual module/feature layout instead.
 
 ---
 

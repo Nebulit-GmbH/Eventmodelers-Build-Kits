@@ -4,15 +4,15 @@ Patterns and gotchas discovered during task processing. Update this file wheneve
 
 ## Cratis non-negotiables (seed — full detail in `.claude/skills/_shared/cratis-conventions.md`)
 
-- ALL backend artifacts for a slice go in ONE `.cs` file: `Features/<Feature>/<Slice>/<Slice>.cs`. Never split into `Commands/`, `Handlers/`, `Events/`.
+- ALL backend artifacts for a slice go in ONE `.cs` file under the project's slice folder (the shipped starter uses `<Module>/<Feature>/<Slice>/<Slice>.cs` — discover the real top-level folder from an existing slice). Never split into `Commands/`, `Handlers/`, `Events/`.
 - `[Command]` records define `Handle()` directly on the record — never a separate handler class.
-- `[EventType]` takes NO arguments (the type name is the id); events are past-tense and never nullable.
+- `[EventType]` takes NO attribute arguments (the type name is the id); events are past-tense and never nullable.
 - Use `ConceptAs<T>` for every identity/value — no raw `Guid`/`string` in the domain.
 - Read models: `[ReadModel]` record with `public static` query methods on it; observable queries return `ISubject<T>` directly (never `Task<ISubject<T>>`). Projections join events, never read models.
 - Reactors implement the marker `IReactor`; dispatch is by the first parameter type. Write new events only via `ICommandPipeline.Execute(...)`, never `IEventLog`. Reactors must be idempotent and stateless.
-- Namespace is `<Root>.<Feature>.<Slice>` — drop the `.Features.` segment. Find `<Root>` from `global.json` / existing slices; never hard-code.
+- Namespace mirrors the folders and drops any `.Features.` segment: `<Root>.<Module>.<Feature>.<Slice>` (the starter's `<Root>` is `CratisApp`). Find `<Root>` from the `.csproj` `<RootNamespace>` / existing slices; never hard-code.
 - `dotnet build` generates the TypeScript proxies — backend must compile before a slice's frontend can reference them. Order: Backend → build → Specs → Frontend → Composition.
-- Quality gate: `dotnet build` with zero warnings/errors (warnings = errors); `dotnet test --filter "FullyQualifiedName~<SliceName>"`. Copyright header on every `.cs` file.
+- Quality gate: `dotnet build` with zero warnings/errors (warnings = errors); `dotnet test --filter "FullyQualifiedName~<SliceName>"`. File header only if the project's existing `.cs` files already carry one (the shipped example uses none).
 
 ## tasks.json
 

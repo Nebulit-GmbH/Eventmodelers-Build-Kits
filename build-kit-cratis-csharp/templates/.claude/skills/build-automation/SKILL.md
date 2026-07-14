@@ -41,7 +41,7 @@ If a command field has no source in the trigger event or an injected service, do
 
 ## Step 2 — Write the reactor in the slice `.cs` file
 
-`<Module>/<Feature>/<Slice>/<Slice>.cs` — namespace `<Root>.<Feature>.<Slice>`.
+`<Module>/<Feature>/<Slice>/<Slice>.cs` — namespace `<Root>.<Module>.<Feature>.<Slice>` (mirror the folders; drop any `.Features.`).
 
 ### Automation — side effect
 ```csharp

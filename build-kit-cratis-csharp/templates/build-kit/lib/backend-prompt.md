@@ -42,14 +42,17 @@ implementing.
     artifacts exist, every specification in the JSON has an executable equivalent in code, and it
     fulfills `slice.json`. There must be no specification in the JSON without a code equivalent.
 12. **Follow the Cratis non-negotiables** (full detail in `cratis-conventions.md`):
-    - ALL backend artifacts for the slice in ONE `.cs` file under
-      `Features/<Feature>/<Slice>/<Slice>.cs`.
+    - ALL backend artifacts for the slice in ONE `.cs` file under the project's slice folder
+      (the shipped starter uses `<Module>/<Feature>/<Slice>/<Slice>.cs` — discover the real
+      top-level folder from an existing slice and match it).
     - `[Command]` records with `Handle()` on the record — never separate handler classes.
-    - `[EventType]` with NO arguments; past-tense names; no nullable properties.
+    - `[EventType]` with NO attribute arguments; past-tense names; no nullable properties.
     - `ConceptAs<T>` for every identity / value — no raw `Guid` / `string` in the domain.
-    - Namespace `<Root>.<Feature>.<Slice>` — drop the `.Features.` segment. Read `global.json` and
-      existing slices to find the root; never hard-code it.
-    - Copyright header on every `.cs` file.
+    - Namespace mirrors the folders and drops any `.Features.` segment
+      (`<Root>.<Module>.<Feature>.<Slice>`; the starter's `<Root>` is `CratisApp`). Read the
+      `<RootNamespace>` in the `.csproj` and existing slices to find the root; never hard-code it.
+    - File header: only if the project's existing `.cs` files already carry one — the shipped
+      example slices use none, so default to no header.
 13. Run quality checks — it is enough to run the tests for the slice only, not all tests. Run from the
     **project root** (where the `.csproj`/solution lives), not the kit folder:
     - Build: `dotnet build`  (zero warnings, zero errors — warnings are treated as errors; this also
@@ -93,7 +96,7 @@ If you discover a **reusable** pattern, add it to a `## Codebase Patterns` secti
 
 ```
 ## Codebase Patterns
-- Namespace root is `<Root>`; slices live under Features/<Feature>/<Slice>/
+- Namespace root is `<Root>`; slices live under <Module>/<Feature>/<Slice>/
 - Read models expose queries as public static methods on the [ReadModel] record
 - DCB rules: inject the read model as a Handle() parameter
 ```
