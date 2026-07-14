@@ -18,8 +18,6 @@
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
     "react-router-dom": "^7.0.0",
-    "reflect-metadata": "0.2.2",
-    "tsyringe": "4.10.0",
     "ts-deepmerge": "^7.0.0",
     "usehooks-ts": "^3.1.0"
   },
