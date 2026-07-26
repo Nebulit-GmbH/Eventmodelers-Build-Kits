@@ -215,9 +215,11 @@ interface NodeChangeEvent {
     data: {
       backgroundColor?: string
       title?: string
-      type?: string
       url?: string
       // ...other node data fields
+      // Do NOT set a "type" here — the server derives the node's render type from
+      // meta.type automatically. Setting one yourself risks it being read as the
+      // render type itself and breaking rendering.
     }
   }
   meta?: {

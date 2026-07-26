@@ -78,8 +78,20 @@ export type {SliceName}ReadModel = {
     // ... fields from slice.json readModel
 };
 
-export const getKnexInstance = (connectionString: string): Knex =>
-    knex({client: 'pg', connection: connectionString, pool: {min: 0, max: 1}});
+// Knex here is used purely as a SQL builder/executor — it is never given its
+// own connection string or pool. Building a query with `.toQuery()` never
+// opens a connection at all. Any query that needs to actually *execute*
+// inside evolve() (see "Async DB lookup" below) must be run via
+// `.connection(context.connection.client)`, which pins it to the same raw pg
+// client Emmett already holds open for this event's transaction — instead of
+// opening a brand-new Postgres connection per event. That matters for two
+// reasons: it avoids extra connection churn against the pool (a real
+// contributor to connection exhaustion under load), and it means the query
+// commits or rolls back atomically with the event append — a lookup or write
+// done on a separate connection would not see the current transaction's
+// uncommitted state and would not be undone if the append later fails
+// (e.g. an optimistic-concurrency conflict).
+export const getKnexInstance = (): Knex => knex({client: 'pg'});
 
 type {SliceName}Events = {EventA} | {EventB};
 
@@ -87,40 +99,42 @@ export const {SliceName}Projection = postgreSQLRawSQLProjection<{SliceName}Event
     name: '{SliceName}Projection',
     canHandle: ['{EventA}', '{EventB}'],
     evolve: async (event, context): Promise<SQL[]> => {
-        const db = getKnexInstance(context.connection.connectionString);
+        const db = getKnexInstance();
 
-        try {
-            switch (event.type) {
-                case '{EventA}':
-                    // Insert with upsert — use for create/update events
-                    return [sql(db(tableName)
-                        .withSchema('public')
-                        .insert({
-                            id:     event.data.id,
-                            field1: event.data.field1,
-                            field2: event.data.field2,
-                        })
-                        .onConflict('id')
-                        .merge(['field1', 'field2'])
-                        .toQuery())];
+        switch (event.type) {
+            case '{EventA}':
+                // Insert with upsert — use for create/update events
+                return [sql(db(tableName)
+                    .withSchema('public')
+                    .insert({
+                        id:     event.data.id,
+                        field1: event.data.field1,
+                        field2: event.data.field2,
+                    })
+                    .onConflict('id')
+                    .merge(['field1', 'field2'])
+                    .toQuery())];
 
-                case '{EventB}':
-                    // Delete — use for cancellation/removal events
-                    return [sql(db(tableName)
-                        .withSchema('public')
-                        .where({id: event.data.id})
-                        .delete()
-                        .toQuery())];
+            case '{EventB}':
+                // Delete — use for cancellation/removal events
+                return [sql(db(tableName)
+                    .withSchema('public')
+                    .where({id: event.data.id})
+                    .delete()
+                    .toQuery())];
 
-                default:
-                    return [];
-            }
-        } finally {
-            await db.destroy();
+            default:
+                return [];
         }
     },
 });
 ```
+
+Note: nothing here calls `db.destroy()` — this Knex instance never opens its own
+connection or pool, so there is nothing to tear down. `evolve()`'s returned SQL
+is executed later by Emmett itself (`context.execute.batchCommand(...)`), on
+its own transaction — that part is already atomic with the event append
+without any extra work.
 
 ### SQL operation patterns
 
@@ -154,10 +168,14 @@ return [sql(db(tableName)
 
 **Async DB lookup before update** (when you need to read current state first):
 ```typescript
+// This query actually executes (unlike the .toQuery()-only patterns above),
+// so it MUST be pinned to Emmett's own client via .connection(...) — otherwise
+// it opens a brand-new, untransacted Postgres connection just to do a read.
 const row = await db(tableName)
     .withSchema('public')
     .where({id: event.data.id})
     .select('field')
+    .connection(context.connection.client)
     .first();
 
 if (!row) return [];
@@ -170,7 +188,9 @@ return [sql(db(tableName)
     .toQuery())];
 ```
 
-Always wrap in `try/finally` and call `db.destroy()` in the `finally` block.
+Do not call `db.destroy()` anywhere in `evolve()` — this Knex instance never owns
+a connection or pool (see Step 3), so there's nothing to destroy, and destroying
+it would tear down `context.connection.client` before Emmett is done with it.
 
 ---
 
@@ -381,7 +401,9 @@ src/common/
 - [ ] `tableName` constant matches the migration table name exactly
 - [ ] Projection registered in `loadPostgresEventstore.ts`
 - [ ] `canHandle` lists every event type the projection reacts to
-- [ ] `finally { await db.destroy() }` present in every `evolve` handler
+- [ ] `getKnexInstance()` takes no connection string/pool — it's a pure SQL builder
+- [ ] Any query in `evolve()` that actually executes (not just `.toQuery()`) is run via `.connection(context.connection.client)`
+- [ ] No `db.destroy()` calls in `evolve()` — the projection never owns its own connection
 - [ ] Tests use `runFlywayMigrations()` to apply the real schema
 - [ ] One test scenario per specification in slice.json
 o- [ ] Every field in the read model definition in slice.json has a column in the migration and a field in the TypeScript type — no invented columns
