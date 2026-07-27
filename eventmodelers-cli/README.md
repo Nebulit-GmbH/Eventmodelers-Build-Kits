@@ -154,15 +154,17 @@ Which skills install depends on the chosen stack — see `stacks/<name>/template
 ## Commands
 
 ```bash
-npx @eventmodelers/cli init --stack <name>   # scaffold a stack + install + configure (alias: install)
-npx @eventmodelers/cli init-modeling         # skills + agent loop only, no backend scaffold (alias: modeling)
-npx @eventmodelers/cli run                   # start the agent loop (ralph-claude.js) from the installed kit dir
-npx @eventmodelers/cli run --ollama          # same, via local Ollama (ralph-ollama.js)
-npx @eventmodelers/cli run --bash            # bash-only loop, no realtime (ralph.sh)
-npx @eventmodelers/cli stacks                # list available stacks
-npx @eventmodelers/cli status                # check what's installed
-npx @eventmodelers/cli config                # print the fully resolved config (file + env), token masked
-npx @eventmodelers/cli uninstall             # remove the installed kit dir
+npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
+npx @eventmodelers/cli init --stack <name> --global # same, but skills go to ~/.claude/skills/ (every project)
+npx @eventmodelers/cli init-modeling                # skills + agent loop only, no backend scaffold (alias: modeling)
+npx @eventmodelers/cli init-modeling --global       # same, but skills go to ~/.claude/skills/ (every project)
+npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
+npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
+npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
+npx @eventmodelers/cli stacks                       # list available stacks
+npx @eventmodelers/cli status                       # check what's installed
+npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
+npx @eventmodelers/cli uninstall                    # remove the installed kit dir
 ```
 
 `run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
