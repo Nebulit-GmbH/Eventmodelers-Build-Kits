@@ -41,6 +41,16 @@ your-project/
 
 The four backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc. `modeling-kit` only installs skills + the agent loop, with no backend opinion.
 
+### Installing skills globally
+
+By default, skills are copied into the project's own `.claude/skills/`. Pass `--global` to `init` or `init-modeling` to install them into `~/.claude/skills/` instead — available in every project without re-running the installer each time:
+
+```bash
+npx @eventmodelers/cli init-modeling --global
+```
+
+Everything else (the kit dir, project scaffold, credentials, MCP registration) still targets the current directory as usual — `--global` only changes where skills land.
+
 ## Claude execution & config resolution
 
 During install you can optionally point the agent at a local LLM server (vLLM, Ollama) instead of the default Claude Code endpoint, and/or pin a specific model:

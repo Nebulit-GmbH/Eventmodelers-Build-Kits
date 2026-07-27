@@ -15,6 +15,7 @@ import {
 } from 'fs';
 import { execSync } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
+import { homedir } from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -285,10 +286,17 @@ async function installStack(stackKey, stackCfg, options = {}) {
       process.exit(1);
     }
 
-    // --- 1. Install skills and Claude settings into project root ---
-    console.log('📦 Installing Claude skills...');
-    console.log('   Copies skills and settings into .claude/ so Claude Code picks them up automatically.\n');
-    copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
+    // --- 1. Install skills (project-local by default, or ~/.claude/skills/ with --global) ---
+    if (options.global) {
+      const globalSkillsDir = join(homedir(), '.claude', 'skills');
+      console.log('📦 Installing Claude skills globally...');
+      console.log(`   Copies skills into ${globalSkillsDir} so they're available in every project, not just this one.\n`);
+      copyDirContents(join(templatesSource, '.claude', 'skills'), globalSkillsDir);
+    } else {
+      console.log('📦 Installing Claude skills...');
+      console.log('   Copies skills and settings into .claude/ so Claude Code picks them up automatically.\n');
+      copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
+    }
 
     // --- 2. Spread stack scaffold files into the project root ---
     const rootSrc = join(templatesSource, 'root');
@@ -500,7 +508,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log('       npx @eventmodelers/cli run --ollama\n');
     console.log('Or using the bash loop only (no realtime):');
     console.log('       npx @eventmodelers/cli run --bash\n');
-    console.log(`Skills are ready in .claude/skills/ — use /connect to set a board ID.\n`);
+    console.log(`Skills are ready in ${options.global ? join(homedir(), '.claude', 'skills') : '.claude/skills/'} — use /connect to set a board ID.\n`);
     console.log('💡 Recommended: add Chrome DevTools MCP for browser inspection:');
     console.log('       claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest\n');
 }
@@ -519,19 +527,21 @@ program
   .alias('install')
   .description('Scaffold a stack + install the agent modeling kit into the current directory')
   .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')})`)
+  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .action(async (opts, command) => {
     const stackKey = await resolveStack(opts.stack);
     const globalOpts = command.optsWithGlobals();
-    await installStack(stackKey, STACKS[stackKey], { configPath: globalOpts.config, print: globalOpts.print });
+    await installStack(stackKey, STACKS[stackKey], { configPath: globalOpts.config, print: globalOpts.print, global: opts.global });
   });
 
 program
   .command('init-modeling')
   .alias('modeling')
   .description('Install skills + the agent loop only — no backend scaffold')
+  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
-    await installStack(MODELING_KIT.key, MODELING_KIT, { configPath: globalOpts.config, print: globalOpts.print });
+    await installStack(MODELING_KIT.key, MODELING_KIT, { configPath: globalOpts.config, print: globalOpts.print, global: opts.global });
   });
 
 program
