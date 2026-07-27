@@ -1,0 +1,35 @@
+{
+  "name": "@eventmodelers/cli",
+  "version": "1.0.0",
+  "description": "Eventmodelers CLI — real-time Claude agent + skills for Claude Code, for any stack (Node, Supabase, Axon, Cratis, or modeling-only)",
+  "type": "module",
+  "bin": {
+    "eventmodelers": "cli.js"
+  },
+  "files": [
+    "cli.js",
+    "shared",
+    "stacks",
+    "README.md"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "eventmodelers",
+    "event-storming",
+    "event-driven",
+    "realtime-agent",
+    "ddd"
+  ],
+  "author": "Martin Dilger",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^12.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
