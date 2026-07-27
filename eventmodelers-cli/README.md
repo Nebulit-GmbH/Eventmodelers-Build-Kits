@@ -164,10 +164,30 @@ npx @eventmodelers/cli run --bash                   # bash-only loop, no realtim
 npx @eventmodelers/cli stacks                       # list available stacks
 npx @eventmodelers/cli status                       # check what's installed
 npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
-npx @eventmodelers/cli uninstall                    # remove the installed kit dir
+npx @eventmodelers/cli uninstall                    # remove everything init/init-modeling installed
 ```
 
 `run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
+
+### Uninstall
+
+Every `init`/`init-modeling` run writes an install manifest into `<kit-dir>/.eventmodelers/install-manifest.json` recording exactly what it put down. `uninstall` reads that manifest back and removes only:
+
+- the kit dir (`.build-kit/` or `.agent-modeling-kit/`)
+- the skills it copied — from `.claude/skills/` normally, or `~/.claude/skills/` if it was installed with `--global`
+- the `eventmodelers` entry it added to `.claude/settings.json`'s `mcpServers` (the rest of that file, and the file itself, is left in place)
+
+It deliberately **never** touches the root project scaffold (`package.json`, `src/`, `server.ts`, migrations, `docker-compose.yml`, etc.) — that's your actual application code, not tooling, so `uninstall` won't delete it even though `init` wrote it.
+
+If a kit dir predates this tracking (no manifest present), `uninstall` falls back to only removing the kit dir itself and tells you so — any skills or MCP registration from that older install need to be cleaned up by hand.
+
+Registering the MCP server with another harness (`claude mcp add`, `code --add-mcp`, or the manual Cursor/Windsurf steps) happens outside this project's files, so `uninstall` doesn't attempt to undo it — remove it yourself in that harness if you connected one.
+
+```bash
+npx @eventmodelers/cli uninstall                    # remove the one installed kit dir (errors if more than one is present)
+npx @eventmodelers/cli uninstall --build-kit         # remove .build-kit/ specifically
+npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-kit/ specifically
+```
 
 `--config <path>` and `--print` are global flags accepted by every command. `--print` skips the "connect MCP globally?" prompt during install and just prints the `claude mcp add` command instead of running it — combined with the env vars above, `--print` makes `init` fully non-interactive:
 

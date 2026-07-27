@@ -287,15 +287,24 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // --- 1. Install skills (project-local by default, or ~/.claude/skills/ with --global) ---
+    // Recorded into the install manifest (step 8) so `uninstall` can remove exactly
+    // these files later and nothing the user added independently.
+    const claudeSkillsSrc = join(templatesSource, '.claude', 'skills');
+    const installedSkills = existsSync(claudeSkillsSrc) ? readdirSync(claudeSkillsSrc) : [];
+    let claudeExtras = [];
+
     if (options.global) {
       const globalSkillsDir = join(homedir(), '.claude', 'skills');
       console.log('📦 Installing Claude skills globally...');
       console.log(`   Copies skills into ${globalSkillsDir} so they're available in every project, not just this one.\n`);
-      copyDirContents(join(templatesSource, '.claude', 'skills'), globalSkillsDir);
+      copyDirContents(claudeSkillsSrc, globalSkillsDir);
     } else {
       console.log('📦 Installing Claude skills...');
       console.log('   Copies skills and settings into .claude/ so Claude Code picks them up automatically.\n');
       copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
+      claudeExtras = existsSync(join(templatesSource, '.claude'))
+        ? readdirSync(join(templatesSource, '.claude')).filter((f) => f !== 'skills')
+        : [];
     }
 
     // --- 2. Spread stack scaffold files into the project root ---
@@ -501,6 +510,17 @@ async function installStack(stackKey, stackCfg, options = {}) {
       }
     }
 
+    // --- 8. Install manifest (drives precise `uninstall` later) ---
+    // Only the footprint listed here is ever removed by `uninstall` — the root
+    // scaffold (step 2) is real project source the user builds on, so it's
+    // deliberately left out and never touched by uninstall.
+    const manifestDir = join(kitDir, '.eventmodelers');
+    mkdirSync(manifestDir, { recursive: true });
+    writeFileSync(
+      join(manifestDir, 'install-manifest.json'),
+      JSON.stringify({ stack: stackKey, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: true }, null, 2),
+    );
+
     console.log('\n✅ Done!\n');
     console.log('Start the agent (realtime + task loop in one process):');
     console.log('       npx @eventmodelers/cli run\n');
@@ -589,9 +609,60 @@ program
     console.log(`\nNot a stack — skills + agent loop only, no backend: npx @eventmodelers/cli init-modeling`);
   });
 
+// Removes exactly what a given `init`/`init-modeling` run put down — read back from
+// the install manifest written at the end of installStack() — and nothing else: not
+// unrelated skills the user added by hand, not the root project scaffold.
+function uninstallKitDir(kitDir, cwd) {
+  const manifestPath = join(kitDir, '.eventmodelers', 'install-manifest.json');
+  const manifest = readJsonSafe(manifestPath);
+
+  if (manifest.skills?.length) {
+    const skillsDir = manifest.global ? join(homedir(), '.claude', 'skills') : join(cwd, '.claude', 'skills');
+    for (const name of manifest.skills) {
+      const p = join(skillsDir, name);
+      if (existsSync(p)) {
+        rmSync(p, { recursive: true, force: true });
+        console.log(`  ✓ Removed ${relative(cwd, p) || p}`);
+      }
+    }
+  }
+
+  if (manifest.claudeExtras?.length && !manifest.global) {
+    for (const name of manifest.claudeExtras) {
+      const p = join(cwd, '.claude', name);
+      if (existsSync(p)) {
+        rmSync(p, { recursive: true, force: true });
+        console.log(`  ✓ Removed ${relative(cwd, p)}`);
+      }
+    }
+  }
+
+  if (manifest.mcpRegistered) {
+    const settingsPath = join(cwd, '.claude', 'settings.json');
+    if (existsSync(settingsPath)) {
+      try {
+        const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+        if (settings.mcpServers?.[MCP_SERVER_NAME]) {
+          delete settings.mcpServers[MCP_SERVER_NAME];
+          if (Object.keys(settings.mcpServers).length === 0) delete settings.mcpServers;
+          writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+          console.log(`  ✓ Removed ${MCP_SERVER_NAME} MCP entry from ${relative(cwd, settingsPath)}`);
+        }
+      } catch {}
+    }
+  }
+
+  if (!existsSync(manifestPath)) {
+    console.log(`  ℹ️  ${relative(cwd, kitDir)} predates install tracking — only the kit dir itself was removed; any installed skills or MCP registration must be cleaned up by hand.`);
+  }
+
+  rmSync(kitDir, { recursive: true, force: true });
+  console.log(`  ✓ Removed ${relative(cwd, kitDir) || kitDir}`);
+}
+
 program
   .command('uninstall')
-  .description('Remove the installed kit dir from the current directory')
+  .description('Remove everything init/init-modeling installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), and its MCP entry in .claude/settings.json. Leaves the root project scaffold untouched.')
   .option('--build-kit', `Remove ${STACKS.node.kitDirName}/ (the backend-stack kit dir)`)
   .option('--modeling-kit', `Remove ${MODELING_KIT.kitDirName}/ (the modeling-only kit dir)`)
   .action((opts) => {
@@ -621,8 +692,7 @@ program
     }
 
     for (const t of targets) {
-      rmSync(t, { recursive: true, force: true });
-      console.log(`  ✓ Removed ${t}`);
+      uninstallKitDir(t, cwd);
     }
     console.log('✅ Uninstalled');
   });
