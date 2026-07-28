@@ -417,41 +417,15 @@ async function installStack(stackKey, stackCfg, options = {}) {
       console.log('\n  ✓ Config already present — skipping credential prompt');
     }
 
-    // --- 6. Claude execution (optional) ---
-    console.log('\n🧠 Configuring Claude execution (optional)...');
-    console.log('   Point the agent at a local vLLM/Ollama endpoint and/or pin a specific model, instead of the default Claude Code setup.');
-
-    if (process.env.EVENTMODELERS_ANTHROPIC_BASE_URL || process.env.EVENTMODELERS_MODEL) {
-      console.log('  ✓ Using EVENTMODELERS_ANTHROPIC_BASE_URL / EVENTMODELERS_MODEL from environment — skipping prompt');
-    } else if (options.print) {
-      console.log('  ✓ --print — skipping prompt, keeping existing Claude execution settings');
-    } else {
-      const presetUrls = ['', 'http://localhost:8000', 'http://localhost:11434'];
-      let defaultUrlIndex = presetUrls.indexOf(config.anthropicBaseUrl || '');
-      if (defaultUrlIndex === -1) defaultUrlIndex = 0;
-
-      let anthropicBaseUrl = await selectPrompt('Anthropic Base URL:', [
-        { label: 'None — use the default Claude Code endpoint', value: '' },
-        { label: 'Local vLLM   (http://localhost:8000)', value: 'http://localhost:8000' },
-        { label: 'Local Ollama (http://localhost:11434)', value: 'http://localhost:11434' },
-        { label: 'Custom…', value: '__custom__' },
-      ], defaultUrlIndex);
-
-      if (anthropicBaseUrl === '__custom__') {
-        anthropicBaseUrl = await prompt('  Custom Anthropic Base URL: ');
-      }
-
-      const claudeModel = await prompt(`  Model ${config.model ? `[${config.model}]` : '(optional, press Enter to skip)'}: `);
-
-      if (anthropicBaseUrl) config.anthropicBaseUrl = anthropicBaseUrl;
-      else delete config.anthropicBaseUrl;
-      if (claudeModel) config.model = claudeModel;
-    }
-
+    // Claude vs. Ollama, and any custom Anthropic-compatible base URL, is a `run`-time
+    // choice (`eventmodelers run` vs `--ollama`) — not an install-time one. Power users
+    // can still pin config.anthropicBaseUrl/model via EVENTMODELERS_ANTHROPIC_BASE_URL /
+    // EVENTMODELERS_MODEL env vars or by editing config.json directly; loadEffectiveConfig
+    // already picks those up above, so nothing further to do here.
     writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
 
-    // --- 7. MCP server in .claude/settings.json ---
+    // --- 6. MCP server in .claude/settings.json ---
     console.log('\n🔌 Configuring MCP server...');
     console.log('   Registers the Eventmodelers MCP server in .claude/settings.json so Claude Code can call modeling tools directly.\n');
     const claudeSettingsDir = join(targetDir, '.claude');
@@ -510,7 +484,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
       }
     }
 
-    // --- 8. Install manifest (drives precise `uninstall` later) ---
+    // --- 7. Install manifest (drives precise `uninstall` later) ---
     // Only the footprint listed here is ever removed by `uninstall` — the root
     // scaffold (step 2) is real project source the user builds on, so it's
     // deliberately left out and never touched by uninstall.
