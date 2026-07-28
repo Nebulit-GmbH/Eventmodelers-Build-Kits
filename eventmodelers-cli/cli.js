@@ -132,6 +132,67 @@ async function prompt(question) {
   });
 }
 
+// Reads a pasted block of credentials, which may span one line (minified JSON,
+// or comma-separated values) or several (pretty-printed JSON). Stops as soon as
+// the accumulated text parses, or on a blank line, so a single-line paste + Enter
+// doesn't require a second Enter to finish.
+async function promptPasteBlock() {
+  const lines = [];
+  while (lines.length < 20) {
+    const line = await new Promise((resolve) => getSharedRl().question('', resolve));
+    if (line.trim() === '') {
+      if (lines.length > 0) break;
+      continue;
+    }
+    lines.push(line);
+    try {
+      JSON.parse(lines.join('\n'));
+      break;
+    } catch {
+      // not yet valid JSON — if it's a single CSV-looking line, that's complete too
+      if (lines.length === 1 && line.includes(',')) break;
+    }
+  }
+  return lines.join('\n').trim();
+}
+
+// Accepts either a JSON object (as copied from the account page) or a comma-separated
+// line of values, in the same order as requiredFields (organizationId[, boardId], token),
+// with an optional base URL anywhere in the list.
+function parseCredentialsPaste(text, requiredFields) {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  try {
+    const obj = JSON.parse(trimmed);
+    if (obj && typeof obj === 'object') {
+      const result = {};
+      if (obj.organizationId || obj.orgId) result.organizationId = obj.organizationId || obj.orgId;
+      if (obj.boardId) result.boardId = obj.boardId;
+      if (obj.token) result.token = obj.token;
+      if (obj.baseUrl) result.baseUrl = obj.baseUrl;
+      if (requiredFields.every((f) => result[f])) return result;
+      return null;
+    }
+  } catch {
+    // not JSON — fall through to comma-separated parsing
+  }
+
+  const values = trimmed.split(/[,\n]/).map((v) => v.trim()).filter(Boolean);
+  const result = {};
+  const remaining = [];
+  for (const v of values) {
+    if (/^https?:\/\//i.test(v)) result.baseUrl = v;
+    else remaining.push(v);
+  }
+  if (remaining.length < requiredFields.length) return null;
+  requiredFields.forEach((field, i) => {
+    result[field] = remaining[i];
+  });
+
+  return requiredFields.every((f) => result[f]) ? result : null;
+}
+
 // Arrow-key single-select menu. Falls back to a numbered prompt on non-TTY stdin (e.g. piped input, CI).
 async function selectPrompt(question, choices, defaultIndex = 0) {
   if (!process.stdin.isTTY) {
@@ -386,21 +447,25 @@ async function installStack(stackKey, stackCfg, options = {}) {
       console.log('\n  ℹ️  --print — skipping credential prompt, missing fields must be set via EVENTMODELERS_* env vars or config.json');
     } else if (stillMissing) {
       const choice = await selectPrompt('How do you want to configure credentials?', [
-        { label: 'Paste JSON copied from app.eventmodelers.ai/account', value: 'paste' },
-        { label: 'Enter values manually now', value: 'manual' },
-        { label: 'Skip — configure later with /connect', value: 'skip' },
+        { label: 'Paste values copied from app.eventmodelers.ai/account', value: 'paste' },
+        { label: 'Enter values one by one', value: 'manual' },
+        { label: 'Get instructions for configuring later', value: 'instructions' },
+        { label: 'Skip for now', value: 'skip' },
       ], 1);
 
       if (choice === 'paste') {
-        console.log(`\n  Paste your credentials JSON into one of these locations:\n`);
-        console.log(`    (a) ${configPath}`);
-        console.log(`    (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
-        console.log(`  The file should look like:`);
-        const sample = stackCfg.needsBoardId
-          ? `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`
-          : `  {\n    "token": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
-        console.log(sample);
-        console.log('  Then re-run this installer, or just run the agent afterwards.\n');
+        console.log('\n  Copy your credentials from https://app.eventmodelers.ai/account,');
+        console.log('  then paste them below and press Enter:\n');
+        const pasted = await promptPasteBlock();
+        const parsed = parseCredentialsPaste(pasted, requiredFields);
+        if (parsed) {
+          config = { ...config, ...parsed };
+          writeFileSync(configPath, JSON.stringify(config, null, 2));
+          console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+        } else {
+          console.log(`\n  ⚠️  Couldn't make sense of that paste — nothing was saved.`);
+          console.log(`      Paste it into ${relative(targetDir, configPath)} yourself, or use /connect later.`);
+        }
       } else if (choice === 'manual') {
         console.log('\n🔑 Enter your Eventmodelers credentials:\n');
         config.organizationId = await prompt('  Organization ID: ');
@@ -410,6 +475,16 @@ async function installStack(stackKey, stackCfg, options = {}) {
         config.token = await prompt('  Token:           ');
         writeFileSync(configPath, JSON.stringify(config, null, 2));
         console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
+      } else if (choice === 'instructions') {
+        console.log(`\n  Paste your credentials into one of these locations:\n`);
+        console.log(`    (a) ${configPath}`);
+        console.log(`    (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
+        console.log(`  The file should look like:`);
+        const sample = stackCfg.needsBoardId
+          ? `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`
+          : `  {\n    "token": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
+        console.log(sample);
+        console.log('  Then re-run this installer, or just run the agent afterwards.\n');
       } else {
         console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
       }
