@@ -268,10 +268,14 @@ function readJsonSafe(path) {
   }
 }
 
-// Hierarchical resolution: a shared config higher up the directory tree (e.g.
-// ~/.eventmodelers/config.json with org/token/baseUrl) provides defaults, and the
-// kit dir's own config.json (project-specific — typically just boardId) overrides
-// any field it also sets. An explicit --config path bypasses this entirely.
+// Hierarchical resolution: a shared config higher up the directory tree (e.g. the
+// project root's own .eventmodelers/config.json, or ~/.eventmodelers/config.json for
+// defaults shared across every project) provides the base values — this is where
+// `init`/`init-modeling` write by default, so a modeling-kit and a build-kit installed
+// in the same project share one file. A legacy or deliberately separate config.json
+// inside the kit dir itself still overrides any field it also sets, for cases where a
+// single project needs distinct credentials per kit. An explicit --config path bypasses
+// this entirely.
 function loadEffectiveConfig(cwd, kitDir, explicitPath) {
   if (explicitPath) {
     const configPath = resolve(cwd, explicitPath);
@@ -411,9 +415,12 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log('   Stores your Organization ID (and Board ID, if this stack needs one) and token');
     console.log('   so the agent can connect to app.eventmodelers.ai.\n');
 
+    // Written at the project root (not inside the kit dir) so a modeling-kit install
+    // and a build-kit install in the same project share one config.json instead of
+    // each prompting for and storing its own copy of the same credentials.
     const configPath = options.configPath
       ? resolve(targetDir, options.configPath)
-      : join(kitDir, '.eventmodelers', 'config.json');
+      : join(targetDir, '.eventmodelers', 'config.json');
     const configDir = dirname(configPath);
     mkdirSync(configDir, { recursive: true });
 
@@ -476,9 +483,10 @@ async function installStack(stackKey, stackCfg, options = {}) {
         writeFileSync(configPath, JSON.stringify(config, null, 2));
         console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
       } else if (choice === 'instructions') {
-        console.log(`\n  Paste your credentials into one of these locations:\n`);
-        console.log(`    (a) ${configPath}`);
-        console.log(`    (b) .eventmodelers/config.json  in this directory or any parent directory\n`);
+        console.log(`\n  Paste your credentials into:\n`);
+        console.log(`    ${configPath}`);
+        console.log(`\n  (or any ancestor directory's .eventmodelers/config.json, e.g. ~/.eventmodelers/config.json`);
+        console.log(`  to share the same credentials across multiple projects)\n`);
         console.log(`  The file should look like:`);
         const sample = stackCfg.needsBoardId
           ? `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`

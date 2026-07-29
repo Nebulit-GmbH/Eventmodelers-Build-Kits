@@ -26,9 +26,9 @@ The installer prompts for your API token, Organization ID (and Board ID, for the
 
 ```
 your-project/
+├── .eventmodelers/
+│   └── config.json                ← your token + org/board (gitignored) — shared by every kit in this project
 ├── .build-kit/                    ← agent runner (name is .agent-modeling-kit/ for the modeling-kit stack)
-│   ├── .eventmodelers/
-│   │   └── config.json            ← your token + org/board (gitignored)
 │   ├── ralph-claude.js            ← realtime agent + task loop
 │   ├── ralph-ollama.js            ← same, via local Ollama
 │   ├── ralph.sh                   ← bash-only loop (no realtime)
@@ -38,6 +38,8 @@ your-project/
 ├── src/ … (or the stack's own layout)
 └── CLAUDE.md                      ← agent instructions
 ```
+
+Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
 
 The four backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc. `modeling-kit` only installs skills + the agent loop, with no backend opinion.
 
@@ -63,7 +65,7 @@ During install you can optionally point the agent at a local LLM server (vLLM, O
   ○ Custom…
 ```
 
-Both are stored alongside your credentials in `<kit-dir>/.eventmodelers/config.json`:
+Both are stored alongside your credentials in the project root's `.eventmodelers/config.json`:
 
 ```json
 {
@@ -79,14 +81,16 @@ Beyond the one-time install bootstrap, each stack's own `ralph.js`/`ralph-claude
 
 ### Hierarchical config resolution
 
-`init`, `status`, and `config` all resolve config the same way: they walk up from the project root looking for a `.eventmodelers/config.json` in a parent directory (shared defaults), then layer the kit dir's own `<kit-dir>/.eventmodelers/config.json` on top (project-specific overrides) — any field the project config also sets wins.
+`init`/`init-modeling` write credentials to the project root's `.eventmodelers/config.json` by default — that's why a build stack and `init-modeling` in the same project automatically share one file instead of each holding their own copy.
 
-This means you can keep one shared config above all your checkouts and only override what's actually per-project — typically just `boardId`:
+`init`, `status`, and `config` all resolve config the same way: they walk up from the current directory looking for a `.eventmodelers/config.json` in an ancestor directory (shared defaults), then layer the installed kit dir's own `<kit-dir>/.eventmodelers/config.json` on top, if one exists there (a per-kit override) — any field that file also sets wins.
+
+That walk-up means you can keep one shared config above all your checkouts and only override what's actually per-project — typically just `boardId`:
 
 ```
 ~/.eventmodelers/config.json                                    ← shared: organizationId, token, baseUrl
-~/projects/checkout-app/.build-kit/.eventmodelers/config.json    ← { "boardId": "<checkout-app-board>" }
-~/projects/billing-app/.build-kit/.eventmodelers/config.json     ← { "boardId": "<billing-app-board>" }
+~/projects/checkout-app/.eventmodelers/config.json               ← { "boardId": "<checkout-app-board>" }
+~/projects/billing-app/.eventmodelers/config.json                ← { "boardId": "<billing-app-board>" }
 ```
 
 Running any command from inside `~/projects/checkout-app` resolves `organizationId`/`token`/`baseUrl` from `~/.eventmodelers/config.json` and `boardId` from the project's own file — switch to `~/projects/billing-app` and only the board changes. `npx @eventmodelers/cli status` and `npx @eventmodelers/cli config` both list every file that contributed, in override order, so you can see exactly where each value came from.
