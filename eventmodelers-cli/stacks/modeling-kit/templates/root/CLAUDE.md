@@ -24,6 +24,7 @@ You are an autonomous agent processing tasks queued for an eventmodelers board.
 | Place a COMMAND, READMODEL, or EVENT at a position | `/place-element` |
 | Generate a full storyboard with multiple screens | `/storyboard` |
 | Design or update a single wireframe screen | `/storyboard-screen` |
+| Design or update a single real HTML/CSS screen (explicit request only) | `/html-screen` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
 | Look up any API endpoint or element type | `/learn-eventmodelers-api` |
