@@ -156,9 +156,13 @@ async function promptPasteBlock() {
   return lines.join('\n').trim();
 }
 
+// Canonical order the account page pastes values in, regardless of which fields a
+// given stack actually requires — a modeling-kit install (no boardId required) still
+// gets a paste containing all 4 fields, so we must not drop the ones we don't need.
+const PASTE_FIELD_ORDER = ['organizationId', 'boardId', 'token'];
+
 // Accepts either a JSON object (as copied from the account page) or a comma-separated
-// line of values, in the same order as requiredFields (organizationId[, boardId], token),
-// with an optional base URL anywhere in the list.
+// line of values, in PASTE_FIELD_ORDER, with an optional base URL anywhere in the list.
 function parseCredentialsPaste(text, requiredFields) {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -186,8 +190,13 @@ function parseCredentialsPaste(text, requiredFields) {
     else remaining.push(v);
   }
   if (remaining.length < requiredFields.length) return null;
-  requiredFields.forEach((field, i) => {
-    result[field] = remaining[i];
+  // If more values were pasted than this stack strictly requires (e.g. a boardId
+  // in a modeling-kit paste), use the full canonical order so the extra field is
+  // still captured instead of being mis-zipped against the shorter requiredFields
+  // list and silently dropped/misassigned.
+  const fieldOrder = remaining.length > requiredFields.length ? PASTE_FIELD_ORDER : requiredFields;
+  fieldOrder.forEach((field, i) => {
+    if (remaining[i] !== undefined) result[field] = remaining[i];
   });
 
   return requiredFields.every((f) => result[f]) ? result : null;
@@ -311,6 +320,7 @@ function findAllInstalledKitDirs(cwd) {
 function copyDirContents(srcDir, destDir, { skip = [] } = {}) {
   if (!existsSync(srcDir)) return;
   mkdirSync(destDir, { recursive: true });
+  let count = 0;
   for (const item of readdirSync(srcDir)) {
     if (skip.includes(item)) continue;
     const src = join(srcDir, item);
@@ -319,8 +329,9 @@ function copyDirContents(srcDir, destDir, { skip = [] } = {}) {
       recursive: true,
       filter: (s) => !relative(src, s).split(sep).includes('node_modules'),
     });
-    console.log(`  ✓ Installed ${relative(process.cwd(), dest)}`);
+    count++;
   }
+  if (count) console.log(`  ✓ Installed ${count} item${count === 1 ? '' : 's'} into ${relative(process.cwd(), destDir) || '.'}`);
 }
 
 async function resolveStack(cliStack) {
@@ -360,12 +371,10 @@ async function installStack(stackKey, stackCfg, options = {}) {
 
     if (options.global) {
       const globalSkillsDir = join(homedir(), '.claude', 'skills');
-      console.log('📦 Installing Claude skills globally...');
-      console.log(`   Copies skills into ${globalSkillsDir} so they're available in every project, not just this one.\n`);
+      console.log('📦 Installing skills globally...');
       copyDirContents(claudeSkillsSrc, globalSkillsDir);
     } else {
-      console.log('📦 Installing Claude skills...');
-      console.log('   Copies skills and settings into .claude/ so Claude Code picks them up automatically.\n');
+      console.log('📦 Installing skills...');
       copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
       claudeExtras = existsSync(join(templatesSource, '.claude'))
         ? readdirSync(join(templatesSource, '.claude')).filter((f) => f !== 'skills')
@@ -375,15 +384,14 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // --- 2. Spread stack scaffold files into the project root ---
     const rootSrc = join(templatesSource, 'root');
     if (existsSync(rootSrc)) {
-      console.log('\n📦 Installing project files...\n');
+      console.log('📦 Installing project files...');
       copyDirContents(rootSrc, targetDir);
     }
 
     // --- 3. Create the kit dir and install the agent runner ---
     const kitDir = join(targetDir, stackCfg.kitDirName);
     mkdirSync(kitDir, { recursive: true });
-    console.log(`\n📦 Installing agent kit into ${stackCfg.kitDirName}/...`);
-    console.log('   Sets up the Ralph agent loop, scripts, and configuration that drive realtime modeling.\n');
+    console.log(`📦 Installing agent kit into ${stackCfg.kitDirName}/...`);
 
     if (stackCfg.useShared) {
       copyDirContents(sharedBuildKit, kitDir);
@@ -400,8 +408,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
 
     // --- 4. Install kit dependencies ---
     if (existsSync(join(kitDir, 'package.json'))) {
-      console.log('\n📦 Installing kit dependencies...');
-      console.log('   Installs npm packages required by the agent scripts (e.g. websocket client, utilities).');
+      console.log('📦 Installing kit dependencies...');
       try {
         execSync('npm install', { cwd: kitDir, stdio: ['ignore', 'inherit', 'inherit'] });
         console.log('  ✓ kit dependencies installed');
@@ -411,9 +418,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // --- 5. Credentials ---
-    console.log('\n🔐 Configuring credentials...');
-    console.log('   Stores your Organization ID (and Board ID, if this stack needs one) and token');
-    console.log('   so the agent can connect to app.eventmodelers.ai.\n');
+    console.log('🔐 Configuring credentials...');
 
     // Written at the project root (not inside the kit dir) so a modeling-kit install
     // and a build-kit install in the same project share one config.json instead of
@@ -476,9 +481,10 @@ async function installStack(stackKey, stackCfg, options = {}) {
       } else if (choice === 'manual') {
         console.log('\n🔑 Enter your Eventmodelers credentials:\n');
         config.organizationId = await prompt('  Organization ID: ');
-        if (stackCfg.needsBoardId) {
-          config.boardId = await prompt('  Board ID:        ');
-        }
+        // Always ask, even when this stack doesn't strictly require it — it's still
+        // used as a fallback default by the agent loop (see BOARD_ID resolution).
+        const boardId = await prompt(`  Board ID${stackCfg.needsBoardId ? '' : ' (optional)'}: `);
+        if (boardId) config.boardId = boardId;
         config.token = await prompt('  Token:           ');
         writeFileSync(configPath, JSON.stringify(config, null, 2));
         console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
@@ -488,9 +494,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
         console.log(`\n  (or any ancestor directory's .eventmodelers/config.json, e.g. ~/.eventmodelers/config.json`);
         console.log(`  to share the same credentials across multiple projects)\n`);
         console.log(`  The file should look like:`);
-        const sample = stackCfg.needsBoardId
-          ? `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`
-          : `  {\n    "token": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
+        const sample = `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
         console.log(sample);
         console.log('  Then re-run this installer, or just run the agent afterwards.\n');
       } else {
@@ -509,8 +513,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
 
     // --- 6. MCP server in .claude/settings.json ---
-    console.log('\n🔌 Configuring MCP server...');
-    console.log('   Registers the Eventmodelers MCP server in .claude/settings.json so Claude Code can call modeling tools directly.\n');
+    console.log('🔌 Configuring MCP server...');
     const claudeSettingsDir = join(targetDir, '.claude');
     const settingsPath = join(claudeSettingsDir, 'settings.json');
     mkdirSync(claudeSettingsDir, { recursive: true });
@@ -578,16 +581,8 @@ async function installStack(stackKey, stackCfg, options = {}) {
       JSON.stringify({ stack: stackKey, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: true }, null, 2),
     );
 
-    console.log('\n✅ Done!\n');
-    console.log('Start the agent (realtime + task loop in one process):');
-    console.log('       npx @eventmodelers/cli run\n');
-    console.log('Or using Ollama (run `ollama serve` first):');
-    console.log('       npx @eventmodelers/cli run --ollama\n');
-    console.log('Or using the bash loop only (no realtime):');
-    console.log('       npx @eventmodelers/cli run --bash\n');
-    console.log(`Skills are ready in ${options.global ? join(homedir(), '.claude', 'skills') : '.claude/skills/'} — use /connect to set a board ID.\n`);
-    console.log('💡 Recommended: add Chrome DevTools MCP for browser inspection:');
-    console.log('       claude mcp add chrome-devtools --scope user -- npx chrome-devtools-mcp@latest\n');
+    console.log('\n✅ Done! Start your agent:\n');
+    console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
 }
 
 const program = new Command();
