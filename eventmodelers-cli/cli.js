@@ -7,6 +7,7 @@ import {
   existsSync,
   mkdirSync,
   cpSync,
+  copyFileSync,
   rmSync,
   readdirSync,
   writeFileSync,
@@ -94,6 +95,112 @@ const MCP_MANUAL_CLIENTS = [
   { label: 'Cursor', hint: (url) => `Settings → MCP → Add new MCP Server → Type: http, URL: ${url}` },
   { label: 'Windsurf', hint: (url) => `Add an HTTP MCP server pointing at ${url} in Windsurf's MCP settings` },
 ];
+
+// Other AI agent hosts can read our Event Modeling skills without us duplicating
+// skill content per host: a thin stub file in the host's own command/workflow
+// directory tells it to go read the canonical .claude/skills/<name>/SKILL.md and
+// follow it — the same pattern spec-kitty uses (verified directly against its repo,
+// not just its docs: every "stub" host below reads plain Markdown, no per-host
+// format transform needed). Codex CLI, Mistral Vibe, Pi, and Letta Code share one
+// convention that already matches our native SKILL.md format, so those get the
+// real file copied as-is instead of a stub.
+const AGENT_HOSTS = {
+  cursor: { label: 'Cursor', dir: '.cursor/commands', kind: 'stub' },
+  windsurf: { label: 'Windsurf', dir: '.windsurf/workflows', kind: 'stub' },
+  gemini: { label: 'Google Gemini CLI', dir: '.gemini/commands', kind: 'stub' },
+  qwen: { label: 'Qwen Code', dir: '.qwen/commands', kind: 'stub' },
+  opencode: { label: 'OpenCode', dir: '.opencode/command', kind: 'stub' },
+  copilot: { label: 'GitHub Copilot', dir: '.github/prompts', kind: 'stub' },
+  amazonq: { label: 'Amazon Q (legacy)', dir: '.amazonq/prompts', kind: 'stub' },
+  kiro: { label: 'Kiro', dir: '.kiro/prompts', kind: 'stub' },
+  kilocode: { label: 'Kilocode', dir: '.kilocode/workflows', kind: 'stub' },
+  augment: { label: 'Augment Code', dir: '.augment/commands', kind: 'stub' },
+  antigravity: { label: 'Google Antigravity', dir: '.agent/workflows', kind: 'stub' },
+  codex: {
+    label: 'Codex CLI / Mistral Vibe / Pi / Letta Code (shared .agents/skills/ convention)',
+    dir: '.agents/skills',
+    kind: 'skill-package',
+  },
+};
+
+function agentHostStub(skillName) {
+  return `# ${skillName} (eventmodelers)\n\nThis host should read the canonical skill at:\n\n**\`.claude/skills/${skillName}/SKILL.md\`**\n\nFollow those instructions when this command is invoked.\n`;
+}
+
+// Writes stub/skill-package files for the requested hosts and records exactly what
+// it wrote into every installed kit dir's manifest — same convention as
+// `mcpRegistered` — so `uninstall` can remove precisely these files later.
+async function configureAgentHosts({ hosts, global: useGlobal } = {}) {
+  const targetDir = process.cwd();
+  const skillsDir = useGlobal ? join(homedir(), '.claude', 'skills') : join(targetDir, '.claude', 'skills');
+
+  if (!existsSync(skillsDir)) {
+    console.error(`❌ No skills found at ${relative(targetDir, skillsDir) || skillsDir} — run \`eventmodelers init\` or \`init-modeling\` first.`);
+    process.exit(1);
+  }
+  const skills = readdirSync(skillsDir).filter((f) => existsSync(join(skillsDir, f, 'SKILL.md')));
+  if (!skills.length) {
+    console.error('❌ No installed skills found — nothing to expose.');
+    process.exit(1);
+  }
+
+  let hostKeys = hosts;
+  if (!hostKeys || !hostKeys.length) {
+    console.log('\nAvailable agent hosts:');
+    Object.entries(AGENT_HOSTS).forEach(([key, h]) => console.log(`  ${key.padEnd(12)} ${h.label}`));
+    const answer = await prompt('\nWhich hosts? (comma-separated keys, or "all"): ');
+    hostKeys = answer.trim() === 'all'
+      ? Object.keys(AGENT_HOSTS)
+      : answer.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+
+  const unknown = hostKeys.filter((k) => !AGENT_HOSTS[k]);
+  if (unknown.length) {
+    console.error(`❌ Unknown host(s): ${unknown.join(', ')}. Available: ${Object.keys(AGENT_HOSTS).join(', ')}`);
+    process.exit(1);
+  }
+  if (!hostKeys.length) {
+    console.log('ℹ️  No hosts selected — nothing to do.');
+    return;
+  }
+
+  console.log(`\n📦 Exposing ${skills.length} skill(s) to ${hostKeys.length} host(s)...`);
+  const generatedFiles = [];
+
+  for (const key of hostKeys) {
+    const host = AGENT_HOSTS[key];
+    if (host.kind === 'stub') {
+      const hostDir = join(targetDir, host.dir);
+      mkdirSync(hostDir, { recursive: true });
+      for (const skill of skills) {
+        const filePath = join(hostDir, `${skill}.md`);
+        writeFileSync(filePath, agentHostStub(skill));
+        generatedFiles.push(relative(targetDir, filePath));
+      }
+    } else {
+      // skill-package: copy the real SKILL.md verbatim — already the native format.
+      for (const skill of skills) {
+        const pkgDir = join(targetDir, host.dir, `eventmodelers.${skill}`);
+        mkdirSync(pkgDir, { recursive: true });
+        const dest = join(pkgDir, 'SKILL.md');
+        copyFileSync(join(skillsDir, skill, 'SKILL.md'), dest);
+        generatedFiles.push(relative(targetDir, dest));
+      }
+    }
+    console.log(`  ✓ ${host.label} (${host.dir}/)`);
+  }
+
+  for (const dirName of KIT_DIR_NAMES) {
+    const manifestPath = join(targetDir, dirName, '.eventmodelers', 'install-manifest.json');
+    if (existsSync(manifestPath)) {
+      const manifest = readJsonSafe(manifestPath);
+      manifest.agentHostFiles = [...new Set([...(manifest.agentHostFiles || []), ...generatedFiles])];
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    }
+  }
+
+  console.log(`\n✅ Done — ${generatedFiles.length} file(s) written.`);
+}
 
 // Every config field can also be set via an EVENTMODELERS_* env var — these always
 // win over whatever's in config.json, so scripted/CI installs can skip prompts entirely.
@@ -520,6 +627,8 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
     console.log('Connect this project to an MCP client (Claude Code, VS Code, ...):\n');
     console.log(`  npx @eventmodelers/cli init-mcp\n`);
+    console.log('Expose these skills to other AI agent hosts (Cursor, Windsurf, Gemini CLI, Copilot, Codex CLI, Kiro, ...):\n');
+    console.log(`  npx @eventmodelers/cli init-agents\n`);
 }
 
 // Extracted from installStack so `init-config` can reuse the exact same
@@ -757,6 +866,21 @@ program
     await configureMcp({ configPath: globalOpts.config, print: globalOpts.print });
   });
 
+program
+  .command('init-agents')
+  .description(`Expose installed skills to other AI agent hosts (${Object.keys(AGENT_HOSTS).join(', ')}) as thin stub commands pointing at the canonical .claude/skills/ files — no skill content duplicated per host`)
+  .option('--hosts <list>', `Comma-separated host keys (${Object.keys(AGENT_HOSTS).join(', ')})`)
+  .option('--all', 'Expose to every known host')
+  .option('--global', 'Read skills from ~/.claude/skills/ instead of the project')
+  .action(async (opts) => {
+    const hosts = opts.all
+      ? Object.keys(AGENT_HOSTS)
+      : opts.hosts
+        ? opts.hosts.split(',').map((s) => s.trim()).filter(Boolean)
+        : null;
+    await configureAgentHosts({ hosts, global: opts.global });
+  });
+
 credentialFlags(program
   .command('init-config')
   .description('Configure credentials only — writes .eventmodelers/config.json in the current directory, or ~/.eventmodelers/config.json with --global')
@@ -884,6 +1008,33 @@ function uninstallKitDir(kitDir, cwd) {
     }
   }
 
+  if (manifest.agentHostFiles?.length) {
+    const touchedDirs = new Set();
+    for (const relPath of manifest.agentHostFiles) {
+      const p = join(cwd, relPath);
+      if (existsSync(p)) {
+        rmSync(p, { force: true });
+        console.log(`  ✓ Removed ${relPath}`);
+        touchedDirs.add(dirname(p));
+      }
+    }
+    // Prune now-empty host/package directories (e.g. .cursor/commands/,
+    // .agents/skills/eventmodelers.timeline/) so uninstall doesn't leave an
+    // empty dotfile forest behind — but never walk above cwd.
+    for (const dir of touchedDirs) {
+      let d = dir;
+      while (d.startsWith(cwd) && d !== cwd) {
+        try {
+          if (readdirSync(d).length > 0) break;
+          rmSync(d, { recursive: true, force: true });
+          d = dirname(d);
+        } catch {
+          break;
+        }
+      }
+    }
+  }
+
   if (manifest.mcpRegistered) {
     const settingsPath = join(cwd, '.claude', 'settings.json');
     if (existsSync(settingsPath)) {
@@ -909,7 +1060,7 @@ function uninstallKitDir(kitDir, cwd) {
 
 program
   .command('uninstall')
-  .description('Remove everything init/init-modeling installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), and its MCP entry in .claude/settings.json. Leaves the root project scaffold untouched.')
+  .description('Remove everything init/init-modeling installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), its MCP entry in .claude/settings.json, and any files written by init-agents. Leaves the root project scaffold untouched.')
   .option('--build-kit', `Remove ${STACKS.node.kitDirName}/ (the backend-stack kit dir)`)
   .option('--modeling-kit', `Remove ${MODELING_KIT.kitDirName}/ (the modeling-only kit dir)`)
   .action((opts) => {
