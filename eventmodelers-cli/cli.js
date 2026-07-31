@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join, relative, resolve, sep } from 'path';
 import {
   existsSync,
@@ -14,7 +14,7 @@ import {
   readFileSync,
   appendFileSync,
 } from 'fs';
-import { execSync } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir } from 'os';
 
@@ -801,6 +801,105 @@ async function configureMcp(options = {}) {
   }
 }
 
+// `run --real-time`: same job as ralph-claude.js (drive the installed kit's ralph
+// loop with Claude as the executor), but instead of spawning a fresh `claude -p`
+// process per task, it keeps ONE process warm across tasks via
+// `--input-format stream-json` and writes each task's prompt to its stdin —
+// verified (see dev notes) to stay alive and accept further turns after a result.
+// This closes the remaining latency gap for voice/live use: the realtime channel
+// + trigger wake in the kit's own lib/ralph.js already deliver new tasks with ~no
+// delay, so the dominant cost left was the cold start (process boot, CLAUDE.md
+// re-read, /connect, skill discovery) a fresh spawn pays every single task.
+//
+// Deliberately NOT a templated file in the kit dir (unlike ralph-claude.js) —
+// this is exactly the kind of stack-agnostic runtime plumbing that drifted out of
+// sync when duplicated per stack before (see the "Unify ralph/agent runtime
+// files" commit). It ships once, here, and reuses whatever lib/ralph.js the kit
+// already has installed — that file legitimately differs per kit (modeling-kit's
+// org-wide prompt queue vs. build-kit's per-board slice tracking), so it stays
+// where `init`/`init-modeling` put it.
+async function runRealtime(kitDir, projectDir) {
+  const ralphLibPath = join(kitDir, 'lib', 'ralph.js');
+  if (!existsSync(ralphLibPath)) {
+    console.error(`❌ ${relative(process.cwd(), ralphLibPath)} not found — --real-time needs a kit installed via \`init\`/\`init-modeling\`.`);
+    process.exit(1);
+  }
+  const { startRalph, loadLocalConfig } = await import(pathToFileURL(ralphLibPath).href);
+
+  const cfg = loadLocalConfig(kitDir);
+  const QUESTIONING_RULE =
+    'IMPORTANT: You are running autonomously — no human is available to answer questions. ' +
+    'If you need clarification to proceed, do NOT pause or ask interactively. Instead, post your question ' +
+    'as a QUESTION-type comment (via /handle-comment with action=place and type=QUESTION) on the most ' +
+    'relevant slice or column node on the board, then continue with your best interpretation of the prompt.\n\n';
+  const inlineHeader = cfg.boardId
+    ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}`
+    : QUESTIONING_RULE;
+
+  const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
+  if (cfg.model) claudeArgs.push('--model', cfg.model);
+  const claudeEnv = cfg.anthropicBaseUrl ? { ...process.env, ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : process.env;
+
+  let proc = null;
+  let stdoutBuffer = '';
+  let pending = null; // one in-flight task at a time, matching the ralph loop's own serial processing
+  const log = (line) => console.log(`[realtime] ${line}`);
+
+  // stream-json output loses the normal interactive TUI (tool cards, live diffs) —
+  // this is a plain-text approximation, good enough for a headless/voice runner.
+  function handleLine(line) {
+    if (!line.trim()) return;
+    let msg;
+    try { msg = JSON.parse(line); } catch { return; }
+
+    if (msg.type === 'assistant') {
+      for (const block of msg.message?.content ?? []) {
+        if (block.type === 'text' && block.text) log(block.text);
+        if (block.type === 'tool_use') log(`→ ${block.name}`);
+      }
+      return;
+    }
+    if (msg.type === 'result') {
+      log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+      const turn = pending;
+      pending = null;
+      if (turn) (msg.is_error ? turn.reject(new Error(msg.result || 'Claude turn errored')) : turn.resolve());
+    }
+  }
+
+  function spawnProcess() {
+    proc = spawn('claude', claudeArgs, { cwd: projectDir, env: claudeEnv, stdio: ['pipe', 'pipe', 'inherit'] });
+    stdoutBuffer = '';
+    proc.stdout.on('data', (chunk) => {
+      stdoutBuffer += chunk.toString();
+      const lines = stdoutBuffer.split('\n');
+      stdoutBuffer = lines.pop();
+      for (const l of lines) handleLine(l);
+    });
+    proc.on('exit', (code) => {
+      log(`process exited (${code}) — will respawn on next task`);
+      proc = null;
+      if (pending) {
+        const turn = pending;
+        pending = null;
+        turn.reject(new Error(`claude process exited (${code}) mid-turn`));
+      }
+    });
+    log('warm session started');
+  }
+
+  function runClaudeWarm(prompt) {
+    if (!proc) spawnProcess();
+    return new Promise((resolveTurn, rejectTurn) => {
+      pending = { resolve: resolveTurn, reject: rejectTurn };
+      proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: inlineHeader + prompt } }) + '\n');
+    });
+  }
+
+  spawnProcess();
+  await startRalph({ kitDir, projectDir, onTask: runClaudeWarm });
+}
+
 const program = new Command();
 
 program
@@ -940,12 +1039,30 @@ program
   .description('Start the agent loop from the installed kit dir (default: ralph-claude.js)')
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner')
   .option('--bash', 'Use the bash-only ralph.sh loop (no realtime)')
-  .action((opts) => {
+  .option('--real-time', 'Keep one Claude process warm across tasks instead of spawning a fresh one per task, for low-latency voice/live use. Built into the CLI, not a per-project file.')
+  .action(async (opts) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
     if (!kitDir) {
       console.error(`❌ No installed kit dir found (checked: ${KIT_DIR_NAMES.join(', ')}) — run \`eventmodelers init\` first.`);
       process.exit(1);
+    }
+
+    const pickedCount = [opts.bash, opts.ollama, opts.realTime].filter(Boolean).length;
+    if (pickedCount > 1) {
+      console.error('❌ --bash, --ollama, and --real-time are mutually exclusive — pick one.');
+      process.exit(1);
+    }
+
+    if (opts.realTime) {
+      console.log(`▶ Starting real-time loop (warm Claude process) for ${relative(cwd, kitDir)}...\n`);
+      try {
+        await runRealtime(kitDir, resolve(kitDir, '..'));
+      } catch (err) {
+        console.error('[realtime] Fatal:', err);
+        process.exit(1);
+      }
+      return;
     }
 
     // The actual agent loop lives in the scaffolded kit dir, not in this package — this
