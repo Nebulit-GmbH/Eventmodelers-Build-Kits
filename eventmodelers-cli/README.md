@@ -22,6 +22,12 @@ npx @eventmodelers/cli init-modeling                 # skills + agent loop only,
 
 The installer prompts for your API token, Organization ID (and Board ID, for the four backend stacks) from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account).
 
+`init`/`init-modeling` scaffold and configure credentials, but don't register the MCP server — run that as a separate step once you're ready to connect a harness:
+
+```bash
+npx @eventmodelers/cli init-mcp
+```
+
 ## What gets installed
 
 ```
@@ -83,17 +89,28 @@ Beyond the one-time install bootstrap, each stack's own `ralph.js`/`ralph-claude
 
 `init`/`init-modeling` write credentials to the project root's `.eventmodelers/config.json` by default — that's why a build stack and `init-modeling` in the same project automatically share one file instead of each holding their own copy.
 
-`init`, `status`, and `config` all resolve config the same way: they walk up from the current directory looking for a `.eventmodelers/config.json` in an ancestor directory (shared defaults), then layer the installed kit dir's own `<kit-dir>/.eventmodelers/config.json` on top, if one exists there (a per-kit override) — any field that file also sets wins.
+`init`, `status`, and `config` all resolve config the same way: they walk up from the current directory looking for a `.eventmodelers/config.json` in an ancestor directory (shared defaults), then layer the installed kit dir's own `<kit-dir>/.eventmodelers/config.json` on top, if one exists there (a per-kit override) — any field that file also sets wins. If that walk reaches the filesystem root without finding anything, `~/.eventmodelers/config.json` is checked once more as a last resort — this matters for projects that don't live under `$HOME` at all (e.g. `/tmp/foo`), which the walk-up would otherwise never reach.
 
-That walk-up means you can keep one shared config above all your checkouts and only override what's actually per-project — typically just `boardId`:
+That walk-up (plus the home-dir fallback) means you can keep one shared config above all your checkouts and only override what's actually per-project — typically just `boardId`. The easiest way to set that shared file up is:
+
+```bash
+npx @eventmodelers/cli init-config --global   # writes organizationId + token to ~/.eventmodelers/config.json
+```
 
 ```
-~/.eventmodelers/config.json                                    ← shared: organizationId, token, baseUrl
+~/.eventmodelers/config.json                                    ← shared: organizationId, token
 ~/projects/checkout-app/.eventmodelers/config.json               ← { "boardId": "<checkout-app-board>" }
 ~/projects/billing-app/.eventmodelers/config.json                ← { "boardId": "<billing-app-board>" }
 ```
 
-Running any command from inside `~/projects/checkout-app` resolves `organizationId`/`token`/`baseUrl` from `~/.eventmodelers/config.json` and `boardId` from the project's own file — switch to `~/projects/billing-app` and only the board changes. `npx @eventmodelers/cli status` and `npx @eventmodelers/cli config` both list every file that contributed, in override order, so you can see exactly where each value came from.
+Running any command from inside `~/projects/checkout-app` resolves `organizationId`/`token` from `~/.eventmodelers/config.json` (`baseUrl` defaults to `https://api.eventmodelers.ai` if nobody sets it) and `boardId` from the project's own file — switch to `~/projects/billing-app` and only the board changes. `npx @eventmodelers/cli status` and `npx @eventmodelers/cli config` both list every file that contributed, in override order, so you can see exactly where each value came from.
+
+`init-config` (without `--global`) is the same credential-only flow targeted at the current directory — useful when you want to (re)configure credentials without re-running a full `init`/`init-modeling` install:
+
+```bash
+npx @eventmodelers/cli init-config                      # interactive, writes to ./.eventmodelers/config.json
+npx @eventmodelers/cli init-config --board-id <uuid>     # non-interactive, just overrides one field
+```
 
 ### Env vars and `--config` (scripted/CI installs)
 
@@ -113,6 +130,13 @@ EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN
   npx @eventmodelers/cli init --stack node
 ```
 
+`init`, `init-modeling`, and `init-config` also accept the same four fields as direct flags — handy for a one-off override without exporting env vars, and they win over both the config file and env vars:
+
+```bash
+npx @eventmodelers/cli init --stack node \
+  --organization-id ... --board-id ... --token ... --base-url https://api.eventmodelers.ai
+```
+
 `--config <path>` points every command at an explicit `config.json`, bypassing the kit-dir/parent-directory resolution entirely:
 
 ```bash
@@ -123,7 +147,13 @@ Run `npx @eventmodelers/cli config` at any time to see the fully resolved config
 
 ### MCP for other harnesses
 
-The installer always writes the MCP server into `.claude/settings.json` for Claude Code. For other coding agents it follows the same principle [Playwright MCP](https://playwright.dev/mcp/installation) uses per client — one shared server, but a different registration mechanism per harness: a real CLI install command where one exists, and printed manual steps where it doesn't (no risky guessing at unverified config-file formats):
+MCP registration is a separate step from `init`/`init-modeling` — run `init-mcp` whenever you're ready to connect a harness:
+
+```bash
+npx @eventmodelers/cli init-mcp
+```
+
+It writes the MCP server into `.claude/settings.json` for Claude Code. For other coding agents it follows the same principle [Playwright MCP](https://playwright.dev/mcp/installation) uses per client — one shared server, but a different registration mechanism per harness: a real CLI install command where one exists, and printed manual steps where it doesn't (no risky guessing at unverified config-file formats):
 
 ```
 ? Connect the MCP globally to another harness?
@@ -154,7 +184,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/load-slice` | Persist board slices to disk (backend stacks) |
 | `/build-state-change`, `/build-state-view`, `/build-automation`, `/build-webhook` | Implement a slice's command/view/automation/webhook (backend stacks) |
 
-Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`.
+Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, and `/update-slice-status` have no stack-specific content and install into every stack from `shared/skills/` instead.
 
 ## Commands
 
@@ -163,6 +193,9 @@ npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install
 npx @eventmodelers/cli init --stack <name> --global # same, but skills go to ~/.claude/skills/ (every project)
 npx @eventmodelers/cli init-modeling                # skills + agent loop only, no backend scaffold (alias: modeling)
 npx @eventmodelers/cli init-modeling --global       # same, but skills go to ~/.claude/skills/ (every project)
+npx @eventmodelers/cli init-mcp                     # register the MCP server in .claude/settings.json (+ optionally another harness)
+npx @eventmodelers/cli init-config                  # credentials only, no scaffold — writes ./.eventmodelers/config.json
+npx @eventmodelers/cli init-config --global         # same, but writes organizationId + token to ~/.eventmodelers/config.json
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
@@ -180,7 +213,7 @@ Every `init`/`init-modeling` run writes an install manifest into `<kit-dir>/.eve
 
 - the kit dir (`.build-kit/` or `.agent-modeling-kit/`)
 - the skills it copied — from `.claude/skills/` normally, or `~/.claude/skills/` if it was installed with `--global`
-- the `eventmodelers` entry it added to `.claude/settings.json`'s `mcpServers` (the rest of that file, and the file itself, is left in place)
+- the `eventmodelers` entry it added to `.claude/settings.json`'s `mcpServers`, if `init-mcp` was ever run for this project (the rest of that file, and the file itself, is left in place)
 
 It deliberately **never** touches the root project scaffold (`package.json`, `src/`, `server.ts`, migrations, `docker-compose.yml`, etc.) — that's your actual application code, not tooling, so `uninstall` won't delete it even though `init` wrote it.
 
@@ -194,7 +227,7 @@ npx @eventmodelers/cli uninstall --build-kit         # remove .build-kit/ specif
 npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-kit/ specifically
 ```
 
-`--config <path>` and `--print` are global flags accepted by every command. `--print` skips the "connect MCP globally?" prompt during install and just prints the `claude mcp add` command instead of running it — combined with the env vars above, `--print` makes `init` fully non-interactive:
+`--config <path>` and `--print` are global flags accepted by every command. `--print` skips the "connect MCP globally?" prompt during `init-mcp` and just prints the `claude mcp add` command instead of running it — combined with the env vars or direct flags above, `--print` makes both `init` and `init-mcp` fully non-interactive:
 
 ```bash
 EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \
@@ -203,7 +236,7 @@ EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN
 
 ## Adding a stack
 
-Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`.
+Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
 
 ## Contributors
 

@@ -7,7 +7,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -45,17 +46,61 @@ async function retryOn401(label, fn, maxRetries = 3) {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+// Config is resolved by walking from the kit dir up through every ancestor
+// directory's .eventmodelers/config.json, merging fields as we go — a value
+// set by a closer (more specific) directory always wins over a farther one.
+// The walk stops as soon as the merged config has full connection credentials
+// (see hasCredentials).
+function* configCandidates(kitDir) {
+  yield join(kitDir, '.eventmodelers', 'config.json');
+  let dir = dirname(kitDir);
+  while (true) {
+    yield join(dir, '.eventmodelers', 'config.json');
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Last resort: the walk above only passes through $HOME if the project happens
+  // to live under it. A project outside $HOME (e.g. /tmp/foo) never sees it, so
+  // check it explicitly — this is where `eventmodelers init-config --global` writes
+  // account-wide defaults (organizationId/token) shared across every project.
+  yield join(homedir(), '.eventmodelers', 'config.json');
+}
+
 function loadLocalConfig(kitDir) {
-  const configPath = join(kitDir, '.eventmodelers', 'config.json');
-  if (!existsSync(configPath)) {
+  const merged = {};
+  const sources = [];
+
+  for (const candidate of configCandidates(kitDir)) {
+    if (sources.includes(candidate) || !existsSync(candidate)) continue;
+    let cfg;
+    try {
+      cfg = JSON.parse(readFileSync(candidate, 'utf-8'));
+    } catch {
+      console.warn(`[ralph] Skipping invalid config at ${candidate}`);
+      continue;
+    }
+    for (const [key, value] of Object.entries(cfg)) {
+      if (merged[key] === undefined) merged[key] = value;
+    }
+    sources.push(candidate);
+    if (hasCredentials(merged)) break;
+  }
+
+  if (process.env.BASE_URL) merged.baseUrl = process.env.BASE_URL;
+  else if (!merged.baseUrl) merged.baseUrl = 'https://api.eventmodelers.ai';
+
+  if (sources.length > 1) {
+    console.log(`[ralph] Merged config from: ${sources.join(', ')}`);
+  } else if (sources.length === 1 && sources[0] !== join(kitDir, '.eventmodelers', 'config.json')) {
+    console.log(`[ralph] Using credentials from ${sources[0]}`);
+  } else if (sources.length === 0) {
     console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
     console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-cratis-csharp`);
     console.warn(`        Code generation from local slice definitions will still run.`);
-    return {};
   }
-  const cfg = JSON.parse(readFileSync(configPath, 'utf-8'));
-  if (process.env.BASE_URL) cfg.baseUrl = process.env.BASE_URL;
-  return cfg;
+
+  return merged;
 }
 
 function hasCredentials(cfg) {

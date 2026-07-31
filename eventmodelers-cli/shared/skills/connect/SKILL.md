@@ -48,7 +48,7 @@ If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priori
 
 ## Step 1 — Read config file
 
-Search for `.eventmodelers/config.json` starting from the current working directory and walking up through all parent directories:
+Search for `.eventmodelers/config.json` starting from the current working directory and walking up through all parent directories. This is the same file every kit installed in this project reads and writes, so credentials only need to be entered once per project:
 
 ```bash
 dir="$PWD"
@@ -66,7 +66,7 @@ done
 If a file is found (at any level), note its path and extract any values **not already set by Step 0**:
 - `token` → `TOKEN`
 - `boardId` → `BOARD_ID`
-- `organizationId` → `ORG_ID`
+- `organizationId` (or `orgId`) → `ORG_ID`
 - `baseUrl` → `BASE_URL` (default: `https://api.eventmodelers.ai` if missing)
 
 Resolution priority: **inline param > config file > ask user**
@@ -86,7 +86,12 @@ Stop asking questions. Show this hint and wait for them to paste:
 
 > "Great — please paste your config from https://app.eventmodelers.ai/account here."
 
-When they paste a JSON object, parse it immediately — accept both `orgId` and `organizationId` as the organization field — apply all values, and proceed directly to Step 3.
+The paste may be either a JSON object, or a single comma-separated line of `key=value` pairs (as copied out of a URL query string), in any order, e.g.:
+```
+token=xxxxxxxx-...,boardId=xxxxxxxx-...,organizationId=xxxxxxxx-...,baseUrl=https://api.eventmodelers.ai
+```
+
+Parse either form immediately — accept both `orgId` and `organizationId` as the organization field. For the comma-separated form, split on commas and match each piece by its `key=` prefix (`token`, `boardId`, `organizationId`/`orgId`, `baseUrl`) rather than by position — do **not** assume a fixed field order, since the order the value was copied in and the order it's pasted in are not guaranteed to match. If a value has no recognizable `key=` prefix, treat it as an error and re-ask rather than guessing which field it belongs to. Apply all values, and proceed directly to Step 3.
 
 **If the user answers no** (or pastes only a partial config), ask for each still-missing field one at a time, in this order: `token`, then `boardId`, then `orgId`. Wait for the answer before asking the next.
 
@@ -111,7 +116,7 @@ cat > .eventmodelers/config.json << 'EOF'
 {
   "token": "<TOKEN>",
   "boardId": "<BOARD_ID>",
-  "orgId": "<ORG_ID>",
+  "organizationId": "<ORG_ID>",
   "baseUrl": "<BASE_URL>"
 }
 EOF
@@ -162,7 +167,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 {
   "token": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "boardId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
-  "orgId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "organizationId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
   "baseUrl": "http://localhost:3000"
 }
 ```

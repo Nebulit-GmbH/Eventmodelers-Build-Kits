@@ -8,6 +8,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
+import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -57,9 +58,14 @@ function* configCandidates(kitDir) {
   while (true) {
     yield join(dir, '.eventmodelers', 'config.json');
     const parent = dirname(dir);
-    if (parent === dir) return;
+    if (parent === dir) break;
     dir = parent;
   }
+  // Last resort: the walk above only passes through $HOME if the project happens
+  // to live under it. A project outside $HOME (e.g. /tmp/foo) never sees it, so
+  // check it explicitly — this is where `eventmodelers init-config --global` writes
+  // account-wide defaults (organizationId/token) shared across every project.
+  yield join(homedir(), '.eventmodelers', 'config.json');
 }
 
 function loadLocalConfig(kitDir) {
@@ -67,7 +73,7 @@ function loadLocalConfig(kitDir) {
   const sources = [];
 
   for (const candidate of configCandidates(kitDir)) {
-    if (!existsSync(candidate)) continue;
+    if (sources.includes(candidate) || !existsSync(candidate)) continue;
     let cfg;
     try {
       cfg = JSON.parse(readFileSync(candidate, 'utf-8'));
@@ -83,6 +89,7 @@ function loadLocalConfig(kitDir) {
   }
 
   if (process.env.BASE_URL) merged.baseUrl = process.env.BASE_URL;
+  else if (!merged.baseUrl) merged.baseUrl = 'https://api.eventmodelers.ai';
 
   if (sources.length > 1) {
     console.log(`[ralph] Merged config from: ${sources.join(', ')}`);

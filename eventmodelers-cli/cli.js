@@ -156,10 +156,30 @@ async function promptPasteBlock() {
   return lines.join('\n').trim();
 }
 
+// Platform base URL when a config doesn't specify one — every install method
+// (paste, manual entry, or a hand-edited config.json) should fall back to this
+// rather than silently disabling platform sync.
+const DEFAULT_BASE_URL = 'https://api.eventmodelers.ai';
+
 // Canonical order the account page pastes values in, regardless of which fields a
 // given stack actually requires — a modeling-kit install (no boardId required) still
 // gets a paste containing all 4 fields, so we must not drop the ones we don't need.
 const PASTE_FIELD_ORDER = ['organizationId', 'boardId', 'token'];
+
+// Values are sometimes copied with a "field=" prefix still attached (e.g. lifted
+// straight out of a query string) — and occasionally under the wrong JSON key
+// entirely, e.g. { "organizationId": "token=abc..." }. When a value carries its own
+// "field=" prefix, that's a more reliable source of truth than whatever key/position
+// it was pasted under, so it wins.
+const PASTE_FIELD_ALIASES = { organizationId: 'organizationId', orgId: 'organizationId', boardId: 'boardId', token: 'token', baseUrl: 'baseUrl' };
+
+function splitEmbeddedField(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^([a-zA-Z]+)=(.+)$/);
+  if (!match) return null;
+  const field = PASTE_FIELD_ALIASES[match[1]];
+  return field ? { field, value: match[2] } : null;
+}
 
 // Accepts either a JSON object (as copied from the account page) or a comma-separated
 // line of values, in PASTE_FIELD_ORDER, with an optional base URL anywhere in the list.
@@ -170,11 +190,18 @@ function parseCredentialsPaste(text, requiredFields) {
   try {
     const obj = JSON.parse(trimmed);
     if (obj && typeof obj === 'object') {
+      const raw = {};
+      if (obj.organizationId || obj.orgId) raw.organizationId = obj.organizationId || obj.orgId;
+      if (obj.boardId) raw.boardId = obj.boardId;
+      if (obj.token) raw.token = obj.token;
+      if (obj.baseUrl) raw.baseUrl = obj.baseUrl;
+
       const result = {};
-      if (obj.organizationId || obj.orgId) result.organizationId = obj.organizationId || obj.orgId;
-      if (obj.boardId) result.boardId = obj.boardId;
-      if (obj.token) result.token = obj.token;
-      if (obj.baseUrl) result.baseUrl = obj.baseUrl;
+      for (const [outerKey, value] of Object.entries(raw)) {
+        const embedded = splitEmbeddedField(value);
+        if (embedded) result[embedded.field] = embedded.value;
+        else result[outerKey] = value;
+      }
       if (requiredFields.every((f) => result[f])) return result;
       return null;
     }
@@ -186,18 +213,26 @@ function parseCredentialsPaste(text, requiredFields) {
   const result = {};
   const remaining = [];
   for (const v of values) {
-    if (/^https?:\/\//i.test(v)) result.baseUrl = v;
+    if (/^https?:\/\//i.test(v)) {
+      result.baseUrl = v;
+      continue;
+    }
+    const embedded = splitEmbeddedField(v);
+    if (embedded) result[embedded.field] = embedded.value;
     else remaining.push(v);
   }
-  if (remaining.length < requiredFields.length) return null;
+  if (remaining.length < requiredFields.length - Object.keys(result).length) return null;
   // If more values were pasted than this stack strictly requires (e.g. a boardId
   // in a modeling-kit paste), use the full canonical order so the extra field is
   // still captured instead of being mis-zipped against the shorter requiredFields
   // list and silently dropped/misassigned.
   const fieldOrder = remaining.length > requiredFields.length ? PASTE_FIELD_ORDER : requiredFields;
-  fieldOrder.forEach((field, i) => {
+  let i = 0;
+  for (const field of fieldOrder) {
+    if (result[field]) continue; // already resolved via an embedded "field=" prefix
     if (remaining[i] !== undefined) result[field] = remaining[i];
-  });
+    i++;
+  }
 
   return requiredFields.every((f) => result[f]) ? result : null;
 }
@@ -263,9 +298,15 @@ function findConfigInParents(startDir) {
     const candidate = join(dir, '.eventmodelers', 'config.json');
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
-    if (parent === dir) return null;
+    if (parent === dir) break;
     dir = parent;
   }
+  // Last resort: the walk above only passes through $HOME if the project happens
+  // to live under it. A project outside $HOME (e.g. /tmp/foo) never sees it, so
+  // check it explicitly — this is where `init-config --global` writes account-wide
+  // defaults (organizationId/token) shared across every project.
+  const globalCandidate = join(homedir(), '.eventmodelers', 'config.json');
+  return existsSync(globalCandidate) ? globalCandidate : null;
 }
 
 function readJsonSafe(path) {
@@ -356,6 +397,12 @@ async function installStack(stackKey, stackCfg, options = {}) {
     const targetDir = process.cwd();
     const templatesSource = join(__dirname, 'stacks', stackKey, 'templates');
     const sharedBuildKit = join(__dirname, 'shared', 'build-kit');
+    // Skills with no stack-specific content (connect, learn-eventmodelers-api,
+    // update-slice-status, ...) live once here instead of being copy-pasted into
+    // every stack's templates — that copy-pasting is exactly how they drifted out
+    // of sync with each other before (e.g. one stack's connect skill silently
+    // missing a bugfix another stack's copy had).
+    const sharedSkills = join(__dirname, 'shared', 'skills');
 
     if (!existsSync(templatesSource)) {
       console.error('❌ Templates directory not found at:', templatesSource);
@@ -366,16 +413,21 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // Recorded into the install manifest (step 8) so `uninstall` can remove exactly
     // these files later and nothing the user added independently.
     const claudeSkillsSrc = join(templatesSource, '.claude', 'skills');
-    const installedSkills = existsSync(claudeSkillsSrc) ? readdirSync(claudeSkillsSrc) : [];
+    const installedSkills = [
+      ...(existsSync(sharedSkills) ? readdirSync(sharedSkills) : []),
+      ...(existsSync(claudeSkillsSrc) ? readdirSync(claudeSkillsSrc) : []),
+    ];
     let claudeExtras = [];
 
     if (options.global) {
       const globalSkillsDir = join(homedir(), '.claude', 'skills');
       console.log('📦 Installing skills globally...');
+      copyDirContents(sharedSkills, globalSkillsDir);
       copyDirContents(claudeSkillsSrc, globalSkillsDir);
     } else {
       console.log('📦 Installing skills...');
       copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
+      copyDirContents(sharedSkills, join(targetDir, '.claude', 'skills'));
       claudeExtras = existsSync(join(templatesSource, '.claude'))
         ? readdirSync(join(templatesSource, '.claude')).filter((f) => f !== 'skills')
         : [];
@@ -426,9 +478,58 @@ async function installStack(stackKey, stackCfg, options = {}) {
     const configPath = options.configPath
       ? resolve(targetDir, options.configPath)
       : join(targetDir, '.eventmodelers', 'config.json');
-    const configDir = dirname(configPath);
-    mkdirSync(configDir, { recursive: true });
 
+    const requiredFields = stackCfg.needsBoardId
+      ? ['organizationId', 'boardId', 'token']
+      : ['organizationId', 'token'];
+
+    const effective = loadEffectiveConfig(targetDir, kitDir, options.configPath);
+    if (effective.sources.length > 1) {
+      console.log(`\n  ✓ Found shared defaults in ${effective.sources[0]}`);
+    }
+
+    const config = await configureCredentials({
+      config: effective.config,
+      configPath,
+      targetDir,
+      requiredFields,
+      boardIdOptional: !stackCfg.needsBoardId,
+      overrides: options.credentialOverrides,
+      print: options.print,
+    });
+
+    // --- 6. Install manifest (drives precise `uninstall` later) ---
+    // Only the footprint listed here is ever removed by `uninstall` — the root
+    // scaffold (step 2) is real project source the user builds on, so it's
+    // deliberately left out and never touched by uninstall.
+    const manifestDir = join(kitDir, '.eventmodelers');
+    mkdirSync(manifestDir, { recursive: true });
+    writeFileSync(
+      join(manifestDir, 'install-manifest.json'),
+      JSON.stringify({ stack: stackKey, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: false }, null, 2),
+    );
+
+    console.log('\n✅ Done! Start your agent:\n');
+    console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
+    console.log('Connect this project to an MCP client (Claude Code, VS Code, ...):\n');
+    console.log(`  npx @eventmodelers/cli init-mcp\n`);
+}
+
+// Extracted from installStack so `init-config` can reuse the exact same
+// paste/manual/instructions/skip flow without also scaffolding a stack.
+// `overrides` are values passed directly on the command line (--token, --board-id,
+// --organization-id, --base-url) — the most explicit source available, so they
+// win over both the config file and env vars before we even check what's missing.
+async function configureCredentials({ config, configPath, targetDir, requiredFields, boardIdOptional, overrides = {}, print, skipGitignore = false }) {
+  config = { ...config };
+  for (const [field, value] of Object.entries(overrides)) {
+    if (value) config[field] = value;
+  }
+
+  const configDir = dirname(configPath);
+  mkdirSync(configDir, { recursive: true });
+
+  if (!skipGitignore) {
     const gitignorePath = join(targetDir, '.gitignore');
     const relConfigDir = relative(targetDir, configDir);
     if (relConfigDir && !relConfigDir.startsWith('..')) {
@@ -442,147 +543,146 @@ async function installStack(stackKey, stackCfg, options = {}) {
         writeFileSync(gitignorePath, `${gitignoreEntry}\n`);
       }
     }
+  }
 
-    const requiredFields = stackCfg.needsBoardId
-      ? ['organizationId', 'boardId', 'token']
-      : ['organizationId', 'token'];
+  const stillMissing = requiredFields.some((f) => !config[f]);
+  if (stillMissing && print) {
+    console.log('\n  ℹ️  --print — skipping credential prompt, missing fields must be set via flags, EVENTMODELERS_* env vars, or config.json');
+  } else if (stillMissing) {
+    const choice = await selectPrompt('How do you want to configure credentials?', [
+      { label: 'Paste values copied from app.eventmodelers.ai/account', value: 'paste' },
+      { label: 'Enter values one by one', value: 'manual' },
+      { label: 'Get instructions for configuring later', value: 'instructions' },
+      { label: 'Skip for now', value: 'skip' },
+    ], 1);
 
-    const effective = loadEffectiveConfig(targetDir, kitDir, options.configPath);
-    let config = effective.config;
-    if (effective.sources.length > 1) {
-      console.log(`\n  ✓ Found shared defaults in ${effective.sources[0]}`);
-    }
-    const hasConfig = requiredFields.every((f) => config[f]);
-
-    const stillMissing = requiredFields.some((f) => !config[f]);
-    if (stillMissing && options.print) {
-      console.log('\n  ℹ️  --print — skipping credential prompt, missing fields must be set via EVENTMODELERS_* env vars or config.json');
-    } else if (stillMissing) {
-      const choice = await selectPrompt('How do you want to configure credentials?', [
-        { label: 'Paste values copied from app.eventmodelers.ai/account', value: 'paste' },
-        { label: 'Enter values one by one', value: 'manual' },
-        { label: 'Get instructions for configuring later', value: 'instructions' },
-        { label: 'Skip for now', value: 'skip' },
-      ], 1);
-
-      if (choice === 'paste') {
-        console.log('\n  Copy your credentials from https://app.eventmodelers.ai/account,');
-        console.log('  then paste them below and press Enter:\n');
-        const pasted = await promptPasteBlock();
-        const parsed = parseCredentialsPaste(pasted, requiredFields);
-        if (parsed) {
-          config = { ...config, ...parsed };
-          writeFileSync(configPath, JSON.stringify(config, null, 2));
-          console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
-        } else {
-          console.log(`\n  ⚠️  Couldn't make sense of that paste — nothing was saved.`);
-          console.log(`      Paste it into ${relative(targetDir, configPath)} yourself, or use /connect later.`);
-        }
-      } else if (choice === 'manual') {
-        console.log('\n🔑 Enter your Eventmodelers credentials:\n');
-        config.organizationId = await prompt('  Organization ID: ');
-        // Always ask, even when this stack doesn't strictly require it — it's still
-        // used as a fallback default by the agent loop (see BOARD_ID resolution).
-        const boardId = await prompt(`  Board ID${stackCfg.needsBoardId ? '' : ' (optional)'}: `);
-        if (boardId) config.boardId = boardId;
-        config.token = await prompt('  Token:           ');
+    if (choice === 'paste') {
+      console.log('\n  Copy your credentials from https://app.eventmodelers.ai/account,');
+      console.log('  then paste them below and press Enter:\n');
+      const pasted = await promptPasteBlock();
+      const parsed = parseCredentialsPaste(pasted, requiredFields);
+      if (parsed) {
+        config = { ...config, ...parsed };
+        if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
         writeFileSync(configPath, JSON.stringify(config, null, 2));
-        console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
-      } else if (choice === 'instructions') {
-        console.log(`\n  Paste your credentials into:\n`);
-        console.log(`    ${configPath}`);
-        console.log(`\n  (or any ancestor directory's .eventmodelers/config.json, e.g. ~/.eventmodelers/config.json`);
-        console.log(`  to share the same credentials across multiple projects)\n`);
-        console.log(`  The file should look like:`);
-        const sample = `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
-        console.log(sample);
-        console.log('  Then re-run this installer, or just run the agent afterwards.\n');
+        console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
       } else {
-        console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
+        console.log(`\n  ⚠️  Couldn't make sense of that paste — nothing was saved.`);
+        console.log(`      Paste it into ${relative(targetDir, configPath)} yourself, or use /connect later.`);
       }
+    } else if (choice === 'manual') {
+      console.log('\n🔑 Enter your Eventmodelers credentials:\n');
+      config.organizationId = await prompt('  Organization ID: ');
+      // Always ask, even when this install doesn't strictly require it — it's still
+      // used as a fallback default by the agent loop (see BOARD_ID resolution).
+      const boardId = await prompt(`  Board ID${boardIdOptional ? ' (optional)' : ''}: `);
+      if (boardId) config.boardId = boardId;
+      config.token = await prompt('  Token:           ');
+      if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
+      writeFileSync(configPath, JSON.stringify(config, null, 2));
+      console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
+    } else if (choice === 'instructions') {
+      console.log(`\n  Paste your credentials into:\n`);
+      console.log(`    ${configPath}`);
+      console.log(`\n  (or any ancestor directory's .eventmodelers/config.json, e.g. ~/.eventmodelers/config.json`);
+      console.log(`  to share the same credentials across multiple projects)\n`);
+      console.log(`  The file should look like:`);
+      const sample = `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
+      console.log(sample);
+      console.log('  Then re-run this installer, or just run the agent afterwards.\n');
     } else {
-      console.log('\n  ✓ Config already present — skipping credential prompt');
+      console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
     }
+  } else {
+    console.log('\n  ✓ Config already present — skipping credential prompt');
+  }
 
-    // Claude vs. Ollama, and any custom Anthropic-compatible base URL, is a `run`-time
-    // choice (`eventmodelers run` vs `--ollama`) — not an install-time one. Power users
-    // can still pin config.anthropicBaseUrl/model via EVENTMODELERS_ANTHROPIC_BASE_URL /
-    // EVENTMODELERS_MODEL env vars or by editing config.json directly; loadEffectiveConfig
-    // already picks those up above, so nothing further to do here.
-    writeFileSync(configPath, JSON.stringify(config, null, 2));
-    console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+  // Backfill baseUrl for configs that already had real credentials but predate
+  // this default (e.g. a config.json written by hand or by an older CLI version).
+  if (config.token && config.organizationId && !config.baseUrl) {
+    config.baseUrl = DEFAULT_BASE_URL;
+  }
 
-    // --- 6. MCP server in .claude/settings.json ---
-    console.log('🔌 Configuring MCP server...');
-    const claudeSettingsDir = join(targetDir, '.claude');
-    const settingsPath = join(claudeSettingsDir, 'settings.json');
-    mkdirSync(claudeSettingsDir, { recursive: true });
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+  console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+  return config;
+}
 
-    let settings = {};
-    if (existsSync(settingsPath)) {
+// Configure the MCP server registration for a project — split out of `init` into
+// its own command (`init-mcp`) since not every harness/workflow wants an
+// automatic .claude/settings.json edit or an interactive "connect elsewhere?"
+// prompt bundled into scaffolding.
+async function configureMcp(options = {}) {
+  const targetDir = process.cwd();
+  const effective = loadEffectiveConfig(targetDir, null, options.configPath);
+  const baseUrl = effective.config.baseUrl || DEFAULT_BASE_URL;
+
+  console.log('🔌 Configuring MCP server...');
+  const claudeSettingsDir = join(targetDir, '.claude');
+  const settingsPath = join(claudeSettingsDir, 'settings.json');
+  mkdirSync(claudeSettingsDir, { recursive: true });
+
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    } catch {
+      settings = {};
+    }
+  }
+
+  settings.mcpServers = settings.mcpServers || {};
+  settings.mcpServers.eventmodelers = {
+    type: 'http',
+    url: `${baseUrl}/mcp`,
+  };
+
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+  console.log('  ✓ MCP server configured in .claude/settings.json');
+
+  // Record that MCP was registered so `uninstall` knows to clean up the
+  // settings.json entry — checked against every kit dir's manifest.
+  for (const dirName of KIT_DIR_NAMES) {
+    const manifestPath = join(targetDir, dirName, '.eventmodelers', 'install-manifest.json');
+    if (existsSync(manifestPath)) {
+      const manifest = readJsonSafe(manifestPath);
+      manifest.mcpRegistered = true;
+      writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    }
+  }
+
+  const mcpUrl = `${baseUrl}/mcp`;
+  if (options.print) {
+    console.log('\nConnect the same MCP server in another harness:');
+    for (const client of Object.values(MCP_CLIENTS)) {
+      console.log(`  ${client.label.padEnd(12)} ${client.command(mcpUrl)}`);
+    }
+    for (const client of MCP_MANUAL_CLIENTS) {
+      console.log(`  ${client.label.padEnd(12)} ${client.hint(mcpUrl)}`);
+    }
+  } else {
+    const clientChoice = await selectPrompt('\nConnect the MCP globally to another harness?', [
+      { label: 'Skip', value: 'skip' },
+      ...Object.entries(MCP_CLIENTS).map(([key, c]) => ({ label: c.label, value: key })),
+    ], 0);
+
+    if (clientChoice !== 'skip') {
+      const client = MCP_CLIENTS[clientChoice];
+      const cmd = client.command(mcpUrl);
       try {
-        settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+        execSync(cmd, { stdio: 'inherit' });
+        console.log(`  ✓ ${client.label} connected via: ${cmd}`);
       } catch {
-        settings = {};
+        console.error(`  ⚠️  Command failed — you can run it manually:`);
+        console.error(`       ${cmd}`);
       }
     }
 
-    const baseUrl = config.baseUrl || 'https://api.eventmodelers.ai';
-    settings.mcpServers = settings.mcpServers || {};
-    settings.mcpServers.eventmodelers = {
-      type: 'http',
-      url: `${baseUrl}/mcp`,
-    };
-
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
-    console.log('  ✓ MCP server configured in .claude/settings.json');
-
-    const mcpUrl = `${baseUrl}/mcp`;
-    if (options.print) {
-      console.log('\nConnect the same MCP server in another harness:');
-      for (const client of Object.values(MCP_CLIENTS)) {
-        console.log(`  ${client.label.padEnd(12)} ${client.command(mcpUrl)}`);
-      }
-      for (const client of MCP_MANUAL_CLIENTS) {
-        console.log(`  ${client.label.padEnd(12)} ${client.hint(mcpUrl)}`);
-      }
-    } else {
-      const clientChoice = await selectPrompt('\nConnect the MCP globally to another harness?', [
-        { label: 'Skip', value: 'skip' },
-        ...Object.entries(MCP_CLIENTS).map(([key, c]) => ({ label: c.label, value: key })),
-      ], 0);
-
-      if (clientChoice !== 'skip') {
-        const client = MCP_CLIENTS[clientChoice];
-        const cmd = client.command(mcpUrl);
-        try {
-          execSync(cmd, { stdio: 'inherit' });
-          console.log(`  ✓ ${client.label} connected via: ${cmd}`);
-        } catch {
-          console.error(`  ⚠️  Command failed — you can run it manually:`);
-          console.error(`       ${cmd}`);
-        }
-      }
-
-      if (MCP_MANUAL_CLIENTS.length) {
-        console.log('\nOther harnesses without a scriptable installer:');
-        MCP_MANUAL_CLIENTS.forEach((c) => console.log(`  ${c.label.padEnd(12)} ${c.hint(mcpUrl)}`));
-      }
+    if (MCP_MANUAL_CLIENTS.length) {
+      console.log('\nOther harnesses without a scriptable installer:');
+      MCP_MANUAL_CLIENTS.forEach((c) => console.log(`  ${c.label.padEnd(12)} ${c.hint(mcpUrl)}`));
     }
-
-    // --- 7. Install manifest (drives precise `uninstall` later) ---
-    // Only the footprint listed here is ever removed by `uninstall` — the root
-    // scaffold (step 2) is real project source the user builds on, so it's
-    // deliberately left out and never touched by uninstall.
-    const manifestDir = join(kitDir, '.eventmodelers');
-    mkdirSync(manifestDir, { recursive: true });
-    writeFileSync(
-      join(manifestDir, 'install-manifest.json'),
-      JSON.stringify({ stack: stackKey, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: true }, null, 2),
-    );
-
-    console.log('\n✅ Done! Start your agent:\n');
-    console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
+  }
 }
 
 const program = new Command();
@@ -594,26 +694,114 @@ program
   .option('--config <path>', 'Path to an explicit config.json, overriding directory-based resolution (individual fields can also be set via EVENTMODELERS_* env vars, which always win)')
   .option('--print', 'Print follow-up commands (e.g. claude mcp add) instead of prompting to run them');
 
-program
+// Shared by init/init-modeling/init-config: direct command-line credentials,
+// Protractor-style (--base-url=..., not a generic --param key=value passthrough) —
+// self-documenting in --help and typo-safe. These win over both the config file
+// and EVENTMODELERS_* env vars, same as any explicitly-passed flag should.
+function credentialFlags(cmd) {
+  return cmd
+    .option('--token <uuid>', 'API token (overrides config file / env var)')
+    .option('--board-id <uuid>', 'Board ID (overrides config file / env var)')
+    .option('--organization-id <uuid>', 'Organization ID (overrides config file / env var)')
+    .option('--base-url <url>', 'Platform base URL (overrides config file / env var)');
+}
+
+function credentialOverridesFromOpts(opts) {
+  return { token: opts.token, boardId: opts.boardId, organizationId: opts.organizationId, baseUrl: opts.baseUrl };
+}
+
+credentialFlags(program
   .command('init')
   .alias('install')
   .description('Scaffold a stack + install the agent modeling kit into the current directory')
   .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')})`)
-  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
+  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project'))
   .action(async (opts, command) => {
     const stackKey = await resolveStack(opts.stack);
     const globalOpts = command.optsWithGlobals();
-    await installStack(stackKey, STACKS[stackKey], { configPath: globalOpts.config, print: globalOpts.print, global: opts.global });
+    await installStack(stackKey, STACKS[stackKey], {
+      configPath: globalOpts.config,
+      print: globalOpts.print,
+      global: opts.global,
+      credentialOverrides: credentialOverridesFromOpts(opts),
+    });
   });
 
-program
+credentialFlags(program
   .command('init-modeling')
   .alias('modeling')
   .description('Install skills + the agent loop only — no backend scaffold')
-  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
+  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project'))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
-    await installStack(MODELING_KIT.key, MODELING_KIT, { configPath: globalOpts.config, print: globalOpts.print, global: opts.global });
+    await installStack(MODELING_KIT.key, MODELING_KIT, {
+      configPath: globalOpts.config,
+      print: globalOpts.print,
+      global: opts.global,
+      credentialOverrides: credentialOverridesFromOpts(opts),
+    });
+  });
+
+program
+  .command('init-mcp')
+  .description('Register the eventmodelers MCP server in .claude/settings.json (and optionally another harness)')
+  .action(async (opts, command) => {
+    const globalOpts = command.optsWithGlobals();
+    await configureMcp({ configPath: globalOpts.config, print: globalOpts.print });
+  });
+
+credentialFlags(program
+  .command('init-config')
+  .description('Configure credentials only — writes .eventmodelers/config.json in the current directory, or ~/.eventmodelers/config.json with --global')
+  .option('--global', 'Write account-wide defaults (organizationId + token only) to ~/.eventmodelers/config.json instead of the project'))
+  .action(async (opts, command) => {
+    const globalOpts = command.optsWithGlobals();
+    const overrides = credentialOverridesFromOpts(opts);
+
+    if (opts.global) {
+      // Deliberately narrower than a project config: a board is specific to one
+      // project, and baseUrl already has its own runtime default, so the only
+      // things worth defaulting across every project are your identity (org)
+      // and how you authenticate (token).
+      const configPath = join(homedir(), '.eventmodelers', 'config.json');
+      const requiredFields = ['organizationId', 'token'];
+      const existing = readJsonSafe(configPath);
+      const base = { organizationId: existing.organizationId, token: existing.token };
+      if (overrides.organizationId) base.organizationId = overrides.organizationId;
+      if (overrides.token) base.token = overrides.token;
+
+      const configured = await configureCredentials({
+        config: base,
+        configPath,
+        targetDir: homedir(),
+        requiredFields,
+        boardIdOptional: true,
+        overrides: {},
+        print: globalOpts.print,
+        skipGitignore: true,
+      });
+
+      // configureCredentials' generic paste/manual flow may have picked up
+      // boardId/baseUrl too (e.g. from a pasted JSON blob) — strip them back out
+      // before the final write, since --global only ever persists identity.
+      writeFileSync(configPath, JSON.stringify({ organizationId: configured.organizationId, token: configured.token }, null, 2));
+      console.log(`\n  ✓ Saved account-wide defaults to ${configPath}`);
+    } else {
+      const targetDir = process.cwd();
+      const configPath = globalOpts.config
+        ? resolve(targetDir, globalOpts.config)
+        : join(targetDir, '.eventmodelers', 'config.json');
+      const effective = loadEffectiveConfig(targetDir, null, globalOpts.config);
+      await configureCredentials({
+        config: effective.config,
+        configPath,
+        targetDir,
+        requiredFields: ['organizationId', 'token'],
+        boardIdOptional: true,
+        overrides,
+        print: globalOpts.print,
+      });
+    }
   });
 
 program
@@ -767,7 +955,7 @@ program
     console.log(`Ralph agent:    ${ralphPath && existsSync(ralphPath) ? '✅ present' : '❌ missing'}`);
 
     if (sources.length) {
-      console.log(`\nConnected to:   ${cfg.baseUrl || 'https://api.eventmodelers.ai'}`);
+      console.log(`\nConnected to:   ${cfg.baseUrl || DEFAULT_BASE_URL}`);
       console.log(`Organization:   ${cfg.organizationId}`);
       if (cfg.boardId) console.log(`Board:          ${cfg.boardId}`);
       console.log(`\nConfig source${sources.length > 1 ? 's (later overrides earlier)' : ''}:`);
