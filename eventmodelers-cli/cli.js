@@ -636,7 +636,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
 // `overrides` are values passed directly on the command line (--token, --board-id,
 // --organization-id, --base-url) — the most explicit source available, so they
 // win over both the config file and env vars before we even check what's missing.
-async function configureCredentials({ config, configPath, targetDir, requiredFields, boardIdOptional, overrides = {}, print, skipGitignore = false }) {
+async function configureCredentials({ config, configPath, targetDir, requiredFields, boardIdOptional, overrides = {}, print, skipGitignore = false, force = false }) {
   config = { ...config };
   for (const [field, value] of Object.entries(overrides)) {
     if (value) config[field] = value;
@@ -661,7 +661,7 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
     }
   }
 
-  const stillMissing = requiredFields.some((f) => !config[f]);
+  const stillMissing = force || requiredFields.some((f) => !config[f]);
   if (stillMissing && print) {
     console.log('\n  ℹ️  --print — skipping credential prompt, missing fields must be set via flags, EVENTMODELERS_* env vars, or config.json');
   } else if (stillMissing) {
@@ -1009,6 +1009,7 @@ credentialFlags(program
         overrides: {},
         print: globalOpts.print,
         skipGitignore: true,
+        force: true,
       });
 
       // configureCredentials' generic paste/manual flow may have picked up
@@ -1030,6 +1031,7 @@ credentialFlags(program
         boardIdOptional: true,
         overrides,
         print: globalOpts.print,
+        force: true,
       });
     }
   });
