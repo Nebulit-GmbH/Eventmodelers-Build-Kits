@@ -149,4 +149,4 @@ If ALL slices in the current context are Done, reply with:
 
 ## When an iteration completes
 
-Use all the key learnings from the project.txt and update the Agends.md file with those learning.
+Use all the key learnings from the progress.txt and update the AGENTS.md file with those learnings.

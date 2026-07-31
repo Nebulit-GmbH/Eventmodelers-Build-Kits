@@ -2,7 +2,7 @@
 // Ralph loop + realtime agent using a local Ollama model as the executor.
 // Run `ollama serve` first.
 // Usage: node ralph-ollama.js [project_dir]
-//        OLLAMA_MODEL=qwen3:8b node ralph-ollama.js
+//        OLLAMA_MODEL=qwen3.5:9b node ralph-ollama.js
 //        OLLAMA_URL=http://host:11434 node ralph-ollama.js
 
 import { startRalph } from './lib/ralph.js';
@@ -12,7 +12,7 @@ import { fileURLToPath } from 'url';
 
 const kitDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, '..');
-const model = process.env.OLLAMA_MODEL || 'qwen3:8b';
+const model = process.env.OLLAMA_MODEL || 'qwen3.5:9b';
 
 console.log(`[ralph-ollama] model=${model}`);
 

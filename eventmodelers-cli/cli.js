@@ -20,10 +20,17 @@ import { homedir } from 'os';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Each backend stack is a template set under stacks/<key>/templates/{.claude,root,build-kit}.
-// They also get shared/build-kit/* copied into their kit dir first — those files
-// (ralph-ollama.js, realtime-agent.js, code-export.mjs, lib/ollama-agent.js, package.json)
-// are identical across all of them.
+// Each stack is a template set under stacks/<key>/templates/{.claude,root,<kitSubdir>}.
+// Stacks with useShared:true also get shared/build-kit/* copied into their kit dir
+// first (ralph.js, ralph-claude.js, ralph-ollama.js, ralph.sh, realtime-agent.js,
+// code-export.mjs, lib/agent.sh, lib/ollama-agent.js, package.json, README.md) —
+// those files have no per-stack content, so they live once instead of being
+// copy-pasted into every stack (that copy-pasting is exactly how they drifted out
+// of sync before: a bugfix or default landing in one stack's copy but not another's).
+// Each stack's own templates/<kitSubdir>/* is then overlaid on top for genuine
+// per-stack differences (ralph-claude.js's build tooling, lib/prompt.md, etc.) —
+// see stacks/modeling-kit for an example of a kit with fully different entry-point
+// logic that still reuses the shared runtime pieces.
 const STACKS = {
   node: {
     label: 'Node.js / TypeScript',
@@ -62,7 +69,7 @@ const MODELING_KIT = {
   label: 'Modeling only — skills + agent loop, no backend scaffold',
   kitSubdir: 'kit',
   kitDirName: '.agent-modeling-kit',
-  useShared: false,
+  useShared: true,
   needsBoardId: false,
 };
 

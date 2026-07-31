@@ -97,7 +97,7 @@ function loadLocalConfig(kitDir) {
     console.log(`[ralph] Using credentials from ${sources[0]}`);
   } else if (sources.length === 0) {
     console.warn(`[ralph] Note: no .eventmodelers/config.json found — platform sync disabled.`);
-    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-axon`);
+    console.warn(`        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build`);
     console.warn(`        Code generation from local slice definitions will still run.`);
   }
 

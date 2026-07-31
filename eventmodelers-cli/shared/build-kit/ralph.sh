@@ -23,7 +23,7 @@ AGENT_SCRIPT="$KIT_DIR/lib/agent.sh"
 HAS_CREDENTIALS=true
 if [[ ! -f "$KIT_DIR/.eventmodelers/config.json" ]]; then
   echo "[ralph] Note: no .eventmodelers/config.json found — platform sync disabled." >&2
-  echo "        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build-axon" >&2
+  echo "        To enable board sync, follow: https://app.eventmodelers.ai/documentation#build" >&2
   echo "        Code generation from local slice definitions will still run." >&2
   HAS_CREDENTIALS=false
 fi

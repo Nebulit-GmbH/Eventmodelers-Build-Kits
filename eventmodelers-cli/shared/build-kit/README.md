@@ -9,7 +9,7 @@ Ralph's runtime directory. Contains the agent loop, realtime subscription, promp
 node .build-kit/ralph-claude.js
 
 # Local Ollama model — run `ollama serve` first
-OLLAMA_MODEL=qwen3:8b node .build-kit/ralph-ollama.js
+OLLAMA_MODEL=qwen3.5:9b node .build-kit/ralph-ollama.js
 
 # Custom project directory (defaults to the parent of .build-kit)
 node .build-kit/ralph-claude.js /path/to/project
@@ -66,13 +66,13 @@ node .build-kit/realtime-agent.js
 ## Ollama configuration
 
 ```bash
-OLLAMA_MODEL=qwen3:8b          # model to use (default: qwen3:8b)
+OLLAMA_MODEL=qwen3.5:9b         # model to use (default: qwen3.5:9b)
 OLLAMA_URL=http://host:11434   # Ollama server URL (default: http://localhost:11434)
 ```
 
 ## Config
 
-Credentials are stored in `.build-kit/.eventmodelers/config.json` (written by `ralph-li install`):
+Credentials are stored in `.build-kit/.eventmodelers/config.json` (written by `eventmodelers init`):
 
 ```json
 {

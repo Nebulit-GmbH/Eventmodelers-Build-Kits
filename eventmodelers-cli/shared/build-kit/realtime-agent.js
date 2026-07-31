@@ -13,6 +13,6 @@ const kitDir = process.argv[2] ? resolve(process.argv[2]) : dirname(fileURLToPat
 const local = loadLocalConfig(kitDir);
 const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
 
-console.log(`[agent] Starting — org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}`);
+console.log(`[agent] Starting — org=${cfg.organizationId}${cfg.boardId ? `, board=${cfg.boardId}` : ''}, base=${cfg.baseUrl}`);
 
 await startRealtimeAgent(cfg, kitDir);

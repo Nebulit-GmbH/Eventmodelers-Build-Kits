@@ -14,7 +14,7 @@ AGENT_SCRIPT="$KIT_DIR/lib/agent.sh"
 
 if [[ ! -f "$KIT_DIR/.eventmodelers/config.json" ]]; then
   echo "ERROR: No .eventmodelers/config.json found in $KIT_DIR"
-  echo "Run: npx @eventmodelers/eventmodelers.ai install"
+  echo "Run: npx @eventmodelers/cli init-modeling"
   exit 1
 fi
 
