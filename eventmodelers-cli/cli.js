@@ -1217,8 +1217,14 @@ program
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
   .action(async (opts) => {
     const cwd = process.cwd();
-    const kitDir = findInstalledKitDir(cwd);
-    const isModelingKit = kitDir.endsWith(MODELING_KIT.kitDirName);
+    // Both kit dirs can be installed side by side (e.g. running a build-kit and a
+    // modeling-kit agent from the same project). findInstalledKitDir only ever
+    // returns its first fixed-order match, which would silently prefer one stack
+    // over the other regardless of which the caller actually asked for — so here
+    // we resolve each stack's dir independently instead of relying on that order.
+    const installedKitDirs = findAllInstalledKitDirs(cwd);
+    const modelingKitDir = installedKitDirs.find((d) => d.endsWith(MODELING_KIT.kitDirName)) ?? null;
+    const buildKitDir = installedKitDirs.find((d) => d !== modelingKitDir) ?? null;
 
     // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
     // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
@@ -1230,7 +1236,7 @@ program
         console.error('❌ --modeling is mutually exclusive with --bash/--ollama — those select a build-kit runner, which --modeling has no use for.');
         process.exit(1);
       }
-      if (!isModelingKit) {
+      if (!modelingKitDir) {
         console.error(`❌ --modeling only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
         process.exit(1);
       }
@@ -1239,9 +1245,9 @@ program
       // does right after (dynamic imports, config reads) can eat the event-loop tick
       // this write needed to drain, so a piped watcher sees the ping arrive after
       // runModeling's own [modeling] log lines instead of before them.
-      await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, kitDir)}...\n\n`, res));
+      await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, modelingKitDir)}...\n\n`, res));
       try {
-        await runModeling(kitDir, resolve(kitDir, '..'));
+        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'));
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -1249,10 +1255,15 @@ program
       return;
     }
 
-    if (isModelingKit) {
-      console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
+    if (!buildKitDir) {
+      if (modelingKitDir) {
+        console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
+      } else {
+        console.error(`❌ No kit installed in ${cwd} — run \`eventmodelers install\` first.`);
+      }
       process.exit(1);
     }
+    const kitDir = buildKitDir;
 
     const pickedCount = [opts.bash, opts.ollama].filter(Boolean).length;
     if (pickedCount > 1) {
