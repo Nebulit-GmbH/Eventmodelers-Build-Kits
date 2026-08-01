@@ -1042,7 +1042,7 @@ async function runModeling(kitDir, projectDir) {
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) log(`ping failed: ${res.status}`);
+      if (!res.ok) log(`ping failed: ${res.status} ${await res.text().catch(() => '')}`);
     } catch (err) {
       log(`ping error: ${err.message}`);
     }
@@ -1234,7 +1234,12 @@ program
         console.error(`❌ --modeling only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
         process.exit(1);
       }
-      console.log(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, kitDir)}...\n`);
+      // Writes to a stdout pipe are asynchronous on POSIX — without waiting for this
+      // write's own flush callback, the heavier synchronous/async work runModeling()
+      // does right after (dynamic imports, config reads) can eat the event-loop tick
+      // this write needed to drain, so a piped watcher sees the ping arrive after
+      // runModeling's own [modeling] log lines instead of before them.
+      await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, kitDir)}...\n\n`, res));
       try {
         await runModeling(kitDir, resolve(kitDir, '..'));
       } catch (err) {

@@ -279,7 +279,7 @@ async function startRealtimeAgent(cfg, kitDir) {
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'BUILD', agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) console.error(`[agent] Ping failed: ${res.status}`);
+      if (!res.ok) console.error(`[agent] Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
     } catch (err) {
       console.error('[agent] Ping error:', err);
     }
