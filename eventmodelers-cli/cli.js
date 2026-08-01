@@ -670,7 +670,7 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
       { label: 'Enter values one by one', value: 'manual' },
       { label: 'Get instructions for configuring later', value: 'instructions' },
       { label: 'Skip for now', value: 'skip' },
-    ], 1);
+    ], 0);
 
     if (choice === 'paste') {
       console.log('\n  Copy your credentials from https://app.eventmodelers.ai/account,');

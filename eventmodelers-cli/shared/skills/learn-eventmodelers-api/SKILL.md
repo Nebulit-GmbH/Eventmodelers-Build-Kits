@@ -198,6 +198,8 @@ All node endpoints require header: `x-user-id`
 ### POST `/api/org/:orgId/boards/:boardId/nodes/events`
 Submit node change events.
 
+Any `node:created` event carrying a `chapterId` plus `cellId`/`cellName` (i.e. placing a node on a timeline) also triggers a best-effort, fire-and-forget auto-connect to type-compatible neighbors — same rules as the auto-connect endpoint below. Failures there never fail this call.
+
 **Request body**: `NodeChangeEvent[]`
 
 ```typescript
@@ -237,7 +239,7 @@ interface NodeChangeEvent {
     targetHandle?: string
   }>
   chapterId?: string   // for cell placement
-  cellName?: string    // spreadsheet-style e.g. "B2"
+  cellName?: string    // spreadsheet-style, always <letter(s)><number> e.g. "B2", "AA10" — pass through as-is, never decompose or interpret it
 }
 ```
 

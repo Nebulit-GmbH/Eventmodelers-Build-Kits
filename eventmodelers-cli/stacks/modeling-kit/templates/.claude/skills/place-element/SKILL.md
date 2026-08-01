@@ -21,7 +21,7 @@ From `$ARGUMENTS`, extract:
 | `boardId` | a board UUID | from `connect` skill (`BOARD_ID`) |
 | `timelineId` | the chapter/timeline UUID | auto-detect (see Step 2) |
 | `position` | column index (0-based number), `"after <title>"`, or omitted | append at end |
-| `cellName` | spreadsheet-style cell reference given directly in the prompt, e.g. `"A2"` | none |
+| `cellName` | spreadsheet-style cell reference given directly in the prompt — always `<letter(s)><number>`, e.g. `"A2"`, `"AA10"` | none |
 | `baseUrl` | explicit URL override | from `connect` skill (`BASE_URL`) |
 
 Normalise `elementType` to uppercase: `event` → `EVENT`, `command` → `COMMAND`, `readmodel` → `READMODEL`, `screen` → `SCREEN`, `automation` → `AUTOMATION`.
@@ -29,6 +29,8 @@ Normalise `elementType` to uppercase: `event` → `EVENT`, `command` → `COMMAN
 Use `BOARD_ID` and `BASE_URL` from the `connect` skill. If a `boardId` argument is explicitly passed, it overrides `BOARD_ID`.
 
 **Fast path — spreadsheet-style cell reference given directly (e.g. "place a COMMAND in A2"):** don't try to interpret what "A2" means yourself. The `node:created` event accepts a `cellName` field (see `learn-eventmodelers-api`) and the backend resolves it to the actual row/column — the same shortcut `html-screen` already uses. Skip Steps 3–6 entirely: resolve only `timelineId` (Step 2, needed for `chapterId`), then go straight to Step 7 and pass `cellName` instead of `cellId` on the `node:created` payload. Do not fetch columns, do not compute a row/column index, and do not construct `cellId` yourself for this case.
+
+**This still applies when several cell references are given together for one slice** (e.g. "put the screen in C1, the command in C2, the event in C3"). Do not reason about the grid at all — not which column "C" is, not whether C1/C2/C3 land in the same column, not which row is which. That is exactly the interpretation this fast path exists to skip. Treat each cell reference as an opaque string tied to its own element: call Step 7 once per element, passing that element's `cellName` untouched. The backend resolves each independently; the placements only need to be internally consistent with each other insofar as the prompt already told you so — you never need to understand *why*.
 
 ---
 
