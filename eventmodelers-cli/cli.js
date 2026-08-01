@@ -909,6 +909,23 @@ program
   .option('--config <path>', 'Path to an explicit config.json, overriding directory-based resolution (individual fields can also be set via EVENTMODELERS_* env vars, which always win)')
   .option('--print', 'Print follow-up commands (e.g. claude mcp add) instead of prompting to run them');
 
+// Commands exempt from the "is a kit installed here?" gate below: init/init-modeling
+// are what installs one in the first place, init-config only ever touches credentials,
+// and stacks/status/config/uninstall are read-only or cleanup commands that are
+// meant to work — and report something useful — whether or not a kit is present.
+const NO_INIT_REQUIRED = new Set(['init', 'init-modeling', 'init-config', 'stacks', 'status', 'config', 'uninstall']);
+
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
+  if (findInstalledKitDir(process.cwd())) return;
+
+  console.error(`❌ No eventmodelers kit installed in this directory (checked: ${KIT_DIR_NAMES.join(', ')}).`);
+  console.error('   Run one of these first:');
+  console.error(`     npx @eventmodelers/cli init --stack <name>   (${Object.keys(STACKS).join(', ')})`);
+  console.error('     npx @eventmodelers/cli init-modeling');
+  process.exit(1);
+});
+
 // Shared by init/init-modeling/init-config: direct command-line credentials,
 // Protractor-style (--base-url=..., not a generic --param key=value passthrough) —
 // self-documenting in --help and typo-safe. These win over both the config file
@@ -1045,10 +1062,6 @@ program
   .action(async (opts) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
-    if (!kitDir) {
-      console.error(`❌ No installed kit dir found (checked: ${KIT_DIR_NAMES.join(', ')}) — run \`eventmodelers init\` first.`);
-      process.exit(1);
-    }
 
     const pickedCount = [opts.bash, opts.ollama, opts.realTime].filter(Boolean).length;
     if (pickedCount > 1) {
@@ -1082,6 +1095,29 @@ program
     const cmd = runner.endsWith('.sh') ? `"${runnerPath}"` : `node "${runnerPath}"`;
     try {
       execSync(cmd, { cwd: kitDir, stdio: 'inherit' });
+    } catch (err) {
+      process.exit(err.status || 1);
+    }
+  });
+
+program
+  .command('listen')
+  .description('Start the code-export listener (code-export.mjs) from the installed kit dir — receives slice/screen data pushed from the eventmodelers board UI and writes it into .slices/')
+  .option('--port <port>', 'Port to listen on (default 3001, or $PORT)')
+  .action((opts) => {
+    const cwd = process.cwd();
+    const kitDir = findInstalledKitDir(cwd);
+
+    const serverPath = join(kitDir, 'code-export.mjs');
+    if (!existsSync(serverPath)) {
+      console.error(`❌ ${relative(cwd, serverPath)} not found.`);
+      process.exit(1);
+    }
+
+    console.log(`▶ Starting ${relative(cwd, serverPath)}...\n`);
+    const env = opts.port ? { ...process.env, PORT: opts.port } : process.env;
+    try {
+      execSync(`node "${serverPath}"`, { cwd: kitDir, stdio: 'inherit', env });
     } catch (err) {
       process.exit(err.status || 1);
     }
