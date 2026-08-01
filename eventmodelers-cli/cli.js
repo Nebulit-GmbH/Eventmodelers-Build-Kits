@@ -1001,7 +1001,7 @@ async function runModeling(kitDir, projectDir) {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING' }),
       });
       if (!res.ok) log(`ping failed: ${res.status}`);
     } catch (err) {
