@@ -21,11 +21,14 @@ From `$ARGUMENTS`, extract:
 | `boardId` | a board UUID | from `connect` skill (`BOARD_ID`) |
 | `timelineId` | the chapter/timeline UUID | auto-detect (see Step 2) |
 | `position` | column index (0-based number), `"after <title>"`, or omitted | append at end |
+| `cellName` | spreadsheet-style cell reference given directly in the prompt, e.g. `"A2"` | none |
 | `baseUrl` | explicit URL override | from `connect` skill (`BASE_URL`) |
 
 Normalise `elementType` to uppercase: `event` → `EVENT`, `command` → `COMMAND`, `readmodel` → `READMODEL`, `screen` → `SCREEN`, `automation` → `AUTOMATION`.
 
 Use `BOARD_ID` and `BASE_URL` from the `connect` skill. If a `boardId` argument is explicitly passed, it overrides `BOARD_ID`.
+
+**Fast path — spreadsheet-style cell reference given directly (e.g. "place a COMMAND in A2"):** don't try to interpret what "A2" means yourself. The `node:created` event accepts a `cellName` field (see `learn-eventmodelers-api`) and the backend resolves it to the actual row/column — the same shortcut `html-screen` already uses. Skip Steps 3–6 entirely: resolve only `timelineId` (Step 2, needed for `chapterId`), then go straight to Step 7 and pass `cellName` instead of `cellId` on the `node:created` payload. Do not fetch columns, do not compute a row/column index, and do not construct `cellId` yourself for this case.
 
 ---
 
@@ -203,7 +206,9 @@ If no matching row is found, stop and report the error — the timeline may be m
 
 > **SCREEN nodes always require a sketch.** The server auto-generates a title-only placeholder when a SCREEN is created without one, but it will look empty. Always follow up a SCREEN node creation with a call to `POST /images/:nodeId/sketch` (or use `POST /image-nodes/:nodeId/sketch` to create and render in one call — see `learn-eventmodelers-api` for the sketch format).
 
-Include `x-token`, `x-board-id`, and `x-user-id: agent` on every call to `/nodes/events`:
+Include `x-token`, `x-board-id`, and `x-user-id: agent` on every call to `/nodes/events`.
+
+**Normal path** (position/lane resolved manually in Steps 3–6) — use `cellId`:
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
@@ -226,9 +231,32 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   }]'
 ```
 
+**Fast path** (`cellName` given directly, e.g. `"A2"` — see the Step 1 shortcut) — pass `cellName` instead of `cellId` and let the backend resolve it; nothing else in the payload changes:
+
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+  -H "x-token: $TOKEN" \
+  -H "x-board-id: $BOARD_ID" \
+  -H "x-user-id: agent" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "eventType": "node:created",
+    "nodeId": "<node-uuid>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": <Date.now()>,
+    "chapterId": "<TIMELINE_ID>",
+    "cellName": "<CELL_NAME>",
+    "meta": {
+      "type": "<ELEMENT_TYPE>",
+      "title": "<title>"
+    },
+    "node": { "data": { "title": "<title>" } }
+  }]'
+```
+
 Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
 
-> **`node:created` with `cellId` IS the placement** — do NOT also call the `drop` endpoint afterwards. The `drop` endpoint adds a second cell reference without removing the first, causing the node to appear in two columns simultaneously. Use `node:created + cellId` for all initial placements.
+> **`node:created` with `cellId`/`cellName` IS the placement** — do NOT also call the `drop` endpoint afterwards. The `drop` endpoint adds a second cell reference without removing the first, causing the node to appear in two columns simultaneously. Use `node:created` with `cellId` or `cellName` for all initial placements.
 
 ---
 

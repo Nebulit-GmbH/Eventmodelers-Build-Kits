@@ -260,6 +260,17 @@ Get a single node.
 
 ---
 
+### POST `/api/org/:orgId/boards/:boardId/nodes/:nodeId/auto-connect`
+Auto-connect a node to its timeline neighbors — mirrors the frontend's auto-connect-on-place behavior. Looks only at the node's own timeline column and the previous column (never ahead), and creates `edge:added` events to every type-compatible neighbor found there, using the same pairing rules as connections created via node events (COMMAND→EVENT, SCREEN→COMMAND, EVENT→READMODEL, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND). A COMMAND is not wired to the previous column's SCREEN if its own column already has one.
+
+Incompatible or already-connected neighbors are reported in `skipped`, not an error. Returns an empty result for nodes not placed on any timeline, or not a connectable element type (e.g. SCENARIO/spec nodes are never auto-connected).
+
+**Response**:
+- `200` — `{ connected: [{edgeId, source, target, created}], skipped: [{nodeId, reason}] }`
+- `404` — node not found
+
+---
+
 ## 4. Images
 
 **File**: `src/slices/change/api-images/routes.ts`
@@ -614,6 +625,7 @@ All events support optional metadata: `user_id`, `correlation_id`, `causation_id
 | `src/slices/change/api-boards/routes.ts` | Board CRUD + event persistence |
 | `src/slices/change/api-chapters/routes.ts` | Chapters, columns, lanes, cell drops |
 | `src/slices/change/api-nodes/routes.ts` | Node event sourcing |
+| `src/slices/extensions/supabase/nodes/AutoConnectNode.ts` | Auto-connect logic (timeline neighbor wiring) |
 | `src/slices/change/api-images/routes.ts` | Image upload + sketch rendering |
 | `src/slices/change/api-.slices/routes.ts` | Slice creation + slice definitions (SLICE_BORDER) |
 | `src/slices/extensions/supabase/slices/CreateSliceDefinition.ts` | Slice definition (SLICE_BORDER) creation logic |
