@@ -252,7 +252,7 @@ async function startRealtimeAgent(cfg, kitDir) {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId }),
       });
       if (!res.ok) console.error(`[agent] Ping failed: ${res.status}`);
     } catch (err) {
