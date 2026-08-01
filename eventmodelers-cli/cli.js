@@ -29,9 +29,10 @@ const __dirname = dirname(__filename);
 // copy-pasted into every stack (that copy-pasting is exactly how they drifted out
 // of sync before: a bugfix or default landing in one stack's copy but not another's).
 // Each stack's own templates/<kitSubdir>/* is then overlaid on top for genuine
-// per-stack differences (ralph-claude.js's build tooling, lib/prompt.md, etc.) —
-// see stacks/modeling-kit for an example of a kit with fully different entry-point
-// logic that still reuses the shared runtime pieces.
+// per-stack differences (ralph-claude.js's build tooling, lib/prompt.md, etc.).
+// modeling-kit (below) is the one kit that opts out of all of this (useShared:false)
+// — it has no cold-spawn/tasks.json runtime at all, so none of shared/build-kit/*
+// applies to it; see its own templates/kit for its (much smaller) self-contained set.
 const STACKS = {
   node: {
     label: 'Node.js / TypeScript',
@@ -63,14 +64,18 @@ const STACKS = {
   },
 };
 
-// Not a stack — no backend scaffold, just skills + the agent loop. Gets its own
-// command (`init-modeling`) instead of living in the `init --stack` picker.
+// Not a stack — no backend scaffold, just skills + the agent loop. Installed via
+// `init --modeling` instead of the `init --stack <name>` picker.
+// useShared:false — unlike build-kit, modeling-kit has no cold-spawn/tasks.json
+// runtime to reuse from shared/build-kit/*; its only runtime mode is the CLI's
+// own warm, direct-dispatch loop (`run --modeling`), so its kit dir just needs
+// lib/config.js for config resolution — see stacks/modeling-kit/templates/kit.
 const MODELING_KIT = {
   key: 'modeling-kit',
   label: 'Modeling only — skills + agent loop, no backend scaffold',
   kitSubdir: 'kit',
   kitDirName: '.agent-modeling-kit',
-  useShared: true,
+  useShared: false,
   needsBoardId: false,
 };
 
@@ -135,7 +140,7 @@ async function configureAgentHosts({ hosts, global: useGlobal } = {}) {
   const skillsDir = useGlobal ? join(homedir(), '.claude', 'skills') : join(targetDir, '.claude', 'skills');
 
   if (!existsSync(skillsDir)) {
-    console.error(`❌ No skills found at ${relative(targetDir, skillsDir) || skillsDir} — run \`eventmodelers init\` or \`init-modeling\` first.`);
+    console.error(`❌ No skills found at ${relative(targetDir, skillsDir) || skillsDir} — run \`eventmodelers init\` or \`init --modeling\` first.`);
     process.exit(1);
   }
   const skills = readdirSync(skillsDir).filter((f) => existsSync(join(skillsDir, f, 'SKILL.md')));
@@ -435,7 +440,7 @@ function readJsonSafe(path) {
 // Hierarchical resolution: a shared config higher up the directory tree (e.g. the
 // project root's own .eventmodelers/config.json, or ~/.eventmodelers/config.json for
 // defaults shared across every project) provides the base values — this is where
-// `init`/`init-modeling` write by default, so a modeling-kit and a build-kit installed
+// `init` (with or without --modeling) writes by default, so a modeling-kit and a build-kit installed
 // in the same project share one file. A legacy or deliberately separate config.json
 // inside the kit dir itself still overrides any field it also sets, for cases where a
 // single project needs distinct credentials per kit. An explicit --config path bypasses
@@ -610,6 +615,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
       boardIdOptional: !stackCfg.needsBoardId,
       overrides: options.credentialOverrides,
       print: options.print,
+      force: options.force,
     });
 
     // --- 6. Install manifest (drives precise `uninstall` later) ---
@@ -801,37 +807,38 @@ async function configureMcp(options = {}) {
   }
 }
 
-// `run --real-time`: a complete, self-contained runner distinct from the ralph
-// loop — it does NOT reuse the kit's `startRalph`/`ralphLoop`/`tasks.json` queue,
-// which exists for `ralph.sh`, the Ollama loop, and cold-spawn `ralph-claude.js`
-// (all of which have no persistent process to hand a prompt to directly). It
-// keeps ONE Claude process warm across turns via `--input-format stream-json`,
-// subscribes to the org's realtime channel itself, and writes each prompt straight
-// to that process's stdin as soon as it's fetched — no file round-trip, no polling
-// delay, no re-discovery of a prompt this process already has in memory. Only
-// pure, read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is
-// reused from the kit's lib/ralph.js, to avoid duplicating the config-file-walk
-// logic (see the "Unify ralph/agent runtime files" commit for why that drifted
-// before). See `claude-realtime.md` in the kit's project root for the per-turn
-// instructions this mode's warm session follows (distinct from `claude-ralph.md`,
-// used by the other three modes).
-async function runRealtime(kitDir, projectDir) {
-  const ralphLibPath = join(kitDir, 'lib', 'ralph.js');
-  if (!existsSync(ralphLibPath)) {
-    console.error(`❌ ${relative(process.cwd(), ralphLibPath)} not found — --real-time needs a kit installed via \`init\`/\`init-modeling\`.`);
+// `run --modeling`: modeling-kit's one and only runtime mode — there is no
+// cold-spawn/tasks.json loop for this kit (that's a build-kit concept; see the
+// `run` command's build-kit-vs-modeling-kit gate above). It keeps ONE Claude
+// process warm across turns via `--input-format stream-json`, subscribes to the
+// org's realtime channel itself, and writes each prompt straight to that
+// process's stdin as soon as it's fetched — no file round-trip, no polling delay,
+// no re-discovery of a prompt this process already has in memory. Only pure,
+// read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is reused
+// from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
+// See `claude-modeling.md` in the kit's project root for the per-turn instructions
+// this mode's warm session follows.
+async function runModeling(kitDir, projectDir) {
+  const configLibPath = join(kitDir, 'lib', 'config.js');
+  if (!existsSync(configLibPath)) {
+    console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
     process.exit(1);
   }
-  const { loadLocalConfig, fetchPlatformConfig } = await import(pathToFileURL(ralphLibPath).href);
+  const { loadLocalConfig, fetchPlatformConfig } = await import(pathToFileURL(configLibPath).href);
   const { createClient } = await import('@supabase/supabase-js');
 
   const local = loadLocalConfig(kitDir);
   if (!local.token || !local.organizationId) {
-    console.error('❌ --real-time needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
+    console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
   }
   const cfg = await fetchPlatformConfig(local); // adds supabaseUrl/supabaseAnonKey (+ boardId if the config has a default one)
+  if (!cfg.boardId) {
+    console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
+    process.exit(1);
+  }
 
-  const log = (line) => console.log(`[realtime] ${line}`);
+  const log = (line) => console.log(`[modeling] ${line}`);
 
   const QUESTIONING_RULE =
     'IMPORTANT: You are running autonomously — no human is available to answer questions. ' +
@@ -840,7 +847,7 @@ async function runRealtime(kitDir, projectDir) {
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt.\n\n';
 
   // Sent once, on the first turn only — it's what tells CLAUDE.md's dispatcher to
-  // follow claude-realtime.md instead of claude-ralph.md, and gives the warm
+  // follow claude-modeling.md instead of claude-ralph.md, and gives the warm
   // session its one-time connect credentials. Every later turn only carries the
   // per-prompt fields that actually vary (board_id, comment_id, ...).
   let firstTurn = true;
@@ -855,7 +862,7 @@ async function runRealtime(kitDir, projectDir) {
     const body = `${fields}\n\n${p.prompt}`;
     if (!firstTurn) return body;
     firstTurn = false;
-    return `MODE=realtime token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read claude-realtime.md and follow it for every prompt in this session.\n\n${body}`;
+    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read claude-modeling.md and follow it for every prompt in this session.\n\n${body}`;
   }
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
@@ -900,7 +907,7 @@ async function runRealtime(kitDir, projectDir) {
     proc.on('exit', (code) => {
       log(`process exited (${code}) — will respawn on next task`);
       proc = null;
-      firstTurn = true; // a respawned process is a fresh session — needs MODE=realtime again
+      firstTurn = true; // a respawned process is a fresh session — needs MODE=modeling again
       if (pending) {
         const turn = pending;
         pending = null;
@@ -929,7 +936,7 @@ async function runRealtime(kitDir, projectDir) {
   }
 
   async function fetchNextPrompt(jwtToken) {
-    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/next`, {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/next?board_id=${encodeURIComponent(cfg.boardId)}`, {
       headers: { 'x-token': cfg.token, Authorization: `Bearer ${jwtToken}` },
     });
     if (res.status === 404) return null;
@@ -1014,11 +1021,12 @@ program
   .option('--config <path>', 'Path to an explicit config.json, overriding directory-based resolution (individual fields can also be set via EVENTMODELERS_* env vars, which always win)')
   .option('--print', 'Print follow-up commands (e.g. claude mcp add) instead of prompting to run them');
 
-// Commands exempt from the "is a kit installed here?" gate below: init/init-modeling
-// are what installs one in the first place, init-config only ever touches credentials,
-// and stacks/status/config/uninstall are read-only or cleanup commands that are
-// meant to work — and report something useful — whether or not a kit is present.
-const NO_INIT_REQUIRED = new Set(['init', 'init-modeling', 'init-config', 'stacks', 'status', 'config', 'uninstall']);
+// Commands exempt from the "is a kit installed here?" gate below: init (with or
+// without --modeling) is what installs one in the first place, init-config only
+// ever touches credentials, and stacks/status/config/uninstall are read-only or
+// cleanup commands that are meant to work — and report something useful — whether
+// or not a kit is present.
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall']);
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
@@ -1027,11 +1035,11 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
   console.error(`❌ No eventmodelers kit installed in this directory (checked: ${KIT_DIR_NAMES.join(', ')}).`);
   console.error('   Run one of these first:');
   console.error(`     npx @eventmodelers/cli init --stack <name>   (${Object.keys(STACKS).join(', ')})`);
-  console.error('     npx @eventmodelers/cli init-modeling');
+  console.error('     npx @eventmodelers/cli init --modeling');
   process.exit(1);
 });
 
-// Shared by init/init-modeling/init-config: direct command-line credentials,
+// Shared by init/init-config: direct command-line credentials,
 // Protractor-style (--base-url=..., not a generic --param key=value passthrough) —
 // self-documenting in --help and typo-safe. These win over both the config file
 // and EVENTMODELERS_* env vars, same as any explicitly-passed flag should.
@@ -1050,31 +1058,35 @@ function credentialOverridesFromOpts(opts) {
 credentialFlags(program
   .command('init')
   .alias('install')
-  .description('Scaffold a stack + install the agent modeling kit into the current directory')
+  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold)')
   .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')})`)
-  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project'))
+  .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack.')
+  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
+  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
   .action(async (opts, command) => {
-    const stackKey = await resolveStack(opts.stack);
     const globalOpts = command.optsWithGlobals();
+
+    if (opts.modeling) {
+      if (opts.stack) {
+        console.error('❌ --modeling and --stack are mutually exclusive — pick one.');
+        process.exit(1);
+      }
+      await installStack(MODELING_KIT.key, MODELING_KIT, {
+        configPath: globalOpts.config,
+        print: globalOpts.print,
+        global: opts.global,
+        force: opts.force,
+        credentialOverrides: credentialOverridesFromOpts(opts),
+      });
+      return;
+    }
+
+    const stackKey = await resolveStack(opts.stack);
     await installStack(stackKey, STACKS[stackKey], {
       configPath: globalOpts.config,
       print: globalOpts.print,
       global: opts.global,
-      credentialOverrides: credentialOverridesFromOpts(opts),
-    });
-  });
-
-credentialFlags(program
-  .command('init-modeling')
-  .alias('modeling')
-  .description('Install skills + the agent loop only — no backend scaffold')
-  .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project'))
-  .action(async (opts, command) => {
-    const globalOpts = command.optsWithGlobals();
-    await installStack(MODELING_KIT.key, MODELING_KIT, {
-      configPath: globalOpts.config,
-      print: globalOpts.print,
-      global: opts.global,
+      force: opts.force,
       credentialOverrides: credentialOverridesFromOpts(opts),
     });
   });
@@ -1160,37 +1172,48 @@ credentialFlags(program
 
 program
   .command('run')
-  .description('Start the agent loop from the installed kit dir (default: ralph-claude.js)')
-  .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner')
-  .option('--bash', 'Use the bash-only ralph.sh loop (no realtime)')
-  .option('--real-time', 'Keep one Claude process warm across tasks instead of spawning a fresh one per task, for low-latency voice/live use. Built into the CLI, not a per-project file.')
+  .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: requires --modeling')
+  .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
+  .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
+  .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
   .action(async (opts) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
+    const isModelingKit = kitDir.endsWith(MODELING_KIT.kitDirName);
 
-    const pickedCount = [opts.bash, opts.ollama, opts.realTime].filter(Boolean).length;
-    if (pickedCount > 1) {
-      console.error('❌ --bash, --ollama, and --real-time are mutually exclusive — pick one.');
-      process.exit(1);
-    }
-
-    if (opts.realTime) {
-      // Direct-dispatch subscribes to the org-wide prompt queue (`org:<orgId>`,
-      // `/api/org/:orgId/prompts/next`) — that queue only exists for modeling-kit.
-      // Build-kit's realtime channel is per-board slice-status change, a different
-      // shape of event entirely, so --real-time has nothing to attach to there.
-      if (!kitDir.endsWith(MODELING_KIT.kitDirName)) {
-        console.error(`❌ --real-time only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
+    // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
+    // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
+    // cold-spawn/tasks.json loop (default, or --ollama/--bash). Neither falls back
+    // to the other's mechanism, so each side is gated explicitly below rather than
+    // just being left to fail on a missing file.
+    if (opts.modeling) {
+      if (opts.bash || opts.ollama) {
+        console.error('❌ --modeling is mutually exclusive with --bash/--ollama — those select a build-kit runner, which --modeling has no use for.');
         process.exit(1);
       }
-      console.log(`▶ Starting real-time loop (warm Claude process) for ${relative(cwd, kitDir)}...\n`);
+      if (!isModelingKit) {
+        console.error(`❌ --modeling only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
+        process.exit(1);
+      }
+      console.log(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, kitDir)}...\n`);
       try {
-        await runRealtime(kitDir, resolve(kitDir, '..'));
+        await runModeling(kitDir, resolve(kitDir, '..'));
       } catch (err) {
-        console.error('[realtime] Fatal:', err);
+        console.error('[modeling] Fatal:', err);
         process.exit(1);
       }
       return;
+    }
+
+    if (isModelingKit) {
+      console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
+      process.exit(1);
+    }
+
+    const pickedCount = [opts.bash, opts.ollama].filter(Boolean).length;
+    if (pickedCount > 1) {
+      console.error('❌ --bash and --ollama are mutually exclusive — pick one.');
+      process.exit(1);
     }
 
     // The actual agent loop lives in the scaffolded kit dir, not in this package — this
@@ -1245,10 +1268,10 @@ program
       console.log(`  ${key.padEnd(16)} ${cfg.label}`);
     }
     console.log('\nUse: npx @eventmodelers/cli init --stack <name>');
-    console.log(`\nNot a stack — skills + agent loop only, no backend: npx @eventmodelers/cli init-modeling`);
+    console.log(`\nNot a stack — skills + agent loop only, no backend: npx @eventmodelers/cli init --modeling`);
   });
 
-// Removes exactly what a given `init`/`init-modeling` run put down — read back from
+// Removes exactly what a given `init` (with or without --modeling) run put down — read back from
 // the install manifest written at the end of installStack() — and nothing else: not
 // unrelated skills the user added by hand, not the root project scaffold.
 function uninstallKitDir(kitDir, cwd) {
@@ -1328,7 +1351,7 @@ function uninstallKitDir(kitDir, cwd) {
 
 program
   .command('uninstall')
-  .description('Remove everything init/init-modeling installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), its MCP entry in .claude/settings.json, and any files written by init-agents. Leaves the root project scaffold untouched.')
+  .description('Remove everything init (with or without --modeling) installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), its MCP entry in .claude/settings.json, and any files written by init-agents. Leaves the root project scaffold untouched.')
   .option('--build-kit', `Remove ${STACKS.node.kitDirName}/ (the backend-stack kit dir)`)
   .option('--modeling-kit', `Remove ${MODELING_KIT.kitDirName}/ (the modeling-only kit dir)`)
   .action((opts) => {
@@ -1371,14 +1394,18 @@ program
     const kitDir = findInstalledKitDir(cwd);
     const skillsDir = join(cwd, '.claude', 'skills');
     const explicitConfig = command.optsWithGlobals().config;
-    const ralphPath = kitDir ? join(kitDir, 'ralph-claude.js') : null;
+    // modeling-kit's only runtime is `run --modeling`, driven by lib/config.js (no
+    // ralph-claude.js exists there — see MODELING_KIT's useShared:false); every
+    // other kit dir is a build-kit stack, whose default runtime is ralph-claude.js.
+    const isModelingKit = kitDir?.endsWith(MODELING_KIT.kitDirName);
+    const runtimePath = kitDir ? join(kitDir, isModelingKit ? 'lib/config.js' : 'ralph-claude.js') : null;
     const { sources, config: cfg } = loadEffectiveConfig(cwd, kitDir, explicitConfig);
 
     console.log('Eventmodelers CLI Status\n');
     console.log(`Kit dir:        ${kitDir ? `✅ installed (${relative(cwd, kitDir)})` : '❌ not found'}`);
     console.log(`Skills:         ${existsSync(skillsDir) ? '✅ installed' : '❌ not found'}`);
     console.log(`Config:         ${sources.length ? `✅ present${sources.length > 1 ? ` (merged from ${sources.length} files)` : ''}` : '❌ missing'}`);
-    console.log(`Ralph agent:    ${ralphPath && existsSync(ralphPath) ? '✅ present' : '❌ missing'}`);
+    console.log(`Agent runtime:  ${runtimePath && existsSync(runtimePath) ? '✅ present' : '❌ missing'}`);
 
     if (sources.length) {
       console.log(`\nConnected to:   ${cfg.baseUrl || DEFAULT_BASE_URL}`);

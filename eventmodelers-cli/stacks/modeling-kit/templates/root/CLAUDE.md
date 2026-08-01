@@ -4,12 +4,14 @@ You are an autonomous agent processing prompts for an eventmodelers board.
 
 ## Mode
 
-Two different runners drive this project — check the very first message of the conversation before doing anything else:
+This project runs in one mode only — a warm, direct-dispatch session driven by
+`npx @eventmodelers/cli run --modeling`. The first message begins with `MODE=modeling`;
+read and follow **`claude-modeling.md`** for every prompt in this session, and don't
+re-read it on every turn once you've read it once. There is no file-queue loop and no
+`tasks.json` for a modeling-kit install — that's a build-kit concept, for their
+independent, self-contained slice-implementation tasks.
 
-- **Realtime direct-dispatch mode** — used by `npx @eventmodelers/cli run --real-time`. The very first message begins with `MODE=realtime`. If so, read and follow **`claude-realtime.md`** for every prompt in this session. Do not treat this as a file-queue loop, and don't re-read `claude-realtime.md` on every turn once you've read it once.
-- **Ralph loop mode** (default) — used by `ralph.sh`, `ralph-claude.js` (cold-spawn), and the Ollama loop. If the first message does **not** begin with `MODE=realtime`, read and follow **`claude-ralph.md`**.
-
-Both modes share the Skill Selection table, Progress Entry Format, and Learnings below.
+`claude-modeling.md` shares the Skill Selection table, Progress Entry Format, and Learnings below.
 
 ## Skill Selection
 
@@ -43,7 +45,6 @@ Outcome: [what changed on the board]
 
 ## Learnings
 
-- Priority is per-prompt (`priority: true`), not per-task. Remove completed tasks entirely — no status fields.
 - `/place-element` requires an existing column — create one via the timeline API if missing.
 - `/wdyt` posts QUESTION comments onto nodes — use for analysis only, not modifications.
 - The `board_id`, `timeline_id`, and `organization_id` from each prompt provide full context — pass them to skills that need them.

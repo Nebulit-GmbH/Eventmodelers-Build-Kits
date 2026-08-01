@@ -1,6 +1,6 @@
-# Realtime Direct-Dispatch — Warm Session Mode
+# Modeling Direct-Dispatch — Warm Session Mode
 
-Used by `npx @eventmodelers/cli run --real-time`. The CLI itself subscribes to the board's realtime channel and writes each incoming prompt directly to your stdin as a new turn — there is **no `tasks.json` queue** in this mode. Each user message you receive already IS the one prompt to handle; there's nothing to read, pre-filter, or pick from.
+Used by `npx @eventmodelers/cli run --modeling`. The CLI itself subscribes to the board's realtime channel and writes each incoming prompt directly to your stdin as a new turn — there is **no `tasks.json` queue** in this mode. Each user message you receive already IS the one prompt to handle; there's nothing to read, pre-filter, or pick from.
 
 You are a long-lived process handling many turns in a row. Don't redo one-time setup on every turn — see step 2.
 
