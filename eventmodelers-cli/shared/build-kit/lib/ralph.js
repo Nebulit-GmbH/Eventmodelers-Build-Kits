@@ -253,6 +253,7 @@ async function startRealtimeAgent(cfg, kitDir) {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'BUILD' }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) console.error(`[agent] Ping failed: ${res.status}`);
     } catch (err) {
@@ -260,7 +261,7 @@ async function startRealtimeAgent(cfg, kitDir) {
     }
   };
   await ping();
-  setInterval(ping, 30_000);
+  setInterval(ping, 15_000);
 }
 
 // ── Ralph loop ────────────────────────────────────────────────────────────────

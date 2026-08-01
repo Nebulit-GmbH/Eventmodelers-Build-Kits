@@ -1002,6 +1002,7 @@ async function runModeling(kitDir, projectDir) {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING' }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) log(`ping failed: ${res.status}`);
     } catch (err) {
@@ -1009,7 +1010,7 @@ async function runModeling(kitDir, projectDir) {
     }
   };
   await ping();
-  setInterval(ping, 30_000);
+  setInterval(ping, 15_000);
 }
 
 const program = new Command();
