@@ -108,6 +108,30 @@ function hasCredentials(cfg) {
   return !!(cfg.token && cfg.organizationId && cfg.boardId && cfg.baseUrl);
 }
 
+// Distinguishes this agent process from any other agent pinging the same
+// token/board — e.g. a build-kit and a modeling-kit install in the same project
+// share one root config.json, and without a per-agent id both would upsert the
+// same alive row and race each other. Written to the kit's OWN config.json
+// (inside kitDir, not the shared root one credentials live in) so a build agent
+// and a modeling agent never end up with the same id, and persisted so restarts
+// of this same kit keep reporting under the same identity.
+function ensureAgentId(kitDir) {
+  const kitConfigPath = join(kitDir, '.eventmodelers', 'config.json');
+  let existing = {};
+  if (existsSync(kitConfigPath)) {
+    try {
+      existing = JSON.parse(readFileSync(kitConfigPath, 'utf-8'));
+    } catch {
+      console.warn(`[ralph] Skipping invalid config at ${kitConfigPath}`);
+    }
+  }
+  if (existing.agentId) return existing.agentId;
+  const agentId = randomUUID();
+  mkdirSync(dirname(kitConfigPath), { recursive: true });
+  writeFileSync(kitConfigPath, JSON.stringify({ ...existing, agentId }, null, 2));
+  return agentId;
+}
+
 async function fetchPlatformConfig(local) {
   const remote = await fetchJSON(`${local.baseUrl}/api/config`, {
     headers: { 'x-token': local.token },
@@ -252,7 +276,7 @@ async function startRealtimeAgent(cfg, kitDir) {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'BUILD' }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'BUILD', agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) console.error(`[agent] Ping failed: ${res.status}`);
@@ -357,6 +381,7 @@ export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice }) {
   const local = loadLocalConfig(kitDir);
+  local.agentId = local.agentId ?? ensureAgentId(kitDir);
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);

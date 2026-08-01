@@ -17,6 +17,7 @@ import {
 import { execSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir } from 'os';
+import { randomUUID } from 'crypto';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -437,6 +438,23 @@ function readJsonSafe(path) {
   }
 }
 
+// Distinguishes this agent process from any other agent pinging the same
+// token/board — e.g. a build-kit and a modeling-kit install in the same project
+// share one root config.json, and without a per-agent id both would upsert the
+// same alive row and race each other. Written to the kit's OWN config.json
+// (inside kitDir, not the shared root one credentials live in) so a build agent
+// and a modeling agent never end up with the same id, and persisted so restarts
+// of this same kit keep reporting under the same identity.
+function ensureAgentId(kitDir) {
+  const kitConfigPath = join(kitDir, '.eventmodelers', 'config.json');
+  const existing = readJsonSafe(kitConfigPath);
+  if (existing.agentId) return existing.agentId;
+  const agentId = randomUUID();
+  mkdirSync(dirname(kitConfigPath), { recursive: true });
+  writeFileSync(kitConfigPath, JSON.stringify({ ...existing, agentId }, null, 2));
+  return agentId;
+}
+
 // Hierarchical resolution: a shared config higher up the directory tree (e.g. the
 // project root's own .eventmodelers/config.json, or ~/.eventmodelers/config.json for
 // defaults shared across every project) provides the base values — this is where
@@ -828,6 +846,7 @@ async function runModeling(kitDir, projectDir) {
   const { createClient } = await import('@supabase/supabase-js');
 
   const local = loadLocalConfig(kitDir);
+  local.agentId = local.agentId ?? ensureAgentId(kitDir);
   if (!local.token || !local.organizationId) {
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
@@ -1020,7 +1039,7 @@ async function runModeling(kitDir, projectDir) {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING' }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) log(`ping failed: ${res.status}`);
