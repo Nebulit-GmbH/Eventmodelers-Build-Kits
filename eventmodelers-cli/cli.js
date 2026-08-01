@@ -873,6 +873,25 @@ async function runModeling(kitDir, projectDir) {
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
 
+  // Bare tool names (`→ Bash`, `→ Skill`) tell you nothing happened worth
+  // reading — this pulls out the one input field that actually says what the
+  // tool did, so the trace is skimmable without the interactive TUI.
+  function describeToolUse(block) {
+    const input = block.input ?? {};
+    switch (block.name) {
+      case 'Bash': return `Bash: ${input.command}`;
+      case 'Skill': return `Skill: ${input.skill}${input.args ? ` ${input.args}` : ''}`;
+      case 'Read': return `Read: ${input.file_path}`;
+      case 'Edit': return `Edit: ${input.file_path}`;
+      case 'Write': return `Write: ${input.file_path}`;
+      case 'Grep': return `Grep: ${input.pattern}`;
+      case 'Glob': return `Glob: ${input.pattern}`;
+      case 'WebFetch': return `WebFetch: ${input.url}`;
+      case 'Agent': return `Agent: ${input.description ?? input.subagent_type ?? ''}`;
+      default: return block.name;
+    }
+  }
+
   // stream-json output loses the normal interactive TUI (tool cards, live diffs) —
   // this is a plain-text approximation, good enough for a headless/voice runner.
   function handleLine(line) {
@@ -883,7 +902,7 @@ async function runModeling(kitDir, projectDir) {
     if (msg.type === 'assistant') {
       for (const block of msg.message?.content ?? []) {
         if (block.type === 'text' && block.text) log(block.text);
-        if (block.type === 'tool_use') log(`→ ${block.name}`);
+        if (block.type === 'tool_use') log(`→ ${describeToolUse(block)}`);
       }
       return;
     }
