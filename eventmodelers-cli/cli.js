@@ -801,40 +801,62 @@ async function configureMcp(options = {}) {
   }
 }
 
-// `run --real-time`: same job as ralph-claude.js (drive the installed kit's ralph
-// loop with Claude as the executor), but instead of spawning a fresh `claude -p`
-// process per task, it keeps ONE process warm across tasks via
-// `--input-format stream-json` and writes each task's prompt to its stdin —
-// verified (see dev notes) to stay alive and accept further turns after a result.
-// This closes the remaining latency gap for voice/live use: the realtime channel
-// + trigger wake in the kit's own lib/ralph.js already deliver new tasks with ~no
-// delay, so the dominant cost left was the cold start (process boot, CLAUDE.md
-// re-read, /connect, skill discovery) a fresh spawn pays every single task.
-//
-// Deliberately NOT a templated file in the kit dir (unlike ralph-claude.js) —
-// this is exactly the kind of stack-agnostic runtime plumbing that drifted out of
-// sync when duplicated per stack before (see the "Unify ralph/agent runtime
-// files" commit). It ships once, here, and reuses whatever lib/ralph.js the kit
-// already has installed — that file legitimately differs per kit (modeling-kit's
-// org-wide prompt queue vs. build-kit's per-board slice tracking), so it stays
-// where `init`/`init-modeling` put it.
+// `run --real-time`: a complete, self-contained runner distinct from the ralph
+// loop — it does NOT reuse the kit's `startRalph`/`ralphLoop`/`tasks.json` queue,
+// which exists for `ralph.sh`, the Ollama loop, and cold-spawn `ralph-claude.js`
+// (all of which have no persistent process to hand a prompt to directly). It
+// keeps ONE Claude process warm across turns via `--input-format stream-json`,
+// subscribes to the org's realtime channel itself, and writes each prompt straight
+// to that process's stdin as soon as it's fetched — no file round-trip, no polling
+// delay, no re-discovery of a prompt this process already has in memory. Only
+// pure, read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is
+// reused from the kit's lib/ralph.js, to avoid duplicating the config-file-walk
+// logic (see the "Unify ralph/agent runtime files" commit for why that drifted
+// before). See `claude-realtime.md` in the kit's project root for the per-turn
+// instructions this mode's warm session follows (distinct from `claude-ralph.md`,
+// used by the other three modes).
 async function runRealtime(kitDir, projectDir) {
   const ralphLibPath = join(kitDir, 'lib', 'ralph.js');
   if (!existsSync(ralphLibPath)) {
     console.error(`❌ ${relative(process.cwd(), ralphLibPath)} not found — --real-time needs a kit installed via \`init\`/\`init-modeling\`.`);
     process.exit(1);
   }
-  const { startRalph, loadLocalConfig } = await import(pathToFileURL(ralphLibPath).href);
+  const { loadLocalConfig, fetchPlatformConfig } = await import(pathToFileURL(ralphLibPath).href);
+  const { createClient } = await import('@supabase/supabase-js');
 
-  const cfg = loadLocalConfig(kitDir);
+  const local = loadLocalConfig(kitDir);
+  if (!local.token || !local.organizationId) {
+    console.error('❌ --real-time needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
+    process.exit(1);
+  }
+  const cfg = await fetchPlatformConfig(local); // adds supabaseUrl/supabaseAnonKey (+ boardId if the config has a default one)
+
+  const log = (line) => console.log(`[realtime] ${line}`);
+
   const QUESTIONING_RULE =
     'IMPORTANT: You are running autonomously — no human is available to answer questions. ' +
     'If you need clarification to proceed, do NOT pause or ask interactively. Instead, post your question ' +
     'as a QUESTION-type comment (via /handle-comment with action=place and type=QUESTION) on the most ' +
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt.\n\n';
-  const inlineHeader = cfg.boardId
-    ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}`
-    : QUESTIONING_RULE;
+
+  // Sent once, on the first turn only — it's what tells CLAUDE.md's dispatcher to
+  // follow claude-realtime.md instead of claude-ralph.md, and gives the warm
+  // session its one-time connect credentials. Every later turn only carries the
+  // per-prompt fields that actually vary (board_id, comment_id, ...).
+  let firstTurn = true;
+  function buildTurn(p) {
+    const fields = [
+      `board_id=${p.board_id ?? cfg.boardId ?? ''}`,
+      `organization_id=${p.organization_id ?? cfg.organizationId}`,
+      p.timeline_id ? `timeline_id=${p.timeline_id}` : null,
+      p.comment_id ? `comment_id=${p.comment_id}` : null,
+      p.node_id ? `node_id=${p.node_id}` : null,
+    ].filter(Boolean).join(' ');
+    const body = `${fields}\n\n${p.prompt}`;
+    if (!firstTurn) return body;
+    firstTurn = false;
+    return `MODE=realtime token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read claude-realtime.md and follow it for every prompt in this session.\n\n${body}`;
+  }
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
@@ -842,8 +864,7 @@ async function runRealtime(kitDir, projectDir) {
 
   let proc = null;
   let stdoutBuffer = '';
-  let pending = null; // one in-flight task at a time, matching the ralph loop's own serial processing
-  const log = (line) => console.log(`[realtime] ${line}`);
+  let pending = null; // one in-flight turn at a time
 
   // stream-json output loses the normal interactive TUI (tool cards, live diffs) —
   // this is a plain-text approximation, good enough for a headless/voice runner.
@@ -879,6 +900,7 @@ async function runRealtime(kitDir, projectDir) {
     proc.on('exit', (code) => {
       log(`process exited (${code}) — will respawn on next task`);
       proc = null;
+      firstTurn = true; // a respawned process is a fresh session — needs MODE=realtime again
       if (pending) {
         const turn = pending;
         pending = null;
@@ -888,16 +910,99 @@ async function runRealtime(kitDir, projectDir) {
     log('warm session started');
   }
 
-  function runClaudeWarm(prompt) {
+  function runClaudeWarm(text) {
     if (!proc) spawnProcess();
     return new Promise((resolveTurn, rejectTurn) => {
       pending = { resolve: resolveTurn, reject: rejectTurn };
-      proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: inlineHeader + prompt } }) + '\n');
+      proc.stdin.write(JSON.stringify({ type: 'user', message: { role: 'user', content: text } }) + '\n');
     });
   }
 
   spawnProcess();
-  await startRalph({ kitDir, projectDir, onTask: runClaudeWarm });
+
+  async function getRealtimeToken() {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, {
+      headers: { 'x-token': cfg.token },
+    });
+    if (!res.ok) throw new Error(`realtime-token: HTTP ${res.status}`);
+    return (await res.json()).token;
+  }
+
+  async function fetchNextPrompt(jwtToken) {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/next`, {
+      headers: { 'x-token': cfg.token, Authorization: `Bearer ${jwtToken}` },
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`prompts/next: HTTP ${res.status}`);
+    return res.json();
+  }
+
+  let realtimeToken = await getRealtimeToken();
+  const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
+    realtime: { params: { apikey: cfg.supabaseAnonKey } },
+  });
+  await supabase.realtime.setAuth(realtimeToken);
+
+  let draining = false;
+  async function drain() {
+    if (draining) return;
+    draining = true;
+    try {
+      let p;
+      while ((p = await fetchNextPrompt(realtimeToken)) !== null) {
+        log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
+        try {
+          await runClaudeWarm(buildTurn(p));
+        } catch (err) {
+          log(`turn failed: ${err.message}`);
+        }
+      }
+    } finally {
+      draining = false;
+    }
+  }
+
+  const channelName = `org:${cfg.organizationId}`;
+  supabase
+    .channel(channelName, { config: { private: true } })
+    .on('broadcast', { event: 'message' }, (msg) => {
+      if (msg.payload === 'Exit') {
+        log('received "Exit" — shutting down');
+        process.exit(0);
+      }
+    })
+    .on('broadcast', { event: 'prompt:created' }, () => {
+      drain().catch((err) => log(`drain error: ${err.message}`));
+    })
+    .subscribe((status) => {
+      log(`channel "${channelName}": ${status}`);
+      if (status === 'SUBSCRIBED') drain().catch((err) => log(`initial drain error: ${err.message}`));
+    });
+
+  setInterval(async () => {
+    try {
+      realtimeToken = await getRealtimeToken();
+      await supabase.realtime.setAuth(realtimeToken);
+      log('token refreshed');
+    } catch (err) {
+      log(`token refresh failed: ${err.message}`);
+    }
+  }, 10 * 60 * 1000);
+
+  const ping = async () => {
+    try {
+      const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: cfg.token }),
+      });
+      if (!res.ok) log(`ping failed: ${res.status}`);
+    } catch (err) {
+      log(`ping error: ${err.message}`);
+    }
+  };
+  await ping();
+  setInterval(ping, 30_000);
 }
 
 const program = new Command();
@@ -1070,6 +1175,14 @@ program
     }
 
     if (opts.realTime) {
+      // Direct-dispatch subscribes to the org-wide prompt queue (`org:<orgId>`,
+      // `/api/org/:orgId/prompts/next`) — that queue only exists for modeling-kit.
+      // Build-kit's realtime channel is per-board slice-status change, a different
+      // shape of event entirely, so --real-time has nothing to attach to there.
+      if (!kitDir.endsWith(MODELING_KIT.kitDirName)) {
+        console.error(`❌ --real-time only supports a modeling-kit install (${MODELING_KIT.kitDirName}/) — it subscribes to the org-wide prompt queue, which build-kit stacks don't have. Use \`eventmodelers run\` (optionally with --ollama/--bash) for build-kit's slice-status loop instead.`);
+        process.exit(1);
+      }
       console.log(`▶ Starting real-time loop (warm Claude process) for ${relative(cwd, kitDir)}...\n`);
       try {
         await runRealtime(kitDir, resolve(kitDir, '..'));

@@ -71,7 +71,7 @@ If a file is found (at any level), note its path and extract any values **not al
 
 Resolution priority: **inline param > config file > ask user**
 
-If all four are present (from any source), skip to **Step 4 — Verify**.
+If all four are present (from any source), skip straight to **Step 4 — Verify** — do **not** run Step 3. Step 3 only runs after Step 2 collects a value interactively from the user; if nothing was collected interactively (values came from inline params and/or an existing config file), there is nothing new to persist.
 
 ---
 
@@ -108,7 +108,7 @@ Where to find the token: users generate API tokens in their workspace settings a
 
 ## Step 3 — Persist config
 
-Once all values are collected, write the config file. When writing, merge with any existing config — do **not** overwrite fields that were provided as inline params with values from a previous config (the inline param is the user's explicit intent for this session, but the persisted value should reflect the most recently user-supplied value):
+Only reached when Step 2 collected at least one value interactively from the user. Once all values are collected, write the config file. When writing, merge with any existing config — do **not** overwrite fields that were provided as inline params with values from a previous config (the inline param is the user's explicit intent for this session, but the persisted value should reflect the most recently user-supplied value):
 
 ```bash
 mkdir -p .eventmodelers

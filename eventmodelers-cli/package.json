@@ -1,6 +1,6 @@
 {
   "name": "@eventmodelers/cli",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Eventmodelers CLI — real-time Claude agent + skills for Claude Code, for any stack (Node, Supabase, Axon, Cratis, or modeling-only)",
   "type": "module",
   "bin": {
@@ -27,6 +27,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.0.0",
     "commander": "^12.0.0"
   },
   "engines": {
