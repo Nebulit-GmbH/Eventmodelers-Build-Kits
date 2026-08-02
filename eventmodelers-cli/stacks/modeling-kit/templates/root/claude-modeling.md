@@ -1,4 +1,4 @@
-# Modeling Direct-Dispatch — Warm Session Mode
+# Modeling Direct-Dispatch — Modeling Session Mode
 
 Used by `npx @eventmodelers/cli run --modeling`. The CLI itself subscribes to the board's realtime channel and writes each incoming prompt directly to your stdin as a new turn — there is **no `tasks.json` queue** in this mode. Each user message you receive already IS the one prompt to handle; there's nothing to read, pre-filter, or pick from.
 
@@ -12,7 +12,7 @@ You are a long-lived process handling many turns in a row. Don't redo one-time s
    - if this turn's `board_id` differs from the one you last connected with, or
    - if the last API call returned `401`/`403`.
 
-   Otherwise skip straight to executing the prompt — re-running `/connect` every turn defeats the point of a warm session.
+   Otherwise skip straight to executing the prompt — re-running `/connect` every turn defeats the point of a modeling session.
 3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `boardId` in `.eventmodelers/config.json`.
 4. Execute the prompt using the skill matched in CLAUDE.md's Skill Selection table.
    **Questioning rule**: you are running autonomously — no human is available to answer questions. If you need clarification, do not pause or ask interactively — post a `QUESTION`-type comment (`/handle-comment` with `action=place`, `type=QUESTION`) on the most relevant node, then continue with your best interpretation.

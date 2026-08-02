@@ -835,7 +835,7 @@ async function configureMcp(options = {}) {
 // read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is reused
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
 // See `claude-modeling.md` in the kit's project root for the per-turn instructions
-// this mode's warm session follows.
+// this mode's modeling session follows.
 async function runModeling(kitDir, projectDir) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
@@ -866,7 +866,7 @@ async function runModeling(kitDir, projectDir) {
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt.\n\n';
 
   // Sent once, on the first turn only — it's what tells CLAUDE.md's dispatcher to
-  // follow claude-modeling.md instead of claude-ralph.md, and gives the warm
+  // follow claude-modeling.md instead of claude-ralph.md, and gives the modeling
   // session its one-time connect credentials. Every later turn only carries the
   // per-prompt fields that actually vary (board_id, comment_id, ...).
   let firstTurn = true;
@@ -952,7 +952,7 @@ async function runModeling(kitDir, projectDir) {
         turn.reject(new Error(`claude process exited (${code}) mid-turn`));
       }
     });
-    log('warm session started');
+    log('modeling session started');
   }
 
   function runClaudeWarm(text) {
