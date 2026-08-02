@@ -59,6 +59,30 @@ npx @eventmodelers/cli init-modeling --global
 
 Everything else (the kit dir, project scaffold, credentials, MCP registration) still targets the current directory as usual — `--global` only changes where skills land.
 
+## Bridging to another spec framework
+
+If you drive development with a different spec/task framework (Spec Kitty today; more later) instead of build-kit's own code generation, a **bridge** kit keeps that framework's artifacts in sync with the board instead of writing application code:
+
+```bash
+npx @eventmodelers/cli init --bridge --target spec-kitty
+npx @eventmodelers/cli bridge
+```
+
+`init --bridge` installs a `.bridge-kit/` (mirrors `.build-kit/`'s realtime + task-queue loop) plus only the skills for the chosen `--target` (`shared/bridge/<target>/`) — a `spec-kitty` bridge never installs Kiro's skills, and vice versa. `bridge` starts the loop: on every board slice change (not just "Planned", unlike build-kit), it re-runs `bridge-<target>-specify` to regenerate that framework's spec artifacts from the current `.slices/` export. It doesn't build code and doesn't claim slices. Pass `--ollama` for the local-Ollama runner instead of Claude (same caveat as build-kit's `--ollama`: `lib/ollama-agent.js` is shared as-is).
+
+### Overriding the executor with a hook
+
+Claude is only the default — some teams don't want an AI agent in this loop at all, e.g. they'd rather just commit + push the board export and let a CI pipeline own the actual translation. `--hook` replaces the AI executor with an arbitrary shell command, run once per batch of slice changes:
+
+```bash
+npx @eventmodelers/cli init --bridge --target spec-kitty --hook "git add .slices && git commit -m sync && git push"
+npx @eventmodelers/cli bridge
+```
+
+`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--ollama` and `--hook` are mutually exclusive.
+
+The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STATUS` (the most recent change in the batch), and `BRIDGE_BATCH_FILE` (path to the full batch as JSON) in its environment. It's invoked once per batch, not once per slice — any change that arrives while the hook is still running is left queued for the next batch rather than dropped.
+
 ## Claude execution & config resolution
 
 During install you can optionally point the agent at a local LLM server (vLLM, Ollama) instead of the default Claude Code endpoint, and/or pin a specific model:

@@ -109,26 +109,42 @@ function hasCredentials(cfg) {
 }
 
 // Distinguishes this agent process from any other agent pinging the same
-// token/board — e.g. a build-kit and a modeling-kit install in the same project
+// token/board — e.g. a build-kit and a bridge-kit install in the same project
 // share one root config.json, and without a per-agent id both would upsert the
-// same alive row and race each other. Written to the kit's OWN config.json
-// (inside kitDir, not the shared root one credentials live in) so a build agent
-// and a modeling agent never end up with the same id, and persisted so restarts
-// of this same kit keep reporting under the same identity.
-function ensureAgentId(kitDir) {
-  const kitConfigPath = join(kitDir, '.eventmodelers', 'config.json');
-  let existing = {};
-  if (existsSync(kitConfigPath)) {
+// same alive row and race each other. The platform already keys the alive-ping
+// on the (agent_type, agent_id) pair, so one shared file works: agentIds is
+// namespaced by agentType (BUILD/BRIDGE/MODELING/...) inside the project ROOT
+// .eventmodelers/config.json — the same file credentials already live in —
+// instead of each kit dir keeping its own separate config.json. Falls back to
+// a pre-existing kit-local agentId (older installs, before this consolidation)
+// so an upgrade doesn't mint a new identity the platform hasn't seen before.
+function ensureAgentId(kitDir, agentType) {
+  const rootConfigPath = join(dirname(kitDir), '.eventmodelers', 'config.json');
+  let rootCfg = {};
+  if (existsSync(rootConfigPath)) {
     try {
-      existing = JSON.parse(readFileSync(kitConfigPath, 'utf-8'));
+      rootCfg = JSON.parse(readFileSync(rootConfigPath, 'utf-8'));
     } catch {
-      console.warn(`[ralph] Skipping invalid config at ${kitConfigPath}`);
+      console.warn(`[ralph] Skipping invalid config at ${rootConfigPath}`);
     }
   }
-  if (existing.agentId) return existing.agentId;
-  const agentId = randomUUID();
-  mkdirSync(dirname(kitConfigPath), { recursive: true });
-  writeFileSync(kitConfigPath, JSON.stringify({ ...existing, agentId }, null, 2));
+  rootCfg.agentIds = rootCfg.agentIds || {};
+  if (rootCfg.agentIds[agentType]) return rootCfg.agentIds[agentType];
+
+  const legacyKitConfigPath = join(kitDir, '.eventmodelers', 'config.json');
+  let legacyAgentId;
+  if (existsSync(legacyKitConfigPath)) {
+    try {
+      legacyAgentId = JSON.parse(readFileSync(legacyKitConfigPath, 'utf-8')).agentId;
+    } catch {
+      console.warn(`[ralph] Skipping invalid config at ${legacyKitConfigPath}`);
+    }
+  }
+
+  const agentId = legacyAgentId || randomUUID();
+  rootCfg.agentIds[agentType] = agentId;
+  mkdirSync(dirname(rootConfigPath), { recursive: true });
+  writeFileSync(rootConfigPath, JSON.stringify(rootCfg, null, 2));
   return agentId;
 }
 
@@ -226,7 +242,7 @@ async function writeTask(payload, kitDir) {
   console.log(`[agent] Task written — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
 }
 
-async function startRealtimeAgent(cfg, kitDir) {
+async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false } = {}) {
   let realtimeToken = await retryOn401('getRealtimeToken', () => getRealtimeToken(cfg));
 
   await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
@@ -254,8 +270,11 @@ async function startRealtimeAgent(cfg, kitDir) {
       await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
         console.error('[agent] Slice persist error:', err),
       );
-      // Planned slices are handled by onPlannedSlice directly — no task needed
-      if ((payload.sliceStatus || '').toLowerCase() !== 'planned') {
+      // Planned slices are handled by onPlannedSlice directly — no task needed.
+      // queueAllStatuses opts out of that split entirely (e.g. bridge has no
+      // onPlannedSlice consumer, so a lingering Planned slice would otherwise
+      // never naturally clear its own trigger — see lib/ralph.js callers).
+      if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== 'planned') {
         await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
       }
     })
@@ -276,7 +295,7 @@ async function startRealtimeAgent(cfg, kitDir) {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'BUILD', agent_id: cfg.agentId }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) console.error(`[agent] Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
@@ -379,9 +398,9 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
 
 export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
-export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice }) {
+export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false }) {
   const local = loadLocalConfig(kitDir);
-  local.agentId = local.agentId ?? ensureAgentId(kitDir);
+  local.agentId = ensureAgentId(kitDir, agentType);
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
@@ -396,7 +415,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([
-    startRealtimeAgent(cfg, kitDir),
+    startRealtimeAgent(cfg, kitDir, { agentType, queueAllStatuses }),
     ralphLoop(kitDir, cfg, onTask, onPlannedSlice),
   ]);
 }
