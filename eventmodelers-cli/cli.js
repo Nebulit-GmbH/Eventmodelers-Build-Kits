@@ -18,7 +18,7 @@ import { execSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
-import { runFetch } from './lib/fetch.js';
+import { runFetch, FetchAuthError } from './lib/fetch.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1467,14 +1467,16 @@ program
     const effective = loadEffectiveConfig(cwd, kitDir, explicitConfig);
     let cfg = effective.config;
 
+    // Same default (project-root .eventmodelers/config.json, or --config) that
+    // installStack uses — kept identical rather than deriving a path from
+    // `effective`, which can point at a kit-dir-scoped config instead.
+    const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
     const requiredFields = ['organizationId', 'boardId', 'token'];
-    if (requiredFields.some((f) => !cfg[f])) {
-      // Same default (project-root .eventmodelers/config.json, or --config) that
-      // installStack uses — kept identical rather than deriving a path from
-      // `effective`, which can point at a kit-dir-scoped config instead.
-      const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
-      // Same prompt (paste/manual/instructions/skip) `install`/`init-config` use —
-      // reusing it here means `fetch` also works as a first-run credential setup.
+
+    // Same prompt (paste/manual/instructions/skip) `install`/`init-config` use —
+    // reusing it here means `fetch` also works as a first-run credential setup.
+    // Also re-entered below if the API rejects whatever we already had.
+    async function promptForCredentials() {
       cfg = await configureCredentials({
         config: cfg,
         configPath,
@@ -1489,7 +1491,22 @@ program
         process.exit(1);
       }
     }
-    await runFetch({ cwd, kitDir, cfg, opts });
+
+    if (requiredFields.some((f) => !cfg[f])) await promptForCredentials();
+
+    try {
+      await runFetch({ cwd, kitDir, cfg, opts });
+    } catch (err) {
+      if (!(err instanceof FetchAuthError)) throw err;
+      // Present but wrong, not missing — the connect skill's Step 4 (Verify) treats
+      // 401/403/404 the same way: clear the field that's implicated and re-prompt,
+      // rather than leaving the caller stuck re-running with the same bad value.
+      console.error(`❌ ${err.message}`);
+      if (err.status === 404) delete cfg.boardId;
+      else delete cfg.token;
+      await promptForCredentials();
+      await runFetch({ cwd, kitDir, cfg, opts });
+    }
   });
 
 program

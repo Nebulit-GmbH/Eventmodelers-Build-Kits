@@ -3,6 +3,18 @@ import { join, relative } from 'path';
 
 const DEFAULT_BASE_URL = 'https://api.eventmodelers.ai';
 
+// Thrown instead of exiting on 401/403/404 — these mean the *credentials* (not the
+// network/server) are the problem, so the caller gets a chance to re-prompt and retry
+// instead of just dying, the same way the connect skill's Step 4 (Verify) reacts to
+// each status. Other statuses (500, etc.) still exit directly — reconfiguring
+// credentials wouldn't fix those.
+export class FetchAuthError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
 function readJsonSafe(path) {
   if (!path || !existsSync(path)) return {};
   try {
@@ -50,6 +62,9 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
       console.error(`❌ Request failed (${what}): ${err.message}`);
       process.exit(1);
     }
+    if (res.status === 401) throw new FetchAuthError(401, `${what}: invalid or expired token`);
+    if (res.status === 403) throw new FetchAuthError(403, `${what}: token's organization does not match this board`);
+    if (res.status === 404) throw new FetchAuthError(404, `${what}: board not found`);
     if (!res.ok) {
       console.error(`❌ ${what}: HTTP ${res.status}`);
       process.exit(1);
