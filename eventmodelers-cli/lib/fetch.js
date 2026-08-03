@@ -45,13 +45,13 @@ function sliceFolderName(title) {
   return (title ?? '').replaceAll(' ', '').replaceAll('slice:', '').toLowerCase();
 }
 
-// Pulls full slice detail from every context on a board and writes it into
+// Pulls full slice detail from a single context on a board and writes it into
 // .slices/, mirroring the layout code-export.mjs's /api/generate handler produces
 // (minus screen images, which only ever arrive via that push-based listener).
 //
 // kitDir here is null for modeling-kit (see cli.js's fetch action) — nothing
 // nests .slices/ under .agent-modeling-kit/, so it lands at cwd instead.
-// { cwd, kitDir, cfg: { token, organizationId, boardId, baseUrl }, opts: { sliceId?, sliceTitle? } }
+// { cwd, kitDir, cfg: { token, organizationId, boardId, baseUrl }, opts: { context, sliceId?, sliceTitle? } }
 export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
   const headers = { 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'cli-fetch' };
@@ -74,63 +74,42 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     return res.json();
   }
 
-  console.log(`▶ Fetching slices from ${baseUrl} (board ${cfg.boardId})...`);
-
-  // No dedicated "list contexts" endpoint — MODEL_CONTEXT nodes are the contexts,
-  // same as how the connect skill lists CHAPTER nodes for its health check.
-  const contextNodes = await fetchJson(
-    `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes?type=MODEL_CONTEXT`,
-    'nodes?type=MODEL_CONTEXT',
-  );
-  if (!contextNodes?.length) {
-    console.log('ℹ️  No contexts found on this board.');
-    return;
-  }
+  console.log(`▶ Fetching context "${opts.context}" from ${baseUrl} (board ${cfg.boardId})...`);
 
   // Falls back to cwd when no kit is installed — fetch doesn't need kit-specific
   // files, just somewhere to write .slices/.
   const SLICES_DIR = join(kitDir || cwd, '.slices');
 
   // /slicedata (buildSliceData) is per-context and returns full slice detail —
-  // commands/events/readmodels/screens/processors/specifications/comments — unlike
-  // the lightweight /slicedata/slices summary. There's no "all contexts in one
-  // call" variant, so fetch each context's full data and merge client-side.
-  const allSlices = [];
-  for (const node of contextNodes) {
-    const contextName = node.meta?.title ?? node.node?.data?.title ?? '';
-    // contextId is the normal path (we already have the node id); contextName is
-    // the fallback the endpoint itself supports when an id can't be resolved.
-    const contextQuery = node.id ? `contextId=${encodeURIComponent(node.id)}` : `contextName=${encodeURIComponent(contextName)}`;
-    const payload = await fetchJson(
-      `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${contextQuery}`,
-      `slicedata?${contextQuery}`,
-    );
-    const { slices } = payload;
-    allSlices.push(...slices);
+  // commands/events/readmodels/screens/processors/specifications/comments. It
+  // resolves contextName by exact match, so no separate "list contexts" lookup
+  // is needed first.
+  const contextQuery = `contextName=${encodeURIComponent(opts.context)}`;
+  const payload = await fetchJson(
+    `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${contextQuery}`,
+    `slicedata?${contextQuery}`,
+  );
+  const { slices: allSlices } = payload;
 
-    if (slices.length) {
-      // Mirrors code-export.mjs's /api/generate: a raw per-context payload dump at
-      // .slices/<context>/config.json, alongside the per-slice output below — kept
-      // for parity with `listen` even though nothing in this repo reads it back.
-      const contextSlug = slugify(slices[0]?.context || contextName || 'default') || 'default';
-      const baseFolder = join(SLICES_DIR, contextSlug);
-      mkdirSync(baseFolder, { recursive: true });
-      writeFileSync(join(baseFolder, 'config.json'), JSON.stringify(payload, null, 2));
-    }
+  if (allSlices.length) {
+    // Mirrors code-export.mjs's /api/generate: a raw per-context payload dump at
+    // .slices/<context>/config.json, alongside the per-slice output below — kept
+    // for parity with `listen` even though nothing in this repo reads it back.
+    const contextSlug = slugify(allSlices[0]?.context || opts.context || 'default') || 'default';
+    const baseFolder = join(SLICES_DIR, contextSlug);
+    mkdirSync(baseFolder, { recursive: true });
+    writeFileSync(join(baseFolder, 'config.json'), JSON.stringify(payload, null, 2));
   }
 
   if (!allSlices.length) {
-    console.log('ℹ️  No slices found on this board.');
+    console.log(`ℹ️  No slices found in context "${opts.context}".`);
     return;
   }
-
-  const contextNames = new Set();
 
   for (const slice of allSlices) {
     // buildSliceData names this field `context`, not `contextName` (that's the
     // /slicedata/slices summary endpoint's field) — read the one this endpoint sends.
-    const contextName = slice.context || 'default';
-    contextNames.add(contextName);
+    const contextName = slice.context || opts.context || 'default';
     const contextSlug = slugify(contextName) || 'default';
     const baseFolder = join(SLICES_DIR, contextSlug);
     const sliceFolder = sliceFolderName(slice.title);
@@ -165,14 +144,9 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     writeFileSync(indexFile, JSON.stringify(sliceIndices, null, 2));
   }
 
-  // A single shared current_context.json only makes sense when everything fetched
-  // belongs to one context — with several, any one choice would be arbitrary, so
-  // leave whatever `listen`/a prior fetch already wrote there untouched.
-  if (contextNames.size === 1) {
-    writeFileSync(join(SLICES_DIR, 'current_context.json'), JSON.stringify({ name: [...contextNames][0] }, null, 2));
-  }
+  writeFileSync(join(SLICES_DIR, 'current_context.json'), JSON.stringify({ name: opts.context }, null, 2));
 
-  console.log(`✅ Fetched ${allSlices.length} slice${allSlices.length === 1 ? '' : 's'} across ${contextNames.size} context${contextNames.size === 1 ? '' : 's'} → ${relative(cwd, SLICES_DIR)}/`);
+  console.log(`✅ Fetched ${allSlices.length} slice${allSlices.length === 1 ? '' : 's'} from context "${opts.context}" → ${relative(cwd, SLICES_DIR)}/`);
 
   // --slice-id/--slice-title mirror load-slice's Step 4/5 — fetch+persist everything
   // regardless, then just report the one the caller asked about.

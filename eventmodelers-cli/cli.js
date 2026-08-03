@@ -1463,7 +1463,8 @@ program
 
 program
   .command('fetch')
-  .description('Pull full slice detail from every context on the board via the slicedata API and write it into .slices/ — the pull-based counterpart to `listen`, without screen images')
+  .description('Pull full slice detail for one context on the board via the slicedata API and write it into .slices/ — the pull-based counterpart to `listen`, without screen images')
+  .requiredOption('--context <name>', 'Name of the MODEL_CONTEXT to fetch')
   .option('--slice-id <id>', 'After fetching, print just the slice with this id')
   .option('--slice-title <title>', 'After fetching, print just the slice with this title (case-insensitive)')
   .action(async (opts, command) => {
