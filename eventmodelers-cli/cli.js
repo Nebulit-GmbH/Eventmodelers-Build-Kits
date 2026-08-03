@@ -1110,10 +1110,11 @@ program
 
 // Commands exempt from the "is a kit installed here?" gate below: init (with or
 // without --modeling) is what installs one in the first place, init-config only
-// ever touches credentials, and stacks/status/config/uninstall are read-only or
+// ever touches credentials, stacks/status/config/uninstall are read-only or
 // cleanup commands that are meant to work — and report something useful — whether
-// or not a kit is present.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall']);
+// or not a kit is present, and fetch only needs credentials plus somewhere to write
+// .slices/ (cwd, absent a kit dir — see lib/fetch.js), no kit-specific files.
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch']);
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;

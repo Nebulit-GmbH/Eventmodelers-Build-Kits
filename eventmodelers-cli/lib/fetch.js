@@ -107,7 +107,9 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     return;
   }
 
-  const SLICES_DIR = join(kitDir, '.slices');
+  // Falls back to cwd when no kit is installed — fetch doesn't need kit-specific
+  // files, just somewhere to write .slices/.
+  const SLICES_DIR = join(kitDir || cwd, '.slices');
   const contextNames = new Set();
 
   for (const slice of allSlices) {
