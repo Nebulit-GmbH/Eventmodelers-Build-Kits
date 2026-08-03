@@ -18,6 +18,7 @@ import { execSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
+import { runFetch } from './lib/fetch.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1451,6 +1452,44 @@ program
     } catch (err) {
       process.exit(err.status || 1);
     }
+  });
+
+program
+  .command('fetch')
+  .description('Pull full slice detail from every context on the board via the slicedata API and write it into .slices/ — the pull-based counterpart to `listen`, without screen images')
+  .option('--slice-id <id>', 'After fetching, print just the slice with this id')
+  .option('--slice-title <title>', 'After fetching, print just the slice with this title (case-insensitive)')
+  .action(async (opts, command) => {
+    const cwd = process.cwd();
+    const kitDir = findInstalledKitDir(cwd);
+    const globalOpts = command.optsWithGlobals();
+    const explicitConfig = globalOpts.config;
+    const effective = loadEffectiveConfig(cwd, kitDir, explicitConfig);
+    let cfg = effective.config;
+
+    const requiredFields = ['organizationId', 'boardId', 'token'];
+    if (requiredFields.some((f) => !cfg[f])) {
+      // Same default (project-root .eventmodelers/config.json, or --config) that
+      // installStack uses — kept identical rather than deriving a path from
+      // `effective`, which can point at a kit-dir-scoped config instead.
+      const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
+      // Same prompt (paste/manual/instructions/skip) `install`/`init-config` use —
+      // reusing it here means `fetch` also works as a first-run credential setup.
+      cfg = await configureCredentials({
+        config: cfg,
+        configPath,
+        targetDir: cwd,
+        requiredFields,
+        boardIdOptional: false,
+        overrides: {},
+        print: globalOpts.print,
+      });
+      if (requiredFields.some((f) => !cfg[f])) {
+        console.error('❌ Still missing token/organizationId/boardId — re-run `eventmodelers fetch` once configured.');
+        process.exit(1);
+      }
+    }
+    await runFetch({ cwd, kitDir, cfg, opts });
   });
 
 program
