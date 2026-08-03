@@ -225,7 +225,7 @@ npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ra
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli listen                       # start the code-export listener (code-export.mjs) from the installed kit dir
 npx @eventmodelers/cli listen --port 4000           # same, on a different port
-npx @eventmodelers/cli fetch                        # pull full slice detail from every context on the board into <kit-dir>/.slices/
+npx @eventmodelers/cli fetch                        # pull full slice detail from every context on the board into <kit-dir>/.slices/ (project root if no kit, or a modeling-kit, is installed)
 npx @eventmodelers/cli fetch --slice-id <id>        # same, then print just that slice
 npx @eventmodelers/cli fetch --slice-title <title>  # same, then print just the slice matching this title
 npx @eventmodelers/cli stacks                       # list available stacks
@@ -238,7 +238,7 @@ npx @eventmodelers/cli uninstall                    # remove everything init/ini
 
 `listen` is the same kind of dispatcher, but for `<kit-dir>/code-export.mjs` — a local HTTP server (port 3001 by default) that the eventmodelers board UI posts slice/screen data to, which then gets written under `<kit-dir>/.slices/`.
 
-`fetch` is the pull-based counterpart to `listen`: instead of waiting for the board UI to push data to a running listener, it lists every `MODEL_CONTEXT` node on the board, calls `slicedata?contextId=<id>` for each (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes the same `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json` layout — useful in CI or any context where nothing is listening on a port. It does not fetch screen images (those only arrive via `listen`'s push). If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist everything, then just print the one you asked about.
+`fetch` is the pull-based counterpart to `listen`: instead of waiting for the board UI to push data to a running listener, it lists every `MODEL_CONTEXT` node on the board, calls `slicedata?contextId=<id>` for each (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes the same `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json` layout — useful in CI or any context where nothing is listening on a port. It does not fetch screen images (those only arrive via `listen`'s push). Unlike every other command, `fetch` also works with no kit installed at all — it only needs credentials, not kit-specific files — and, unique to modeling-kit, writes `.slices/` to the project root instead of nesting it under `.agent-modeling-kit/`, since nothing reads it from there (modeling-kit has no `code-export.mjs`/`listen`). If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist everything, then just print the one you asked about.
 
 ### Uninstall
 

@@ -49,6 +49,8 @@ function sliceFolderName(title) {
 // .slices/, mirroring the layout code-export.mjs's /api/generate handler produces
 // (minus screen images, which only ever arrive via that push-based listener).
 //
+// kitDir here is null for modeling-kit (see cli.js's fetch action) — nothing
+// nests .slices/ under .agent-modeling-kit/, so it lands at cwd instead.
 // { cwd, kitDir, cfg: { token, organizationId, boardId, baseUrl }, opts: { sliceId?, sliceTitle? } }
 export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
@@ -85,6 +87,10 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     return;
   }
 
+  // Falls back to cwd when no kit is installed — fetch doesn't need kit-specific
+  // files, just somewhere to write .slices/.
+  const SLICES_DIR = join(kitDir || cwd, '.slices');
+
   // /slicedata (buildSliceData) is per-context and returns full slice detail —
   // commands/events/readmodels/screens/processors/specifications/comments — unlike
   // the lightweight /slicedata/slices summary. There's no "all contexts in one
@@ -95,11 +101,22 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     // contextId is the normal path (we already have the node id); contextName is
     // the fallback the endpoint itself supports when an id can't be resolved.
     const contextQuery = node.id ? `contextId=${encodeURIComponent(node.id)}` : `contextName=${encodeURIComponent(contextName)}`;
-    const { slices } = await fetchJson(
+    const payload = await fetchJson(
       `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${contextQuery}`,
       `slicedata?${contextQuery}`,
     );
+    const { slices } = payload;
     allSlices.push(...slices);
+
+    if (slices.length) {
+      // Mirrors code-export.mjs's /api/generate: a raw per-context payload dump at
+      // .slices/<context>/config.json, alongside the per-slice output below — kept
+      // for parity with `listen` even though nothing in this repo reads it back.
+      const contextSlug = slugify(slices[0]?.context || contextName || 'default') || 'default';
+      const baseFolder = join(SLICES_DIR, contextSlug);
+      mkdirSync(baseFolder, { recursive: true });
+      writeFileSync(join(baseFolder, 'config.json'), JSON.stringify(payload, null, 2));
+    }
   }
 
   if (!allSlices.length) {
@@ -107,9 +124,6 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
     return;
   }
 
-  // Falls back to cwd when no kit is installed — fetch doesn't need kit-specific
-  // files, just somewhere to write .slices/.
-  const SLICES_DIR = join(kitDir || cwd, '.slices');
   const contextNames = new Set();
 
   for (const slice of allSlices) {

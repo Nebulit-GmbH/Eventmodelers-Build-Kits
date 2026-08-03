@@ -734,8 +734,15 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
   }
 
   const stillMissing = force || requiredFields.some((f) => !config[f]);
+  // Sole gate on the persist step below — 'instructions'/'skip' and a paste that
+  // couldn't be parsed all explicitly tell the user nothing was saved, so the
+  // final write must not run for them (it used to run unconditionally, silently
+  // writing out whatever `config` happened to be — `{}` on a first run — which
+  // contradicted those messages and left behind a bogus config.json).
+  let skipWrite = false;
   if (stillMissing && print) {
     console.log('\n  ℹ️  --print — skipping credential prompt, missing fields must be set via flags, EVENTMODELERS_* env vars, or config.json');
+    skipWrite = true;
   } else if (stillMissing) {
     const choice = await selectPrompt('How do you want to configure credentials?', [
       { label: 'Paste values copied from app.eventmodelers.ai/account', value: 'paste' },
@@ -751,12 +758,10 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
       const parsed = parseCredentialsPaste(pasted, requiredFields);
       if (parsed) {
         config = { ...config, ...parsed };
-        if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
-        writeFileSync(configPath, JSON.stringify(config, null, 2));
-        console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
       } else {
         console.log(`\n  ⚠️  Couldn't make sense of that paste — nothing was saved.`);
         console.log(`      Paste it into ${relative(targetDir, configPath)} yourself, or use /connect later.`);
+        skipWrite = true;
       }
     } else if (choice === 'manual') {
       console.log('\n🔑 Enter your Eventmodelers credentials:\n');
@@ -766,9 +771,6 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
       const boardId = await prompt(`  Board ID${boardIdOptional ? ' (optional)' : ''}: `);
       if (boardId) config.boardId = boardId;
       config.token = await prompt('  Token:           ');
-      if (!config.baseUrl) config.baseUrl = DEFAULT_BASE_URL;
-      writeFileSync(configPath, JSON.stringify(config, null, 2));
-      console.log(`\n  ✓ Credentials saved to ${relative(targetDir, configPath)}`);
     } else if (choice === 'instructions') {
       console.log(`\n  Paste your credentials into:\n`);
       console.log(`    ${configPath}`);
@@ -778,8 +780,10 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
       const sample = `  {\n    "token": "...",\n    "boardId": "...",\n    "organizationId": "...",\n    "baseUrl": "https://api.eventmodelers.ai"\n  }\n`;
       console.log(sample);
       console.log('  Then re-run this installer, or just run the agent afterwards.\n');
+      skipWrite = true;
     } else {
       console.log('\n  ℹ️  Skipped — use /connect in Claude Code to add credentials later');
+      skipWrite = true;
     }
   } else {
     console.log('\n  ✓ Config already present — skipping credential prompt');
@@ -791,8 +795,10 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
     config.baseUrl = DEFAULT_BASE_URL;
   }
 
-  writeFileSync(configPath, JSON.stringify(config, null, 2));
-  console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+  if (!skipWrite) {
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+  }
   return config;
 }
 
@@ -1463,6 +1469,12 @@ program
   .action(async (opts, command) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
+    // modeling-kit has no code-export.mjs (useShared:false, no `listen`) and no
+    // skill reads a nested .agent-modeling-kit/.slices/ — so nothing expects fetch's
+    // output there either. Every other kit dir does have a code-export.mjs that
+    // hardcodes its .slices/ next to itself, so those still nest to stay
+    // interchangeable with what `listen` produces.
+    const slicesKitDir = kitDir?.endsWith(MODELING_KIT.kitDirName) ? null : kitDir;
     const globalOpts = command.optsWithGlobals();
     const explicitConfig = globalOpts.config;
     const effective = loadEffectiveConfig(cwd, kitDir, explicitConfig);
@@ -1496,7 +1508,7 @@ program
     if (requiredFields.some((f) => !cfg[f])) await promptForCredentials();
 
     try {
-      await runFetch({ cwd, kitDir, cfg, opts });
+      await runFetch({ cwd, kitDir: slicesKitDir, cfg, opts });
     } catch (err) {
       if (!(err instanceof FetchAuthError)) throw err;
       // Present but wrong, not missing — the connect skill's Step 4 (Verify) treats
@@ -1506,7 +1518,7 @@ program
       if (err.status === 404) delete cfg.boardId;
       else delete cfg.token;
       await promptForCredentials();
-      await runFetch({ cwd, kitDir, cfg, opts });
+      await runFetch({ cwd, kitDir: slicesKitDir, cfg, opts });
     }
   });
 
