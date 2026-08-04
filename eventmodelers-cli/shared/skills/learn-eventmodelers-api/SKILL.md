@@ -37,7 +37,7 @@ You now have complete knowledge of the eventmodelers platform API. Use this refe
 
 ```typescript
 MODEL_CONTEXT  // Context/domain modeling container
-CHAPTER        // Timeline/sequence container
+CHAPTER        // Timeline/sequence container — a "chapter" IS a timeline (chapterId === timelineId); the terms are used interchangeably across the API
 ACTOR          // System participant (swimlane label)
 AUTOMATION     // Automated action
 API            // External service
@@ -127,6 +127,8 @@ Create a Supabase storage bucket for the board.
 ## 2. Chapters & Timelines
 
 **File**: `src/slices/change/api-chapters/routes.ts`
+
+A "chapter" is a timeline — the same entity, referenced as `chapterId` in node/placement payloads and as `:timelineId` in the column/lane/cell routes below.
 
 ### POST `/api/org/:orgId/boards/:boardId/chapters`
 Create a chapter node.
