@@ -14,7 +14,7 @@ import {
   readFileSync,
   appendFileSync,
 } from 'fs';
-import { execSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
@@ -546,6 +546,55 @@ function copyDirContents(srcDir, destDir, { skip = [] } = {}) {
   if (count) console.log(`  ✓ Installed ${count} item${count === 1 ? '' : 's'} into ${relative(process.cwd(), destDir) || '.'}`);
 }
 
+// Community/custom build kits (`init --stack <name> --git <url>`) are cloned fresh on
+// every run rather than pulled/updated in place — there's no local state worth
+// preserving between installs, and re-cloning from scratch means a broken or partial
+// previous clone can never linger and cause a confusing stale-file bug. Cached under
+// ~/.eventmodelers (not inside the target project) so it's reusable across projects and
+// definitely not something `uninstall` or the project's own .gitignore need to know about.
+function cloneGitStack(url, branch) {
+  const dest = join(homedir(), '.eventmodelers', 'git-stacks', `${url}${branch ? `#${branch}` : ''}`.replace(/[^a-zA-Z0-9._-]/g, '_'));
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dirname(dest), { recursive: true });
+  console.log(`📥 Cloning ${url}${branch ? ` (branch: ${branch})` : ''}...`);
+  const cloneArgs = ['clone', '--depth', '1', ...(branch ? ['--branch', branch] : []), url, dest];
+  try {
+    execFileSync('git', cloneArgs, { stdio: ['ignore', 'inherit', 'inherit'] });
+  } catch {
+    console.error(`❌ Failed to clone "${url}"${branch ? ` (branch: ${branch})` : ''} — check the URL, the branch name, your git access, and that git is installed, then try again.`);
+    process.exit(1);
+  }
+  return dest;
+}
+
+// A community stack repo must mirror the internal stacks/<key>/templates layout exactly
+// (templates/.claude, templates/root, templates/<kitSubdir>) so installStack() can treat
+// it identically to a built-in stack — see STACKS above for the shape. An optional
+// stack.json at the repo root can declare label/kitSubdir/useShared/needsBoardId;
+// kitDirName is always forced to .build-kit (the same runtime contract every built-in
+// stack already uses), so run/status/uninstall recognize a git-installed stack with no
+// changes of their own.
+function resolveGitStackConfig(clonedDir, name) {
+  const templatesSource = join(clonedDir, 'templates');
+  if (!existsSync(templatesSource)) {
+    console.error(`❌ ${relative(process.cwd(), clonedDir) || clonedDir} has no templates/ directory — a build kit repo needs templates/.claude, templates/root, and templates/<kitSubdir>, the same layout this CLI's own stacks/<name>/templates use.`);
+    process.exit(1);
+  }
+  const manifest = readJsonSafe(join(clonedDir, 'stack.json'));
+  const kitSubdir = manifest.kitSubdir || 'build-kit';
+  if (!existsSync(join(templatesSource, kitSubdir))) {
+    console.error(`❌ ${relative(process.cwd(), templatesSource) || templatesSource} is missing its kit subdirectory "${kitSubdir}/" (from stack.json, or the "build-kit" default) — nothing to install.`);
+    process.exit(1);
+  }
+  return {
+    label: manifest.label || name,
+    kitSubdir,
+    kitDirName: '.build-kit',
+    useShared: manifest.useShared !== false,
+    needsBoardId: manifest.needsBoardId !== false,
+  };
+}
+
 async function resolveStack(cliStack) {
   if (cliStack) {
     if (!STACKS[cliStack]) {
@@ -566,7 +615,9 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log(`Using: ${stackKey} (${stackCfg.label})\n`);
 
     const targetDir = process.cwd();
-    const templatesSource = join(__dirname, 'stacks', stackKey, 'templates');
+    // `init --git <url>` passes a resolved clone dir's templates/ here instead — every
+    // other input (STACKS, MODELING_KIT, BRIDGE_KIT) keeps using the built-in path.
+    const templatesSource = options.templatesSource || join(__dirname, 'stacks', stackKey, 'templates');
     const sharedBuildKit = join(__dirname, 'shared', 'build-kit');
     // Skills with no stack-specific content (connect, learn-eventmodelers-api,
     // update-slice-status, ...) live once here instead of being copy-pasted into
@@ -1162,8 +1213,10 @@ function credentialOverridesFromOpts(opts) {
 credentialFlags(program
   .command('init')
   .alias('install')
-  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --bridge to translate board slices into another spec framework)')
-  .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')})`)
+  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --bridge to translate board slices into another spec framework; or --git to install a community/custom build kit from a git repo)')
+  .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')}), or a name of your choosing when combined with --git`)
+  .option('--git <url>', 'Install a build kit not built into this CLI by cloning this git repo (used with --stack <name> to name it) — the repo must mirror the templates/.claude, templates/root, templates/<kitSubdir> layout of this CLI\'s own stacks/<name>/templates, optionally with a stack.json declaring label/kitSubdir/useShared/needsBoardId')
+  .option('--branch <name>', 'Branch to clone — only meaningful with --git (defaults to the repo\'s default branch)')
   .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--bridge.')
   .option('--bridge', 'Install a bridge kit — translates board slices into another spec framework instead of building code. Mutually exclusive with --stack/--modeling. Requires --target.')
   .option('--target <name>', `Bridge target framework (${Object.keys(BRIDGE_TARGETS).join(', ')}) — only meaningful with --bridge`)
@@ -1174,8 +1227,8 @@ credentialFlags(program
     const globalOpts = command.optsWithGlobals();
 
     if (opts.modeling || opts.bridge) {
-      if (opts.stack || (opts.modeling && opts.bridge)) {
-        console.error('❌ --stack, --modeling, and --bridge are mutually exclusive — pick one.');
+      if (opts.stack || opts.git || (opts.modeling && opts.bridge)) {
+        console.error('❌ --stack/--git, --modeling, and --bridge are mutually exclusive — pick one.');
         process.exit(1);
       }
     }
@@ -1219,6 +1272,33 @@ credentialFlags(program
       mkdirSync(dirname(bridgeConfigPath), { recursive: true });
       writeFileSync(bridgeConfigPath, JSON.stringify({ ...existingBridgeCfg, target: opts.target, ...(opts.hook ? { hookCommand: opts.hook } : {}) }, null, 2));
       console.log(`  ✓ Bridge target set to "${opts.target}"${opts.hook ? ` with hook: ${opts.hook}` : ''}`);
+      return;
+    }
+
+    if (opts.branch && !opts.git) {
+      console.error('❌ --branch only applies to --git — nothing to clone without it.');
+      process.exit(1);
+    }
+
+    if (opts.git) {
+      if (!opts.stack) {
+        console.error('❌ --git requires --stack <name> to name the installed stack.');
+        process.exit(1);
+      }
+      if (STACKS[opts.stack]) {
+        console.error(`❌ "${opts.stack}" is already a built-in stack (${Object.keys(STACKS).join(', ')}) — --git is only for installing a stack that isn't built in.`);
+        process.exit(1);
+      }
+      const clonedDir = cloneGitStack(opts.git, opts.branch);
+      const stackCfg = resolveGitStackConfig(clonedDir, opts.stack);
+      await installStack(opts.stack, stackCfg, {
+        configPath: globalOpts.config,
+        print: globalOpts.print,
+        global: opts.global,
+        force: opts.force,
+        credentialOverrides: credentialOverridesFromOpts(opts),
+        templatesSource: join(clonedDir, 'templates'),
+      });
       return;
     }
 
