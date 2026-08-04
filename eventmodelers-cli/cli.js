@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { dirname, join, relative, resolve, sep } from 'path';
+import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'path';
 import {
   existsSync,
   mkdirSync,
@@ -529,6 +529,17 @@ function findAllInstalledKitDirs(cwd) {
   return KIT_DIR_NAMES.map((name) => join(cwd, name)).filter((p) => existsSync(p));
 }
 
+// Appends any line from a previous install's .gitignore that the freshly-copied one
+// doesn't already cover — unlike CLAUDE.md's freeform prose, .gitignore is just a line
+// list, so a simple dedup-append is enough to keep both kits' ignore rules intact.
+function mergeGitignoreLines(oldContent, newContent) {
+  const newLines = new Set(newContent.split('\n').map((l) => l.trim()).filter(Boolean));
+  const additions = oldContent.split('\n').filter((l) => l.trim() && !newLines.has(l.trim()));
+  if (!additions.length) return newContent;
+  const sep = newContent.endsWith('\n') ? '' : '\n';
+  return `${newContent}${sep}${additions.join('\n')}\n`;
+}
+
 function copyDirContents(srcDir, destDir, { skip = [] } = {}) {
   if (!existsSync(srcDir)) return;
   mkdirSync(destDir, { recursive: true });
@@ -567,6 +578,17 @@ function cloneGitStack(url, branch) {
   return dest;
 }
 
+// stack.json's kitSubdir is attacker-controlled (it comes from whatever repo --git
+// cloned) and feeds straight into join(templatesSource, kitSubdir) — installStack
+// then copies everything under that path into the target project. Reject anything
+// that isn't a plain relative subdirectory name so a malicious stack.json can't walk
+// out of the clone (e.g. "../../../../etc") and have arbitrary host files copied in.
+function isSafeRelativeSubpath(p) {
+  if (typeof p !== 'string' || !p) return false;
+  const normalized = normalize(p);
+  return !isAbsolute(normalized) && normalized.split(sep).every((part) => part !== '..');
+}
+
 // A community stack repo must mirror the internal stacks/<key>/templates layout exactly
 // (templates/.claude, templates/root, templates/<kitSubdir>) so installStack() can treat
 // it identically to a built-in stack — see STACKS above for the shape. An optional
@@ -580,7 +602,40 @@ function resolveGitStackConfig(clonedDir, name) {
     console.error(`❌ ${relative(process.cwd(), clonedDir) || clonedDir} has no templates/ directory — a build kit repo needs templates/.claude, templates/root, and templates/<kitSubdir>, the same layout this CLI's own stacks/<name>/templates use.`);
     process.exit(1);
   }
-  const manifest = readJsonSafe(join(clonedDir, 'stack.json'));
+  for (const required of ['.claude', 'root']) {
+    if (!existsSync(join(templatesSource, required))) {
+      console.error(`❌ ${relative(process.cwd(), templatesSource) || templatesSource} is missing "${required}/" — a build kit repo needs templates/.claude, templates/root, and templates/<kitSubdir>, the same layout this CLI's own stacks/<name>/templates use.`);
+      process.exit(1);
+    }
+  }
+
+  const manifestPath = join(clonedDir, 'stack.json');
+  const manifestRaw = existsSync(manifestPath) ? readFileSync(manifestPath, 'utf-8') : null;
+  let manifest = {};
+  if (manifestRaw !== null) {
+    try {
+      manifest = JSON.parse(manifestRaw);
+    } catch {
+      console.error(`❌ ${relative(process.cwd(), manifestPath) || manifestPath} is not valid JSON.`);
+      process.exit(1);
+    }
+  }
+
+  if (manifest.label !== undefined && (typeof manifest.label !== 'string' || !manifest.label)) {
+    console.error('❌ stack.json "label" must be a non-empty string.');
+    process.exit(1);
+  }
+  if (manifest.kitSubdir !== undefined && !isSafeRelativeSubpath(manifest.kitSubdir)) {
+    console.error(`❌ stack.json "kitSubdir" must be a plain relative subdirectory name (no "..", no absolute paths) — got ${JSON.stringify(manifest.kitSubdir)}.`);
+    process.exit(1);
+  }
+  for (const boolField of ['useShared', 'needsBoardId']) {
+    if (manifest[boolField] !== undefined && typeof manifest[boolField] !== 'boolean') {
+      console.error(`❌ stack.json "${boolField}" must be a boolean.`);
+      process.exit(1);
+    }
+  }
+
   const kitSubdir = manifest.kitSubdir || 'build-kit';
   if (!existsSync(join(templatesSource, kitSubdir))) {
     console.error(`❌ ${relative(process.cwd(), templatesSource) || templatesSource} is missing its kit subdirectory "${kitSubdir}/" (from stack.json, or the "build-kit" default) — nothing to install.`);
@@ -668,9 +723,72 @@ async function installStack(stackKey, stackCfg, options = {}) {
 
     // --- 2. Spread stack scaffold files into the project root ---
     const rootSrc = join(templatesSource, 'root');
+    // root/CLAUDE.md is never copied to the project root directly (see step 3 below) —
+    // built-in stacks no longer ship one at all, and an outdated community/--git stack
+    // that still does gets it relocated into its own kit dir instead, so this generic
+    // copy must never let it slip through to root and clobber the shared router there.
+    const stackRootClaudeSrc = join(rootSrc, 'CLAUDE.md');
+    const stackShipsOwnRootClaude = existsSync(stackRootClaudeSrc);
     if (existsSync(rootSrc)) {
       console.log('📦 Installing project files...');
-      copyDirContents(rootSrc, targetDir);
+      // .gitignore is the one file every stack's root/ ships that can collide with
+      // another already-installed kit's own .gitignore (e.g. modeling-kit + a build-kit
+      // stack) — capture what's there before the copy below overwrites it wholesale,
+      // then merge the two afterwards instead of silently losing whichever rules the
+      // first-installed kit added (e.g. node_modules/.idea from a build-kit install).
+      const gitignoreDest = join(targetDir, '.gitignore');
+      const priorGitignore = existsSync(gitignoreDest) ? readFileSync(gitignoreDest, 'utf-8') : null;
+      copyDirContents(rootSrc, targetDir, { skip: ['CLAUDE.md'] });
+      if (priorGitignore !== null && existsSync(gitignoreDest)) {
+        const incoming = readFileSync(gitignoreDest, 'utf-8');
+        const merged = mergeGitignoreLines(priorGitignore, incoming);
+        if (merged !== incoming) {
+          writeFileSync(gitignoreDest, merged);
+          console.log('  ✓ Merged .gitignore with the rules from an already-installed kit');
+        }
+      }
+    }
+
+    // A modeling-kit + build-kit (or bridge) combo in the same project is supported
+    // (they share one config.json — see ensureAgentId) but each kit's own instructions
+    // now live in its own kit dir (.build-kit/CLAUDE.md, .agent-modeling-kit/CLAUDE.md)
+    // instead of root/CLAUDE.md, precisely so a second kit's install can never clobber
+    // the first kit's instructions the way it used to — including an outdated community
+    // stack's own root/CLAUDE.md, already relocated above rather than left here to
+    // compete for this slot. The root CLAUDE.md is instead a small, stack-agnostic router
+    // pointing at whichever kit CLAUDE.md files exist — identical content regardless of
+    // which stack installs it, so a fresh project or one that already has the up-to-date
+    // router both just get it written/left alone silently. Only a pre-migration
+    // single-stack CLAUDE.md (from before this fix shipped) or the user's own hand-edited
+    // notes is there an actual decision to make, so that's the one case this asks about
+    // instead of silently guessing either way.
+    const rootClaudeDest = join(targetDir, 'CLAUDE.md');
+    const sharedRootClaude = join(__dirname, 'shared', 'root-claude', 'CLAUDE.md');
+    const routerContent = existsSync(sharedRootClaude) ? readFileSync(sharedRootClaude, 'utf-8') : null;
+    if (routerContent !== null) {
+      if (!existsSync(rootClaudeDest)) {
+        writeFileSync(rootClaudeDest, routerContent);
+        console.log('  ✓ Installed root CLAUDE.md — a router pointing at .build-kit/CLAUDE.md and .agent-modeling-kit/CLAUDE.md, whichever are present');
+      } else if (readFileSync(rootClaudeDest, 'utf-8') === routerContent) {
+        console.log('  ✓ Root CLAUDE.md already present and up to date — left as-is');
+      } else if (options.print) {
+        console.log('  ℹ️  --print — a different root CLAUDE.md already exists, leaving it as-is (rerun without --print to choose)');
+      } else {
+        const choice = await selectPrompt(
+          'A root CLAUDE.md already exists with different content (your own notes, another stack\'s, or a pre-upgrade file) — overwrite it with the router template pointing at each installed kit\'s own CLAUDE.md?',
+          [
+            { label: 'Keep the existing CLAUDE.md (recommended)', value: 'keep' },
+            { label: 'Overwrite with the router template', value: 'overwrite' },
+          ],
+          0,
+        );
+        if (choice === 'overwrite') {
+          writeFileSync(rootClaudeDest, routerContent);
+          console.log('  ✓ Overwrote root CLAUDE.md with the router template');
+        } else {
+          console.log('  ✓ Kept the existing root CLAUDE.md');
+        }
+      }
     }
 
     // --- 3. Create the kit dir and install the agent runner ---
@@ -682,6 +800,19 @@ async function installStack(stackKey, stackCfg, options = {}) {
       copyDirContents(sharedBuildKit, kitDir);
     }
     copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers'] });
+
+    // An outdated community/--git stack that still ships root/CLAUDE.md (the pre-fix
+    // layout every built-in stack used to follow too) gets it relocated here instead
+    // of left in root/ — same destination a built-in stack's own templates/<kitSubdir>
+    // now ships it at directly. No prompt needed: this is this stack's own file, moving
+    // to where its counterpart already lives, not a conflict with anything else.
+    if (stackShipsOwnRootClaude) {
+      const kitClaudeDest = join(kitDir, 'CLAUDE.md');
+      if (!existsSync(kitClaudeDest)) {
+        copyFileSync(stackRootClaudeSrc, kitClaudeDest);
+        console.log(`  ✓ Relocated this stack's CLAUDE.md into ${stackCfg.kitDirName}/ (root/CLAUDE.md is reserved for the shared router)`);
+      }
+    }
 
     // Static (no-LLM) bridge adapters live once in this package's own lib/
     // adapters/ — `fetch --spec-kitty` imports them directly, and a bridge

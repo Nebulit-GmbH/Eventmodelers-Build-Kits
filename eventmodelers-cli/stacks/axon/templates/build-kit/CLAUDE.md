@@ -26,7 +26,7 @@ Ignore case for files and slices in prompts. "CartItems" slice is the same as "c
 
 Do not change files with tests unless explicitely instructed: *.test.ts
 
-At the start of every session, read `AGENTS.md` if it exists to load accumulated project learnings.
+At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
 When starting to work on a slice, invoke the `update-slice-status` skill with `InProgress` status before doing anything else.
 

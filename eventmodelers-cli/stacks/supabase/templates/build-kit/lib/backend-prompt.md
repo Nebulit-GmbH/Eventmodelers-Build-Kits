@@ -25,7 +25,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
    **Claim conflict**: the board rejects the status update if the slice is already in the target status — this is expected: another agent claimed it first, racing you for the same slice. This is NOT an error. Do not stop, do not retry the same slice. Re-read `index.json` (or re-fetch via `load-slice`), pick the next-highest-priority slice still "Planned", and try claiming that one instead. Repeat until a claim succeeds or no "Planned" slice remains, in which case reply `<promise>NO_TASKS</promise>`.
 6. Pick the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
-7. Determine the slice type and invoke the matching skill as defined in the **Building a Slice** section of CLAUDE.md. Do NOT implement manually.
+7. Determine the slice type and invoke the matching skill as defined in the **Building a Slice** section of `.build-kit/CLAUDE.md`. Do NOT implement manually.
 8. Write a short progress one liner after each step to progress.txt
 9. Analyze and Implement that single slice, make use of the skills in the skills directory, but also your previsously collected
    knowledge. Make a list TODO list for what needs to be done. Also make sure to adjust the implementation according to the json definition. Carefully inspect events, fields and compare against the implemented slice. JSON is the desired state. ATTENTION: A "planned" task can also be just added specifications. So always look at the slice itself, but also the specifications. If specifications were added in json, which are not on code, you need to add them in code.
@@ -39,7 +39,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
     first )
 16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
 17. Append your progress to `progress.txt` after each step in the iteration.
-18. append your new learnings to AGENTS.md in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
+ 18. append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 19. Finish the iteration.
 
 ## Progress Report Format
@@ -149,4 +149,4 @@ If ALL slices in the current context are Done, reply with:
 
 ## When an iteration completes
 
-Use all the key learnings from the progress.txt and update the AGENTS.md file with those learnings.
+Use all the key learnings from the progress.txt and update the `.build-kit/AGENTS.md` file with those learnings.

@@ -14,9 +14,9 @@ You are a long-lived process handling many turns in a row. Don't redo one-time s
 
    Otherwise skip straight to executing the prompt — re-running `/connect` every turn defeats the point of a modeling session.
 3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `boardId` in `.eventmodelers/config.json`.
-4. Execute the prompt using the skill matched in CLAUDE.md's Skill Selection table.
+4. Execute the prompt using the skill matched in `.agent-modeling-kit/CLAUDE.md`'s Skill Selection table.
    **Questioning rule**: you are running autonomously — no human is available to answer questions. If you need clarification, do not pause or ask interactively — post a `QUESTION`-type comment (`/handle-comment` with `action=place`, `type=QUESTION`) on the most relevant node, then continue with your best interpretation.
 5. If this turn has a `comment_id` field, invoke `/handle-comment` with `action=resolve`, `nodeId` from `node_id`, `commentId` from `comment_id`.
-6. Append a progress entry to `progress.txt` — see CLAUDE.md's Progress Entry Format.
-7. Add any reusable learnings to CLAUDE.md's **Learnings** section at the bottom.
+6. Append a progress entry to `progress.txt` — see `.agent-modeling-kit/CLAUDE.md`'s Progress Entry Format. Fill in the `Learnings` line with anything reusable noticed this turn (pattern, gotcha, useful context), or "none".
+7. If this turn's `Learnings` line was not "none", promote it to `.agent-modeling-kit/AGENTS.md` (create it if it doesn't exist) — only add it if it's not already there.
 8. Reply `<promise>DONE</promise>` and wait for the next turn.

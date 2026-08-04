@@ -45,7 +45,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
     first )
 16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
 17. Append your progress to `progress.txt` after each step in the iteration.
-18. append your new learnings to AGENTS.md in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
+18. append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 19. Finish the iteration.
 
 ## Progress Report Format
@@ -155,4 +155,4 @@ If ALL slices in the current context are Done, reply with:
 
 ## When an iteration completes
 
-Use all the key learnings from the progress.txt and update the AGENTS.md file with those learnings.
+Use all the key learnings from the progress.txt and update the `.build-kit/AGENTS.md` file with those learnings.

@@ -19,7 +19,7 @@ description: >
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
 
-Before writing any code, read the target project's `CLAUDE.md`
+Before writing any code, read the target project's `.build-kit/CLAUDE.md`
 
 ## Step 1: Ensure Events Exist
 

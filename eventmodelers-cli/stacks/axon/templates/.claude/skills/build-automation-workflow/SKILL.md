@@ -27,7 +27,7 @@ New workflow slices live under
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
 
-Read `CLAUDE.md` and check whether the project already uses AF5 Workflows. Look for:
+Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workflows. Look for:
 
 - A `WorkflowModule` bean in any `@Configuration` class
 - Classes annotated with `@Workflow`

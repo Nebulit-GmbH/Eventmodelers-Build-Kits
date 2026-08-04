@@ -24,7 +24,7 @@ file**:
 
 ## Step 0 — Discover the target project's conventions
 
-Before writing code, read the project's `CLAUDE.md` and **at least one existing slice** (the starter
+Before writing code, read the project's `.build-kit/CLAUDE.md` and **at least one existing slice** (the starter
 ships one under `SomeModule/SomeFeature/`). Confirm:
 
 - The namespace root (read the `.csproj` `<RootNamespace>` and existing `.cs` files — never

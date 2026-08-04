@@ -23,7 +23,7 @@ event  →  IReactor method (dispatch by first param type)  →  side effect / I
 
 ## Step 0 — Discover conventions
 
-Read `CLAUDE.md` and one existing reactor. Confirm the namespace root, how reactors are placed within a
+Read `.build-kit/CLAUDE.md` and one existing reactor. Confirm the namespace root, how reactors are placed within a
 slice, which services are available for side effects, and how existing translations call
 `ICommandPipeline`. Resolve slice `comments` when done (see the state-change skill's Step 0).
 

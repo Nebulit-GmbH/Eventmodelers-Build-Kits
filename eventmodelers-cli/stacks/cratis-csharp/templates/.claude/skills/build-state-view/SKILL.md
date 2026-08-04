@@ -23,7 +23,7 @@ file**:
 
 ## Step 0 — Discover conventions
 
-Read `CLAUDE.md` and one existing read slice. Confirm the namespace root, how existing read models
+Read `.build-kit/CLAUDE.md` and one existing read slice. Confirm the namespace root, how existing read models
 declare queries (snapshot vs observable), whether projections use model-bound attributes or
 `IProjectionFor<T>`, and the MongoDB collection wiring. Resolve slice `comments` when done (see the
 state-change skill's Step 0 for the resolve endpoint).
