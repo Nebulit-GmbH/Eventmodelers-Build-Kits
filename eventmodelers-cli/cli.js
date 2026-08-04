@@ -19,6 +19,7 @@ import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
+import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -630,6 +631,14 @@ async function installStack(stackKey, stackCfg, options = {}) {
       copyDirContents(sharedBuildKit, kitDir);
     }
     copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers'] });
+
+    // Static (no-LLM) bridge adapters live once in this package's own lib/
+    // adapters/ — `fetch --spec-kitty` imports them directly, and a bridge
+    // install gets its own copy here so ralph-static.js can run standalone
+    // with no access back to the published package.
+    if (isBridge) {
+      copyDirContents(join(__dirname, 'lib', 'adapters'), join(kitDir, 'adapters'));
+    }
 
     // Make scripts executable
     for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-ollama.js']) {
@@ -1393,9 +1402,10 @@ program
 
 program
   .command('bridge')
-  .description('Start the bridge agent loop from the installed .bridge-kit/ — translates board slice changes into another spec framework instead of building code. Claude is the default executor; --ollama or --hook override it.')
-  .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner')
+  .description('Start the bridge agent loop from the installed .bridge-kit/ — translates board slice changes into another spec framework instead of building code. A deterministic adapter runs with no LLM call if one exists for the configured target (e.g. spec-kitty); otherwise Claude is the default executor. --ollama, --hook, or --claude override the pick.')
+  .option('--ollama', 'Use ralph-ollama.js instead of the default runner')
   .option('--hook <command>', 'Run this shell command instead of an AI agent for each batch of slice changes (e.g. commit + push .slices/ for a CI pipeline to pick up) — overrides any hook persisted via `init --bridge --hook` for this run only')
+  .option('--claude', 'Force the Claude runner even if a static adapter exists for this target')
   .action((opts) => {
     const cwd = process.cwd();
     const kitDir = findAllInstalledKitDirs(cwd).find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
@@ -1404,8 +1414,8 @@ program
       process.exit(1);
     }
 
-    if (opts.ollama && opts.hook) {
-      console.error('❌ --ollama and --hook are mutually exclusive — pick one executor.');
+    if ([opts.ollama, opts.hook, opts.claude].filter(Boolean).length > 1) {
+      console.error('❌ --ollama, --hook, and --claude are mutually exclusive — pick one executor.');
       process.exit(1);
     }
 
@@ -1413,13 +1423,23 @@ program
     // plain sibling file — NOT under .eventmodelers/, which is gitignored (see
     // the comment in `init`'s --bridge branch) and would otherwise make this
     // per-machine instead of a shared, checked-in team/CI convention.
-    const persistedHook = readJsonSafe(join(kitDir, 'bridge.json')).hookCommand;
+    const bridgeCfg = readJsonSafe(join(kitDir, 'bridge.json'));
+    const persistedHook = bridgeCfg.hookCommand;
     const hookCmd = opts.hook || persistedHook;
 
-    // v1 has no --bash equivalent, unlike `run` — the default/--ollama path
-    // needs an actual agent, not a plain shell script; --hook is the escape
-    // hatch for teams who want a plain shell command instead of an AI agent.
-    const runner = hookCmd ? 'ralph-hook.js' : opts.ollama ? 'ralph-ollama.js' : 'ralph-claude.js';
+    // A static adapter (adapters/<target>-adapter.js, e.g. spec-kitty-adapter.js)
+    // is deterministic and costs no LLM call, so it wins over the Claude default
+    // whenever one exists for the configured target — --claude opts back out.
+    const staticAdapterPath = join(kitDir, 'adapters', `${bridgeCfg.target}-adapter.js`);
+    const hasStaticAdapter = bridgeCfg.target && existsSync(staticAdapterPath);
+
+    const runner = hookCmd
+      ? 'ralph-hook.js'
+      : opts.ollama
+        ? 'ralph-ollama.js'
+        : !opts.claude && hasStaticAdapter
+          ? 'ralph-static.js'
+          : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
@@ -1467,6 +1487,7 @@ program
   .requiredOption('--context <name>', 'Name of the MODEL_CONTEXT to fetch')
   .option('--slice-id <id>', 'After fetching, print just the slice with this id')
   .option('--slice-title <title>', 'After fetching, print just the slice with this title (case-insensitive)')
+  .option('--spec-kitty', "After fetching, also restate this context as a Spec Kitty mission brief (.kittify/mission-brief.md via `spec-kitty intake`) — deterministic, no LLM call, no mission/spec.md/tasks created. Run `/spec-kitty.specify` afterward to turn the brief into a mission. Requires `spec-kitty init` to already be set up in this project (see lib/adapters/spec-kitty-adapter.js). One-shot: does not start a loop.")
   .action(async (opts, command) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
@@ -1520,6 +1541,15 @@ program
       else delete cfg.token;
       await promptForCredentials();
       await runFetch({ cwd, kitDir: slicesKitDir, cfg, opts });
+    }
+
+    if (opts.specKitty) {
+      try {
+        await runSpecKittyAdapter({ cfg, projectDir: cwd, contextName: opts.context });
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
     }
   });
 

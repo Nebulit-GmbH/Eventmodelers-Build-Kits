@@ -68,7 +68,17 @@ npx @eventmodelers/cli init --bridge --target spec-kitty
 npx @eventmodelers/cli bridge
 ```
 
-`init --bridge` installs a `.bridge-kit/` (mirrors `.build-kit/`'s realtime + task-queue loop) plus only the skills for the chosen `--target` (`shared/bridge/<target>/`) — a `spec-kitty` bridge never installs Kiro's skills, and vice versa. `bridge` starts the loop: on every board slice change (not just "Planned", unlike build-kit), it re-runs `bridge-<target>-specify` to regenerate that framework's spec artifacts from the current `.slices/` export. It doesn't build code and doesn't claim slices. Pass `--ollama` for the local-Ollama runner instead of Claude (same caveat as build-kit's `--ollama`: `lib/ollama-agent.js` is shared as-is).
+`init --bridge` installs a `.bridge-kit/` (mirrors `.build-kit/`'s realtime + task-queue loop) plus only the skills for the chosen `--target` (`shared/bridge/<target>/`) — a `spec-kitty` bridge never installs Kiro's skills, and vice versa. `bridge` starts the loop: on every board slice change (not just "Planned", unlike build-kit), it regenerates that framework's spec artifacts from the current board state. It doesn't build code and doesn't claim slices.
+
+For `spec-kitty`, that sync is deterministic and stops well short of writing Spec Kitty's own artifacts — `lib/adapters/spec-kitty-adapter.js` fetches full slice detail and restates it as a plain markdown mission brief (one section per slice, its scenarios verbatim, nothing invented), then calls `spec-kitty intake --force` to install it at `.kittify/mission-brief.md`. It deliberately doesn't create the mission, write `spec.md`, or author work packages — Spec Kitty's own `/spec-kitty.specify` → `/spec-kitty.plan` → `/spec-kitty.tasks` pipeline does that, because those steps need real judgment (work package boundaries, which files a WP owns, which agent profile fits) that only makes sense with actual codebase context, which this adapter doesn't have. What it replaces is Spec Kitty's *interactive discovery interview*: `/spec-kitty.specify`'s own "Brief Context Detection" step reads `.kittify/mission-brief.md` when present and extracts requirements from it instead of asking the user, so the event model — not a live Q&A — becomes the input. No LLM call happens in this adapter's own path, and `bridge` picks it automatically whenever a target has one (`--claude` forces the Claude runner instead). Targets without a static adapter yet fall back to Claude re-running `bridge-<target>-specify`; pass `--ollama` for the local-Ollama runner instead (same caveat as build-kit's `--ollama`: `lib/ollama-agent.js` is shared as-is).
+
+Don't want the standing loop at all? `fetch` can call the same adapter for a single one-shot sync, no `.bridge-kit/` install required:
+
+```bash
+npx @eventmodelers/cli fetch --context Ticketing --spec-kitty
+```
+
+Either way, `spec-kitty init` (Spec Kitty's own project setup) has to have already been run in the project root — the adapter checks for `.kittify/` first and stops with the exact command to run if it's missing, rather than failing deep inside a cryptic `spec-kitty` CLI error. After the sync, run `/spec-kitty.specify` in your coding agent to turn the brief into an actual mission (the plain `spec-kitty specify` CLI command only scaffolds — brief detection is in the agent-driven prompt).
 
 ### Overriding the executor with a hook
 
@@ -79,7 +89,7 @@ npx @eventmodelers/cli init --bridge --target spec-kitty --hook "git add .slices
 npx @eventmodelers/cli bridge
 ```
 
-`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--ollama` and `--hook` are mutually exclusive.
+`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--ollama`, `--hook`, and `--claude` are mutually exclusive.
 
 The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STATUS` (the most recent change in the batch), and `BRIDGE_BATCH_FILE` (path to the full batch as JSON) in its environment. It's invoked once per batch, not once per slice — any change that arrives while the hook is still running is left queued for the next batch rather than dropped.
 
