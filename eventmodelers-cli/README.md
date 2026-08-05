@@ -16,9 +16,10 @@ npx @eventmodelers/cli init --stack supabase         # Supabase
 npx @eventmodelers/cli init --stack axon             # Axon Framework (Java/Kotlin)
 npx @eventmodelers/cli init --stack cratis-csharp    # Cratis (.NET/C#)
 npx @eventmodelers/cli init-modeling                 # skills + agent loop only, no backend scaffold
+npx @eventmodelers/cli init --build-kit              # blank build-kit scaffold for a stack not built into this CLI yet
 ```
 
-`init-modeling` isn't a stack — it's the option for when you don't want a backend scaffolded at all, just the skills and the agent loop.
+`init-modeling` isn't a stack — it's the option for when you don't want a backend scaffolded at all, just the skills and the agent loop. `init --build-kit` isn't one of the four either — it installs the same `.build-kit/` + skills shape as a real stack, but with TODO-marked placeholders instead of real content, for integrating a stack this CLI doesn't support yet (see "Adding a stack" below).
 
 The installer prompts for your API token, Organization ID (and Board ID, for the four backend stacks) from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account).
 
@@ -227,6 +228,7 @@ npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install
 npx @eventmodelers/cli init --stack <name> --global # same, but skills go to ~/.claude/skills/ (every project)
 npx @eventmodelers/cli init-modeling                # skills + agent loop only, no backend scaffold (alias: modeling)
 npx @eventmodelers/cli init-modeling --global       # same, but skills go to ~/.claude/skills/ (every project)
+npx @eventmodelers/cli init --build-kit             # blank build-kit scaffold (TODO placeholders) for a stack not built into this CLI yet
 npx @eventmodelers/cli init-mcp                     # register the MCP server in .claude/settings.json (+ optionally another harness)
 npx @eventmodelers/cli init-config                  # credentials only, no scaffold — writes ./.eventmodelers/config.json
 npx @eventmodelers/cli init-config --global         # same, but writes organizationId + token to ~/.eventmodelers/config.json
@@ -280,6 +282,12 @@ EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN
 ## Adding a stack
 
 Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
+
+`init --build-kit` (see above) installs exactly that layout into a real project — `.build-kit/CLAUDE.md`, `lib/prompt.md`, `lib/backend-prompt.md`, and `.claude/skills/build-{state-change,state-view,automation}/SKILL.md` — but with TODO-marked placeholders instead of real content, since there's no fixed backend to generate them from. Fill in the TODOs against the actual stack you're integrating (build/test commands, file layout, framework idioms) while building something real with it. Once it works, promote it to a first-class stack:
+
+1. Copy `.build-kit/` → `stacks/<name>/templates/build-kit/`, `.claude/skills/build-*` → `stacks/<name>/templates/.claude/skills/`, and whatever `root/` scaffold you built → `stacks/<name>/templates/root/`.
+2. Add an entry for `<name>` to the `STACKS` object in `cli.js` (`label`, `kitSubdir: 'build-kit'`, `kitDirName: '.build-kit'`, `useShared: true`, `needsBoardId: true`).
+3. Add it to this README's stack list, the "What gets installed" section, and the `stacks` command's output (generated from `STACKS`, so nothing to add there beyond the entry itself).
 
 ## Contributors
 

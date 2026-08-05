@@ -107,7 +107,24 @@ const BRIDGE_KIT = {
   needsBoardId: true,
 };
 
-const KIT_DIR_NAMES = [...new Set([...Object.values(STACKS), MODELING_KIT, BRIDGE_KIT].map((s) => s.kitDirName))];
+// Also not a stack — installed via `init --build-kit` instead of `init --stack <name>`.
+// useShared:true, same as any real backend stack: it reuses build-kit's cold-spawn/
+// tasks.json engine as-is (lib/ralph.js). Its templates/build-kit/CLAUDE.md,
+// lib/{prompt,backend-prompt}.md, and templates/.claude/skills/build-*/SKILL.md are
+// TODO-marked placeholders instead of real stack content (see stacks/blank/templates)
+// — this is for a stack that isn't built into this CLI yet: fill in the TODOs against
+// the real project this installs into, then optionally contribute it back as a
+// first-class entry in STACKS (see README, "Adding a stack").
+const BLANK_BUILD_KIT = {
+  key: 'blank',
+  label: 'Build kit — blank scaffold to fill in for a stack not built into this CLI yet',
+  kitSubdir: 'build-kit',
+  kitDirName: '.build-kit',
+  useShared: true,
+  needsBoardId: true,
+};
+
+const KIT_DIR_NAMES = [...new Set([...Object.values(STACKS), MODELING_KIT, BRIDGE_KIT, BLANK_BUILD_KIT].map((s) => s.kitDirName))];
 
 // Same principle Playwright MCP uses per harness: one shared server, but each coding
 // agent has its own registration mechanism. Automate the ones with a real, verified
@@ -793,6 +810,28 @@ async function installStack(stackKey, stackCfg, options = {}) {
 
     // --- 3. Create the kit dir and install the agent runner ---
     const kitDir = join(targetDir, stackCfg.kitDirName);
+
+    // A non-empty kit dir here almost always means a previous install someone has
+    // since customized (e.g. filled in a `--build-kit` scaffold's TODOs, or hand-edited
+    // CLAUDE.md/AGENT.md) — the copy below overwrites same-named files unconditionally,
+    // so ask before silently clobbering that work. --print and --force both imply an
+    // explicit, non-interactive "yes" (mirrors how --force already means "overwrite
+    // without re-asking" for credentials).
+    if (existsSync(kitDir) && readdirSync(kitDir).length > 0 && !options.print && !options.force) {
+      const choice = await selectPrompt(
+        `${stackCfg.kitDirName} is not empty. Should we continue?`,
+        [
+          { label: 'No — cancel', value: 'no' },
+          { label: 'Yes — continue (files with matching names will be overwritten)', value: 'yes' },
+        ],
+        0,
+      );
+      if (choice === 'no') {
+        console.log('\n❌ Cancelled — nothing was installed.');
+        process.exit(1);
+      }
+    }
+
     mkdirSync(kitDir, { recursive: true });
     console.log(`📦 Installing agent kit into ${stackCfg.kitDirName}/...`);
 
@@ -1346,28 +1385,41 @@ function credentialOverridesFromOpts(opts) {
 credentialFlags(program
   .command('init')
   .alias('install')
-  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --bridge to translate board slices into another spec framework; or --git to install a community/custom build kit from a git repo)')
+  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --bridge to translate board slices into another spec framework; or --build-kit for a blank build-kit scaffold to fill in for a stack not built into this CLI yet; or --git to install a community/custom build kit from a git repo)')
   .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')}), or a name of your choosing when combined with --git`)
   .option('--git <url>', 'Install a build kit not built into this CLI by cloning this git repo (used with --stack <name> to name it) — the repo must mirror the templates/.claude, templates/root, templates/<kitSubdir> layout of this CLI\'s own stacks/<name>/templates, optionally with a stack.json declaring label/kitSubdir/useShared/needsBoardId')
   .option('--branch <name>', 'Branch to clone — only meaningful with --git (defaults to the repo\'s default branch)')
-  .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--bridge.')
-  .option('--bridge', 'Install a bridge kit — translates board slices into another spec framework instead of building code. Mutually exclusive with --stack/--modeling. Requires --target.')
+  .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--bridge/--build-kit.')
+  .option('--bridge', 'Install a bridge kit — translates board slices into another spec framework instead of building code. Mutually exclusive with --stack/--modeling/--build-kit. Requires --target.')
   .option('--target <name>', `Bridge target framework (${Object.keys(BRIDGE_TARGETS).join(', ')}) — only meaningful with --bridge`)
   .option('--hook <command>', 'Persist a default shell command hook for `bridge` to run per batch of slice changes instead of Claude/Ollama (e.g. commit + push .slices/ for a CI pipeline to pick up) — only meaningful with --bridge. Can also be set per-run with `bridge --hook`.')
+  .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling/--bridge.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
 
-    if (opts.modeling || opts.bridge) {
-      if (opts.stack || opts.git || (opts.modeling && opts.bridge)) {
-        console.error('❌ --stack/--git, --modeling, and --bridge are mutually exclusive — pick one.');
+    if (opts.modeling || opts.bridge || opts.buildKit) {
+      const modeCount = [opts.modeling, opts.bridge, opts.buildKit].filter(Boolean).length;
+      if (opts.stack || opts.git || modeCount > 1) {
+        console.error('❌ --stack/--git, --modeling, --bridge, and --build-kit are mutually exclusive — pick one.');
         process.exit(1);
       }
     }
 
     if (opts.modeling) {
       await installStack(MODELING_KIT.key, MODELING_KIT, {
+        configPath: globalOpts.config,
+        print: globalOpts.print,
+        global: opts.global,
+        force: opts.force,
+        credentialOverrides: credentialOverridesFromOpts(opts),
+      });
+      return;
+    }
+
+    if (opts.buildKit) {
+      await installStack(BLANK_BUILD_KIT.key, BLANK_BUILD_KIT, {
         configPath: globalOpts.config,
         print: globalOpts.print,
         global: opts.global,
