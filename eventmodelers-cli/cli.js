@@ -1079,8 +1079,8 @@ async function configureMcp(options = {}) {
 // no re-discovery of a prompt this process already has in memory. Only pure,
 // read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is reused
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
-// See `claude-modeling.md` in the kit's project root for the per-turn instructions
-// this mode's modeling session follows.
+// See `.agent-modeling-kit/CLAUDE.md` for the per-turn instructions this mode's
+// modeling session follows.
 async function runModeling(kitDir, projectDir) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
@@ -1110,10 +1110,11 @@ async function runModeling(kitDir, projectDir) {
     'as a QUESTION-type comment (via /handle-comment with action=place and type=QUESTION) on the most ' +
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt.\n\n';
 
-  // Sent once, on the first turn only — it's what tells CLAUDE.md's dispatcher to
-  // follow claude-modeling.md instead of claude-ralph.md, and gives the modeling
-  // session its one-time connect credentials. Every later turn only carries the
-  // per-prompt fields that actually vary (board_id, comment_id, ...).
+  // Sent once, on the first turn only — it's what tells the agent to follow
+  // .agent-modeling-kit/CLAUDE.md's per-turn steps for this warm session (instead
+  // of the root router's default of reading every installed kit's CLAUDE.md), and
+  // gives the modeling session its one-time connect credentials. Every later turn
+  // only carries the per-prompt fields that actually vary (board_id, comment_id, ...).
   let firstTurn = true;
   function buildTurn(p) {
     const fields = [
@@ -1127,7 +1128,7 @@ async function runModeling(kitDir, projectDir) {
     const body = `${fields}\n\n${p.prompt}`;
     if (!firstTurn) return body;
     firstTurn = false;
-    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read claude-modeling.md and follow it for every prompt in this session.\n\n${body}`;
+    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
   }
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
