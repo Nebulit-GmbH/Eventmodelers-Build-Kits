@@ -1117,6 +1117,7 @@ async function runModeling(kitDir, projectDir) {
   let firstTurn = true;
   function buildTurn(p) {
     const fields = [
+      `prompt_id=${p.id}`,
       `board_id=${p.board_id ?? cfg.boardId ?? ''}`,
       `organization_id=${p.organization_id ?? cfg.organizationId}`,
       p.timeline_id ? `timeline_id=${p.timeline_id}` : null,

@@ -594,6 +594,81 @@ OpenAPI specification (JSON)
 
 ---
 
+## 14. Prompts
+
+**File**: `src/slices/change/api-prompts/routes.ts`
+
+Prompts are how a human submits work to a modeling agent from the board UI, and how that agent reports its lifecycle back onto the board. Every prompt row has a `status`: `ADDED` (submitted, default) → `CLAIMED` (an agent has picked it up) → `IN_PROGRESS` (an agent is actively working it) → `DONE` (finished). See the `update-prompt-status` skill for the agent-side half of this lifecycle.
+
+### POST `/api/org/:orgId/prompts`
+Submit a prompt for a board timeline. Auth: Supabase JWT (`Authorization: Bearer`).
+
+**Request body**:
+```typescript
+{
+  prompt: string
+  board_id: string
+  timeline_id: string
+  node_id?: string
+  comment_id?: string
+  priority?: boolean          // default false
+  context?: {                 // optional canvas-selection context for the agent to use
+    selectedCell?: object | null
+    selectedNodes?: string[]
+  }
+}
+```
+
+**Response**: `201` — the created row, `status: "ADDED"`.
+**Errors**: `400` missing required fields or malformed `context` · `403` no access to board · `404` board/timeline not found or no API token configured for the org
+
+---
+
+### GET `/api/org/:orgId/prompts/next`
+Claim the next pending (`ADDED`) prompt for a board — atomically flips it to `CLAIMED` and returns it. This is what a running modeling agent's warm loop polls. Auth: `x-token` **and** a Supabase JWT (`Authorization: Bearer`) together.
+
+**Query params**: `board_id` (required)
+**Response**: `200` — the claimed row (now `status: "CLAIMED"`) · `404` — no `ADDED` prompts available
+
+---
+
+### POST `/api/org/:orgId/prompts/:id/status`
+Set a prompt's status, optionally attaching a progress comment. Auth: `x-token` only (bot token — no user JWT needed, this is meant to be called directly by the agent working the prompt).
+
+**Request body**:
+```typescript
+{
+  status: 'ADDED' | 'CLAIMED' | 'IN_PROGRESS' | 'DONE'
+  comment?: string   // shown alongside the prompt in the board UI
+}
+```
+
+**Response**: `200` — the updated row
+**Errors**: `400` invalid/missing `status` · `403` token not for this prompt's org · `404` prompt not found
+
+---
+
+### DELETE `/api/org/:orgId/prompts/:id`
+Delete a prompt outright. Auth: `x-token` only. Manual/admin cleanup — not part of the normal agent lifecycle (use the status endpoint above instead).
+
+**Response**: `204` · `404` prompt not found
+
+---
+
+### DELETE `/api/org/:orgId/prompts/:id/user`
+Delete a prompt you submitted yourself. Auth: Supabase JWT — only deletes rows owned by the calling user.
+
+**Response**: `204` · `404` prompt not found or not yours
+
+---
+
+### GET `/api/org/:orgId/prompts/realtime-token`
+Exchange an `x-token` for a short-lived Supabase-compatible JWT, used to subscribe to the org's realtime channel for live prompt notifications. Auth: `x-token` only.
+
+**Response**: `200` — `{ token: string }`
+
+---
+
 ## Domain Events
 
 ### Snapshot Events (`src/events/SnapshotsEvents.ts`)
@@ -631,6 +706,7 @@ All events support optional metadata: `user_id`, `correlation_id`, `causation_id
 | `src/slices/change/api-nodes/routes.ts` | Node event sourcing |
 | `src/slices/extensions/supabase/nodes/AutoConnectNode.ts` | Auto-connect logic (timeline neighbor wiring) |
 | `src/slices/change/api-images/routes.ts` | Image upload + sketch rendering |
+| `src/slices/change/api-prompts/routes.ts` | Prompt submission, claiming, and status lifecycle |
 | `src/slices/change/api-.slices/routes.ts` | Slice creation + slice definitions (SLICE_BORDER) |
 | `src/slices/extensions/supabase/slices/CreateSliceDefinition.ts` | Slice definition (SLICE_BORDER) creation logic |
 | `src/slices/change/api-specs/routes.ts` | GWT scenario management |

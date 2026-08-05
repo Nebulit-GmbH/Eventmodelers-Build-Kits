@@ -30,6 +30,7 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
 | Update the status of a slice (e.g. done, in-progress) | `/update-slice-status` |
+| Update the status of the current prompt (e.g. in-progress, done) | `/update-prompt-status` |
 
 Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions.
 

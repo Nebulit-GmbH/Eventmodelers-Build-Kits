@@ -143,47 +143,27 @@ Extract `columnId` from the response. Compute the actor cell ID directly:
 
 (Cell IDs are always `<rowId>-<columnId>` — no re-fetch or cell array search needed.)
 
-**In both cases**, generate a node UUID: `SCREEN_NODE_ID`. Generate an event UUID: `ACTOR_EVT_ID`.
+**In both cases**, generate a node UUID: `SCREEN_NODE_ID`.
 
-Place the SCREEN node into the actor cell using the `/nodes/events` endpoint (agent-compatible — requires `x-user-id: agent`):
+### Step 5b — Create the node and render the sketch in one atomic call
 
-> **Do NOT use** `/boards/$BOARD_ID/events` — that endpoint requires a user JWT and will fail for agent (x-token) auth with "Authenticated user id is required".
+Build the payload, then send a single call that creates the SCREEN node, places it into the actor cell, and renders the sketch — all in one request. There is no intermediate state where the node exists without an image or without a cell:
 
 ```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID/sketch" \
   -H "x-token: $TOKEN" \
   -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
-  -d '[
-    {
-      "id":        "<ACTOR_EVT_ID>",
-      "eventType": "node:created",
-      "nodeId":    "<SCREEN_NODE_ID>",
-      "boardId":   "<BOARD_ID>",
-      "timestamp": <NOW_MS>,
-      "chapterId": "<CHAPTER_ID>",
-      "cellId":    "<actorCellId>",
-      "meta":      {"type": "SCREEN", "title": "<screenTitle>", "description": "<visualDescription>"},
-      "node":      {"id": "<SCREEN_NODE_ID>", "data": {}}
-    }
-  ]'
+  -d '{
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorCellId>",
+    "description": {"elements": [...]},
+    "semanticDescription": "<screenTitle — what this screen shows>"
+  }'
 ```
 
-Verify the response contains `"hashes"`. If it fails, stop and report the error — do not proceed to the sketch step.
-
-> **Do NOT call the `drop` endpoint after this step.** `node:created` with `cellId` already places the node in the correct cell. Calling drop afterwards creates a duplicate cell reference without removing the original, causing the node to appear in two columns simultaneously.
-
-### Step 5b — Render the sketch onto the SCREEN node
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$SCREEN_NODE_ID/sketch" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{"description": "<screenTitle — what this screen shows>", "elements": [...]}'
-```
+Pass the already-computed `actorCellId` directly as `cellId` (the endpoint accepts either `cellId` or `cellName`). Expect `204`. On `400`, read the validation error, fix the payload, and retry once before reporting failure.
 
 ### Step 5c — Verify the screen
 
@@ -195,8 +175,8 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/veri
 ```
 
 Check the `valid` field in the response:
-- **`valid: true`** — proceed to Step 5d.
-- **`valid: false`** — read the `error` field. If `nodeExists` is `false`, the node creation in Step 5a failed; retry it. If `imageExists` is `false`, the sketch render in Step 5b failed silently; retry Step 5b once. If it fails verification again, log the error for this screen in the final report and move on to the next screen — do not get stuck retrying indefinitely.
+- **`valid: true`** — proceed to marking the task complete.
+- **`valid: false`** — read the `error` field and retry Step 5b once. If it fails verification again, log the error for this screen in the final report and move on to the next screen — do not get stuck retrying indefinitely.
 
 ### Step 5d — Mark the task complete
 
