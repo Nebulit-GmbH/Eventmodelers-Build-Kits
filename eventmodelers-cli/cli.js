@@ -1140,19 +1140,25 @@ async function runModeling(kitDir, projectDir) {
 
   // Bare tool names (`→ Bash`, `→ Skill`) tell you nothing happened worth
   // reading — this pulls out the one input field that actually says what the
-  // tool did, so the trace is skimmable without the interactive TUI.
+  // tool did, so the trace is skimmable without the interactive TUI. Collapsed
+  // to one line and capped in length — a raw multi-line curl or a long grep
+  // pattern wrapping across the terminal is just as unreadable as no detail at all.
+  const oneLine = (s, max = 100) => {
+    const flat = String(s ?? '').replace(/\s+/g, ' ').trim();
+    return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+  };
   function describeToolUse(block) {
     const input = block.input ?? {};
     switch (block.name) {
-      case 'Bash': return `Bash: ${input.command}`;
-      case 'Skill': return `Skill: ${input.skill}${input.args ? ` ${input.args}` : ''}`;
+      case 'Bash': return `Bash: ${oneLine(input.command)}`;
+      case 'Skill': return `Skill: ${input.skill}${input.args ? ` ${oneLine(input.args, 60)}` : ''}`;
       case 'Read': return `Read: ${input.file_path}`;
       case 'Edit': return `Edit: ${input.file_path}`;
       case 'Write': return `Write: ${input.file_path}`;
-      case 'Grep': return `Grep: ${input.pattern}`;
+      case 'Grep': return `Grep: ${oneLine(input.pattern, 60)}`;
       case 'Glob': return `Glob: ${input.pattern}`;
       case 'WebFetch': return `WebFetch: ${input.url}`;
-      case 'Agent': return `Agent: ${input.description ?? input.subagent_type ?? ''}`;
+      case 'Agent': return `Agent: ${oneLine(input.description ?? input.subagent_type ?? '', 60)}`;
       default: return block.name;
     }
   }
