@@ -281,19 +281,28 @@ function maskSecret(value) {
 // scripted installs) — the first interface can read ahead and consume lines meant
 // for later prompts, leaving the next one waiting on a stream that already ended.
 let sharedRl = null;
+let sharedRlLines = null;
 function getSharedRl() {
   if (!sharedRl) {
     sharedRl = createInterface({ input: process.stdin, output: process.stdout });
+    sharedRlLines = sharedRl[Symbol.asyncIterator]();
   }
   return sharedRl;
 }
 
-async function prompt(question) {
-  return new Promise((resolve) => {
-    getSharedRl().question(question, (answer) => {
-      resolve(answer.trim());
-    });
-  });
+// Pulls one line from the shared readline's own async iterator rather than calling
+// its `.question()` — `.question()` attaches a one-shot 'line' listener *after* the
+// prompt is issued, but when stdin is piped (a file, `<<<`, scripted/CI input) readline
+// parses and emits 'line' events for an entire buffered chunk synchronously as soon as
+// it arrives. So a second `.question()` call in the same process can miss a line that
+// was already emitted — and dropped, no listener attached yet — before it was even
+// called, hanging forever. Pulling from the iterator instead queues each line until
+// something asks for it, so nothing emitted ahead of time is ever lost between prompts.
+async function prompt(question = '') {
+  getSharedRl();
+  if (question) process.stdout.write(question);
+  const { value, done } = await sharedRlLines.next();
+  return (done ? '' : value).trim();
 }
 
 // Reads a pasted block of credentials, which may span one line (minified JSON,
@@ -303,7 +312,7 @@ async function prompt(question) {
 async function promptPasteBlock() {
   const lines = [];
   while (lines.length < 20) {
-    const line = await new Promise((resolve) => getSharedRl().question('', resolve));
+    const line = await prompt();
     if (line.trim() === '') {
       if (lines.length > 0) break;
       continue;
@@ -1352,7 +1361,11 @@ program
 // cleanup commands that are meant to work — and report something useful — whether
 // or not a kit is present, and fetch only needs credentials plus somewhere to write
 // .slices/ (cwd, absent a kit dir — see lib/fetch.js), no kit-specific files.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch']);
+// activate-context/set-slice-status are the same story minus even the credentials — they
+// only ever read/write an already-fetched .slices/, and report their own hint (run `fetch`
+// first) when that's missing. set-slice-status only touches credentials at all for --remote,
+// which prompts for them itself the same way fetch does.
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status']);
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
@@ -1816,6 +1829,212 @@ program
         process.exit(1);
       }
     }
+  });
+
+program
+  .command('activate-context')
+  .description('Choose which fetched context is active — writes .slices/current_context.json, which `run`/bridge/listen treat as sticky and never cross out of on their own')
+  .action(async () => {
+    const cwd = process.cwd();
+    const kitDir = findInstalledKitDir(cwd);
+    // Same modeling-kit exception `fetch` applies — see its action for why.
+    const slicesKitDir = kitDir?.endsWith(MODELING_KIT.kitDirName) ? null : kitDir;
+    const SLICES_DIR = join(slicesKitDir || cwd, '.slices');
+    const hint = '   Run `eventmodelers fetch --context <name>` first to pull a context from the board.';
+
+    // A context is any .slices/ subdirectory fetch/listen wrote an index.json into —
+    // that's the file both of them use as proof a context's slices actually landed.
+    const contextDirs = existsSync(SLICES_DIR)
+      ? readdirSync(SLICES_DIR, { withFileTypes: true })
+          .filter((e) => e.isDirectory() && existsSync(join(SLICES_DIR, e.name, 'index.json')))
+          .map((e) => e.name)
+      : [];
+
+    if (!contextDirs.length) {
+      console.error(`❌ No contexts found in ${relative(cwd, SLICES_DIR)}/.`);
+      console.error(hint);
+      process.exit(1);
+    }
+
+    const currentCtx = readJsonSafe(join(SLICES_DIR, 'current_context.json')).name;
+
+    // context.json's `name` is the human-readable display name; the directory itself
+    // (contextSlug) is what current_context.json must store, since readCurrentContext
+    // (shared/build-kit/lib/ralph.js) joins it straight onto `.slices/<name>/index.json`.
+    const choices = contextDirs.map((dirName) => ({
+      label: readJsonSafe(join(SLICES_DIR, dirName, 'context.json')).name || dirName,
+      value: dirName,
+    }));
+    const defaultIndex = Math.max(0, contextDirs.indexOf(currentCtx));
+
+    const selected = await selectPrompt(
+      `Which context should be active?${currentCtx ? ` (currently: ${choices[defaultIndex].label})` : ''}`,
+      choices,
+      defaultIndex,
+    );
+
+    writeFileSync(join(SLICES_DIR, 'current_context.json'), JSON.stringify({ name: selected }, null, 2));
+    const selectedLabel = choices.find((c) => c.value === selected)?.label || selected;
+    console.log(`✅ Active context set to "${selectedLabel}" → ${relative(cwd, join(SLICES_DIR, 'current_context.json'))}`);
+  });
+
+// Order/icons/default mirror the board UI's own slice-status picker.
+const SLICE_STATUSES = [
+  { label: '🌱 Created (default)', value: 'Created' },
+  { label: '✅ Done', value: 'Done' },
+  { label: '👤 Assigned', value: 'Assigned' },
+  { label: '🔄 InProgress', value: 'InProgress' },
+  { label: '🔍 Review', value: 'Review' },
+  { label: '🚫 Blocked', value: 'Blocked' },
+  { label: '📅 Planned', value: 'Planned' },
+  { label: 'ℹ️ Informational', value: 'Informational' },
+];
+
+program
+  .command('set-slice-status')
+  .description('Pick a slice from the active context and change its status — updates .slices/ locally, and the board itself with --remote')
+  .option('--remote', 'Also push the change to the board via the nodes/events API (same effect `update-slice-status` has, see shared/skills/update-slice-status)')
+  .action(async (opts, command) => {
+    const cwd = process.cwd();
+    const kitDir = findInstalledKitDir(cwd);
+    // Same modeling-kit exception `fetch`/`activate-context` apply — see fetch's action for why.
+    const slicesKitDir = kitDir?.endsWith(MODELING_KIT.kitDirName) ? null : kitDir;
+    const SLICES_DIR = join(slicesKitDir || cwd, '.slices');
+    const fetchHint = '   Run `eventmodelers fetch --context <name>` first to pull a context from the board.';
+
+    const currentCtx = readJsonSafe(join(SLICES_DIR, 'current_context.json')).name;
+    if (!currentCtx) {
+      console.error('❌ No active context set.');
+      console.error(existsSync(SLICES_DIR) ? '   Run `eventmodelers activate-context` to pick one.' : fetchHint);
+      process.exit(1);
+    }
+
+    const contextDir = join(SLICES_DIR, currentCtx);
+    const indexPath = join(contextDir, 'index.json');
+    const indexData = readJsonSafe(indexPath);
+    const slices = Array.isArray(indexData.slices) ? indexData.slices : [];
+    if (!slices.length) {
+      console.error(`❌ No slices found for context "${currentCtx}".`);
+      console.error(fetchHint);
+      process.exit(1);
+    }
+
+    const sliceChoices = slices.map((s) => ({ label: `${s.slice || s.id}  [${s.status || 'Created'}]`, value: s.id }));
+    const sliceId = await selectPrompt(`Which slice in "${currentCtx}" should change status?`, sliceChoices, 0);
+    const slice = slices.find((s) => s.id === sliceId);
+
+    const statusDefault = Math.max(0, SLICE_STATUSES.findIndex((s) => s.value === (slice.status || 'Created')));
+    const newStatus = await selectPrompt(`New status for "${slice.slice}"? (currently: ${slice.status || 'Created'})`, SLICE_STATUSES, statusDefault);
+
+    if (newStatus === (slice.status || 'Created')) {
+      console.log(`ℹ️  "${slice.slice}" is already ${newStatus} — nothing to change.`);
+      return;
+    }
+
+    // index.json's `definition` is a full copy of the slice (see lib/fetch.js's entry
+    // shape) — keep both copies of `status` in sync so anything reading either stays correct.
+    const previousStatus = slice.status || 'Created';
+    slice.status = newStatus;
+    if (slice.definition) slice.definition.status = newStatus;
+    writeFileSync(indexPath, JSON.stringify(indexData, null, 2));
+
+    if (slice.folder) {
+      const sliceJsonPath = join(contextDir, slice.folder, 'slice.json');
+      if (existsSync(sliceJsonPath)) {
+        const sliceData = readJsonSafe(sliceJsonPath);
+        sliceData.status = newStatus;
+        writeFileSync(sliceJsonPath, JSON.stringify(sliceData, null, 2));
+      }
+    }
+
+    console.log(`✅ "${slice.slice}": ${previousStatus} → ${newStatus} (${relative(cwd, indexPath)})`);
+
+    if (!opts.remote) return;
+
+    // slice.id is the SLICE_BORDER node ID (see shared/skills/update-slice-status/SKILL.md
+    // Step 2) — the same id the board's own nodes/events API expects as nodeId below.
+    const globalOpts = command.optsWithGlobals();
+    const explicitConfig = globalOpts.config;
+    const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
+    const requiredFields = ['organizationId', 'boardId', 'token'];
+    let { config: cfg } = loadEffectiveConfig(cwd, kitDir, explicitConfig);
+
+    async function promptForCredentials() {
+      cfg = await configureCredentials({
+        config: cfg,
+        configPath,
+        targetDir: cwd,
+        requiredFields,
+        boardIdOptional: false,
+        overrides: {},
+        print: globalOpts.print,
+      });
+      if (requiredFields.some((f) => !cfg[f])) {
+        console.error('❌ Still missing token/organizationId/boardId — re-run with --remote once configured.');
+        process.exit(1);
+      }
+    }
+    if (requiredFields.some((f) => !cfg[f])) await promptForCredentials();
+
+    const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
+    async function pushRemote() {
+      return fetch(`${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-token': cfg.token,
+          'x-board-id': cfg.boardId,
+          'x-user-id': 'cli-set-slice-status',
+        },
+        body: JSON.stringify([{
+          id: randomUUID(),
+          eventType: 'node:changed',
+          nodeId: slice.id,
+          boardId: cfg.boardId,
+          timestamp: Date.now(),
+          changedAttributes: ['sliceStatus'],
+          meta: { sliceStatus: newStatus },
+        }]),
+      });
+    }
+
+    let res;
+    try {
+      res = await pushRemote();
+    } catch (err) {
+      console.error(`❌ Remote update failed: ${err.message}`);
+      process.exit(1);
+    }
+
+    // Same 401/403 reconfigure-and-retry dance `fetch` does — present-but-wrong
+    // credentials, not missing ones, so clear whichever field is implicated and retry once.
+    if (res.status === 401 || res.status === 403) {
+      console.error(`❌ Remote update: ${res.status === 401 ? 'invalid or expired token' : "token's organization does not match this board"}.`);
+      if (res.status === 403) delete cfg.boardId; else delete cfg.token;
+      await promptForCredentials();
+      try {
+        res = await pushRemote();
+      } catch (err) {
+        console.error(`❌ Remote update failed: ${err.message}`);
+        process.exit(1);
+      }
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      const msg = body?.error || `HTTP ${res.status}`;
+      // The API refuses to move a slice into a status it's already in (a concurrency
+      // guard so two agents/users can't both claim it) — not a real failure, just means
+      // the board had already moved on since the last fetch.
+      if (/already/i.test(msg)) {
+        console.log(`ℹ️  Board already has "${slice.slice}" at ${newStatus} — no remote change needed.`);
+        return;
+      }
+      console.error(`❌ Remote update failed: ${msg}`);
+      process.exit(1);
+    }
+
+    console.log(`✅ Pushed status change to the board (node ${slice.id}).`);
   });
 
 program
