@@ -2,7 +2,11 @@
 
 One CLI, real-time Claude agent, and skill kit for the [Eventmodelers](https://eventmodelers.ai) platform — pick a stack, scaffold it, connect it to a board.
 
-## Quick start
+This CLI covers two audiences. If you just want a project connected to a board and an agent working slices, **Getting started** below is all you need — `init`, `run`, `fetch`, and a couple of read-only helpers. Everything under **Power users** is for customizing the install itself (bridging to another spec framework, CI-driven installs, multi-project config, hooks, adding a new stack) — skip it until you actually need it.
+
+## Getting started
+
+### Quick start
 
 ```bash
 npx @eventmodelers/cli init
@@ -15,21 +19,44 @@ npx @eventmodelers/cli init --stack node            # Node.js / TypeScript
 npx @eventmodelers/cli init --stack supabase         # Supabase
 npx @eventmodelers/cli init --stack axon             # Axon Framework (Java/Kotlin)
 npx @eventmodelers/cli init --stack cratis-csharp    # Cratis (.NET/C#)
-npx @eventmodelers/cli init-modeling                 # skills + agent loop only, no backend scaffold
-npx @eventmodelers/cli init --build-kit              # blank build-kit scaffold for a stack not built into this CLI yet
 ```
 
-`init-modeling` isn't a stack — it's the option for when you don't want a backend scaffolded at all, just the skills and the agent loop. `init --build-kit` isn't one of the four either — it installs the same `.build-kit/` + skills shape as a real stack, but with TODO-marked placeholders instead of real content, for integrating a stack this CLI doesn't support yet (see "Adding a stack" below).
+The installer prompts for your API token, Organization ID, and Board ID from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account), scaffolds the stack into your project, and writes `.eventmodelers/config.json` with your credentials.
 
-The installer prompts for your API token, Organization ID (and Board ID, for the four backend stacks) from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account).
+### Common scenarios
 
-`init`/`init-modeling` scaffold and configure credentials, but don't register the MCP server — run that as a separate step once you're ready to connect a harness:
+**Starting from scratch on a new project:**
 
 ```bash
-npx @eventmodelers/cli init-mcp
+npx @eventmodelers/cli init --stack node
 ```
 
-## What gets installed
+Answer the credential prompts once — the stack's scaffold, skills, and agent loop are all installed in this one step.
+
+**Already initialized — you just want the agent to start working the board:**
+
+```bash
+npx @eventmodelers/cli run
+```
+
+`run` doesn't re-configure anything. It finds whatever kit dir `init` already created in this project and starts its agent loop (`ralph-claude.js`) against your existing `.eventmodelers/config.json`.
+
+**Pulling the latest board state without starting an agent** — e.g. to inspect a context's slices, or in a script:
+
+```bash
+npx @eventmodelers/cli fetch --context <name>
+```
+
+This writes the current slice/event/command detail for that context to disk and prints a summary — no agent loop, no listener, just a one-shot pull.
+
+**Checking what's installed or which credentials are active:**
+
+```bash
+npx @eventmodelers/cli status   # what's installed in this project
+npx @eventmodelers/cli config   # the fully resolved config (file + env), token masked
+```
+
+### What gets installed
 
 ```
 your-project/
@@ -46,9 +73,73 @@ your-project/
 └── CLAUDE.md                      ← agent instructions
 ```
 
-Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
+The four backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
 
-The four backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc. `modeling-kit` only installs skills + the agent loop, with no backend opinion.
+## Skills
+
+Use skills in Claude Code with `/skill-name`:
+
+| Skill | Description |
+|-------|-------------|
+| `/connect` | Set up board connection |
+| `/timeline` | Live event storming facilitator |
+| `/wdyt` | Business analyst review of your event model |
+| `/storyboard` | Build a full visual storyboard |
+| `/storyboard-screen` | Design individual wireframe screens |
+| `/html-screen` | Design individual real HTML/CSS screens (explicit request only) |
+| `/place-element` | Place commands/events/read models on the board |
+| `/learn-eventmodelers-api` | Full API reference for agent use |
+| `/attributes` | Add/rename attributes across a chain of elements |
+| `/examples` | Add example data to element fields |
+| `/update-slice-status` | Update slice status on the board |
+| `/load-slice` | Persist board slices to disk (backend stacks) |
+| `/build-state-change`, `/build-state-view`, `/build-automation`, `/build-webhook` | Implement a slice's command/view/automation/webhook (backend stacks) |
+
+Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, and `/update-slice-status` have no stack-specific content and install into every stack from `shared/skills/` instead.
+
+## Everyday commands
+
+```bash
+npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
+npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
+npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
+npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
+npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
+npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
+npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
+npx @eventmodelers/cli stacks                       # list available stacks
+npx @eventmodelers/cli status                       # check what's installed
+npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
+```
+
+`run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
+
+`fetch` calls `slicedata?contextName=<name>` for the required `--context` (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json`. It does not fetch screen images (those only arrive via `listen`'s push, see Power users). Unlike every other command, `fetch` also works with no kit installed at all — it only needs credentials, not kit-specific files. If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist the whole context, then just print the one slice you asked about.
+
+---
+
+## Power users
+
+Everything below customizes *how the install itself works* — skills-only installs, bridging to another spec framework, CI-driven/non-interactive installs, multi-project config sharing, hooks that replace the AI executor, MCP registration for other harnesses, and adding a new stack. Casual usage never needs this section.
+
+### Skills-only / no backend scaffold
+
+```bash
+npx @eventmodelers/cli init-modeling                 # skills + agent loop only, no backend scaffold
+npx @eventmodelers/cli init --build-kit              # blank build-kit scaffold for a stack not built into this CLI yet
+```
+
+`init-modeling` isn't a stack — it's the option for when you don't want a backend scaffolded at all, just the skills and the agent loop. `init --build-kit` isn't one of the four either — it installs the same `.build-kit/` + skills shape as a real stack, but with TODO-marked placeholders instead of real content, for integrating a stack this CLI doesn't support yet (see "Adding a stack" below).
+
+**Building a new kit for an unsupported stack:**
+
+```bash
+npx @eventmodelers/cli init --build-kit
+```
+
+This scaffolds `.build-kit/CLAUDE.md`, `lib/prompt.md`, `lib/backend-prompt.md`, and the `build-*` skills with TODO placeholders instead of real content. Fill in the TODOs against the actual stack you're integrating (build/test commands, file layout, framework idioms) while building something real with it, then follow "Adding a stack" below to promote it to a first-class stack once it works.
+
+Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
 
 ### Installing skills globally
 
@@ -60,7 +151,7 @@ npx @eventmodelers/cli init-modeling --global
 
 Everything else (the kit dir, project scaffold, credentials, MCP registration) still targets the current directory as usual — `--global` only changes where skills land.
 
-## Bridging to another spec framework
+### Bridging to another spec framework
 
 If you drive development with a different spec/task framework (Spec Kitty today; more later) instead of build-kit's own code generation, a **bridge** kit keeps that framework's artifacts in sync with the board instead of writing application code:
 
@@ -94,7 +185,7 @@ npx @eventmodelers/cli bridge
 
 The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STATUS` (the most recent change in the batch), and `BRIDGE_BATCH_FILE` (path to the full batch as JSON) in its environment. It's invoked once per batch, not once per slice — any change that arrives while the hook is still running is left queued for the next batch rather than dropped.
 
-## Claude execution & config resolution
+### Claude execution & config resolution
 
 During install you can optionally point the agent at a local LLM server (vLLM, Ollama) instead of the default Claude Code endpoint, and/or pin a specific model:
 
@@ -180,9 +271,16 @@ npx @eventmodelers/cli --config ../shared/config.json status
 
 Run `npx @eventmodelers/cli config` at any time to see the fully resolved config (file + env overrides merged, token masked).
 
+`--config <path>` and `--print` are global flags accepted by every command. `--print` skips the "connect MCP globally?" prompt during `init-mcp` and just prints the `claude mcp add` command instead of running it — combined with the env vars or direct flags above, `--print` makes both `init` and `init-mcp` fully non-interactive:
+
+```bash
+EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \
+  npx @eventmodelers/cli --print init --stack node
+```
+
 ### MCP for other harnesses
 
-MCP registration is a separate step from `init`/`init-modeling` — run `init-mcp` whenever you're ready to connect a harness:
+`init`/`init-modeling` scaffold and configure credentials, but don't register the MCP server — run that as a separate step once you're ready to connect a harness:
 
 ```bash
 npx @eventmodelers/cli init-mcp
@@ -199,58 +297,14 @@ It writes the MCP server into `.claude/settings.json` for Claude Code. For other
 
 Cursor and Windsurf don't have a safe scriptable install, so the installer prints their manual setup steps instead of writing anything. Pass `--print` to always print every harness's command/steps instead of prompting.
 
-## Skills
-
-Use skills in Claude Code with `/skill-name`:
-
-| Skill | Description |
-|-------|-------------|
-| `/connect` | Set up board connection |
-| `/timeline` | Live event storming facilitator |
-| `/wdyt` | Business analyst review of your event model |
-| `/storyboard` | Build a full visual storyboard |
-| `/storyboard-screen` | Design individual wireframe screens |
-| `/html-screen` | Design individual real HTML/CSS screens (explicit request only) |
-| `/place-element` | Place commands/events/read models on the board |
-| `/learn-eventmodelers-api` | Full API reference for agent use |
-| `/attributes` | Add/rename attributes across a chain of elements |
-| `/examples` | Add example data to element fields |
-| `/update-slice-status` | Update slice status on the board |
-| `/load-slice` | Persist board slices to disk (backend stacks) |
-| `/build-state-change`, `/build-state-view`, `/build-automation`, `/build-webhook` | Implement a slice's command/view/automation/webhook (backend stacks) |
-
-Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, and `/update-slice-status` have no stack-specific content and install into every stack from `shared/skills/` instead.
-
-## Commands
+### `listen` — push-based slice export
 
 ```bash
-npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
-npx @eventmodelers/cli init --stack <name> --global # same, but skills go to ~/.claude/skills/ (every project)
-npx @eventmodelers/cli init-modeling                # skills + agent loop only, no backend scaffold (alias: modeling)
-npx @eventmodelers/cli init-modeling --global       # same, but skills go to ~/.claude/skills/ (every project)
-npx @eventmodelers/cli init --build-kit             # blank build-kit scaffold (TODO placeholders) for a stack not built into this CLI yet
-npx @eventmodelers/cli init-mcp                     # register the MCP server in .claude/settings.json (+ optionally another harness)
-npx @eventmodelers/cli init-config                  # credentials only, no scaffold — writes ./.eventmodelers/config.json
-npx @eventmodelers/cli init-config --global         # same, but writes organizationId + token to ~/.eventmodelers/config.json
-npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
-npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
-npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli listen                       # start the code-export listener (code-export.mjs) from the installed kit dir
-npx @eventmodelers/cli listen --port 4000           # same, on a different port
-npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/ (project root if no kit, or a modeling-kit, is installed)
-npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
-npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
-npx @eventmodelers/cli stacks                       # list available stacks
-npx @eventmodelers/cli status                       # check what's installed
-npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
-npx @eventmodelers/cli uninstall                    # remove everything init/init-modeling installed
+npx @eventmodelers/cli listen --port 4000            # same, on a different port
 ```
 
-`run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
-
-`listen` is the same kind of dispatcher, but for `<kit-dir>/code-export.mjs` — a local HTTP server (port 3001 by default) that the eventmodelers board UI posts slice/screen data to, which then gets written under `<kit-dir>/.slices/`.
-
-`fetch` is the pull-based counterpart to `listen`: instead of waiting for the board UI to push data to a running listener, it calls `slicedata?contextName=<name>` for the required `--context` (full slice detail — commands/events/readmodels/screens/processors/specifications/comments), and writes the same `.slices/<context>/<slice>/slice.json`, `index.json`, and `context.json` layout — useful in CI or any context where nothing is listening on a port. It does not fetch screen images (those only arrive via `listen`'s push). Unlike every other command, `fetch` also works with no kit installed at all — it only needs credentials, not kit-specific files — and, unique to modeling-kit, writes `.slices/` to the project root instead of nesting it under `.agent-modeling-kit/`, since nothing reads it from there (modeling-kit has no `code-export.mjs`/`listen`). If credentials are missing, it prompts the same way `init-config` does. `--slice-id`/`--slice-title` still fetch and persist the whole context, then just print the one slice you asked about.
+`listen` is a dispatcher for `<kit-dir>/code-export.mjs` — a local HTTP server (port 3001 by default) that the eventmodelers board UI posts slice/screen data to, which then gets written under `<kit-dir>/.slices/`. Unlike `fetch`, it does receive screen images, since the board UI pushes them directly.
 
 ### Uninstall
 
@@ -272,18 +326,11 @@ npx @eventmodelers/cli uninstall --build-kit         # remove .build-kit/ specif
 npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-kit/ specifically
 ```
 
-`--config <path>` and `--print` are global flags accepted by every command. `--print` skips the "connect MCP globally?" prompt during `init-mcp` and just prints the `claude mcp add` command instead of running it — combined with the env vars or direct flags above, `--print` makes both `init` and `init-mcp` fully non-interactive:
-
-```bash
-EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \
-  npx @eventmodelers/cli --print init --stack node
-```
-
-## Adding a stack
+### Adding a stack
 
 Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
 
-`init --build-kit` (see above) installs exactly that layout into a real project — `.build-kit/CLAUDE.md`, `lib/prompt.md`, `lib/backend-prompt.md`, and `.claude/skills/build-{state-change,state-view,automation}/SKILL.md` — but with TODO-marked placeholders instead of real content, since there's no fixed backend to generate them from. Fill in the TODOs against the actual stack you're integrating (build/test commands, file layout, framework idioms) while building something real with it. Once it works, promote it to a first-class stack:
+Once your `init --build-kit` scaffold (see above) works against a real backend, promote it to a first-class stack:
 
 1. Copy `.build-kit/` → `stacks/<name>/templates/build-kit/`, `.claude/skills/build-*` → `stacks/<name>/templates/.claude/skills/`, and whatever `root/` scaffold you built → `stacks/<name>/templates/root/`.
 2. Add an entry for `<name>` to the `STACKS` object in `cli.js` (`label`, `kitSubdir: 'build-kit'`, `kitDirName: '.build-kit'`, `useShared: true`, `needsBoardId: true`).
