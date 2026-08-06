@@ -1364,8 +1364,9 @@ program
 // activate-context/set-slice-status are the same story minus even the credentials — they
 // only ever read/write an already-fetched .slices/, and report their own hint (run `fetch`
 // first) when that's missing. set-slice-status only touches credentials at all for --remote,
-// which prompts for them itself the same way fetch does.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status']);
+// which prompts for them itself the same way fetch does. release-notes only reads the CLI's
+// own bundled RELEASE_NOTES.md, no project state involved at all.
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes']);
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
@@ -2199,6 +2200,18 @@ program
     if (activeEnvVars.length) {
       console.log(`\nOverridden by env: ${activeEnvVars.join(', ')}`);
     }
+  });
+
+program
+  .command('release-notes')
+  .description('Show the CLI release notes (what changed across recent versions)')
+  .action(() => {
+    const notesPath = join(__dirname, 'RELEASE_NOTES.md');
+    if (!existsSync(notesPath)) {
+      console.log('ℹ️  No release notes found.');
+      return;
+    }
+    console.log(readFileSync(notesPath, 'utf8').trimEnd());
   });
 
 program
