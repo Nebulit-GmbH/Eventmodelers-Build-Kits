@@ -6,6 +6,8 @@
     "start": "node ralph.js"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.0.0"
+    "@supabase/supabase-js": "^2.0.0",
+    "eventsource": "^3.0.7",
+    "pocketbase": "^0.27.0"
   }
 }

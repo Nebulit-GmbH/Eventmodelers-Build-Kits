@@ -20,6 +20,11 @@ import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
+// Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
+// copy that every useShared:true stack also gets copied into its installed kit (see
+// copyDirContents in installStack) for ralph.js to import standalone — see
+// shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
+import { createRealtimeAdapter } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1136,7 +1141,6 @@ async function runModeling(kitDir, projectDir) {
     process.exit(1);
   }
   const { loadLocalConfig, fetchPlatformConfig } = await import(pathToFileURL(configLibPath).href);
-  const { createClient } = await import('@supabase/supabase-js');
 
   const local = loadLocalConfig(kitDir);
   local.agentId = ensureAgentId(kitDir, 'MODELING');
@@ -1144,7 +1148,7 @@ async function runModeling(kitDir, projectDir) {
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
   }
-  const cfg = await fetchPlatformConfig(local); // adds supabaseUrl/supabaseAnonKey (+ boardId if the config has a default one)
+  const cfg = await fetchPlatformConfig(local); // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -1278,10 +1282,6 @@ async function runModeling(kitDir, projectDir) {
   }
 
   let realtimeToken = await getRealtimeToken();
-  const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-    realtime: { params: { apikey: cfg.supabaseAnonKey } },
-  });
-  await supabase.realtime.setAuth(realtimeToken);
 
   let draining = false;
   async function drain() {
@@ -1303,26 +1303,30 @@ async function runModeling(kitDir, projectDir) {
   }
 
   const channelName = `org:${cfg.organizationId}`;
-  supabase
-    .channel(channelName, { config: { private: true } })
-    .on('broadcast', { event: 'message' }, (msg) => {
-      if (msg.payload === 'Exit') {
-        log('received "Exit" — shutting down');
-        process.exit(0);
-      }
-    })
-    .on('broadcast', { event: 'prompt:created' }, () => {
-      drain().catch((err) => log(`drain error: ${err.message}`));
-    })
-    .subscribe((status) => {
+  const realtime = await createRealtimeAdapter(cfg, realtimeToken);
+  realtime.subscribe(
+    channelName,
+    {
+      message: (payload) => {
+        if (payload === 'Exit') {
+          log('received "Exit" — shutting down');
+          process.exit(0);
+        }
+      },
+      'prompt:created': () => {
+        drain().catch((err) => log(`drain error: ${err.message}`));
+      },
+    },
+    (status) => {
       log(`channel "${channelName}": ${status}`);
       if (status === 'SUBSCRIBED') drain().catch((err) => log(`initial drain error: ${err.message}`));
-    });
+    },
+  );
 
   setInterval(async () => {
     try {
       realtimeToken = await getRealtimeToken();
-      await supabase.realtime.setAuth(realtimeToken);
+      await realtime.setAuth(realtimeToken);
       log('token refreshed');
     } catch (err) {
       log(`token refresh failed: ${err.message}`);

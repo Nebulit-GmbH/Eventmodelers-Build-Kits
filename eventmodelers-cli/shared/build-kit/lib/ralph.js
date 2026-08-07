@@ -5,11 +5,11 @@
 //   onTask(prompt) — called when tasks.json has entries
 //   onPlannedSlice(prompt) — called when .slices/ has a "Planned" entry (omit to skip)
 
-import { createClient } from '@supabase/supabase-js';
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
+import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -242,6 +242,20 @@ async function writeTask(payload, kitDir) {
   console.log(`[agent] Task written — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
 }
 
+async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
+  console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+  await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+    console.error('[agent] Slice persist error:', err),
+  );
+  // Planned slices are handled by onPlannedSlice directly — no task needed.
+  // queueAllStatuses opts out of that split entirely (e.g. bridge has no
+  // onPlannedSlice consumer, so a lingering Planned slice would otherwise
+  // never naturally clear its own trigger — see lib/ralph.js callers).
+  if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== 'planned') {
+    await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
+  }
+}
+
 async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false } = {}) {
   let realtimeToken = await retryOn401('getRealtimeToken', () => getRealtimeToken(cfg));
 
@@ -249,41 +263,26 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
     console.error('[agent] Initial slice fetch error:', err),
   );
 
-  const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
-    realtime: { params: { apikey: cfg.supabaseAnonKey } },
-  });
-  await supabase.realtime.setAuth(realtimeToken);
-
   const channelName = `board:${cfg.boardId}-slicechanged`;
-
-  supabase
-    .channel(channelName, { config: { private: true } })
-    .on('broadcast', { event: 'message' }, (msg) => {
-      if (msg.payload === 'Exit') {
-        console.log('[agent] Received "Exit" — shutting down');
-        process.exit(0);
-      }
-    })
-    .on('broadcast', { event: 'slice:changed' }, async (msg) => {
-      const payload = msg.payload;
-      console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-      await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
-        console.error('[agent] Slice persist error:', err),
-      );
-      // Planned slices are handled by onPlannedSlice directly — no task needed.
-      // queueAllStatuses opts out of that split entirely (e.g. bridge has no
-      // onPlannedSlice consumer, so a lingering Planned slice would otherwise
-      // never naturally clear its own trigger — see lib/ralph.js callers).
-      if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== 'planned') {
-        await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
-      }
-    })
-    .subscribe((status) => console.log(`[agent] Channel "${channelName}": ${status}`));
+  const realtime = await createRealtimeAdapter(cfg, realtimeToken);
+  realtime.subscribe(
+    channelName,
+    {
+      message: (payload) => {
+        if (payload === 'Exit') {
+          console.log('[agent] Received "Exit" — shutting down');
+          process.exit(0);
+        }
+      },
+      'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
+    },
+    (status) => console.log(`[agent] Channel "${channelName}": ${status}`),
+  );
 
   setInterval(async () => {
     try {
       realtimeToken = await retryOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
-      supabase.realtime.setAuth(realtimeToken);
+      await realtime.setAuth(realtimeToken);
       console.log('[agent] Token refreshed');
     } catch (err) {
       console.error('[agent] Token refresh failed:', err);
