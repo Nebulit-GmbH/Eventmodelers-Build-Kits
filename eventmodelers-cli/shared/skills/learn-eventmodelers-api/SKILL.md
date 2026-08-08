@@ -54,6 +54,29 @@ SLICE_BORDER   // Slice boundary marker
 
 ---
 
+## Field Types
+
+Every field on a `COMMAND`, `EVENT`, `READMODEL`, `SCREEN`, or `TABLE` element (`meta.fields[]`) has a `type` from this exact set — the canonical source is the [event-modeling-spec schema](https://github.com/dilgerma/event-modeling-spec/blob/main/eventmodeling.schema.json) (`$defs.Field.properties.type`):
+
+```typescript
+String     // text
+Boolean    // true / false
+Int        // 32-bit integer
+Long       // 64-bit integer
+Double     // floating-point number
+Decimal    // precise fixed-point number — prefer this over Double for money/currency
+Date       // calendar date only, no time component (e.g. "2026-06-01")
+DateTime   // date + time, ISO 8601 (e.g. "2026-06-01T09:00:00Z")
+UUID       // universally unique identifier
+Custom     // structured/nested value — use with `subfields` or `schema`
+```
+
+Other `Field` properties: `name`, `example`, `subfields[]` (nested `Field`s), `mapping`, `optional`, `technicalAttribute`, `generated`, `idAttribute`, `pii`, `schema`, `cardinality` (`"List"` | `"Single"`).
+
+Use exactly these type names (case-sensitive) — not lowercase (`string`), synonyms (`Number`, `Text`, `Integer`), or types outside this set.
+
+---
+
 ## Standard HTTP Status Codes
 
 | Code | Meaning |

@@ -408,12 +408,12 @@ Every field must also set `"cardinality"` — use `"Single"` unless the field ge
   "type": "READMODEL",
   "title": "ActiveReservationView",
   "fields": [
-    {"name": "reservationId",  "type": "String",  "example": "res-001",               "mapping": "BikeReserved.reservationId",          "generated": false},
-    {"name": "customerId",     "type": "String",  "example": "cust-42",               "mapping": "BikeReserved.customerId",              "generated": false},
-    {"name": "bikeId",         "type": "String",  "example": "bike-17",               "mapping": "BikeReserved.bikeId",                  "generated": false},
-    {"name": "stationId",      "type": "String",  "example": "stn-03",                "mapping": "BikeReserved.stationId",               "generated": false},
-    {"name": "expiresAt",      "type": "Date",    "example": "2026-06-01T09:30:00Z",  "mapping": "ReservationConfirmed.expiresAt",       "generated": false},
-    {"name": "status",         "type": "String",  "example": "confirmed",             "mapping": "latest:ReservationConfirmed.status",   "generated": false}
+    {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "BikeReserved.reservationId",          "generated": false},
+    {"name": "customerId",     "type": "String",   "example": "cust-42",               "mapping": "BikeReserved.customerId",              "generated": false},
+    {"name": "bikeId",         "type": "String",   "example": "bike-17",               "mapping": "BikeReserved.bikeId",                  "generated": false},
+    {"name": "stationId",      "type": "String",   "example": "stn-03",                "mapping": "BikeReserved.stationId",               "generated": false},
+    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ReservationConfirmed.expiresAt",       "generated": false},
+    {"name": "status",         "type": "String",   "example": "confirmed",             "mapping": "latest:ReservationConfirmed.status",   "generated": false}
   ]
 }
 ```

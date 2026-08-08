@@ -340,12 +340,12 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
   "type": "SCREEN",
   "title": "Reserve a Bike",
   "fields": [
-    {"name": "bikeId",      "type": "String", "example": "bike-17",               "mapping": "ReserveBike.bikeId"},
-    {"name": "stationId",   "type": "String", "example": "stn-03",                "mapping": "ReserveBike.stationId"},
-    {"name": "startTime",   "type": "Date",   "example": "2026-06-01T09:00:00Z",  "mapping": "ReserveBike.startTime"},
-    {"name": "endTime",     "type": "Date",   "example": "2026-06-01T17:00:00Z",  "mapping": "ReserveBike.endTime"},
-    {"name": "bikeCategory","type": "String", "example": "City Bike",             "mapping": "AvailableBikeView.category"},
-    {"name": "dailyRate",   "type": "Number", "example": "0.10",                  "mapping": "AvailableBikeView.ratePerMinute"}
+    {"name": "bikeId",      "type": "String",   "example": "bike-17",               "mapping": "ReserveBike.bikeId"},
+    {"name": "stationId",   "type": "String",   "example": "stn-03",                "mapping": "ReserveBike.stationId"},
+    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "ReserveBike.startTime"},
+    {"name": "endTime",     "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "mapping": "ReserveBike.endTime"},
+    {"name": "bikeCategory","type": "String",   "example": "City Bike",             "mapping": "AvailableBikeView.category"},
+    {"name": "dailyRate",   "type": "Decimal",  "example": "0.10",                  "mapping": "AvailableBikeView.ratePerMinute"}
   ]
 }
 ```
@@ -357,12 +357,12 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
   "type": "SCREEN",
   "title": "Reservation Confirmed",
   "fields": [
-    {"name": "reservationId",  "type": "String", "example": "res-001",               "mapping": "ActiveReservationView.reservationId"},
-    {"name": "bikeName",       "type": "String", "example": "City Bike — Gazelle",   "mapping": "ActiveReservationView.bikeName"},
-    {"name": "stationName",    "type": "String", "example": "Central Park East",     "mapping": "ActiveReservationView.stationName"},
-    {"name": "startTime",      "type": "Date",   "example": "2026-06-01T09:00:00Z",  "mapping": "ActiveReservationView.startTime"},
-    {"name": "expiresAt",      "type": "Date",   "example": "2026-06-01T09:30:00Z",  "mapping": "ActiveReservationView.expiresAt"},
-    {"name": "estimatedCost",  "type": "Number", "example": "48.00",                 "mapping": "derived:durationHours × AvailableBikeView.ratePerMinute × 60"}
+    {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "ActiveReservationView.reservationId"},
+    {"name": "bikeName",       "type": "String",   "example": "City Bike — Gazelle",   "mapping": "ActiveReservationView.bikeName"},
+    {"name": "stationName",    "type": "String",   "example": "Central Park East",     "mapping": "ActiveReservationView.stationName"},
+    {"name": "startTime",      "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "ActiveReservationView.startTime"},
+    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ActiveReservationView.expiresAt"},
+    {"name": "estimatedCost",  "type": "Decimal",  "example": "48.00",                 "mapping": "derived:durationHours × AvailableBikeView.ratePerMinute × 60"}
   ]
 }
 ```

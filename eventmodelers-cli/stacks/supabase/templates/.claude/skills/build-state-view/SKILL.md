@@ -43,16 +43,22 @@ CREATE TABLE IF NOT EXISTS "public"."{tablename}"
 );
 ```
 
-**Column type guide:**
+**Column type guide** — field `type` values are the canonical set from the [event-modeling-spec schema](https://github.com/dilgerma/event-modeling-spec/blob/main/eventmodeling.schema.json):
 
 | Field type | SQL type |
 |-----------|---------|
-| string / UUID | `TEXT` |
-| number (integer) | `INTEGER` |
-| number (float) | `NUMERIC` |
-| boolean | `BOOLEAN` |
-| date | `TIMESTAMP` |
-| nullable number | `INTEGER` (allow NULL) |
+| `String` | `TEXT` |
+| `UUID` | `TEXT` |
+| `Int` | `INTEGER` |
+| `Long` | `BIGINT` |
+| `Double` | `DOUBLE PRECISION` |
+| `Decimal` | `NUMERIC` |
+| `Boolean` | `BOOLEAN` |
+| `Date` | `DATE` |
+| `DateTime` | `TIMESTAMP` |
+| `Custom` | `JSONB` |
+
+Nullable columns (`optional: true` on the field): allow `NULL` instead of adding a default.
 
 The PRIMARY KEY column is the one used in `.onConflict(...)` in the projection.
 

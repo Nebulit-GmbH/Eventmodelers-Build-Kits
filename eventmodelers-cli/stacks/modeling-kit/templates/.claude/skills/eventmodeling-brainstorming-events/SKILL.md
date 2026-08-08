@@ -197,11 +197,11 @@ Fields use this structure inside `meta`:
   "type": "EVENT",
   "title": "OrderPlaced",
   "fields": [
-    {"name": "orderId",    "type": "String",  "example": "order-abc123"},
-    {"name": "customerId", "type": "String",  "example": "cust-456"},
-    {"name": "total",      "type": "Number",  "example": "149.99"},
-    {"name": "status",     "type": "String",  "example": "Draft"},
-    {"name": "placedAt",   "type": "Date",    "example": "2026-05-29T10:00:00Z"}
+    {"name": "orderId",    "type": "String",   "example": "order-abc123"},
+    {"name": "customerId", "type": "String",   "example": "cust-456"},
+    {"name": "total",      "type": "Decimal",  "example": "149.99"},
+    {"name": "status",     "type": "String",   "example": "Draft"},
+    {"name": "placedAt",   "type": "DateTime", "example": "2026-05-29T10:00:00Z"}
   ]
 }
 ```
@@ -255,11 +255,11 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
     "type": "EVENT",
     "title": "BookReserved",
     "fields": [
-      {"name": "reservationId", "type": "String", "example": "res-789"},
-      {"name": "copyId",        "type": "String", "example": "copy-42"},
-      {"name": "memberId",      "type": "String", "example": "mbr-101"},
-      {"name": "expiresAt",     "type": "Date",   "example": "2026-06-01T00:00:00Z"},
-      {"name": "reservedAt",    "type": "Date",   "example": "2026-05-29T10:00:00Z"}
+      {"name": "reservationId", "type": "String",   "example": "res-789"},
+      {"name": "copyId",        "type": "String",   "example": "copy-42"},
+      {"name": "memberId",      "type": "String",   "example": "mbr-101"},
+      {"name": "expiresAt",     "type": "DateTime", "example": "2026-06-01T00:00:00Z"},
+      {"name": "reservedAt",    "type": "DateTime", "example": "2026-05-29T10:00:00Z"}
     ]
   }
 }]

@@ -435,7 +435,7 @@ Present as:
 ### Issues Found
 1. Estimated delivery date missing
    - Fix: Add to OrderShipped event
-   - Type: string (ISO 8601 date)
+   - Type: DateTime (ISO 8601)
    - Source: Calculated from carrier API
    - Status: Will add in next iteration
 

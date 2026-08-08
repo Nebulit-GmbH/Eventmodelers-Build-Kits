@@ -342,11 +342,11 @@ If an event field has **no** corresponding command field and **no** derivation r
   "type": "COMMAND",
   "title": "ReserveBike",
   "fields": [
-    {"name": "customerId",  "type": "String",  "example": "cust-42",               "mapping": "session:customerId", "generated": false},
-    {"name": "bikeId",      "type": "String",  "example": "bike-17",               "mapping": "user-input",         "generated": false},
-    {"name": "stationId",   "type": "String",  "example": "stn-03",                "mapping": "user-input",         "generated": false},
-    {"name": "startTime",   "type": "Date",    "example": "2026-06-01T09:00:00Z",  "mapping": "user-input",         "generated": false},
-    {"name": "endTime",     "type": "Date",    "example": "2026-06-01T17:00:00Z",  "mapping": "user-input",         "generated": false}
+    {"name": "customerId",  "type": "String",   "example": "cust-42",               "mapping": "session:customerId", "generated": false},
+    {"name": "bikeId",      "type": "String",   "example": "bike-17",               "mapping": "user-input",         "generated": false},
+    {"name": "stationId",   "type": "String",   "example": "stn-03",                "mapping": "user-input",         "generated": false},
+    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "user-input",         "generated": false},
+    {"name": "endTime",     "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "mapping": "user-input",         "generated": false}
   ]
 }
 ```
@@ -406,9 +406,9 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
       "type": "COMMAND",
       "title": "ReserveBike",
       "fields": [
-        {"name": "customerId", "type": "String", "example": "cust-42",             "mapping": "session:customerId"},
-        {"name": "bikeId",     "type": "String", "example": "bike-17",             "mapping": "user-input"},
-        {"name": "startTime",  "type": "Date",   "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
+        {"name": "customerId", "type": "String",   "example": "cust-42",             "mapping": "session:customerId"},
+        {"name": "bikeId",     "type": "String",   "example": "bike-17",             "mapping": "user-input"},
+        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
       ]
     }
   }]'
