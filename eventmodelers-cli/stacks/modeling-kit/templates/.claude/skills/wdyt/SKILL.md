@@ -1,6 +1,6 @@
 ---
 name: wdyt
-description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as QUESTION-type comments on relevant nodes to uncover gaps, edge cases, and missing scenarios.
+description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as QUESTION-type comments on relevant nodes — plus lightweight visual annotations (arrows, text callouts, group loops) for the most important findings — to uncover gaps, edge cases, and missing scenarios.
 ---
 
 # WDYT — What Do You Think?
@@ -95,7 +95,9 @@ Every question and every summary theme must be written in plain business languag
 
 ---
 
-## Step 4 — Post questions as comments
+## Step 4 — Post questions as comments, plus visual annotations for the standout findings
+
+### 4.1 Comments (the primary channel — every question gets one)
 
 For each question you want to ask, post it as a `QUESTION`-type comment on the most relevant node (the COMMAND, EVENT, SCREEN, or READMODEL the question is about). If a question is about the whole slice rather than a specific element, post it on the first/primary EVENT of the slice.
 
@@ -109,6 +111,18 @@ The comment API has no batch endpoint — `handle-comment` sends one request per
 
 Only post questions that are **genuinely unclear or missing** — don't post observations that are clearly intentional design decisions.
 
+### 4.2 Visual annotations (drawings, arrows, text) — for the 1–3 findings worth surfacing on the canvas itself
+
+Comments live behind a small icon someone has to click open. For the handful of findings that matter most this pass, also draw directly on the canvas so the concern is visible at a glance. This is additive, not a replacement for 4.1 — every annotation you draw should still have a matching `QUESTION` comment on the specific node; the drawing is just a second, more visible surface for your single sharpest point, not a duplicate of every comment.
+
+Use `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`):
+
+- **Text callout** (`kind: "text"`) — a short label placed just outside the element it concerns. Use for a single punchy business question, e.g. `"What if this fails?"`. Get the target element's `x`/`y` from the slice data already loaded in Step 2 (or `GET .../nodes/{nodeId}` if not present); place the callout a little above/beside it (e.g. `y - 40`). Keep `content` to a few words — this is a canvas label, not the full question (the full question is the comment).
+- **Arrow** (`kind: "path"`, `arrowEnd: true`) — when the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"), draw a straight line from one element's position to the other's instead of (or in addition to) worded comments on each. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions).
+- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — when the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"), circle the whole cluster with a loop instead of one comment per node. There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box via `.../drawing/draw`, optionally with a second `text` drawing near the top as a caption. This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
+
+Be selective: 1–3 visual annotations per session, reserved for the findings you'd most want a stakeholder to notice without opening a single comment. Everything else stays a comment only.
+
 ---
 
 ## Step 5 — Report back to the user
@@ -117,8 +131,9 @@ After posting all comments, give the user a concise summary:
 
 1. **Flows analysed**: count and list them by their business name
 2. **Total questions posted**: count (it is perfectly fine if this is 0 — don't force questions)
-3. **Top themes** as business questions, not modelling observations. Examples of good themes: "What happens when registration fails?", "Who is allowed to register a customer?", "What do we expect when invalid data is submitted?" — never: "No failure modelling", "No specs", "No actor on command"
-4. **One concrete next step** — only if there's a clear gap worth highlighting
+3. **Visual annotations added**: count and a one-line description of each (e.g. "arrow from OrderPlaced to ShipOrder — unclear if it always fires")
+4. **Top themes** as business questions, not modelling observations. Examples of good themes: "What happens when registration fails?", "Who is allowed to register a customer?", "What do we expect when invalid data is submitted?" — never: "No failure modelling", "No specs", "No actor on command"
+5. **One concrete next step** — only if there's a clear gap worth highlighting
 
 Keep the report tight. If there are no meaningful questions, say so — don't pad it out.
 
