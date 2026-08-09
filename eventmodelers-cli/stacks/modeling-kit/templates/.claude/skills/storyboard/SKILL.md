@@ -5,7 +5,7 @@ description: Build a complete visual storyboard with AI-generated screens from a
 
 # Storyboard Builder
 
-> **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
@@ -152,9 +152,9 @@ Build an **empty-column queue**: for each column (in order), compute `actorCellI
 
 ---
 
-## SCREEN LOOP — repeat Steps 5a–5d once per screen (N iterations total)
+## SCREEN LOOP — repeat Steps 5a–5c once per screen (N iterations total)
 
-Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered + verified).
+Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered).
 
 **You have ONE chapter (`CHAPTER_ID`). All screens go into this same chapter. Do NOT call the chapter creation endpoint again inside this loop.**
 
@@ -257,30 +257,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
 
 Pass the already-computed `actorCellId` directly as `cellId` in either path. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
 
-### Step 5c — Verify the screen
+### Step 5c — Mark the task complete
 
-Confirm the node and its rendered image both actually exist before moving on.
-
-**Prefer MCP:**
-
-```
-mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<SCREEN_NODE_ID>" }
-```
-
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \
-  -H "x-token: $TOKEN"
-```
-
-Check the `valid` field in the response:
-- **`valid: true`** — proceed to marking the task complete.
-- **`valid: false`** — read the `error` field and retry Step 5b once. If it fails verification again, log the error for this screen in the final report and move on to the next screen — do not get stuck retrying indefinitely.
-
-### Step 5d — Mark the task complete
-
-After the node, sketch, and verification all succeed, mark the task for this screen as completed using TaskUpdate.
+After the node and sketch succeed, mark the task for this screen as completed using TaskUpdate.
 
 ---
 
@@ -289,4 +268,4 @@ After the node, sketch, and verification all succeed, mark the task for this scr
 After all screens are done, summarise:
 - Chapter ID
 - Numbered list: screen title
-- Any errors (with status codes), including screens that failed the Step 5c verification
+- Any errors (with status codes)

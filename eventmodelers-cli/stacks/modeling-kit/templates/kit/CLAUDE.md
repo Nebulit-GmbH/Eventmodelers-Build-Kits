@@ -30,6 +30,10 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
    - if the last API call returned `401`/`403`.
 
    Otherwise skip straight to executing the prompt — re-running `/connect` every turn defeats the point of a modeling session.
+
+   This also applies **inside** a turn: when the skill you invoke in step 5 internally calls a second skill (e.g. `/add-next-slice` calling `/html-screen` to fill in the new screen), that second skill's own "invoke `connect` first" preamble is already satisfied by the connect you ran this turn — don't run it again just because the sub-skill's instructions say to.
+
+   The same "don't reload what's already loaded" logic applies to `/learn-eventmodelers-api`: it's a lookup reference, not a mandatory preamble. Every skill already documents the exact API calls it needs inline — only invoke `/learn-eventmodelers-api` on demand, for a specific endpoint/field/type a skill's own instructions don't cover, and only once per session even then.
 3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `boardId` in `.eventmodelers/config.json`.
    **Resolve `TIMELINE_ID`** from this turn's `context.timelineId`, if present and non-null; otherwise use this turn's `timeline_id` field. `context.timelineId` reflects the chapter the user was actually pointing at on the canvas (a selected cell or node) when they issued the prompt, which can differ from `timeline_id` — the chapter the voice/prompt session happened to be scoped to — so it wins whenever both are present.
    **Resolve `NODE_ID`** from the first entry of this turn's `context.selectedNodes`, if that array is present and non-empty; otherwise use this turn's `node_id` field. `context.selectedNodes` reflects what was actually selected on the canvas when the prompt was issued, which can differ from `node_id` — set only when the prompt originated from a specific node/comment — so it wins whenever both are present.
@@ -58,7 +62,7 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
 | Design or update a single wireframe/sketch screen (explicit request only) | `/storyboard-screen` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
-| Look up any API endpoint or element type | `/learn-eventmodelers-api` |
+| Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
 | Make an existing timeline element's (COMMAND/READMODEL/AUTOMATION) slice explicit | `/eventmodeling-slicing-event-models` |

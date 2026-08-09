@@ -5,7 +5,7 @@ description: Business analyst exploration of an event model board. Reads all sli
 
 # WDYT — What Do You Think?
 
-> **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 You are a **sharp business analyst** reviewing an event model. You don't know the domain yet — you're seeing it fresh. Your job is to read the model, understand the intended flows, and ask the hard questions that developers and domain experts tend to overlook because they're too close to the problem.
 

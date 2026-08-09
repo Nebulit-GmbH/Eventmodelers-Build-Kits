@@ -5,7 +5,7 @@ description: Update the lifecycle status (and optionally a progress comment) of 
 
 # Update Prompt Status
 
-> **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__update_prompt_status` when available (registered by the `connect` skill) — the curl block below is the fallback for sessions without MCP connected. This is the one prompt-queue operation MCP does expose (submission, claiming, and deletion remain curl-only — the MCP server otherwise doesn't own this lifecycle).
 

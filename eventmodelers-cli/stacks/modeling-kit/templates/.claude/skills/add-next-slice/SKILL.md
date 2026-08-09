@@ -5,7 +5,7 @@ description: Decide on and create a genuinely new slice from scratch when there'
 
 # Add Next Slice
 
-> **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference (in particular the **Slices** section). Do not proceed until both skills have been loaded.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Every API call this skill needs (`create_slice`, `get_nodes`/`get_node`) is already given in full below — do not additionally load `learn-eventmodelers-api`; only reach for it if you hit an error this file doesn't cover.
 
 **Purpose**: Given a timeline where every existing COMMAND/READMODEL/AUTOMATION already has a slice (or there's no model content at all yet), decide on a plausible next capability and create it as a brand-new slice — screen, command/read model, and event all at once.
 

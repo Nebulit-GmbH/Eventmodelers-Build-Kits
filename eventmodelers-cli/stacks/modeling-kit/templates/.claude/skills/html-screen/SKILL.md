@@ -5,13 +5,13 @@ description: Design and render a single real HTML/CSS screen (one or more pages)
 
 # HTML Screen Designer
 
-> **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 > **DEFAULT SCREEN SKILL**: Reach for this skill on any ordinary "design a screen" / "storyboard this" request — it is the default, rendering a real HTML/CSS mockup onto an HTML_SCREEN node. Use `storyboard-screen` (a low-fidelity wireframe sketch onto a plain SCREEN node) **only** when the user explicitly asks for a "sketch", a "wireframe", a "low-fidelity mockup", or names the SCREEN node type directly.
 
-> **MANDATORY RENDER + VERIFY**: The render call in Step 4 and the verification in Step 5 are **not optional**. This skill exists solely to produce rendered pages. An HTML_SCREEN node with no non-empty page is an empty placeholder that adds no value to the model. If the render call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
+> **MANDATORY RENDER**: The render call in Step 4 is **not optional**. This skill exists solely to produce rendered pages. An HTML_SCREEN node with no non-empty page is an empty placeholder that adds no value to the model. If the render call is skipped or fails, the task is incomplete — retry or report the error.
 
 Design one or more HTML/CSS pages and render them onto an HTML_SCREEN node — creating the node if it doesn't exist yet, or updating it in place if it does. Use this to build a realistic, styled mockup (forms, tables, real page layout) rather than a wireframe sketch. Each page is a separate, standalone piece of markup — e.g. a multi-step form is one page per step, not one blob with hidden sections.
 
@@ -120,29 +120,10 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$N
 
 Expect `204 No Content` on success from either curl call.
 
-## Step 5 — Verify the screen
-
-Confirm the node exists, is type HTML_SCREEN, and has at least one non-empty page.
-
-**Prefer MCP:**
-
-```
-mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
-```
-
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_ID/verify" \
-  -H "x-token: $TOKEN"
-```
-
-If `valid` is `false`, read the `error` field and retry the failing step once before reporting failure.
-
-## Step 6 — Report back
+## Step 5 — Report back
 
 Tell the user:
 - The node ID that was created or updated
 - How many pages the screen now has
-- Whether the render succeeded (HTTP 204) and verification passed (`valid: true`)
+- Whether the render succeeded (HTTP 204)
 - Any errors

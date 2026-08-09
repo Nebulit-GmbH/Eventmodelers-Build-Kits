@@ -7,6 +7,8 @@ description: Resolve eventmodelers connection config (token, boardId, baseUrl) f
 
 **Every other skill invokes this skill first** before making any API calls. Do not proceed past this skill until all four values (`TOKEN`, `BOARD_ID`, `ORG_ID`, `BASE_URL`) are resolved.
 
+**This should happen once per session, not once per skill.** If `TOKEN`/`BOARD_ID`/`ORG_ID`/`BASE_URL` are already resolved and verified from earlier in the current session — including earlier in the *same turn*, e.g. one skill internally invoking a second skill (`add-next-slice` → `html-screen`) — every subsequent "invoke `connect`" instruction is satisfied immediately by reusing those values. Do not re-run Steps 0–4 below. Only re-run this skill from scratch when a value actually needs to change: a fresh `401`/`403`/access-denied response from some other call, a different `board_id` on this turn, or a new inline param that overrides what's already resolved.
+
 This skill also registers the **eventmodelers MCP server** for the project (Step 3.5) so other skills can call MCP tools (`mcp__eventmodelers__*`) instead of raw curl. MCP is the preferred transport; curl remains a fallback for hosts without MCP support, or for the one or two endpoints (documented in `learn-eventmodelers-api`) the MCP server doesn't expose.
 
 ---

@@ -49,7 +49,7 @@ Do NOT invoke `connect`. Do NOT proceed to Step 1.
 
 ## Step 1 — Connect
 
-Invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until all four are available.
+Invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until all four are available.
 
 > Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below (Steps 5–7, the eventmodelers board-API calls) are the fallback for sessions without MCP connected. This is unrelated to the browser automation MCP checked in Step 0, which stays as-is.
 
@@ -351,24 +351,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
 
 Response: `204` on success. Log failures in the final report but continue to the next screen — do not stop the entire run.
 
-### 7d — Verify the screen
-
-Confirm the node and its uploaded screenshot both actually exist.
-
-**Prefer MCP:**
-```
-mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<SCREEN_NODE_ID>" }
-```
-
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \
-  -H "x-token: $TOKEN"
-```
-
-If `valid` is `false`, read the `error` field. If `imageExists` is `false`, the screenshot upload in 7b failed silently — retry it once. Log any screen that still fails verification in the final report and continue to the next screen.
-
-### 7e — Report per-screen progress
+### 7d — Report per-screen progress
 
 After each screen: print one line, e.g.:
 ```
@@ -387,8 +370,7 @@ Discover Storyboard complete.
 Flows created (N total):
   • "Login & Authentication" — chapter <id> — 3 screens
   • "Product Browsing" — chapter <id> — 5 screens
-
-Screens uploaded: N of M (list any failures, including screens that failed 7d verification)
+Screens uploaded: N of M (list any failures)
 
 Next steps:
   - Open the board to review the storyboard timelines
