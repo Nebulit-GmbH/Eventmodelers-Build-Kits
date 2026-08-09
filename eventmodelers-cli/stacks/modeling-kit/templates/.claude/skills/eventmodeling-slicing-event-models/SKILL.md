@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference (in particular the **Slices** section). Do not proceed until both skills have been loaded.
 
+> Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 **Purpose**: Turn a completed event model's timeline into explicit slice definitions on the board, and note the event dependencies between them.
 
 **When to Use**:
@@ -55,6 +57,12 @@ Walk the timeline column by column:
 
 `$TL` (the timeline/chapter UUID) is required for every call below. If it wasn't given up front, resolve it before doing anything else:
 
+Prefer MCP:
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 ```
@@ -67,6 +75,12 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 
 Use `spec-info` (or existing board knowledge) to list every COMMAND, READMODEL, and AUTOMATION node across the resolved timeline:
 
+Prefer MCP:
+```
+mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" -H "x-token: $TOKEN"
 # → { timelineId, elements: [{ id, title, type }] }
@@ -76,6 +90,12 @@ Filter to `type` in `COMMAND`, `READMODEL`, `AUTOMATION`.
 
 `spec-info` doesn't include the column each element sits in, so fetch the chapter node to resolve it:
 
+Prefer MCP:
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TL>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TL" -H "x-token: $TOKEN"
 # → meta.timelineData.columns: [{ id, index }]
@@ -86,6 +106,12 @@ For each filtered element, find the cell whose `nodeId` matches the element's `i
 
 Check which columns already have a slice, so you don't create duplicates:
 
+Prefer MCP:
+```
+mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices -H "x-token: $TOKEN"
 # → { slices: [{ id, title, status }] }
@@ -97,6 +123,12 @@ A column already has a slice if its element's title matches an existing slice's 
 
 For each column from Step 2 that doesn't already have a matching slice, mark that **existing** column as a slice via the **slice-definitions** endpoint:
 
+Prefer MCP:
+```
+mcp__eventmodelers__create_slice_definition { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "columnId": "<colId>", "title": "PlaceOrder" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-definitions \
   -H "x-token: $TOKEN" -H "Content-Type: application/json" \
@@ -108,7 +140,7 @@ curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-defi
 - READMODEL column → title = read model name (state-view slice)
 - AUTOMATION column → title = automation name, or the command it issues (automation slice)
 
-Use **`slice-definitions`**, never the plain **`slices`** endpoint here — `slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `slice-definitions` only adds a `SLICE_BORDER` node to the column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
+Use **`create_slice_definition`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definition`/`slice-definitions` only adds a `SLICE_BORDER` node to the column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
 
 ## Step 4 (Optional): Note Dependencies Between Slices
 

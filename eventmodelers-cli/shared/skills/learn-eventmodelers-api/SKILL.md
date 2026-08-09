@@ -7,6 +7,61 @@ description: Teaches an agent everything about the eventmodelers platform API �
 
 You now have complete knowledge of the eventmodelers platform API. Use this reference whenever you need to call, implement, or reason about any endpoint.
 
+**Two transports exist for board operations: MCP tools (preferred) and raw REST/curl (fallback).** The `connect` skill registers the MCP server in `.mcp.json`. Once `mcp__eventmodelers__*` tools are visible in your tool list, use them — they need no `x-token`/`x-board-id`/`x-user-id` headers (auth and org resolution happen server-side from the registered token) and return the same data as the REST endpoints below. Fall back to the numbered REST sections only when MCP tools aren't connected yet, or for the handful of endpoints (prompts lifecycle, snapshots, user management, board/extension CRUD) the MCP server intentionally doesn't expose — it only covers board-content operations (nodes, timelines, slices, comments, screens).
+
+---
+
+## MCP Tool Catalog (Preferred)
+
+Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `orgId` (resolved from the token) or `x-user-id` (the server attributes writes to the authenticated principal). REST section numbers below give the underlying implementation for tools that wrap a single endpoint 1:1.
+
+| Tool | Args | Purpose | REST equivalent |
+|---|---|---|---|
+| `list_boards` | — | List boards for the org | §1 `GET /api/boards` (org-scoped) |
+| `get_nodes` | `boardId`, `type?`, `name?` | List nodes, optionally by type and/or a partial case-insensitive title match | §3 `GET .../nodes` |
+| `get_node` | `boardId`, `nodeId` | Get one node | §3 `GET .../nodes/:nodeId` |
+| `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
+| `get_board_events` | `boardId` | All board events, in sequence | §1 `GET .../events` |
+| `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
+| `submit_node_events` | `boardId`, `events[]` | Create/update nodes (raw `NodeChangeEvent`/edge events) | §3 `POST .../nodes/events` |
+| `delete_node` | `boardId`, `nodeId` | Delete a node | (via `node:deleted` event, §3) |
+| `create_drawing` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... | Freehand canvas annotation (path/rect/text) — never placed in a cell | — (no REST equivalent; MCP-only) |
+| `find_nodes_in_drawing` | `boardId`, `drawingId` | Nodes fully contained inside a drawing's bounding box | — (no REST equivalent; MCP-only) |
+| `create_chapter` | `boardId`, `x?`, `y?` | Create a timeline | §2 `POST .../chapters` |
+| `add_column` | `boardId`, `timelineId`, `index?` | Add a column | §2 `POST .../timelines/:id/columns` |
+| `delete_column` | `boardId`, `timelineId`, `columnId` | Delete a column | §2 `DELETE .../columns/:columnId` |
+| `add_lane` | `boardId`, `timelineId`, `type`, `label?`, `index?` | Add a lane/row | §2 `POST .../timelines/:id/lanes` |
+| `remove_lane` | `boardId`, `timelineId`, `rowId` | Remove a lane | — (extends §2; no direct REST route) |
+| `move_node_in_timeline` | `boardId`, `timelineId`, `movedNodeId`, `toCellId` | Move a placed node to another cell | — (MCP-only convenience) |
+| `move_timeline_structure` | `boardId`, `timelineId`, `kind` (`'column'\|'lane'`), `id`, `toIndex` | Reorder a column or lane (row) — `kind` picks which `id` refers to | — (MCP-only convenience) |
+| `move_timeline_position` | `boardId`, `timelineId`, `x`, `y` | Move a chapter node on canvas | — (MCP-only convenience) |
+| `drop_node_to_cell` | `boardId`, `timelineId`, `cellId`, `nodeId`, `nodeType` | Place an existing node into a cell | §2 `POST .../cells/:cellId/drop` |
+| `clear_cell` | `boardId`, `timelineId`, `cellId` | Remove+delete the node in a cell | — (MCP-only convenience) |
+| `create_slice` | `boardId`, `timelineId`, `type`, `index?` | Create a full slice (column + nodes + SLICE_BORDER) | §5 `POST .../slices` |
+| `create_slice_definition` | `boardId`, `timelineId`, `columnId`, `title`, `data?`, `meta?` | Create a SLICE_BORDER over an existing column | §5 `POST .../slice-definitions` |
+| `place_element` | `boardId`, `timelineId`, `elementType`, `title`, `columnIndex?` | Find/create an empty cell in the right lane and place a COMMAND/READMODEL/EVENT | — (MCP-only convenience; composes §2+§3) |
+| `list_slices` | `boardId` | List slices (id, title, status) | §8 `GET .../slicedata/slices` |
+| `update_slice_status` | `boardId`, `sliceId`, `newStatus` | Change a SLICE_BORDER's `sliceStatus` | — (via `node:changed` event, §3) |
+| `get_slice_data` | `boardId`, `contextName?`, `contextId?`, `sliceId?` | Full element graph for slices in a context | §8 `GET /slicedata` |
+| `get_spec_info` | `boardId`, `timelineId` | EVENT/COMMAND/READMODEL nodes valid in GWT steps | §6 `GET .../spec-info` |
+| `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]` | Append GWT scenario(s) to a column's spec node | §6 `POST .../scenarios` |
+| `set_connection` | `boardId`, `source`, `target`, `action` (`'connect'\|'remove'`) | Add or remove a type-checked directed edge | — (via `edges` on §3 events) |
+| `auto_connect_node` | `boardId`, `nodeId` | Re-run auto-connect for a node | §3 `POST .../nodes/:nodeId/auto-connect` |
+| `add_comment` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'\|'QUESTION'`), `author?` | Add a comment — `QUESTION` flags gaps/edge cases during review | — (via comment events) |
+| `update_comment` | `boardId`, `nodeId`, `commentId`, `action` (`'resolve'\|'delete'`) | Resolve or delete a comment | — (via comment events) |
+| `create_screen` | `boardId`, `contentType` (`'image'\|'sketch'\|'html'`), `nodeId?`, `chapterId`, `cellId?`/`cellName?`, plus content fields (`imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`), `description?` | Create + place a new screen node (SCREEN or HTML_SCREEN) atomically, in one call | §4 `POST .../images/:id/sketch` + `image-nodes` |
+| `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages` | §4 `POST .../images/:id/sketch` + `image-nodes` |
+| `add_field_examples` | `boardId`, `nodeId?`, `name?`, `cellName?`, `timelineId?` | Fill empty field examples using linked-node context | — (MCP-only convenience) |
+| `get_attribute_chain` | `boardId`, `timelineId`, `targetCellName`, `sourceCellName` | Resolve every node between two cells, ordered target→source | — (MCP-only convenience) |
+| `verify_screen` | `boardId`, `nodeId` | Check a screen node exists and has rendered content — works for both SCREEN and HTML_SCREEN, dispatching on the node's actual type | — (MCP-only convenience) |
+| `get_image_snapshot_description` | `boardId`, `nodeId` | Load the `{elements:[...]}` sketch description from storage | — (reads what §4 sketch endpoints write) |
+| `validate_slice_data` | `sliceData` | Offline validation of a `SliceDataOutput` payload — no board access | — (MCP-only, pure function) |
+| `commit_board_to_git` | `boardId` | Force a git-extension commit/push, bypassing the autoCommit gate | — (MCP-only; git extension) |
+
+**Not exposed via MCP at all** — always use REST/curl for these: §7 Config Import, §10 Snapshots, §11–12 User Management, §13 Utility (`/api/user`, swagger), and all of §14 Prompts (`update-prompt-status` skill). These are either admin/one-off operations or, in the case of Prompts, an intentionally separate lifecycle the board-content MCP server doesn't own.
+
+**Capabilities with no direct MCP filter** — e.g. REST's `GET .../nodes?cellId=<id>` (§3) has no `cellId` param on `get_nodes`. Get the same answer by calling `get_node` on the CHAPTER and reading `meta.timelineData.cells` (sparse array; a cell absent from it is empty) instead of asking the server to filter by cell.
+
 ---
 
 ## Architecture Overview

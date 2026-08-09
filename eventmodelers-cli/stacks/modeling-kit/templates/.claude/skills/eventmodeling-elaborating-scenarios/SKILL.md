@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already specified: scenario coverage depth (happy path + validation + state violations), known edge cases to include, and stakeholders available for review. Interview when coverage goals are unclear or edge cases haven't been identified.
@@ -571,8 +573,14 @@ After designing all scenarios, post them to the board using the timeline/column 
 
 ### Step 1 — Identify the target timeline and column
 
-Fetch all CHAPTER nodes to find the timeline:
+Fetch all CHAPTER nodes to find the timeline.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER" \
   -H "x-token: $TOKEN"
@@ -584,8 +592,14 @@ For each command or view being specified, find its column: fetch the chapter nod
 
 ### Step 2 — Load valid step elements
 
-For each target timeline, call spec-info to discover the node IDs that may appear in given/when/then:
+For each target timeline, call spec-info to discover the node IDs that may appear in given/when/then.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" \
   -H "x-token: $TOKEN"
@@ -602,8 +616,20 @@ See `learn-eventmodelers-api` for the full step item format, scenario object sha
 
 ### Step 4 — Post all scenarios for a column in one call
 
-Group all scenarios for the same column and POST them as an array. The SCENARIO spec node is created automatically — no pre-creation needed.
+Group all scenarios for the same column and post them as an array. The SCENARIO spec node is created automatically — no pre-creation needed.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__add_scenario {
+  "boardId": "<BOARD_ID>",
+  "timelineId": "<TL>",
+  "columnId": "<COL>",
+  "scenarios": [...scenario objects, same shape as below...]
+}
+```
+`given`/`when`/`then` are arrays of `{id, title?, type?, ...}` objects — **not** bare nodeId strings (this differs from the raw REST body shown in the fallback below). The examples in Steps 4b/4c/§Rejection already use this object shape; pass them straight through as the `scenarios` array. For a state-view scenario whose `when` needs to represent a query rather than a COMMAND, `when` may hold a single inline object that is **not** a board node: `{"id": "<generated-uuid>", "type": "QUERY", "title": "...", "fields": [{"name": "...", "example": "..."}]}`. Same server-side rules apply either way (see below).
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/columns/$COL/scenarios" \

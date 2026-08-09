@@ -7,7 +7,9 @@ description: Build a complete visual storyboard with AI-generated screens from a
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
-You are building a complete visual storyboard by calling the board HTTP API. You generate the screen designs yourself using the grid description language below, then create the storyboard structure via `curl`. Only SCREEN nodes are created — no COMMAND or EVENT nodes.
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
+You are building a complete visual storyboard by calling the board API. You generate the screen designs yourself using the grid description language below, then create the storyboard structure via `mcp__eventmodelers__*` tools (or `curl` as a fallback — see each step below). Only SCREEN nodes are created — no COMMAND or EVENT nodes.
 
 ## Step 1 — Parse arguments
 
@@ -86,7 +88,15 @@ Keep all coordinates within bounds: gridX 0–50, gridY 0–40.
 
 **If `chapterId` was provided in Step 1** — set `CHAPTER_ID = chapterId` and skip to Step 4. Do not make any API call here.
 
-**If `chapterId` was NOT provided** — create a new chapter (exactly once):
+**If `chapterId` was NOT provided** — create a new chapter (exactly once).
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 0 }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
@@ -99,6 +109,14 @@ Extract `id` from the response → `CHAPTER_ID`.
 **You now have exactly one `CHAPTER_ID`. Do not create another chapter.**
 
 ### Step 4 — Fetch chapter state and build empty-column queue
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
@@ -129,7 +147,15 @@ Only SCREEN nodes are created. COMMAND and EVENT nodes are not created.
 
 **If the empty-column queue is non-empty** — pop the first entry. Use its `actorCellId` directly, proceed to Step 5b.
 
-**If the empty-column queue is empty** — add a new column (this does NOT create a new chapter):
+**If the empty-column queue is empty** — add a new column (this does NOT create a new chapter).
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
@@ -147,7 +173,23 @@ Extract `columnId` from the response. Compute the actor cell ID directly:
 
 ### Step 5b — Create the node and render the sketch in one atomic call
 
-Build the payload, then send a single call that creates the SCREEN node, places it into the actor cell, and renders the sketch — all in one request. There is no intermediate state where the node exists without an image or without a cell:
+Build the payload, then send a single call that creates the SCREEN node, places it into the actor cell, and renders the sketch — all in one request. There is no intermediate state where the node exists without an image or without a cell.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "sketch",
+  "nodeId": "<SCREEN_NODE_ID>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellId": "<actorCellId>",
+  "elements": [...],
+  "description": "<screenTitle — what this screen shows>"
+}
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID/sketch" \
@@ -163,11 +205,19 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
   }'
 ```
 
-Pass the already-computed `actorCellId` directly as `cellId` (the endpoint accepts either `cellId` or `cellName`). Expect `204`. On `400`, read the validation error, fix the payload, and retry once before reporting failure.
+Pass the already-computed `actorCellId` directly as `cellId` in either path. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
 
 ### Step 5c — Verify the screen
 
-Confirm the node and its rendered image both actually exist before moving on:
+Confirm the node and its rendered image both actually exist before moving on.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<SCREEN_NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \

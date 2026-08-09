@@ -7,6 +7,8 @@ description: Design and render a single AI-generated wireframe screen onto an ex
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 > **MANDATORY RENDER + VERIFY**: The sketch API call in Step 4 and the verification in Step 5 are **not optional**. This skill exists solely to produce a rendered wireframe. A SCREEN node without a rendered sketch is an empty placeholder that adds no value to the model. If the sketch API call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
 
 Design a single wireframe screen and render it onto an existing SCREEN node. Use this to redesign a screen, add detail to a placeholder, or update a screen after a flow changes.
@@ -26,7 +28,15 @@ If `nodeId` is missing, ask for it before doing anything. `BOARD_ID` and `BASE_U
 
 ## Step 2 — If updating an existing screen, load its current description first
 
-If `nodeId` refers to a screen that has already been rendered (i.e. this is an adjustment/tweak, not a brand-new screen), **do not design from scratch**. First load the existing sketch description so the edit preserves the rest of the layout:
+If `nodeId` refers to a screen that has already been rendered (i.e. this is an adjustment/tweak, not a brand-new screen), **do not design from scratch**. First load the existing sketch description so the edit preserves the rest of the layout.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__get_image_snapshot_description { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/description" \
@@ -93,6 +103,19 @@ Keep all coordinates within bounds: gridX 0–50, gridY 0–40.
 
 ## Step 4 — Render the sketch
 
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__render_screen {
+  "boardId": "<BOARD_ID>",
+  "nodeId": "<NODE_ID>",
+  "elements": [...],
+  "description": "<what this screen shows>"
+}
+```
+
+**Fallback (no MCP):**
+
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sketch" \
   -H "x-token: $TOKEN" \
@@ -106,7 +129,15 @@ Expect `204 No Content` on success.
 
 ## Step 5 — Verify the screen
 
-Confirm the node and its rendered image both actually exist:
+Confirm the node and its rendered image both actually exist.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$NODE_ID/verify" \

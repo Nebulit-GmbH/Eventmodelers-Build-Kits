@@ -10,6 +10,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 For validation you treat the Event Model as read only. The only thing you are allowed to change is comments.
 For critical questions, add comments to elements.
 
@@ -21,7 +23,17 @@ The source can be also determined by looking at the defined Scenarios. Are all S
 
 ## Board Context
 
-Before starting, read the current board state to validate what is actually on the board:
+Before starting, read the current board state to validate what is actually on the board.
+
+Prefer MCP — call `mcp__eventmodelers__get_nodes` once per type (no header wiring needed, auth resolves from the connected session):
+
+```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -32,7 +44,7 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL"
 ```
 
-After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `QUESTION` for warnings and recommendations.
+After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `QUESTION` for warnings and recommendations. (That skill already handles the `add_comment` MCP-vs-curl choice internally — no separate rewrite needed here.)
 
 ## Purpose
 Ensures event-sourced models are complete, correct, and follow pure event sourcing principles (minimal per-command state).

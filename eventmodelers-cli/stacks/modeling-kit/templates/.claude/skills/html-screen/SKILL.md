@@ -7,6 +7,8 @@ description: Design and render a single real HTML/CSS screen (one or more pages)
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 > **EXPLICIT USE ONLY**: Do not reach for this skill on an ordinary "design a screen" / "storyboard this" request — that default remains `storyboard-screen`, which renders a wireframe sketch onto a SCREEN node. Use this skill **only** when the user explicitly asks for an "HTML screen", a "real webpage", a "coded/HTML mockup", or names the HTML_SCREEN node type directly.
 
 > **MANDATORY RENDER + VERIFY**: The render call in Step 4 and the verification in Step 5 are **not optional**. This skill exists solely to produce rendered pages. An HTML_SCREEN node with no non-empty page is an empty placeholder that adds no value to the model. If the render call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
@@ -30,7 +32,15 @@ If neither `nodeId` nor (`chapterId` + `cellName`) can be resolved, ask the user
 
 ## Step 2 — If updating an existing screen, load its current pages first
 
-If `nodeId` refers to a screen that already has pages (i.e. this is an adjustment/tweak, or "add a page" to an existing screen — not a brand-new screen), **do not design from scratch**. Load the node and inspect `meta.pages`:
+If `nodeId` refers to a screen that already has pages (i.e. this is an adjustment/tweak, or "add a page" to an existing screen — not a brand-new screen), **do not design from scratch**. Load the node and inspect `meta.pages`.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID" \
@@ -60,6 +70,18 @@ Guidelines:
 
 **Updating an existing node** (`nodeId` was given) — always sends the **complete** pages array, not just the changed/new entry:
 
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__render_screen {
+  "boardId": "<BOARD_ID>",
+  "nodeId": "<NODE_ID>",
+  "pages": ["<div>...</div>", "<div>...</div>"]
+}
+```
+
+**Fallback (no MCP):**
+
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_ID" \
   -H "x-token: $TOKEN" \
@@ -71,6 +93,21 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_I
 
 **Creating a new node** (no `nodeId` — one is generated and placed into `chapterId`/`cellName`):
 
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "html",
+  "nodeId": "<generated-uuid>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellName": "<CELL_NAME>",
+  "pages": ["<div>...</div>"]
+}
+```
+
+**Fallback (no MCP):**
+
 ```bash
 NODE_ID=$(uuidgen)
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$NODE_ID" \
@@ -81,11 +118,19 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$N
   -d '{"chapterId": "'"$CHAPTER_ID"'", "cellName": "'"$CELL_NAME"'", "pages": ["<div>...</div>"]}'
 ```
 
-Expect `204 No Content` on success from either call.
+Expect `204 No Content` on success from either curl call.
 
 ## Step 5 — Verify the screen
 
-Confirm the node exists, is type HTML_SCREEN, and has at least one non-empty page:
+Confirm the node exists, is type HTML_SCREEN, and has at least one non-empty page.
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_ID/verify" \

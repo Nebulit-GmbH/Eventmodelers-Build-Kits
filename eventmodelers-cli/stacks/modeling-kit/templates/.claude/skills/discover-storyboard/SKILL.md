@@ -51,6 +51,8 @@ Do NOT invoke `connect`. Do NOT proceed to Step 1.
 
 Invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until all four are available.
 
+> Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below (Steps 5–7, the eventmodelers board-API calls) are the fallback for sessions without MCP connected. This is unrelated to the browser automation MCP checked in Step 0, which stays as-is.
+
 ---
 
 ## Step 2 — Gather discovery parameters (interactive)
@@ -201,8 +203,14 @@ Discovered N screens across M flows:
 
 **If `chapterId` was provided** — use it as the single `CHAPTER_ID` for all screens. Skip this step.
 
-**Otherwise** — for each flow, create one chapter:
+**Otherwise** — for each flow, create one chapter.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 0 }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
   -H "x-token: $TOKEN" \
@@ -212,8 +220,26 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
 
 Extract `id` → `CHAPTER_ID` for this flow.
 
-Update the chapter title to the flow name using `node:changed`:
+Update the chapter title to the flow name using `node:changed`.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<CHAPTER_ID>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": <NOW_MS>,
+    "changedAttributes": ["meta.title"],
+    "meta": { "type": "CHAPTER", "title": "<flow name>" },
+    "node": { "id": "<CHAPTER_ID>", "data": {} }
+  }]
+}
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" \
@@ -238,18 +264,24 @@ Save `CHAPTER_ID` against each flow.
 
 ## Step 6 — Fetch chapter grid and build column queue
 
-For each chapter, fetch its current grid state:
+For each chapter, fetch its current grid state.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
 From `meta.timelineData`:
-- `rows` — find the row with `type === "actor"` → save its `id` as `actorRowId`
-- `columns` — ordered list; build an empty-column queue
+- `rows` — find the row with `type === "actor"` → save its `id` as `actorRowId` and its 0-based position in `rows` as `actorRowIndex`
+- `columns` — ordered list; build an empty-column queue, remembering each entry's 0-based position in `columns` as its `columnIndex`
 
-**Cell ID convention**: `<rowId>-<columnId>` — always computed directly, never looked up.
+**Cell ID convention**: `<rowId>-<columnId>` — always computed directly, never looked up. **Cell name convention** (spreadsheet-style, needed for the MCP tool in Step 7b): `<columnLetter><rowNumber>`, where `columnLetter` is `columnIndex` converted to spreadsheet letters (0→A, 1→B, …25→Z, 26→AA, …) and `rowNumber` is `actorRowIndex + 1`.
 
 ---
 
@@ -261,10 +293,17 @@ For each screen:
 
 ### 7a — Acquire a column slot
 
-**If the empty-column queue is non-empty** — pop the first entry → `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId`.
+**If the empty-column queue is non-empty** — pop the first entry → `columnId` and its remembered `columnIndex`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
 
-**If the empty-column queue is empty** — create a new column:
+**If the empty-column queue is empty** — create a new column.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+```
+The result's `index` field is the new column's `columnIndex` (use it directly for `CELL_NAME` — no need to recompute from the full column list).
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
   -H "x-token: $TOKEN" \
@@ -273,62 +312,55 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
   -H "Content-Type: application/json" \
   -d '{}'
 ```
+Response includes `{ columnId, index, totalColumns }` — `index` is the new `columnIndex`.
 
-Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId`.
+Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
 
-### 7b — Generate UUID and upload the screenshot
+### 7b — Create the SCREEN node with its screenshot, atomically
 
-Generate UUIDs for `SCREEN_NODE_ID` and `EVT_ID`:
+Generate a UUID for `SCREEN_NODE_ID`:
 
 ```bash
 python3 -c "import uuid; print(uuid.uuid4())"
 ```
 
-Upload the saved screenshot file using `SCREEN_NODE_ID` **before** creating the node:
+This step must create the node and attach the real screenshot in a single call — never split into "upload image" then "create node" (or vice versa), which leaves a window where the node exists with no image or an image with no node.
 
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$SCREEN_NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -F "file=@<screen.filepath>"
+**Prefer MCP:**
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "image",
+  "nodeId": "<SCREEN_NODE_ID>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellName": "<CELL_NAME>",
+  "imageBase64": "<base64-encoded contents of screen.filepath, no data: URI prefix>",
+  "mimeType": "image/png",
+  "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"
+}
 ```
 
-> **Note**: This uploads the real screenshot to the SCREEN node — it is a different endpoint from the sketch API. The sketch API (`/images/$NODE/sketch`) renders AI-generated wireframe elements. This endpoint (`/images/$NODE`) uploads an actual image file.
-
-Log success or failure. On failure, note it in the final report but continue.
-
-### 7c — Create the SCREEN node
-
-Now create the SCREEN node using the same `SCREEN_NODE_ID` (the image is already uploaded for it):
-
+**Fallback (no MCP)** — the same atomic operation via the `image-nodes` endpoint (not the plain `images/:id` endpoint, which only updates an existing node's image and does not place it):
 ```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: discover-storyboard" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id":        "<EVT_ID>",
-    "eventType": "node:created",
-    "nodeId":    "<SCREEN_NODE_ID>",
-    "boardId":   "<BOARD_ID>",
-    "timestamp": <NOW_MS>,
-    "chapterId": "<CHAPTER_ID>",
-    "cellId":    "<CELL_ID>",
-    "meta":      {
-      "type":        "SCREEN",
-      "title":       "<screen.title>",
-      "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"
-    },
-    "node":      { "id": "<SCREEN_NODE_ID>", "data": {} }
-  }]'
+  -F "file=@<screen.filepath>" \
+  -F "chapterId=$CHAPTER_ID" \
+  -F "cellName=$CELL_NAME"
 ```
 
-Verify the response contains `"hashes"`. If it fails, log the error and continue to the next screen — do not stop the entire run.
+Response: `204` on success. Log failures in the final report but continue to the next screen — do not stop the entire run.
 
 ### 7d — Verify the screen
 
-Confirm the node and its uploaded screenshot both actually exist:
+Confirm the node and its uploaded screenshot both actually exist.
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__verify_screen { "boardId": "<BOARD_ID>", "nodeId": "<SCREEN_NODE_ID>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/screens/$SCREEN_NODE_ID/verify" \
   -H "x-token: $TOKEN"

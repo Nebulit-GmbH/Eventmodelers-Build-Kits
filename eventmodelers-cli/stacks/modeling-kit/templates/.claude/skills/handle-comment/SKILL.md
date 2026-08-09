@@ -7,6 +7,8 @@ description: Place, resolve, or delete a comment on an eventmodelers board node.
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ---
 
 ## Step 1 — Parse arguments
@@ -29,6 +31,13 @@ Route to the matching section below based on `action`.
 
 ## Action: place
 
+**Prefer MCP** — one call, `type` (`COMMENT`/`TASK`/`QUESTION`) passed straight through:
+
+```
+mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK|QUESTION>", "author": "<author>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments" \
   -H "Authorization: Bearer $TOKEN" \
@@ -53,6 +62,12 @@ Type: <type> | Author: <author>
 
 **Step A — Resolve comment ID** (skip if `commentId` was provided directly):
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_node_comments { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments" \
   -H "Authorization: Bearer $TOKEN"
@@ -62,6 +77,12 @@ Find the comment whose `text` contains the `text` argument (case-insensitive). I
 
 **Step B — Resolve:**
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__update_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "commentId": "$COMMENT_ID", "action": "resolve" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments/$COMMENT_ID/resolve" \
   -H "Authorization: Bearer $TOKEN"
@@ -86,6 +107,12 @@ Wait for an explicit "yes". On any other response, stop: "Deletion cancelled."
 
 **Step C — Delete:**
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__update_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "commentId": "$COMMENT_ID", "action": "delete" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments/$COMMENT_ID" \
   -H "Authorization: Bearer $TOKEN"

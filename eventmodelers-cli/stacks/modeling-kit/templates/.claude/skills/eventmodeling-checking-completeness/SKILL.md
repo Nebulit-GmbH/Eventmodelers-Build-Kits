@@ -10,10 +10,20 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Board Context
 
 Before starting, read the current board state to drive the analysis from what is actually on the board rather than relying solely on conversation context:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
+```
+
+**Fallback (no MCP):**
 ```bash
 # All nodes (events, commands, read models, screens)
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -152,6 +162,16 @@ Status: All fields sourced
 
 Every column that holds a COMMAND or READMODEL node must have a slice defined (a SLICE_BORDER node on that column) — otherwise it can never be built as a feature. Skip columns whose COMMAND/READMODEL node has `data.linkedTo` set: it's a linked copy (see Board Context above), and only the original's column needs a slice.
 
+**Prefer MCP** — `list_slices` is lighter than filtering all nodes, and also returns each slice's status:
+```
+mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
+```
+Or, to get the full SLICE_BORDER nodes (with `columnId`) the same way as the curl fallback:
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "SLICE_BORDER" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SLICE_BORDER"

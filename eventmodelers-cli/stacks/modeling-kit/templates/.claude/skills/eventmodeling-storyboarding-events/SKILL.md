@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already specified: existing UI patterns or mockups to reference, critical data fields, and UI/UX preferences. Interview when these details haven't been discussed or when the user wants guidance on storyboarding depth.
@@ -299,6 +301,12 @@ Solution: Every event includes timestamp
 
 Before starting the analysis, read existing SCREEN nodes from the board to avoid designing screens that already exist:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN"
@@ -390,7 +398,15 @@ Every SCREEN node requires a wireframe sketch. The correct order for every scree
 **Step A — Compute the cell ID.** Screens go in the **actor lane** of their target column.
 
 1. Determine the target column (same column as the event/command, OR one column to the right of the read model).
-2. Fetch the chapter to find the actor row ID:
+2. Fetch the chapter to find the actor row ID.
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$CHAPTER_ID" }
+   # → meta.timelineData.rows — find the row where type === "actor"
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
      "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
@@ -399,6 +415,25 @@ Every SCREEN node requires a wireframe sketch. The correct order for every scree
 3. `cellId = actorRow.id + "-" + columnId`
 
 **Step B — Create the SCREEN node with `cellId`** (`node:created`) — the node is immediately placed in the correct cell:
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>",
+    "eventType": "node:created",
+    "nodeId": "<node-uuid>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": 1234567890,
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorRowId>-<columnId>",
+    "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}
+  }]
+}
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
@@ -423,6 +458,22 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 Call the sketch API between node creation and cell placement, with a fully designed elements array:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__render_screen {
+  "boardId": "$BOARD_ID",
+  "nodeId": "$NODE_ID",
+  "description": "<concise description of what this screen shows>",
+  "elements": [
+    {"type":"rectangle","gridX":0,"gridY":0,"gridWidth":50,"gridHeight":40,"fill":"white"},
+    {"type":"rectangle","gridX":0,"gridY":0,"gridWidth":50,"gridHeight":3,"fill":"violet"},
+    {"type":"headline","gridX":2,"gridY":1,"text":"Screen Title","fontSize":16,"fill":"white","gridWidth":46},
+    ...more elements...
+  ]
+}
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sketch" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
@@ -497,7 +548,7 @@ Human roles get SCREEN nodes. System actors and processors get AUTOMATION nodes.
 ❌ Wrong:   Member "My Loans" AND Librarian "Confirm Checkout" both in col 11
 ```
 
-If a second role also needs a screen related to the same event, insert a new column immediately after and place the second screen there. Use `POST /timelines/:tl/columns` with `{"index": N}` to insert at the correct position.
+If a second role also needs a screen related to the same event, insert a new column immediately after and place the second screen there. Prefer `mcp__eventmodelers__add_column { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "index": N }`; fallback (no MCP) is `POST /timelines/:tl/columns` with `{"index": N}` to insert at the correct position.
 
 ---
 

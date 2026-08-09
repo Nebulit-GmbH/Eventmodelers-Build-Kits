@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has clearly identified: read model queries needed by UI, processor needs, and refresh patterns. Interview when unclear which data queries are critical or how frequently they're accessed.
@@ -428,6 +430,35 @@ Read models go in the `interaction` lane — **in the same column as the SCREEN 
 
 **For a READMODEL** (interaction lane):
 
+**Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell (including inserting a new column when the target column is already occupied by a COMMAND) and creating the node into one call:
+```
+mcp__eventmodelers__place_element {
+  "boardId": "<BOARD_ID>",
+  "timelineId": "<CHAPTER_ID>",
+  "elementType": "READMODEL",
+  "title": "ActiveReservationView",
+  "columnIndex": <consumerScreenOrAutomationColumnIndex>
+}
+```
+Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) on the returned node id:
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<returned-node-id>",
+    "boardId": "<BOARD_ID>", "timestamp": 1234567890,
+    "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}
+  }]
+}
+```
+To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (there is no `cellId` filter on `get_nodes` — see the note under "Wire connections" below), fetch the chapter and read its cell map:
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+# → meta.timelineData.rows (find "interaction"/"actor" rows) and meta.timelineData.cells (sparse; absent id = empty)
+```
+
+**Fallback (no MCP)** — the full manual sequence:
+
 1. Find the column where the consumer SCREEN or AUTOMATION lives. Fetch the timeline to get the interaction row ID:
    ```bash
    curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -460,6 +491,9 @@ Read models go in the `interaction` lane — **in the same column as the SCREEN 
 
 **For an AUTOMATION** (actor lane, same column as its READMODEL):
 
+**Prefer MCP** — same `place_element` call with `"elementType": "AUTOMATION"`, then `submit_node_events` for fields, as above.
+
+**Fallback (no MCP):**
 1. Get the actor row ID from the same timeline fetch (row where `type === "actor"`).
 2. `cellId = actorRow.id + "-" + columnId`
 3. Create the AUTOMATION node using the same `node:created` pattern above with `"type": "AUTOMATION"` in `meta`.
@@ -492,7 +526,16 @@ For each view screen S that queries this read model:
 
 After `place-element` returns the READMODEL node ID, create the arrows that complete the slice:
 
-1. **EVENT → READMODEL** — find the primary source EVENT node in the swimlane row of the same column:
+1. **EVENT → READMODEL** — find the primary source EVENT node in the swimlane row of the same column.
+
+   **Prefer MCP** — `get_nodes` has no `cellId` filter (only `type`); look up occupancy via the chapter's cell map instead, then connect with the type-checked edge tool (auto-corrects direction, skips duplicates):
+   ```
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+   # → read meta.timelineData.cells["<swimlaneRowId>-<columnId>"] for the occupying node id
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs"
@@ -505,7 +548,14 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
      -d '{"source":"<eventNodeId>","target":"<readmodelNodeId>"}'
    ```
 
-2. **READMODEL → SCREEN** — connect to the existing SCREEN node in the actor row of the next column (screens are typically already placed from Step 3):
+2. **READMODEL → SCREEN** — connect to the existing SCREEN node in the actor row of the next column (screens are typically already placed from Step 3).
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs" \
@@ -516,6 +566,13 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 3. **READMODEL → AUTOMATION** — if the read model is consumed by an automatic process (scheduler, background job, external trigger), place the AUTOMATION node and connect it:
    - Place the AUTOMATION in the automation lane, in the column immediately to the right of its read model (same rule as screens).
    - Then connect:
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs" \

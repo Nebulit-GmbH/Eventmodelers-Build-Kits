@@ -37,7 +37,13 @@ If `newStatus` is not one of these exact values, stop and tell the user the vali
 
 ## Step 2 — List all slices
 
-Fetch all slices on the board:
+Prefer the MCP tool when `mcp__eventmodelers__*` tools are visible in this session:
+
+```
+mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
+```
+
+**Fallback (no MCP):**
 
 ```bash
 curl -s \
@@ -47,9 +53,7 @@ curl -s \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slicedata/slices"
 ```
 
-Response: `{ "slices": [{ "id": "<nodeId>", "title": "<title>", "status": "<status>" }] }`
-
-The `id` here is the `SLICE_BORDER` node ID — use it directly in Step 3.
+Either way, the response is `{ "slices": [{ "id": "<nodeId>", "title": "<title>", "status": "<status>" }] }`. The `id` here is the `SLICE_BORDER` node ID — use it directly in Step 3.
 
 Find the slice whose `title` matches `sliceName` (case-insensitive). If no match is found, stop and list the available slice titles so the user can pick one.
 
@@ -61,7 +65,13 @@ Save the matched slice as:
 
 ## Step 3 — Update the slice status
 
-Send a `node:changed` event to update the `sliceStatus` field in the SLICE_BORDER node's meta:
+Prefer the MCP tool — it does the same `node:changed`/`sliceStatus` update in one call, no event envelope to hand-assemble:
+
+```
+mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "<newStatus>" }
+```
+
+**Fallback (no MCP)** — send a `node:changed` event to update the `sliceStatus` field in the SLICE_BORDER node's meta directly:
 
 ```bash
 curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \

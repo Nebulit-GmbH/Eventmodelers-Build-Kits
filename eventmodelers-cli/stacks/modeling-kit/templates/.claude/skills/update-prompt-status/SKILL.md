@@ -7,6 +7,8 @@ description: Update the lifecycle status (and optionally a progress comment) of 
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+> **No MCP path for this skill**: the `mcp__eventmodelers__*` tools only cover board/canvas content (nodes, timelines, slices, comments, screens). The prompt queue (`/api/org/:orgId/prompts/...`) is a separate lifecycle the MCP server does not expose at all, so this skill stays 100% curl — there is nothing to swap in below.
+
 Every prompt drained from a board's queue (`/api/org/:orgId/prompts/next`) carries a `PROMPT_ID` — passed into this session as the `prompt_id` field of the current turn. This skill flips that prompt's status so the board UI reflects what the agent is doing with it in real time.
 
 ---

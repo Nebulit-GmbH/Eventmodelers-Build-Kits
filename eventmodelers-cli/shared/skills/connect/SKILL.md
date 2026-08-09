@@ -7,6 +7,8 @@ description: Resolve eventmodelers connection config (token, boardId, baseUrl) f
 
 **Every other skill invokes this skill first** before making any API calls. Do not proceed past this skill until all four values (`TOKEN`, `BOARD_ID`, `ORG_ID`, `BASE_URL`) are resolved.
 
+This skill also registers the **eventmodelers MCP server** for the project (Step 3.5) so other skills can call MCP tools (`mcp__eventmodelers__*`) instead of raw curl. MCP is the preferred transport; curl remains a fallback for hosts without MCP support, or for the one or two endpoints (documented in `learn-eventmodelers-api`) the MCP server doesn't expose.
+
 ---
 
 ## What this skill produces
@@ -20,7 +22,7 @@ After running, the following variables are available for the rest of the session
 | `ORG_ID` | — | Organization UUID (used in all board-scoped URLs) |
 | `BASE_URL` | — | Base URL, e.g. `http://localhost:3000` |
 
-Every API call in every skill must include these headers:
+Every curl-fallback call in every skill must include these headers:
 ```
 x-token: <TOKEN>
 x-board-id: <BOARD_ID>
@@ -28,6 +30,8 @@ x-user-id: <skill-name>   ← set by each skill individually
 ```
 
 All board-scoped URLs follow the pattern: `<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/...`
+
+When calling MCP tools instead, no `x-*` headers are needed — the MCP server resolves `ORG_ID` from `TOKEN` itself and every tool takes `boardId` as an explicit argument. See `learn-eventmodelers-api` for the full tool catalog.
 
 ---
 
@@ -138,9 +142,51 @@ Tell the user: `"Config saved to .eventmodelers/config.json and added to .gitign
 
 ---
 
+## Step 3.5 — Register the MCP server
+
+Always run this step (not only when Step 3 ran) — it's idempotent and safe to repeat every time `connect` is invoked.
+
+The eventmodelers backend exposes the same board capabilities as an MCP server at `<BASE_URL>/mcp`, authenticated with the same `TOKEN` via an `x-token` header. Register it in the project's `.mcp.json` so Claude Code (or any other MCP-aware host) can connect and expose tools as `mcp__eventmodelers__<tool_name>`.
+
+**Do not put the raw token in `.mcp.json`** — that file is typically committed to share server config with the team. Instead reference an environment variable and keep the actual secret in a gitignored `.env` file:
+
+1. Read the existing `.mcp.json` at the project root if present (it may already list other MCP servers, e.g. a browser-automation server used by `discover-storyboard` — merge into `mcpServers`, never replace the whole file). If absent, start from `{"mcpServers": {}}`.
+2. Add or update the `eventmodelers` entry:
+   ```json
+   {
+     "mcpServers": {
+       "eventmodelers": {
+         "type": "http",
+         "url": "<BASE_URL>/mcp",
+         "headers": { "x-token": "${EVENTMODELERS_TOKEN}" }
+       }
+     }
+   }
+   ```
+3. Ensure a project-root `.env` file contains `EVENTMODELERS_TOKEN=<TOKEN>` (append/update the line; create the file if missing).
+4. Ensure `.env` is listed in `.gitignore` (same check-then-append pattern as Step 3 uses for `.eventmodelers/config.json`) — it holds the same secret and must never be committed.
+
+MCP tools only become visible to the current agent session after the host (re)connects to the server — a brand-new `.mcp.json` entry written mid-session may need the user to approve the new server or reconnect (e.g. Claude Code's `/mcp` command) before `mcp__eventmodelers__*` tools appear in the tool list. That's expected and not an error: tell the user once, then let every other skill fall back to curl automatically until the tools show up.
+
+---
+
 ## Step 4 — Verify
 
-Confirm the token and board are valid with a lightweight call:
+Prefer verifying through MCP if `mcp__eventmodelers__*` tools are already visible in this session (e.g. from a `.mcp.json` set up in an earlier turn or a previous session):
+
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+```
+
+A successful result (even an empty array) confirms the token and board are valid. An error mentioning "not found or access denied" means the token/board pairing is wrong — treat it like the `403`/`404` curl cases below.
+
+If the MCP server itself shows as needing authentication (e.g. the host lists it as "needs authentication" rather than connected), ask the user once:
+
+> "The eventmodelers MCP server needs to be re-authenticated — please run `/mcp` and authenticate the `eventmodelers` server, then let me know when that's done."
+
+Wait for their reply. If they say it's done, retry the MCP verify call above. If they skip it, or it still isn't connected, or it's unreachable for some other reason entirely (not an auth prompt), don't keep blocking on it — fall back to the equivalent curl call for this and every subsequent skill in the session, same as if the tools were never visible.
+
+Otherwise (no MCP tools visible yet this session), fall back to the equivalent curl call:
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
@@ -152,7 +198,7 @@ curl -s -o /dev/null -w "%{http_code}" \
 
 | Response | Action |
 |----------|--------|
-| `200` | Config is valid. Print one line: `"Connected — board <BOARD_ID>"` and return. |
+| `200` | Config is valid. Print one line: `"Connected — board <BOARD_ID>"` (note if MCP tools aren't active yet, curl fallback is in use) and return. |
 | `401` | Token is invalid or missing. Tell the user and re-run from Step 2, clearing `token`. |
 | `403` | Token organization does not match board. Tell the user to check that the token was issued for the correct workspace. Re-run from Step 2 for both fields. |
 | `404` | Board not found. Tell the user and re-run from Step 2, clearing `boardId`. |
@@ -178,6 +224,7 @@ The `token` field is a secret. It is never logged or shown after initial confirm
 
 ## Security notes
 
-- The config file is workspace-local and gitignored — never commit it.
+- The config file (`.eventmodelers/config.json`) and the `.env` file holding `EVENTMODELERS_TOKEN` are both workspace-local and gitignored — never commit either.
+- `.mcp.json` itself is safe to commit — it only ever contains the `${EVENTMODELERS_TOKEN}` placeholder, never the literal token.
 - The token grants write access to all boards in its organization — treat it like a password.
-- If a skill receives a `401` or `403` mid-session, re-invoke this skill to refresh the config before retrying.
+- If a skill receives a `401`/`403` (curl) or an access-denied tool error (MCP) mid-session, re-invoke this skill to refresh the config before retrying.

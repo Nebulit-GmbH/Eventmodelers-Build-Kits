@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already identified UI actions/commands and processor triggers. Interview when it's unclear which actions are user-initiated vs. processor-automated.
@@ -366,7 +368,41 @@ Commands go in the `interaction` lane — same column as their resulting event.
 
 **Every `node:created` call MUST include `cellId`.** Without it the node has no cell reference and will appear stranded at position 0,0 — not in any timeline column.
 
-Commands go in the **interaction lane**, same column as the event they produce. Before creating each command:
+Commands go in the **interaction lane**, same column as the event they produce.
+
+**Prefer MCP** — `place_element` collapses the entire find-row → find/append-column → compute-cellId → create-node → auto-connect sequence (Steps A–D below) into one call:
+```
+mcp__eventmodelers__place_element {
+  "boardId": "<BOARD_ID>",
+  "timelineId": "<CHAPTER_ID>",
+  "elementType": "COMMAND",
+  "title": "ReserveBike"
+}
+```
+`place_element` finds/creates the empty cell in the interaction lane in the correct column and places the node — but it does not accept `fields`. Immediately follow up with `submit_node_events` (`node:changed`) to set `meta.fields` (with `mapping`/`generated`/`cardinality` per the rules above) on the node it returned:
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<returned-node-id>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": 1234567890,
+    "meta": {
+      "type": "COMMAND",
+      "title": "ReserveBike",
+      "fields": [
+        {"name": "customerId", "type": "String",   "example": "cust-42",             "mapping": "session:customerId"},
+        {"name": "bikeId",     "type": "String",   "example": "bike-17",             "mapping": "user-input"},
+        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
+      ]
+    }
+  }]
+}
+```
+
+**Fallback (no MCP)** — the full manual sequence `place_element` replaces. Before creating each command:
 
 **Step A — Find the event's column ID.** Query the event node to read its current cell:
 ```bash
@@ -432,7 +468,18 @@ The timeline must always read left-to-right: SCREEN and COMMAND belong in the sa
 
 After `place-element` returns the COMMAND node ID, create the arrows that complete the slice:
 
-1. **SCREEN → COMMAND** — find the SCREEN node in the actor row of the same column:
+1. **SCREEN → COMMAND** — find the SCREEN node in the actor row of the same column.
+
+   **Prefer MCP** — there is no `cellId` filter on `get_nodes` (see note below), so read the chapter's cell map instead:
+   ```
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+   ```
+   Read `meta.timelineData.cells["<actorRowId>-<columnId>"]` for the occupying node id (a cell id absent from that sparse array is empty — no SCREEN placed yet). Then connect with the type-checked edge tool, which auto-corrects direction and skips duplicates:
+   ```
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<actorRowId>-<columnId>" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
@@ -445,7 +492,18 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
      -d '{"source":"<screenNodeId>","target":"<commandNodeId>"}'
    ```
 
-2. **COMMAND → EVENT** — find the EVENT node in the swimlane row of the same column:
+2. **COMMAND → EVENT** — find the EVENT node in the swimlane row of the same column.
+
+   **Prefer MCP** — same cell-map lookup, then connect:
+   ```
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+   ```
+   Read `meta.timelineData.cells["<swimlaneRowId>-<columnId>"]` for the occupying node id, then:
+   ```
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }
+   ```
+
+   **Fallback (no MCP):**
    ```bash
    curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
@@ -457,6 +515,8 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
      -H "Content-Type: application/json" \
      -d '{"source":"<commandNodeId>","target":"<eventNodeId>"}'
    ```
+
+   *Note:* `get_nodes` has no `cellId` filter (only `type`) — the `get_node`-on-CHAPTER + `meta.timelineData.cells` lookup above is the only way to check single-cell occupancy via MCP.
 
 Skip a connection silently if the target cell is empty (the element may be placed in a later step). Log each created arrow: `→ connected SCREEN→COMMAND "PlaceOrder"` or `→ connected COMMAND→EVENT "PlaceOrder"→"OrderPlaced"`.
 

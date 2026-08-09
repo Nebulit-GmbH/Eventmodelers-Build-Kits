@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 Coordinates the 10-step Event Modeling workflow. Each step delegates to a
 specialized skill — this skill holds the sequence, transition conditions, and
 what to carry forward between steps.
@@ -37,7 +39,15 @@ Placing all read models in new columns at the very end of the timeline severs th
 
 After each step that creates elements (Steps 1–5), scan for any nodes that have no cell reference and are stranded at the default canvas position (0,0). These arise when `node:created` is called without `cellId`.
 
-For each timeline in scope, check all node types that should be in cells:
+For each timeline in scope, check all node types that should be in cells.
+
+**Prefer MCP:** call `get_nodes` once per type (each call returns the full node objects, including `meta.chapterId`/cell placement, so no separate cell-occupancy lookup is needed):
+```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT" }
+```
+Repeat with `"type": "COMMAND"`, `"READMODEL"`, `"SCREEN"`, `"AUTOMATION"`.
+
+**Fallback (no MCP):**
 ```bash
 for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -48,7 +58,14 @@ done
 For each returned node, check whether it has a valid cell assignment. A node without a `cellId` (or with `chapterId` missing) is unplaced.
 
 **For each unplaced node:**
-- **If it belongs in the current model** → compute the correct `cellId` and call `node:changed` to assign it:
+- **If it belongs in the current model** → compute the correct `cellId` and place it.
+
+  **Prefer MCP:** the node already exists but has never been assigned a cell, so this is a placement, not a repositioning — use `drop_node_to_cell` (not `move_node_in_timeline`, which is for moving a node that already occupies a different cell):
+  ```
+  mcp__eventmodelers__drop_node_to_cell { "boardId": "$BOARD_ID", "timelineId": "<chapterId>", "cellId": "<rowId>-<colId>", "nodeId": "<nodeId>", "nodeType": "<TYPE>" }
+  ```
+
+  **Fallback (no MCP):**
   ```bash
   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
@@ -57,7 +74,14 @@ For each returned node, check whether it has a valid cell assignment. A node wit
           "timestamp":1234567890,"chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
           "meta":{"type":"<TYPE>","title":"<title>"}}]'
   ```
-- **If it is an orphan (duplicate or no longer needed)** → delete it:
+- **If it is an orphan (duplicate or no longer needed)** → delete it.
+
+  **Prefer MCP:**
+  ```
+  mcp__eventmodelers__delete_node { "boardId": "$BOARD_ID", "nodeId": "<nodeId>" }
+  ```
+
+  **Fallback (no MCP):**
   ```bash
   curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<nodeId>" \
     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"

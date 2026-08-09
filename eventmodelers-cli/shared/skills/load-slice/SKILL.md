@@ -24,6 +24,22 @@ If neither is provided, load and persist all slices without filtering.
 
 ## Step 2 — Fetch all slices from the slicedata API
 
+Prefer the MCP tool when `mcp__eventmodelers__*` tools are visible in this session:
+
+```
+mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
+```
+
+This returns `{ "slices": [ { "id": "...", "title": "...", "status": "..." } ] }` — lighter than the full slicedata payload (no `contextName`/`contextId`/`comments`). If Step 3/4 below need those richer fields for a specific slice, follow up with:
+
+```
+mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<name>" }
+```
+
+(`get_slice_data` requires a `contextName` or `contextId` — call `list_slices` first, then resolve context per slice via `mcp__eventmodelers__get_node` on each `SLICE_BORDER` id if the context isn't already known.)
+
+**Fallback (no MCP):**
+
 ```bash
 curl -s \
   -H "x-token: <TOKEN>" \

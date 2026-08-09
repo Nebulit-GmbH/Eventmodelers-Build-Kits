@@ -10,6 +10,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 Arrange all brainstormed events chronologically to create a logical sequence that makes sense as a narrative timeline. Show how events flow and depend on each other.
 
 ## Workflow
@@ -101,6 +103,12 @@ Timelines (chapters) are **created and assigned during Step 1 (Brainstorming)**.
 
 Before placing events, resolve the target timeline:
 
+Prefer MCP:
+```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"

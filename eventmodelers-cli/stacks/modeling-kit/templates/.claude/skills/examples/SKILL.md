@@ -7,6 +7,8 @@ description: Find an element on an eventmodelers board by ID, name, or cell name
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 You are adding or improving example data on an eventmodelers element. You find the element, read all linked elements for context, then generate realistic and consistent example values for every field that is missing one or has a weak example.
 
 ---
@@ -23,7 +25,27 @@ From `$ARGUMENTS`, extract:
 
 ---
 
-## Step 2 — Resolve the element
+## Step 2 — Resolve and generate examples (prefer MCP)
+
+`add_field_examples` is a whole-algorithm convenience tool: it resolves the node, loads linked neighbours for cross-element consistency, fills any empty field examples, and writes the result back — collapsing the entire "find node → find linked nodes → build examples → submit_node_events" flow (Steps 2–5 below) into one call. Call it with whichever identifier matches `target`:
+
+- `target` is a UUID → pass `nodeId`
+- `target` is a name → pass `name`
+- `target` is a cell name (e.g. `B3`) → pass `cellName` + `timelineId` (the chapter id — if multiple chapters exist on the board, resolve which one first using 2c-fallback's chapter lookup, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`, and ask the user if ambiguous)
+
+```
+mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "nodeId": "<target, if a UUID>" }
+```
+```
+mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "name": "<target, if a name>" }
+```
+```
+mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "cellName": "<target, if a cell name>", "timelineId": "$CHAPTER_ID" }
+```
+
+If this succeeds, skip straight to Step 6 (report back), describing the fields the tool reports as changed. Use the manual fallback flow below (Steps 2–5) only if MCP isn't connected.
+
+### Fallback (no MCP) — Step 2: Resolve the element
 
 Try the resolution strategies in order until one succeeds.
 
@@ -70,7 +92,7 @@ From `meta.timelineData`, decode the cell name into a `cellId`:
 - Find the matching column in `columns` and the matching row in `rows`.
 - Compute: **`CELL_ID = row.id + "-" + column.id`** (cell IDs are always `<rowId>-<columnId>`).
 
-3. **Always fetch the cell live** to get the current node list — do not rely on the `nodeId` in the chapter's cell data, as it may be stale:
+3. **Always fetch the cell live** to get the current node list — do not rely on the `nodeId` in the chapter's cell data, as it may be stale. No MCP equivalent: `get_nodes` only filters by `type`, not `cellId`:
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID" \
@@ -85,7 +107,7 @@ Save the resolved node as `TARGET_NODE` (full JSON including `id`, `meta`, `edge
 
 ---
 
-## Step 3 — Load linked elements for context
+### Fallback (no MCP) — Step 3: Load linked elements for context
 
 Collect nearby elements to understand the domain context and generate consistent examples. **Never fetch all board nodes.** Only fetch specific nodes you already have IDs for.
 
@@ -116,7 +138,7 @@ For each neighbour element collected above (COMMAND, EVENT, READMODEL), extract 
 
 ---
 
-## Step 4 — Generate improved examples
+### Fallback (no MCP) — Step 4: Generate improved examples
 
 For each field in `TARGET_NODE.meta.fields`:
 
@@ -143,9 +165,25 @@ Build the updated `fields` array: same structure as the original, only the `exam
 
 ---
 
-## Step 5 — Write the update
+### Fallback (no MCP) — Step 5: Write the update
 
-Build the payload with Python to avoid shell JSON-escaping issues, then POST it:
+**Prefer MCP** (only reachable if you did the resolve/generate steps manually but still have MCP available): same event body, passed as a tool arg instead of `-d`:
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "$BOARD_ID",
+  "events": [{
+    "id": "<uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<TARGET_NODE.id>",
+    "boardId": "$BOARD_ID",
+    "timestamp": <epoch-ms>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "fields": "<updated-fields-array>" }
+  }]
+}
+```
+
+**Fallback (no MCP at all)** — build the payload with Python to avoid shell JSON-escaping issues, then POST it:
 
 ```bash
 python3 - <<EOF > /tmp/examples_payload.json

@@ -7,6 +7,8 @@ description: Add a new attribute or rename an existing attribute across a chain 
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 You are propagating an attribute change (add or rename) across a chain of elements on an eventmodelers board. You start at the target cell, apply the change, then walk backwards through inbound dependencies until you reach the source cell, applying the change to every element along the way.
 
 ---
@@ -25,7 +27,22 @@ If any of these were already provided in `$ARGUMENTS`, skip asking for them.
 
 ---
 
-## Step 2 — Resolve both cells to nodes
+## Step 2 — Resolve the chain
+
+**Prefer MCP:** `get_attribute_chain` resolves every node between the source and target cells (inclusive), ordered target→source, each with its full `fields[]` — this collapses the manual cell-resolution and inbound-edge walk below into one call. You still need `TIMELINE_ID` (the chapter to search): if multiple chapters exist on the board, resolve which one first (see 2a fallback below, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`) and ask the user if ambiguous.
+
+```
+mcp__eventmodelers__get_attribute_chain {
+  "boardId": "$BOARD_ID",
+  "timelineId": "$CHAPTER_ID",
+  "targetCellName": "<target cell, e.g. B2>",
+  "sourceCellName": "<source cell, e.g. A2>"
+}
+```
+
+The result gives you the ordered chain directly — save it as the chain used in Step 4, and skip the manual walk in 2a–3c below. Continue with the fallback only if MCP isn't connected.
+
+### Fallback (no MCP) — resolve both cells to nodes
 
 For each cell (target and source), resolve it to a node using the same cell-resolution strategy as the `examples` skill. Always fetch fresh:
 
@@ -49,7 +66,7 @@ Decode the cell name:
 s- Find the matching column in `columns` and row in `rows`.
 - Compute: **`CELL_ID = row.id + "-" + column.id`** (cell IDs are always `<rowId>-<columnId>`).
 
-3. Always fetch the cell live:
+3. Always fetch the cell live. No MCP equivalent: `get_nodes` only filters by `type`, not `cellId` — the alternative is `get_node` on the CHAPTER node, reading `meta.timelineData.cells` (a sparse array; an absent cell id means the cell is empty), but that reuses the same chapter fetch from step 2 rather than guaranteeing the freshest live state, so this curl call has no direct MCP replacement:
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
@@ -61,7 +78,7 @@ Save as `TARGET_NODE` and `SOURCE_NODE`.
 
 ---
 
-## Step 3 — Build the dependency chain
+### Fallback (no MCP) — build the dependency chain
 
 Walk backwards from `TARGET_NODE` to `SOURCE_NODE` by following inbound edges. Build an ordered list: `[TARGET_NODE, …intermediate nodes…, SOURCE_NODE]`.
 
@@ -71,6 +88,13 @@ Each node may have an `edges` array:
 edges: [{ id, source, target, sourceHandle, targetHandle }]
 ```
 An **inbound** edge is one where `edge.target === currentNode.id`. For each inbound edge, fetch the source node:
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$EDGE_SOURCE_ID" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EDGE_SOURCE_ID" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
@@ -123,7 +147,25 @@ For each node:
 - Find the field where `name === oldName` (case-insensitive). If not found in this node, skip it (log it).
 - Update only the `name` property to `newName`. Leave all other field properties unchanged.
 
-Build the updated `fields` array and send a `node:changed` event using Python to avoid JSON escaping issues:
+Build the updated `fields` array and send a `node:changed` event.
+
+**Prefer MCP** — same event body, passed as a tool arg instead of `-d`:
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "$BOARD_ID",
+  "events": [{
+    "id": "<uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<NODE_ID>",
+    "boardId": "$BOARD_ID",
+    "timestamp": <epoch-ms>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "fields": "<updated_fields_array>" }
+  }]
+}
+```
+
+**Fallback (no MCP)** — build the payload with Python to avoid JSON escaping issues, then POST it:
 
 ```bash
 python3 - <<EOF > /tmp/attributes_payload.json

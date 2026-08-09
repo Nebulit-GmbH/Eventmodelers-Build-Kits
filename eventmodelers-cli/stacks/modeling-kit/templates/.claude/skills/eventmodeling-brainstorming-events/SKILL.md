@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has provided detailed, well-documented requirements (written user stories, feature specs, business rules). Interview when requirements are vague, incomplete, or when domain expertise is uncertain.
@@ -118,6 +120,12 @@ This section feeds into subsequent steps (plotting, storyboarding, etc.)
 
 Before brainstorming, check for EVENT nodes already on the board to avoid duplicating events from a previous session:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
@@ -125,6 +133,12 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 
 If events already exist, treat them as the starting list and focus on discovering what might be missing. Also check for existing chapters (timelines) so you can reuse them:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
@@ -147,7 +161,13 @@ If all events belong to a single flow, one timeline is correct — do not split 
 
 For each group, create a chapter on the board **before placing any events**. Reuse an existing chapter if one already matches the workflow name.
 
-**Create a chapter:**
+**Prefer MCP — create a chapter:**
+```
+mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 1200 }
+```
+(`x`/`y` are optional — see the vertical-stacking note below. Response includes the new `timelineId`.)
+
+**Fallback (no MCP) — create a chapter:**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -156,6 +176,23 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
 ```
 
 **Immediately set its title** (use the workflow / bounded-context name):
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<chapterId>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": 1234567890,
+    "meta": {"type": "CHAPTER", "title": "Reservation & Lending"}
+  }]
+}
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -171,8 +208,14 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 ```
 
 **Stack timelines vertically so they do not overlap.**
-After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first and place the new chapter below the lowest one (`y = maxExistingY + 1200`):
+After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first and place the new chapter below the lowest one (`y = maxExistingY + 1200`). Pass this directly as `x`/`y` on `create_chapter` above, or reposition an existing chapter with:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__move_timeline_position { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "x": 0, "y": 1200 }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X PUT "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/position" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
@@ -225,6 +268,13 @@ When a chapter is available, place each event directly into it. **Include `cellI
 For each event:
 
 **Step A — Create a column** (append at end of the chapter):
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: brainstorming-events" \
@@ -233,6 +283,13 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 ```
 
 **Step B — Fetch the chapter to find the swimlane row ID** (only needed once per chapter):
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
@@ -241,7 +298,36 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 
 **Step C — Compute:** `cellId = swimlaneRow.id + "-" + columnId`
 
-**Step D — Create the event with `cellId`:**
+**Step D — Create the event with `cellId`.**
+
+**Prefer MCP** — pass the same shape to `submit_node_events` (`events` is a tool arg, not a `-d` body):
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>",
+    "eventType": "node:created",
+    "nodeId": "<node-uuid>",
+    "boardId": "<BOARD_ID>",
+    "timestamp": 1234567890,
+    "chapterId": "<chapterId>",
+    "cellId": "<swimlaneRowId>-<columnId>",
+    "meta": {
+      "type": "EVENT",
+      "title": "BookReserved",
+      "fields": [
+        {"name": "reservationId", "type": "String",   "example": "res-789"},
+        {"name": "copyId",        "type": "String",   "example": "copy-42"},
+        {"name": "memberId",      "type": "String",   "example": "mbr-101"},
+        {"name": "expiresAt",     "type": "DateTime", "example": "2026-06-01T00:00:00Z"},
+        {"name": "reservedAt",    "type": "DateTime", "example": "2026-05-29T10:00:00Z"}
+      ]
+    }
+  }]
+}
+```
+
+**Fallback (no MCP) — same body via `POST .../nodes/events`:**
 ```json
 [{
   "id": "<event-uuid>",

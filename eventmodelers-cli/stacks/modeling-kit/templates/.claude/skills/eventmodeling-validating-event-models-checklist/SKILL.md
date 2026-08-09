@@ -10,6 +10,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Then invoke the `learn-eventmodelers-api` skill to load the full API reference. Do not proceed until both skills have been loaded.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 **Purpose**: Validate any event-sourced CQRS event model against 16 architectural checks across 7 phases. Identifies anti-patterns and confirms compliance with event sourcing principles.
 
 **Applies To**: Any domain - e-commerce, banking, SaaS, marketplace, healthcare, etc.
@@ -35,6 +37,15 @@ allowed-tools:
 
 Read the current board state before running the checklist:
 
+**Prefer MCP:** call `get_nodes` once per type, or pull the fuller graph in one shot with `get_slice_data` if you need events/commands/readmodels/screens/specs/actors together:
+
+```
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
@@ -44,7 +55,7 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL"
 ```
 
-Use the board nodes as the model input. After the checklist, use `handle-comment` to post `TASK` comments on nodes that fail checks.
+Use the board nodes as the model input. After the checklist, use `handle-comment` to post `TASK` comments on nodes that fail checks (that skill covers the MCP `add_comment`/curl choice for comment-posting itself).
 
 ## Validation Phases (Domain-Agnostic)
 

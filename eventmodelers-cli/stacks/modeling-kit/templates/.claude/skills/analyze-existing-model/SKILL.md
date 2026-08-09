@@ -7,6 +7,8 @@ description: Analyze the existing event model on a board — summarizes contexts
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
 Read the full event model from a board and produce a structured analysis: what contexts exist, how many slices are in each state, which slices have GWT specs, and where the visible gaps are. This skill is read-only — it never posts comments or modifies the board.
 
 ---
@@ -26,6 +28,12 @@ If `boardId` is explicitly passed it overrides `BOARD_ID` from `connect`.
 
 ## Step 2 — List all slices
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__list_slices { "boardId": "$BOARD_ID" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
@@ -48,6 +56,12 @@ Save the full slice list. Count total slices and group by status:
 
 Fetch all `MODEL_CONTEXT` nodes to identify bounded contexts on the board:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
@@ -66,6 +80,12 @@ curl -s \
 
 For each resolved context, fetch the full element graph:
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>" }
+```
+
+**Fallback (no MCP):**
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
@@ -189,6 +209,14 @@ If a context was specified but not found, tell the user clearly and list the con
 
 ## Example — full board analysis
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__list_slices { "boardId": "$BOARD_ID" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" }
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "Ordering" }
+```
+
+**Fallback (no MCP):**
 ```bash
 # 1. List slices
 curl -s \
