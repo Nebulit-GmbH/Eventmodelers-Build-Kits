@@ -35,7 +35,9 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
    **Resolve `NODE_ID`** from the first entry of this turn's `context.selectedNodes`, if that array is present and non-empty; otherwise use this turn's `node_id` field. `context.selectedNodes` reflects what was actually selected on the canvas when the prompt was issued, which can differ from `node_id` — set only when the prompt originated from a specific node/comment — so it wins whenever both are present.
    **Resolve `CELL_ID`** from this turn's `context.selectedCell.id`, if present and non-null. When present, it overrules any cell reference (e.g. `"A2"`) parsed from the prompt text itself — it reflects the actual cell the user had selected on the canvas when they issued the prompt, and is more reliable than free-text parsing.
 4. **Mark the prompt as started** — invoke `/update-prompt-status` with this turn's `prompt_id` and `newStatus=IN_PROGRESS`, before doing any of the actual work below. This is what makes the board UI show the prompt as being actively worked on.
-5. Execute the prompt using the skill matched in the Skill Selection table below, passing the resolved `TIMELINE_ID`, `NODE_ID`, and `CELL_ID` from step 3 as that skill's `timelineId`/node-reference/`cellName` arguments (not the raw `timeline_id`/`node_id` fields, and not a cell reference parsed from the prompt text). For a skill like `/place-element` that accepts a `cellName`, pass the resolved `CELL_ID` as `cellName` whenever it's present — skip parsing the prompt text for a cell reference entirely in that case.
+5. **Invoke the matched skill — never substitute direct tool calls for it.** Execute the prompt using the skill matched in the Skill Selection table below, passing the resolved `TIMELINE_ID`, `NODE_ID`, and `CELL_ID` from step 3 as that skill's `timelineId`/node-reference/`cellName` arguments (not the raw `timeline_id`/`node_id` fields, and not a cell reference parsed from the prompt text). For a skill like `/place-element` that accepts a `cellName`, pass the resolved `CELL_ID` as `cellName` whenever it's present — skip parsing the prompt text for a cell reference entirely in that case.
+
+   `mcp__eventmodelers__*` tools (and the REST fallback) are building blocks a skill calls *internally* once you've invoked it — they are not a substitute for invoking the skill. Being able to see `mcp__eventmodelers__get_node`/`create_slice`/etc. in your tool list does not mean you should reach for them directly to satisfy a prompt that matches a row in the Skill Selection table: e.g. "add the next slice" always goes through `/eventmodeling-slicing-event-models` (falling through to `/add-next-slice` when nothing existing is left to slice) or `/place-element`, even though technically a couple of raw MCP calls could produce something on the board. The skill is what encodes the actual domain reasoning (which node type follows which, naming, field derivation, dependency notes) — a raw tool call skips all of that and produces a shallower result even when it "works." Only call MCP/REST directly when no row in the table matches the prompt's intent at all.
    **Questioning rule**: you are running autonomously — no human is available to answer questions. If you need clarification, do not pause or ask interactively — post a `QUESTION`-type comment (`/handle-comment` with `action=place`, `type=QUESTION`) on the most relevant node. Then:
    - If a reasonable default interpretation exists, continue with it.
    - If it doesn't — the prompt is ambiguous enough that any guess risks doing the wrong thing — stop instead of guessing. Skip straight to step 6 and mark the prompt `DONE` with a comment explaining what's unclear and pointing to the `QUESTION` comment you just posted. Never leave a prompt neither progressed nor closed.
@@ -52,13 +54,15 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
 | Add, rename, or reorder events on a timeline | `/timeline` |
 | Place a COMMAND, READMODEL, or EVENT at a position | `/place-element` |
 | Generate a full storyboard with multiple screens | `/storyboard` |
-| Design or update a single wireframe screen | `/storyboard-screen` |
-| Design or update a single real HTML/CSS screen (explicit request only) | `/html-screen` |
+| Design or update a single screen | `/html-screen` |
+| Design or update a single wireframe/sketch screen (explicit request only) | `/storyboard-screen` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
 | Look up any API endpoint or element type | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
+| Make an existing timeline element's (COMMAND/READMODEL/AUTOMATION) slice explicit | `/eventmodeling-slicing-event-models` |
+| Add the next slice when nothing existing is left to slice | `/add-next-slice` |
 | Update the status of a slice (e.g. done, in-progress) | `/update-slice-status` |
 | Update the status of the current prompt (e.g. in-progress, done) | `/update-prompt-status` |
 

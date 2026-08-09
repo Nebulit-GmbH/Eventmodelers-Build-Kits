@@ -5,9 +5,9 @@ description: Teaches an agent everything about the eventmodelers platform API �
 
 # Eventmodelers Platform API Reference
 
-You now have complete knowledge of the eventmodelers platform API. Use this reference whenever you need to call, implement, or reason about any endpoint.
+You now have complete knowledge of the eventmodelers platform API. This is a reference for *how a skill talks to the platform once you're already executing one* — it is not a license to call the API directly instead of invoking the skill that matches the user's intent (see the Skill Selection table in `CLAUDE.md`). If a prompt matches a row in that table, invoke that skill first and let it decide which endpoint/tool to call; only reach for this reference directly when no skill matches the intent at all, or when you're implementing/debugging a skill itself.
 
-**Two transports exist for board operations: MCP tools (preferred) and raw REST/curl (fallback).** The `connect` skill registers the MCP server in `.mcp.json`. Once `mcp__eventmodelers__*` tools are visible in your tool list, use them — they need no `x-token`/`x-board-id`/`x-user-id` headers (auth and org resolution happen server-side from the registered token) and return the same data as the REST endpoints below. Fall back to the numbered REST sections only when MCP tools aren't connected yet, or for the handful of endpoints (prompts lifecycle, snapshots, user management, board/extension CRUD) the MCP server intentionally doesn't expose — it only covers board-content operations (nodes, timelines, slices, comments, screens).
+**Two transports exist for board operations: MCP tools (preferred) and raw REST/curl (fallback).** The `connect` skill registers the MCP server in `.mcp.json`. Once `mcp__eventmodelers__*` tools are visible in your tool list, use them — they need no `x-token`/`x-board-id`/`x-user-id` headers (auth and org resolution happen server-side from the registered token) and return the same data as the REST endpoints below. Fall back to the numbered REST sections only when MCP tools aren't connected yet, or for the handful of endpoints (prompts lifecycle, snapshots, user management, board/extension CRUD) the MCP server intentionally doesn't expose — it only covers board-content operations (nodes, timelines, slices, comments, screens). This preference is about *which transport a skill's own instructions should use*, never about whether to invoke the skill in the first place.
 
 ---
 
@@ -57,8 +57,9 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `get_image_snapshot_description` | `boardId`, `nodeId` | Load the `{elements:[...]}` sketch description from storage | — (reads what §4 sketch endpoints write) |
 | `validate_slice_data` | `sliceData` | Offline validation of a `SliceDataOutput` payload — no board access | — (MCP-only, pure function) |
 | `commit_board_to_git` | `boardId` | Force a git-extension commit/push, bypassing the autoCommit gate | — (MCP-only; git extension) |
+| `update_prompt_status` | `promptId`, `newStatus`, `comment?` | Update a prompt's lifecycle status (`ADDED`/`CLAIMED`/`IN_PROGRESS`/`DONE`), optionally with a progress comment. Not board-scoped — no `boardId` arg; the prompt's board is resolved server-side. | §14 `POST .../prompts/:id/status` |
 
-**Not exposed via MCP at all** — always use REST/curl for these: §7 Config Import, §10 Snapshots, §11–12 User Management, §13 Utility (`/api/user`, swagger), and all of §14 Prompts (`update-prompt-status` skill). These are either admin/one-off operations or, in the case of Prompts, an intentionally separate lifecycle the board-content MCP server doesn't own.
+**Not exposed via MCP at all** — always use REST/curl for these: §7 Config Import, §10 Snapshots, §11–12 User Management, §13 Utility (`/api/user`, swagger), and the rest of §14 Prompts (submission, claiming, deletion, realtime-token) — only the status-update endpoint has an MCP tool (`update_prompt_status`, used by the `update-prompt-status` skill); everything else in Prompts is an intentionally separate lifecycle the board-content MCP server doesn't otherwise own.
 
 **Capabilities with no direct MCP filter** — e.g. REST's `GET .../nodes?cellId=<id>` (§3) has no `cellId` param on `get_nodes`. Get the same answer by calling `get_node` on the CHAPTER and reading `meta.timelineData.cells` (sparse array; a cell absent from it is empty) instead of asking the server to filter by cell.
 
@@ -432,9 +433,11 @@ Create a complete slice (1 column + 3 nodes automatically placed).
 ```
 
 **Slice node mapping**:
-- `state-change` → SCREEN (actor) + COMMAND (interaction) + EVENT (swimlane)
-- `state-view` → SCREEN (actor) + READMODEL (interaction) + EVENT (swimlane)
+- `state-change` → HTML_SCREEN (actor) + COMMAND (interaction) + EVENT (swimlane)
+- `state-view` → HTML_SCREEN (actor) + READMODEL (interaction) + EVENT (swimlane)
 - `automation` → AUTOMATION (actor) + COMMAND (interaction) + EVENT (swimlane)
+
+The actor HTML_SCREEN is created as a **stub** — a single visibly-placeholder page ("Untitled screen — design pending") unless `nodes.actor.pages` is passed explicitly. Whoever calls this (the `add-next-slice` skill — the one that creates a brand-new slice from scratch, as opposed to `eventmodeling-slicing-event-models`, which only makes existing elements explicit) is responsible for immediately replacing that stub via the `html-screen` skill — including gathering the board's existing screens first so the new one matches their established style, since `html-screen` itself has no visibility into other screens.
 
 **Response**: `200` — slice data
 
@@ -712,6 +715,8 @@ Claim the next pending (`ADDED`) prompt for a board — atomically flips it to `
 
 ### POST `/api/org/:orgId/prompts/:id/status`
 Set a prompt's status, optionally attaching a progress comment. Auth: `x-token` only (bot token — no user JWT needed, this is meant to be called directly by the agent working the prompt).
+
+**Prefer MCP**: `mcp__eventmodelers__update_prompt_status { "promptId": "<id>", "newStatus": "IN_PROGRESS", "comment": "..." }` — no `orgId`/`x-token` needed, same validation and response shape. Fall back to the curl below only when MCP tools aren't connected.
 
 **Request body**:
 ```typescript

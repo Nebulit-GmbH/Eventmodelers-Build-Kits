@@ -718,6 +718,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // skills. Only relevant to a bridge install — never copied into the four
     // backend stacks or modeling-kit.
     const isBridge = stackKey === BRIDGE_KIT.key;
+    const isModelingKit = stackKey === MODELING_KIT.key;
     const sharedBridgeSkills = isBridge ? join(__dirname, 'shared', 'bridge', options.target) : null;
 
     if (!existsSync(templatesSource)) {
@@ -924,6 +925,14 @@ async function installStack(stackKey, stackCfg, options = {}) {
       force: options.force,
     });
 
+    // Register the MCP server up front so it's available from the very first
+    // `claude` invocation (whether that's an interactive session opened right
+    // after install, or the agent loop's first spawn) instead of only appearing
+    // once `run`/`run --modeling` or `init-mcp` happens to run. Safe to write
+    // even without a token yet — the file only ever holds the env-var
+    // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
+    ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
+
     // --- 6. Install manifest (drives precise `uninstall` later) ---
     // Only the footprint listed here is ever removed by `uninstall` — the root
     // scaffold (step 2) is real project source the user builds on, so it's
@@ -938,6 +947,8 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log('\n✅ Done! Start your agent:\n');
     if (isBridge) {
       console.log('  npx @eventmodelers/cli bridge\n');
+    } else if (isModelingKit) {
+      console.log('  npx @eventmodelers/cli run --modeling\n');
     } else {
       console.log('  npx @eventmodelers/cli run          (--ollama or --bash for other runners)\n');
     }
@@ -1123,6 +1134,27 @@ async function configureMcp(options = {}) {
   }
 }
 
+// Registers the eventmodelers MCP server in `.mcp.json` at the project root, the
+// same file/shape the `connect` skill's Step 3.5 produces — kept here as a
+// belt-and-suspenders guarantee, since an agent executing that skill can skip a
+// step, but a `claude` process only ever discovers MCP servers at its own
+// startup. Anything spawning a `claude` process for this project (cold-spawn
+// per task, or a long-lived warm process) must call this first — a `.mcp.json`
+// written mid-session by the process itself is too late for that same process.
+// The token itself is never written to disk here — `${EVENTMODELERS_TOKEN}` is
+// resolved by `claude` from its own process env, which the caller must set.
+function ensureMcpRegistered(projectDir, baseUrl) {
+  const mcpConfigPath = join(projectDir, '.mcp.json');
+  const mcpConfig = readJsonSafe(mcpConfigPath);
+  mcpConfig.mcpServers = mcpConfig.mcpServers || {};
+  mcpConfig.mcpServers.eventmodelers = {
+    type: 'http',
+    url: `${baseUrl}/mcp`,
+    headers: { 'x-token': '${EVENTMODELERS_TOKEN}' },
+  };
+  writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+}
+
 // `run --modeling`: modeling-kit's one and only runtime mode — there is no
 // cold-spawn/tasks.json loop for this kit (that's a build-kit concept; see the
 // `run` command's build-kit-vs-modeling-kit gate above). It keeps ONE Claude
@@ -1134,7 +1166,7 @@ async function configureMcp(options = {}) {
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
 // See `.agent-modeling-kit/CLAUDE.md` for the per-turn instructions this mode's
 // modeling session follows.
-async function runModeling(kitDir, projectDir) {
+async function runModeling(kitDir, projectDir, verbose = false) {
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1185,33 +1217,50 @@ async function runModeling(kitDir, projectDir) {
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
-  const claudeEnv = cfg.anthropicBaseUrl ? { ...process.env, ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : process.env;
+  const claudeEnv = {
+    ...process.env,
+    ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
+    EVENTMODELERS_TOKEN: cfg.token,
+  };
 
   let proc = null;
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
 
+  // Collapses whitespace/newlines to a single line and truncates past `max` chars —
+  // a long multi-line curl command or grep pattern wrapped across many terminal lines
+  // is just as unreadable as no detail at all. Keeps one tool call to one log line.
+  function oneLine(s, max) {
+    const collapsed = String(s ?? '').replace(/\s+/g, ' ').trim();
+    return collapsed.length > max ? `${collapsed.slice(0, max)}…` : collapsed;
+  }
+
   // Bare tool names (`→ Bash`, `→ Skill`) tell you nothing happened worth
   // reading — this pulls out the one input field that actually says what the
-  // tool did, so the trace is skimmable without the interactive TUI.
+  // tool did, so the trace is skimmable without the interactive TUI. Only used
+  // in --verbose mode; the condensed default logs the bare name (or, for Skill,
+  // just the skill name) instead — see handleLine.
   function describeToolUse(block) {
     const input = block.input ?? {};
     switch (block.name) {
-      case 'Bash': return `Bash: ${input.command}`;
-      case 'Skill': return `Skill: ${input.skill}${input.args ? ` ${input.args}` : ''}`;
+      case 'Bash': return `Bash: ${oneLine(input.command, 100)}`;
+      case 'Skill': return `Skill: ${input.skill}${input.args ? ` ${oneLine(input.args, 60)}` : ''}`;
       case 'Read': return `Read: ${input.file_path}`;
       case 'Edit': return `Edit: ${input.file_path}`;
       case 'Write': return `Write: ${input.file_path}`;
-      case 'Grep': return `Grep: ${input.pattern}`;
+      case 'Grep': return `Grep: ${oneLine(input.pattern, 60)}`;
       case 'Glob': return `Glob: ${input.pattern}`;
       case 'WebFetch': return `WebFetch: ${input.url}`;
-      case 'Agent': return `Agent: ${input.description ?? input.subagent_type ?? ''}`;
+      case 'Agent': return `Agent: ${oneLine(input.description ?? input.subagent_type ?? '', 60)}`;
       default: return block.name;
     }
   }
 
   // stream-json output loses the normal interactive TUI (tool cards, live diffs) —
   // this is a plain-text approximation, good enough for a headless/voice runner.
+  // --verbose logs full tool input and assistant reasoning text; the default
+  // (condensed) mode logs only the high-level step — a skill name, or a bare tool
+  // name — so a long session reads as a step list instead of a full trace.
   function handleLine(line) {
     if (!line.trim()) return;
     let msg;
@@ -1219,8 +1268,12 @@ async function runModeling(kitDir, projectDir) {
 
     if (msg.type === 'assistant') {
       for (const block of msg.message?.content ?? []) {
-        if (block.type === 'text' && block.text) log(block.text);
-        if (block.type === 'tool_use') log(`→ ${describeToolUse(block)}`);
+        if (block.type === 'text' && block.text && verbose) log(block.text);
+        if (block.type === 'tool_use') {
+          if (verbose) log(`→ ${describeToolUse(block)}`);
+          else if (block.name === 'Skill') log(`→ Skill: ${block.input?.skill ?? ''}`);
+          else log(`→ ${block.name}`);
+        }
       }
       return;
     }
@@ -1581,7 +1634,7 @@ credentialFlags(program
         ? resolve(targetDir, globalOpts.config)
         : join(targetDir, '.eventmodelers', 'config.json');
       const effective = loadEffectiveConfig(targetDir, null, globalOpts.config);
-      await configureCredentials({
+      const cfg = await configureCredentials({
         config: effective.config,
         configPath,
         targetDir,
@@ -1591,6 +1644,12 @@ credentialFlags(program
         print: globalOpts.print,
         force: true,
       });
+
+      // Keep `.mcp.json` in sync — this command can change `baseUrl` (e.g.
+      // switching a project from prod to beta) independently of `init`, and a
+      // stale MCP registration pointing at the wrong host is worse than none
+      // (see the beta-api protected-resource-metadata incident this fixed).
+      ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
     }
   });
 
@@ -1600,6 +1659,7 @@ program
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
+  .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .action(async (opts) => {
     const cwd = process.cwd();
     // Both kit dirs can be installed side by side (e.g. running a build-kit and a
@@ -1637,7 +1697,7 @@ program
       // runModeling's own [modeling] log lines instead of before them.
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (warm Claude process) for ${relative(cwd, modelingKitDir)}...\n\n`, res));
       try {
-        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'));
+        await runModeling(modelingKitDir, resolve(modelingKitDir, '..'), !!opts.verbose);
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -1677,7 +1737,9 @@ program
     console.log(`▶ Starting ${relative(cwd, runnerPath)}...\n`);
     const cmd = runner.endsWith('.sh') ? `"${runnerPath}"` : `node "${runnerPath}"`;
     try {
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit' });
+      // Only ralph-claude.js reads this — the bash loop and the ollama executor have
+      // their own separate output paths with no stream-json parsing to gate.
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '' } });
     } catch (err) {
       process.exit(err.status || 1);
     }

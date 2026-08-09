@@ -1,6 +1,6 @@
 ---
 name: storyboard
-description: Build a complete visual storyboard with AI-generated screens from a natural language description — creates a chapter, N columns, and N custom sketch screens
+description: Build a complete visual storyboard with AI-generated screens from a natural language description — creates a chapter, N columns, and N custom HTML screens (wireframe sketches only if explicitly requested)
 ---
 
 # Storyboard Builder
@@ -9,7 +9,9 @@ description: Build a complete visual storyboard with AI-generated screens from a
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-You are building a complete visual storyboard by calling the board API. You generate the screen designs yourself using the grid description language below, then create the storyboard structure via `mcp__eventmodelers__*` tools (or `curl` as a fallback — see each step below). Only SCREEN nodes are created — no COMMAND or EVENT nodes.
+> **HTML is the default content type**: every screen this skill creates is a real HTML/CSS mockup (`contentType: "html"`, HTML_SCREEN node) unless the user's request explicitly asks for a "sketch", "wireframe", or "low-fidelity mockup" — only then does a screen use the sketch path (`contentType: "sketch"`, plain SCREEN node) described under "Sketch path (explicit request only)" below. Decide this once per storyboard, before Step 2 — do not mix content types across screens in the same storyboard unless the user asked for that mix.
+
+You are building a complete visual storyboard by calling the board API. You generate the screen designs yourself — HTML pages by default (see "HTML page design" below), or grid elements only when the sketch path applies — then create the storyboard structure via `mcp__eventmodelers__*` tools (or `curl` as a fallback — see each step below). Only SCREEN/HTML_SCREEN nodes are created — no COMMAND or EVENT nodes.
 
 ## Step 1 — Parse arguments
 
@@ -31,12 +33,27 @@ If `chapterId` is provided, skip chapter creation and go straight to Step 4.
 Before making any API calls, plan all N screens. For each screen, decide:
 
 - `screenTitle` — human-readable name (e.g. "Enter Credentials")
-- `elements` — a minimal list of grid elements (see language below, aim for 5–8 elements)
+- `pages` (default) — one or more complete HTML/CSS fragments for this screen (see "HTML page design" below), or `elements` — a minimal list of grid elements (see "Sketch path" below, aim for 5–8 elements) **only** when the sketch path applies for this storyboard
 - `visualDescription` — a prose description of the screen's visual layout and content (2–4 sentences) that lets someone who cannot see the image understand what is shown: what UI sections appear, what text/labels are visible, where buttons and inputs are placed, and the overall purpose of the screen
 
 Then **create one task per screen** using TaskCreate, naming each task after the screen title. This gives you a visible queue of work. Create the screens directly after each task has been planned.
 
-## Grid description language
+## HTML page design (default)
+
+Write normal, full-size HTML/CSS for each screen — as if designing a real webpage, not a tiny thumbnail. The canvas node renders this at a real page width and visually scales it down to fit, so there is no need to shrink font sizes or padding.
+
+- Each page is one complete, standalone HTML fragment — not a `data-step` div nested inside a shared blob. A multi-step flow is multiple pages, each fully self-contained.
+- Inline styles (`style="..."`) are the simplest way to keep each page self-contained.
+- No `<script>` tags, no inline event handlers (`onclick`, `onload`, ...), no `javascript:` URIs — these are stripped server-side before persisting. This is a static visual mockup, not an interactive prototype.
+- A real page background (e.g. a light gray full-bleed background behind a centered white card) reads more realistically than a bare form floating on white.
+- Don't add `<html>`/`<head>`/`<body>` tags — every page is a body-only fragment; the canvas wraps it at render time.
+- Bulma CSS (0.9.4) is loaded by default — classes like `title`, `button`, `is-primary`, `field`/`control`/`input` etc. all work out of the box. Headings need a size modifier too, e.g. `class="title is-1"`.
+
+## Sketch path (explicit request only)
+
+Only use this path when the user's request explicitly asked for a "sketch", "wireframe", or "low-fidelity mockup" for this storyboard. Otherwise skip straight to the HTML page design above.
+
+### Grid description language
 
 Canvas: **50 × 40 grid units** (1000 × 800 px, 1 unit = 20 px).
 
@@ -171,9 +188,42 @@ Extract `columnId` from the response. Compute the actor cell ID directly:
 
 **In both cases**, generate a node UUID: `SCREEN_NODE_ID`.
 
-### Step 5b — Create the node and render the sketch in one atomic call
+### Step 5b — Create the node and render it in one atomic call
 
-Build the payload, then send a single call that creates the SCREEN node, places it into the actor cell, and renders the sketch — all in one request. There is no intermediate state where the node exists without an image or without a cell.
+Build the payload, then send a single call that creates the screen node, places it into the actor cell, and renders its content — all in one request. There is no intermediate state where the node exists without content or without a cell.
+
+**Default — HTML (`contentType: "html"`, HTML_SCREEN node):**
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "html",
+  "nodeId": "<SCREEN_NODE_ID>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellId": "<actorCellId>",
+  "pages": ["<div>...</div>"],
+  "description": "<screenTitle — what this screen shows>"
+}
+```
+
+**Fallback (no MCP):**
+
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$SCREEN_NODE_ID" \
+  -H "x-token: $TOKEN" \
+  -H "x-board-id: $BOARD_ID" \
+  -H "x-user-id: agent" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorCellId>",
+    "pages": ["<div>...</div>"]
+  }'
+```
+
+**Sketch path (explicit request only) — `contentType: "sketch"`, plain SCREEN node:**
 
 **Prefer MCP:**
 

@@ -7,7 +7,7 @@ description: Update the lifecycle status (and optionally a progress comment) of 
 
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
-> **No MCP path for this skill**: the `mcp__eventmodelers__*` tools only cover board/canvas content (nodes, timelines, slices, comments, screens). The prompt queue (`/api/org/:orgId/prompts/...`) is a separate lifecycle the MCP server does not expose at all, so this skill stays 100% curl — there is nothing to swap in below.
+Prefer `mcp__eventmodelers__update_prompt_status` when available (registered by the `connect` skill) — the curl block below is the fallback for sessions without MCP connected. This is the one prompt-queue operation MCP does expose (submission, claiming, and deletion remain curl-only — the MCP server otherwise doesn't own this lifecycle).
 
 Every prompt drained from a board's queue (`/api/org/:orgId/prompts/next`) carries a `PROMPT_ID` — passed into this session as the `prompt_id` field of the current turn. This skill flips that prompt's status so the board UI reflects what the agent is doing with it in real time.
 
@@ -38,6 +38,13 @@ If `newStatus` is not one of these exact values, stop and tell the user the vali
 
 ## Step 2 — Update the status
 
+**Prefer MCP:**
+```
+mcp__eventmodelers__update_prompt_status { "promptId": "<PROMPT_ID>", "newStatus": "<newStatus>", "comment": "<comment>" }
+```
+Omit `comment` entirely when there isn't one — don't pass an empty string.
+
+**Fallback (no MCP):**
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/prompts/$PROMPT_ID/status" \
   -H "Content-Type: application/json" \

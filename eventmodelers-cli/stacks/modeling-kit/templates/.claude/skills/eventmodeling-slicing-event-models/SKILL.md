@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-slicing-event-models
-description: "Identify feature slices directly from a completed event model's timeline and create slice definitions on the board — each COMMAND becomes a state-change slice, each READMODEL becomes a state-view slice, each AUTOMATION becomes an automation slice. Use after completing event modeling to define slice boundaries and note event dependencies between them. Do not use for: organizational team structure based on Conway's Law (use eventmodeling-applying-conways-law) or planning before the event model is complete (complete the full model first using eventmodeling-orchestrating-event-modeling)."
+description: "Identify feature slices directly from a completed event model's timeline and create slice definitions on the board — each COMMAND becomes a state-change slice, each READMODEL becomes a state-view slice, each AUTOMATION becomes an automation slice. Use after completing event modeling to define slice boundaries and note event dependencies between them. Do not use for: organizational team structure based on Conway's Law (use eventmodeling-applying-conways-law), planning before the event model is complete (complete the full model first using eventmodeling-orchestrating-event-modeling), or 'add the next slice' when every existing element already has one (use add-next-slice — this skill only makes existing elements explicit, it never invents new ones)."
 allowed-tools:
   - AskUserQuestion
   - Write
@@ -141,6 +141,8 @@ curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-defi
 - AUTOMATION column → title = automation name, or the command it issues (automation slice)
 
 Use **`create_slice_definition`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definition`/`slice-definitions` only adds a `SLICE_BORDER` node to the column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
+
+**If Step 2 finds nothing to slice** (every COMMAND/READMODEL/AUTOMATION on the timeline already has a matching `SLICE_BORDER`), this skill's job is done — there is no existing element left to make explicit. Do not invent new model content here; that is out of scope for a skill whose whole design assumes the model is already complete. Invoke the `add-next-slice` skill instead — it owns deciding on and creating a genuinely new slice from scratch.
 
 ## Step 4 (Optional): Note Dependencies Between Slices
 

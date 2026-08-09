@@ -1,6 +1,6 @@
 ---
 name: wdyt
-description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as QUESTION-type comments on relevant nodes — plus lightweight visual annotations (arrows, text callouts, group loops) for the most important findings — to uncover gaps, edge cases, and missing scenarios.
+description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as QUESTION-type comments on relevant nodes. Findings about a relationship between elements or a cluster of elements are always additionally drawn on the canvas (arrows, group loops) — comments carry every textual question, drawings carry every visual/structural hint.
 ---
 
 # WDYT — What Do You Think?
@@ -95,9 +95,14 @@ Every question and every summary theme must be written in plain business languag
 
 ---
 
-## Step 4 — Post questions as comments, plus visual annotations for the standout findings
+## Step 4 — Comments carry every textual question; drawings carry every visual/structural hint
 
-### 4.1 Comments (the primary channel — every question gets one)
+The two channels have a strict division of labor, always applied the same way — never swap them:
+
+- **Every textual question is a comment.** If the finding is "what happens / who does this / what do we expect" about a single element, it is worded and lives only in a `QUESTION` comment. Never draw a text callout on the canvas to carry a question — that content belongs in 4.1, full stop.
+- **Every visual/structural hint is a drawing.** If the finding is inherently about *where things are relative to each other* — a relationship between two elements, or a cluster of elements sharing one concern — it is always additionally drawn on the canvas (4.2), not left as text alone. This isn't a selective "top 3" step; it's determined by the shape of the finding itself: relational or clustered → draw it, every time.
+
+### 4.1 Comments (every textual question, always)
 
 For each question you want to ask, post it as a `QUESTION`-type comment on the most relevant node (the COMMAND, EVENT, SCREEN, or READMODEL the question is about). If a question is about the whole slice rather than a specific element, post it on the first/primary EVENT of the slice.
 
@@ -111,17 +116,16 @@ The comment API has no batch endpoint — `handle-comment` sends one request per
 
 Only post questions that are **genuinely unclear or missing** — don't post observations that are clearly intentional design decisions.
 
-### 4.2 Visual annotations (drawings, arrows, text) — for the 1–3 findings worth surfacing on the canvas itself
+### 4.2 Drawings (every relational or clustered finding, always)
 
-Comments live behind a small icon someone has to click open. For the handful of findings that matter most this pass, also draw directly on the canvas so the concern is visible at a glance. This is additive, not a replacement for 4.1 — every annotation you draw should still have a matching `QUESTION` comment on the specific node; the drawing is just a second, more visible surface for your single sharpest point, not a duplicate of every comment.
+Use `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`). There are two kinds — no text-callout kind; a drawing never carries the question itself, only the shape of the concern:
 
-Use `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`):
+- **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions). Get element positions from the slice data already loaded in Step 2 (or `GET .../nodes/{nodeId}` if not present).
+- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box via `.../drawing/draw`. This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
 
-- **Text callout** (`kind: "text"`) — a short label placed just outside the element it concerns. Use for a single punchy business question, e.g. `"What if this fails?"`. Get the target element's `x`/`y` from the slice data already loaded in Step 2 (or `GET .../nodes/{nodeId}` if not present); place the callout a little above/beside it (e.g. `y - 40`). Keep `content` to a few words — this is a canvas label, not the full question (the full question is the comment).
-- **Arrow** (`kind: "path"`, `arrowEnd: true`) — when the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"), draw a straight line from one element's position to the other's instead of (or in addition to) worded comments on each. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions).
-- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — when the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"), circle the whole cluster with a loop instead of one comment per node. There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box via `.../drawing/draw`, optionally with a second `text` drawing near the top as a caption. This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
+Every arrow/group loop is paired with a `QUESTION` comment on the relevant node(s) from 4.1 — the drawing makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
 
-Be selective: 1–3 visual annotations per session, reserved for the findings you'd most want a stakeholder to notice without opening a single comment. Everything else stays a comment only.
+A finding about a single element with no relational or cluster dimension gets a comment only — don't manufacture an arrow or loop for it just to add a drawing.
 
 ---
 

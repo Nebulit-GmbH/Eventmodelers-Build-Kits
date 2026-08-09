@@ -85,8 +85,8 @@ Use skills in Claude Code with `/skill-name`:
 | `/timeline` | Live event storming facilitator |
 | `/wdyt` | Business analyst review of your event model |
 | `/storyboard` | Build a full visual storyboard |
-| `/storyboard-screen` | Design individual wireframe screens |
-| `/html-screen` | Design individual real HTML/CSS screens (explicit request only) |
+| `/html-screen` | Design individual real HTML/CSS screens (default) |
+| `/storyboard-screen` | Design individual wireframe/sketch screens (explicit request only) |
 | `/place-element` | Place commands/events/read models on the board |
 | `/learn-eventmodelers-api` | Full API reference for agent use |
 | `/attributes` | Add/rename attributes across a chain of elements |

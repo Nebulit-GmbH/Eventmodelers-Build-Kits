@@ -1,6 +1,6 @@
 ---
 name: html-screen
-description: Design and render a single real HTML/CSS screen (one or more pages) onto an HTML_SCREEN node — use only when the user explicitly asks for an HTML screen; sketches (storyboard-screen) remain the default for ordinary screen requests
+description: Design and render a single real HTML/CSS screen (one or more pages) onto an HTML_SCREEN node — this is the default skill for any "design a screen" / "storyboard this" request; wireframe sketches (storyboard-screen) are used only when the user explicitly asks for one
 ---
 
 # HTML Screen Designer
@@ -9,7 +9,7 @@ description: Design and render a single real HTML/CSS screen (one or more pages)
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-> **EXPLICIT USE ONLY**: Do not reach for this skill on an ordinary "design a screen" / "storyboard this" request — that default remains `storyboard-screen`, which renders a wireframe sketch onto a SCREEN node. Use this skill **only** when the user explicitly asks for an "HTML screen", a "real webpage", a "coded/HTML mockup", or names the HTML_SCREEN node type directly.
+> **DEFAULT SCREEN SKILL**: Reach for this skill on any ordinary "design a screen" / "storyboard this" request — it is the default, rendering a real HTML/CSS mockup onto an HTML_SCREEN node. Use `storyboard-screen` (a low-fidelity wireframe sketch onto a plain SCREEN node) **only** when the user explicitly asks for a "sketch", a "wireframe", a "low-fidelity mockup", or names the SCREEN node type directly.
 
 > **MANDATORY RENDER + VERIFY**: The render call in Step 4 and the verification in Step 5 are **not optional**. This skill exists solely to produce rendered pages. An HTML_SCREEN node with no non-empty page is an empty placeholder that adds no value to the model. If the render call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
 

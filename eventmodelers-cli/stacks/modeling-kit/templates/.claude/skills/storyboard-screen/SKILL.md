@@ -1,6 +1,6 @@
 ---
 name: storyboard-screen
-description: Design and render a single AI-generated wireframe screen onto an existing SCREEN node using the sketch API
+description: Design and render a single AI-generated wireframe sketch screen onto an existing SCREEN node using the sketch API — use only when the user explicitly asks for a wireframe/sketch; html-screen is the default for ordinary screen requests
 ---
 
 # Storyboard Screen Designer
@@ -8,6 +8,8 @@ description: Design and render a single AI-generated wireframe screen onto an ex
 > **Before doing anything else**, invoke the `connect` skill to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+
+> **EXPLICIT USE ONLY**: Do not reach for this skill on an ordinary "design a screen" / "storyboard this" request — the default is `html-screen`, which renders a real HTML/CSS mockup onto an HTML_SCREEN node. Use this skill **only** when the user explicitly asks for a "sketch", a "wireframe", a "low-fidelity mockup", or names the SCREEN node type directly.
 
 > **MANDATORY RENDER + VERIFY**: The sketch API call in Step 4 and the verification in Step 5 are **not optional**. This skill exists solely to produce a rendered wireframe. A SCREEN node without a rendered sketch is an empty placeholder that adds no value to the model. If the sketch API call is skipped or fails, or verification reports `valid: false`, the task is incomplete — retry or report the error.
 

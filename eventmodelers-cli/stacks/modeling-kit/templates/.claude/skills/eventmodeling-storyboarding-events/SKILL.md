@@ -299,24 +299,27 @@ Solution: Every event includes timestamp
 
 ## Board Integration
 
-Before starting the analysis, read existing SCREEN nodes from the board to avoid designing screens that already exist:
+Before starting the analysis, read existing screen nodes from the board to avoid designing screens that already exist. Screens created by this skill default to HTML_SCREEN, but older boards may still have plain SCREEN (sketch) nodes — check both types:
 
 **Prefer MCP:**
 ```
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN" }
 mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN" }
 ```
 
 **Fallback (no MCP):**
 ```bash
 curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN"
+curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN"
 ```
 
-After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any SCREEN node where data fields are unclear or missing sources are identified.
+After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any screen node where data fields are unclear or missing sources are identified.
 
-## Mandatory Field Definitions on SCREEN Nodes
+## Mandatory Field Definitions on Screen Nodes
 
-> **CRITICAL: Every SCREEN node MUST include `meta.fields` with a `mapping` on every field.** A screen without fields cannot show data lineage — it becomes impossible to verify that all displayed data has a source event or command.
+> **CRITICAL: Every screen node MUST include `meta.fields` with a `mapping` on every field.** A screen without fields cannot show data lineage — it becomes impossible to verify that all displayed data has a source event or command. This applies regardless of which content type the screen renders as (HTML_SCREEN by default, or SCREEN when a sketch was explicitly requested).
 
 There are two types of screens, and each type has a different `mapping` source:
 
@@ -345,7 +348,7 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
 
 ```json
 {
-  "type": "SCREEN",
+  "type": "HTML_SCREEN",
   "title": "Reserve a Bike",
   "fields": [
     {"name": "bikeId",      "type": "String",   "example": "bike-17",               "mapping": "ReserveBike.bikeId"},
@@ -362,7 +365,7 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
 
 ```json
 {
-  "type": "SCREEN",
+  "type": "HTML_SCREEN",
   "title": "Reservation Confirmed",
   "fields": [
     {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "ActiveReservationView.reservationId"},
@@ -391,9 +394,9 @@ Every field must also set `"cardinality"` — use `"Single"` unless the field ge
 
 A screen that only has a title and no fields is an empty placeholder — place the fields before moving on.
 
-## Mandatory Sketch Rendering
+## Mandatory Screen Rendering
 
-Every SCREEN node requires a wireframe sketch. The correct order for every screen is:
+Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen` rendering path below) is the default for every screen** — render a real HTML/CSS mockup, not a wireframe sketch. Only use the sketch path (plain SCREEN node, grid elements) when the user's request explicitly asked for a "sketch", "wireframe", or "low-fidelity mockup". The correct order for every screen is:
 
 **Step A — Compute the cell ID.** Screens go in the **actor lane** of their target column.
 
@@ -414,7 +417,40 @@ Every SCREEN node requires a wireframe sketch. The correct order for every scree
    ```
 3. `cellId = actorRow.id + "-" + columnId`
 
-**Step B — Create the SCREEN node with `cellId`** (`node:created`) — the node is immediately placed in the correct cell:
+**Step B (default) — Create the HTML_SCREEN node and render it in one atomic call.** Use `create_screen` with `contentType: "html"` — this creates the node, places it in `cellId`, and renders its pages together, so there is no window where the node exists without content:
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "html",
+  "nodeId": "<node-uuid>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellId": "<actorRowId>-<columnId>",
+  "pages": ["<div>...</div>"],
+  "description": "<concise description of what this screen shows>"
+}
+```
+
+**Fallback (no MCP):**
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
+  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorRowId>-<columnId>",
+    "pages": ["<div>...</div>"]
+  }'
+```
+
+Once the node is created, still set `meta.fields` on it (per "Mandatory Field Definitions" above) via `node:changed` — `create_screen`/the HTML endpoint owns page content, not the field-lineage metadata.
+
+Design the page(s) as real HTML/CSS, following the `html-screen` skill's guidance: write full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper — the canvas adds those), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default. Every page MUST include real field labels matching the actual event/command fields this screen captures or displays, and at least one primary action (submit/confirm button) for command screens.
+
+> **CRITICAL: NEVER pass an empty `pages` array.** An empty pages array produces a blank placeholder and is always wrong. You MUST design and include actual page markup before calling the render API.
+
+**Step B (sketch path, explicit request only) — Create the SCREEN node with `cellId`** (`node:created`) — only when the user explicitly asked for a wireframe/sketch:
 
 **Prefer MCP:**
 ```
@@ -450,7 +486,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   }]'
 ```
 
-**Step C — Render the wireframe sketch immediately** (`POST /images/$NODE_ID/sketch`).
+**Step C (sketch path only) — Render the wireframe sketch immediately** (`POST /images/$NODE_ID/sketch`).
 
 > **Do NOT call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first, causing the node to appear in two columns simultaneously. `node:created + cellId` is the single placement step — render the sketch right after.
 
@@ -510,7 +546,7 @@ Every sketch MUST include at minimum:
 - Field labels that match the actual event/command fields this screen captures or displays
 - At least one primary action (submit button, confirm button, etc.) for command screens
 
-A screen node without a wireframe sketch is an empty placeholder. It must not be left unrendered.
+A screen node without rendered content (HTML pages by default, or a wireframe sketch on the explicit-request path) is an empty placeholder. It must not be left unrendered.
 
 ## Timeline Placement Rules
 
@@ -644,7 +680,7 @@ Failure produces: [Event]
 
 ## Quality Checklist
 
-- [ ] **Every screen has a rendered wireframe sketch** (sketch API returned HTTP 204 — no exceptions)
+- [ ] **Every screen has rendered content** — HTML pages by default (`create_screen`/`render_screen` with `contentType: "html"` returned success), or a wireframe sketch only when explicitly requested — no exceptions
 - [ ] **No column contains more than one SCREEN node** across all actor lanes
 - [ ] Every screen's wireframe shows real field labels matching the event/command fields
 - [ ] Every displayed field has a source event

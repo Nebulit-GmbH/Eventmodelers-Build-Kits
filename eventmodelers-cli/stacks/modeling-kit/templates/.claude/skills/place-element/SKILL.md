@@ -281,7 +281,40 @@ If no matching row is found, stop and report the error — the timeline may be m
 
 ### Step 7a — SCREEN only: create and render in one atomic call
 
-**Only applies when `elementType === "SCREEN"`.** Do not create the node via `/nodes/events` first and render the sketch onto it in a second call — that leaves a window where the node exists with no image (an empty "Board Image" placeholder if anything interrupts between the two calls). Design the sketch elements first (same grid language as `storyboard-screen`), then send a single call that creates the node, places it, and renders the sketch together:
+**Only applies when `elementType === "SCREEN"`.** Do not create the node via `/nodes/events` first and render its content onto it in a second call — that leaves a window where the node exists with no image (an empty "Board Image" placeholder if anything interrupts between the two calls). Send a single call that creates the node, places it, and renders it together.
+
+**Default — HTML (`contentType: "html"`, HTML_SCREEN node):** design the page(s) as real HTML/CSS (see the `html-screen` skill's page-design guidance).
+
+**Prefer MCP:**
+
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "html",
+  "nodeId": "<node-uuid>",
+  "chapterId": "<TIMELINE_ID>",
+  "cellId": "<CELL_ID>",
+  "pages": ["<div>...</div>"],
+  "description": "<title — what this screen shows>"
+}
+```
+
+**Fallback (no MCP):**
+
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
+  -H "x-token: $TOKEN" \
+  -H "x-board-id: $BOARD_ID" \
+  -H "x-user-id: agent" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "chapterId": "<TIMELINE_ID>",
+    "cellId": "<CELL_ID>",
+    "pages": ["<div>...</div>"]
+  }'
+```
+
+**Sketch path (explicit request only) — `contentType: "sketch"`, plain SCREEN node:** only use this when the user explicitly asked for a "sketch"/"wireframe"/"low-fidelity mockup". Design the sketch elements first (same grid language as `storyboard-screen`):
 
 **Prefer MCP:**
 

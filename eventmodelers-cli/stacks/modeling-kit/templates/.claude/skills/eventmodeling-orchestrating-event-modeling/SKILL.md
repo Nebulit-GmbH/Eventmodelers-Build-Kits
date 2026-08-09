@@ -218,7 +218,7 @@ Invoke `eventmodeling-storyboarding-events`.
 human role, showing what data each screen displays and collects.
 **Gate**: Every human role from the Role Catalog has at least one screen.
 
-Use the Story-Board-Screen skill to sketch and provide Mockups. 
+Use the `html-screen` skill to render a real HTML/CSS mockup for every screen — this is the default for each screen. Fall back to `storyboard-screen` (wireframe sketch) only when the user explicitly asked for sketches/wireframes.
 
 You can reuse columns if screens can be matched to existing events, place the screen in the same
 column as the event in the actor lane
