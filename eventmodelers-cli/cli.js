@@ -932,6 +932,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // even without a token yet — the file only ever holds the env-var
     // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
     ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
+    ensureEnvToken(targetDir, config.token);
 
     // --- 6. Install manifest (drives precise `uninstall` later) ---
     // Only the footprint listed here is ever removed by `uninstall` — the root
@@ -1153,6 +1154,46 @@ function ensureMcpRegistered(projectDir, baseUrl) {
     headers: { 'x-token': '${EVENTMODELERS_TOKEN}' },
   };
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+}
+
+// Companion to ensureMcpRegistered: that function deliberately never writes the
+// token itself, on the assumption the caller sets EVENTMODELERS_TOKEN in whatever
+// process spawns `claude` (true for `run --modeling`'s own spawn). It is NOT true
+// for an interactive session opened directly in the project right after
+// `init`/`init-config` — that `claude` process inherits the user's shell env,
+// which never had a reason to already have this var set. Without a `.env` to
+// resolve it from, `.mcp.json`'s `${EVENTMODELERS_TOKEN}` placeholder resolves to
+// empty, the MCP server gets an empty x-token header, and the connection fails —
+// silently, until something happens to trigger the `connect` skill's own Step 3.5,
+// which writes this same file. Do it here too so a fresh interactive session works
+// without depending on that skill having run first.
+function ensureEnvToken(targetDir, token) {
+  if (!token) return;
+  const envPath = join(targetDir, '.env');
+  const line = `EVENTMODELERS_TOKEN=${token}`;
+
+  if (existsSync(envPath)) {
+    const content = readFileSync(envPath, 'utf-8');
+    if (/^EVENTMODELERS_TOKEN=/m.test(content)) {
+      const updated = content.replace(/^EVENTMODELERS_TOKEN=.*$/m, line);
+      if (updated !== content) writeFileSync(envPath, updated);
+    } else {
+      appendFileSync(envPath, `${content === '' || content.endsWith('\n') ? '' : '\n'}${line}\n`);
+    }
+  } else {
+    writeFileSync(envPath, `${line}\n`);
+  }
+
+  const gitignorePath = join(targetDir, '.gitignore');
+  if (existsSync(gitignorePath)) {
+    const content = readFileSync(gitignorePath, 'utf-8');
+    if (!content.split('\n').map((l) => l.trim()).includes('.env')) {
+      appendFileSync(gitignorePath, `${content === '' || content.endsWith('\n') ? '' : '\n'}.env\n`);
+    }
+  } else {
+    writeFileSync(gitignorePath, '.env\n');
+  }
+  console.log('  ✓ Wrote EVENTMODELERS_TOKEN to .env (gitignored)');
 }
 
 // `run --modeling`: modeling-kit's one and only runtime mode — there is no
@@ -1650,6 +1691,7 @@ credentialFlags(program
       // stale MCP registration pointing at the wrong host is worse than none
       // (see the beta-api protected-resource-metadata incident this fixed).
       ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
+      ensureEnvToken(targetDir, cfg.token);
     }
   });
 
