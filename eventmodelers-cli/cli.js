@@ -1161,39 +1161,50 @@ function ensureMcpRegistered(projectDir, baseUrl) {
 // process spawns `claude` (true for `run --modeling`'s own spawn). It is NOT true
 // for an interactive session opened directly in the project right after
 // `init`/`init-config` — that `claude` process inherits the user's shell env,
-// which never had a reason to already have this var set. Without a `.env` to
-// resolve it from, `.mcp.json`'s `${EVENTMODELERS_TOKEN}` placeholder resolves to
-// empty, the MCP server gets an empty x-token header, and the connection fails —
-// silently, until something happens to trigger the `connect` skill's own Step 3.5,
-// which writes this same file. Do it here too so a fresh interactive session works
-// without depending on that skill having run first.
+// which never had a reason to already have this var set.
+//
+// A plain `.env` file does NOT fix this — Claude Code never sources one; per its
+// own docs, an unresolved `.mcp.json` placeholder is left as the literal
+// `${EVENTMODELERS_TOKEN}` text, which fails auth and falls back to an OAuth
+// flow the eventmodelers server can't actually satisfy for this client. The
+// only things Claude Code itself resolves `.mcp.json` placeholders against are
+// the inherited shell env and its own settings files' `env` block. `.claude/
+// settings.local.json` is the documented per-user, gitignored-by-convention
+// scope for exactly this — same idea as `.eventmodelers/config.json` already
+// holding the raw token, just in the one file Claude Code's own process env
+// actually consults before expanding `.mcp.json`.
 function ensureEnvToken(targetDir, token) {
   if (!token) return;
-  const envPath = join(targetDir, '.env');
-  const line = `EVENTMODELERS_TOKEN=${token}`;
+  const claudeDir = join(targetDir, '.claude');
+  mkdirSync(claudeDir, { recursive: true });
+  const settingsPath = join(claudeDir, 'settings.local.json');
 
-  if (existsSync(envPath)) {
-    const content = readFileSync(envPath, 'utf-8');
-    if (/^EVENTMODELERS_TOKEN=/m.test(content)) {
-      const updated = content.replace(/^EVENTMODELERS_TOKEN=.*$/m, line);
-      if (updated !== content) writeFileSync(envPath, updated);
-    } else {
-      appendFileSync(envPath, `${content === '' || content.endsWith('\n') ? '' : '\n'}${line}\n`);
+  let settings = {};
+  if (existsSync(settingsPath)) {
+    try {
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    } catch {
+      settings = {};
     }
-  } else {
-    writeFileSync(envPath, `${line}\n`);
   }
 
+  settings.env = settings.env || {};
+  settings.env.EVENTMODELERS_TOKEN = token;
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+  // settings.local.json is gitignored by Claude Code's own convention, but make
+  // sure nothing here relies on that silently — it now holds a live secret.
   const gitignorePath = join(targetDir, '.gitignore');
+  const entry = '.claude/settings.local.json';
   if (existsSync(gitignorePath)) {
     const content = readFileSync(gitignorePath, 'utf-8');
-    if (!content.split('\n').map((l) => l.trim()).includes('.env')) {
-      appendFileSync(gitignorePath, `${content === '' || content.endsWith('\n') ? '' : '\n'}.env\n`);
+    if (!content.split('\n').map((l) => l.trim()).includes(entry)) {
+      appendFileSync(gitignorePath, `${content === '' || content.endsWith('\n') ? '' : '\n'}${entry}\n`);
     }
   } else {
-    writeFileSync(gitignorePath, '.env\n');
+    writeFileSync(gitignorePath, `${entry}\n`);
   }
-  console.log('  ✓ Wrote EVENTMODELERS_TOKEN to .env (gitignored)');
+  console.log('  ✓ Wrote EVENTMODELERS_TOKEN to .claude/settings.local.json (gitignored)');
 }
 
 // `run --modeling`: modeling-kit's one and only runtime mode — there is no
