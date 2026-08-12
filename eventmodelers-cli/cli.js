@@ -754,6 +754,10 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // --- 2. Spread stack scaffold files into the project root ---
+    // Skipped entirely by `re-init` (options.skipRootScaffold) — that command only
+    // refreshes an already-scaffolded project's kit dir + skills, and must never
+    // re-touch root/ files the user has since built on top of, nor the root
+    // CLAUDE.md router below.
     const rootSrc = join(templatesSource, 'root');
     // root/CLAUDE.md is never copied to the project root directly (see step 3 below) —
     // built-in stacks no longer ship one at all, and an outdated community/--git stack
@@ -761,7 +765,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // copy must never let it slip through to root and clobber the shared router there.
     const stackRootClaudeSrc = join(rootSrc, 'CLAUDE.md');
     const stackShipsOwnRootClaude = existsSync(stackRootClaudeSrc);
-    if (existsSync(rootSrc)) {
+    if (!options.skipRootScaffold && existsSync(rootSrc)) {
       console.log('📦 Installing project files...');
       // .gitignore is the one file every stack's root/ ships that can collide with
       // another already-installed kit's own .gitignore (e.g. modeling-kit + a build-kit
@@ -796,7 +800,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // instead of silently guessing either way.
     const rootClaudeDest = join(targetDir, 'CLAUDE.md');
     const sharedRootClaude = join(__dirname, 'shared', 'root-claude', 'CLAUDE.md');
-    const routerContent = existsSync(sharedRootClaude) ? readFileSync(sharedRootClaude, 'utf-8') : null;
+    const routerContent = options.skipRootScaffold ? null : (existsSync(sharedRootClaude) ? readFileSync(sharedRootClaude, 'utf-8') : null);
     if (routerContent !== null) {
       if (!existsSync(rootClaudeDest)) {
         writeFileSync(rootClaudeDest, routerContent);
@@ -1617,6 +1621,49 @@ credentialFlags(program
       global: opts.global,
       force: opts.force,
       credentialOverrides: credentialOverridesFromOpts(opts),
+    });
+  });
+
+// Every kit config `re-init` can refresh, keyed the same way install-manifest.json's
+// `stack` field is — looked up after reading that manifest so re-init knows exactly
+// which templates to re-copy without the user having to pass --stack again.
+const REINITIABLE_STACKS = { ...STACKS, [MODELING_KIT.key]: MODELING_KIT, [BLANK_BUILD_KIT.key]: BLANK_BUILD_KIT };
+
+credentialFlags(program
+  .command('re-init')
+  .description('Refresh an already-installed kit from the current CLI version — re-copies skills and the kit dir (.build-kit or .agent-modeling-kit) so you pick up script/skill updates after upgrading. Unlike `init`, never touches the project root scaffold or the root CLAUDE.md router, and leaves existing credentials alone unless --force is passed.')
+  .option('--modeling', 'Refresh the modeling kit (.agent-modeling-kit) instead of a build kit')
+  .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
+  .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
+  .action(async (opts, command) => {
+    const globalOpts = command.optsWithGlobals();
+    const targetDir = process.cwd();
+
+    const kitDirName = opts.modeling ? MODELING_KIT.kitDirName : STACKS.node.kitDirName;
+    const kitDir = join(targetDir, kitDirName);
+
+    if (!existsSync(kitDir)) {
+      console.error(`❌ No ${kitDirName}/ found in ${targetDir} — run \`init${opts.modeling ? ' --modeling' : ''}\` first.`);
+      process.exit(1);
+    }
+
+    const manifest = readJsonSafe(join(kitDir, '.eventmodelers', 'install-manifest.json'));
+    const stackKey = opts.modeling ? MODELING_KIT.key : manifest.stack;
+    const stackCfg = stackKey ? REINITIABLE_STACKS[stackKey] : null;
+
+    if (!stackCfg) {
+      console.error(`❌ Can't tell which stack ${relative(targetDir, kitDir)} was installed from (${manifest.stack ? `"${manifest.stack}" isn't one re-init recognizes — likely a --git community stack` : 'its install manifest predates this tracking, or is missing'}).`);
+      console.error('   Re-run the original `init --git <url> --stack <name>` command by hand instead.');
+      process.exit(1);
+    }
+
+    await installStack(stackKey, stackCfg, {
+      configPath: globalOpts.config,
+      print: globalOpts.print,
+      global: opts.global !== undefined ? opts.global : !!manifest.global,
+      force: opts.force,
+      credentialOverrides: credentialOverridesFromOpts(opts),
+      skipRootScaffold: true,
     });
   });
 

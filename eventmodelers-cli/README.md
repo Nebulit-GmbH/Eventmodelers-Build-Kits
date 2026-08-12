@@ -101,6 +101,7 @@ Which skills install depends on the chosen stack — see `stacks/<name>/template
 
 ```bash
 npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
+npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
@@ -305,6 +306,19 @@ npx @eventmodelers/cli listen --port 4000            # same, on a different port
 ```
 
 `listen` is a dispatcher for `<kit-dir>/code-export.mjs` — a local HTTP server (port 3001 by default) that the eventmodelers board UI posts slice/screen data to, which then gets written under `<kit-dir>/.slices/`. Unlike `fetch`, it does receive screen images, since the board UI pushes them directly.
+
+### Re-init — refresh scripts/skills without touching your app
+
+```bash
+npx @eventmodelers/cli re-init                      # refresh the installed build kit (.build-kit/) + its skills
+npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit (.agent-modeling-kit/) + its skills
+```
+
+`re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/`ralph.sh`/skills without re-scaffolding a project you've since built on top of.
+
+Credentials are left alone unless you pass `--force` — same rule `init` already follows when everything required is already configured. `--global` defaults to however skills were originally installed; pass it explicitly to move them.
+
+If the kit dir predates install-manifest.json tracking, or was installed via `init --git <url>` (a community/custom stack, not one of the built-in `STACKS` keys), `re-init` can't tell what to re-copy and tells you to re-run the original `init` command by hand instead.
 
 ### Uninstall
 
