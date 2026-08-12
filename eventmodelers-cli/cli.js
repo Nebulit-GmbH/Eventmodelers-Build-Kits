@@ -1932,9 +1932,10 @@ program
   .command('fetch')
   .description('Pull full slice detail for one context on the board via the slicedata API and write it into .slices/ — the pull-based counterpart to `listen`, without screen images')
   .requiredOption('--context <name>', 'Name of the MODEL_CONTEXT to fetch')
-  .option('--slice-id <id>', 'After fetching, print just the slice with this id')
-  .option('--slice-title <title>', 'After fetching, print just the slice with this title (case-insensitive)')
-  .option('--spec-kitty', "After fetching, also restate this context as a Spec Kitty mission brief (.kittify/mission-brief.md via `spec-kitty intake`) — deterministic, no LLM call, no mission/spec.md/tasks created. Run `/spec-kitty.specify` afterward to turn the brief into a mission. Requires `spec-kitty init` to already be set up in this project (see lib/adapters/spec-kitty-adapter.js). One-shot: does not start a loop.")
+  .option('--format <format>', 'Output format: json (default, builds the full .slices/ folder structure), yaml, textual, toon, emlang, or esdm (each of these five is dumped to a single .slices/<context>/slicedata.<ext> file instead)', 'json')
+  .option('--slice-id <id>', 'After fetching, print just the slice with this id (requires --format json)')
+  .option('--slice-title <title>', 'After fetching, print just the slice with this title, case-insensitive (requires --format json)')
+  .option('--spec-kitty', "After fetching, also restate this context as a Spec Kitty mission brief (.kittify/mission-brief.md via `spec-kitty intake`) — deterministic, no LLM call, no mission/spec.md/tasks created. Run `/spec-kitty.specify` afterward to turn the brief into a mission. Requires `spec-kitty init` to already be set up in this project (see lib/adapters/spec-kitty-adapter.js) and --format json. One-shot: does not start a loop.")
   .action(async (opts, command) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);

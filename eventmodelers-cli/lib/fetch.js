@@ -17,6 +17,14 @@ export class FetchAuthError extends Error {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Mirrors the server's exporter registry (backend/src/slices/change/slicedata/exporters/
+// ExporterRegistry.ts) — json is the canonical shape (drives the full .slices/ folder
+// structure below); every other format is a transform of it and gets dumped as a single
+// file instead, so its extension reflects the transform's actual output, not its name
+// (textual is JSON-wrapped; emlang/esdm are YAML documents; toon is its own thing).
+const SUPPORTED_FORMATS = ['json', 'yaml', 'textual', 'toon', 'emlang', 'esdm'];
+const FORMAT_EXTENSIONS = { yaml: 'yaml', textual: 'json', toon: 'toon', emlang: 'yaml', esdm: 'yaml' };
+
 // `--context` accepts any of: a MODEL_CONTEXT name or id, or a timeline (CHAPTER) name or id.
 // /slicedata's contextId/contextName params now both resolve against MODEL_CONTEXT nodes first,
 // then timelines (id matched exactly, name case-insensitively) — including a timeline with no
@@ -72,7 +80,7 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   // never "board not found". Only 401/403 are credential problems worth the
   // reconfigure-and-retry dance in cli.js; 404 gets reported and the process exits,
   // same as any other non-auth error.
-  async function fetchJson(url, what, { allow404 = false } = {}) {
+  async function fetchResponse(url, what, { allow404 = false } = {}) {
     let res;
     try {
       res = await fetch(url, { headers });
@@ -92,7 +100,19 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
       console.error(`❌ ${what}: HTTP ${res.status}`);
       process.exit(1);
     }
-    return res.json();
+    return res;
+  }
+
+  async function fetchJson(url, what, options) {
+    const res = await fetchResponse(url, what, options);
+    return res ? res.json() : res;
+  }
+
+  // Non-json formats aren't a {slices: [...]} payload — just the exporter's raw output
+  // (a YAML doc, a TOON encoding, ...) — so it's written straight to disk, not parsed.
+  async function fetchText(url, what, options) {
+    const res = await fetchResponse(url, what, options);
+    return res ? res.text() : res;
   }
 
   // Falls back to cwd when no kit is installed — fetch doesn't need kit-specific
@@ -100,6 +120,17 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   const SLICES_DIR = join(kitDir || cwd, '.slices');
 
   const contextInput = opts.context;
+  const format = (opts.format || 'json').toLowerCase();
+  if (!SUPPORTED_FORMATS.includes(format)) {
+    console.error(`❌ Unsupported format "${format}". Supported: ${SUPPORTED_FORMATS.join(', ')}`);
+    process.exit(1);
+  }
+  // --slice-id/--slice-title/--spec-kitty all depend on the parsed {slices: [...]} list
+  // that only the json format produces — fail fast instead of silently ignoring them.
+  if (format !== 'json' && (opts.sliceId || opts.sliceTitle || opts.specKitty)) {
+    console.error('❌ --slice-id, --slice-title, and --spec-kitty require --format json (the default).');
+    process.exit(1);
+  }
 
   console.log(`▶ Fetching context "${contextInput}" from ${baseUrl} (board ${cfg.boardId})...`);
 
@@ -112,10 +143,25 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   const contextQuery = UUID_RE.test(contextInput)
     ? `contextId=${encodeURIComponent(contextInput)}`
     : `contextName=${encodeURIComponent(contextInput)}`;
-  const payload = await fetchJson(
-    `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${contextQuery}`,
-    `slicedata?${contextQuery}`,
-  );
+  const url = `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${contextQuery}&format=${format}`;
+
+  // Only json builds the full .slices/<context>/<slice>/slice.json folder structure —
+  // every other format has no guaranteed {slices: [...]} shape to walk (it's the
+  // exporter's raw output: a YAML doc, a TOON encoding, ...), so it's just dumped
+  // as a single file. The resolved context name isn't known without parsing JSON,
+  // so the folder is slugified from the raw --context input instead.
+  if (format !== 'json') {
+    const body = await fetchText(url, `slicedata?${contextQuery}&format=${format}`);
+    const contextSlug = slugify(contextInput) || 'default';
+    const baseFolder = join(SLICES_DIR, contextSlug);
+    mkdirSync(baseFolder, { recursive: true });
+    const outFile = join(baseFolder, `slicedata.${FORMAT_EXTENSIONS[format]}`);
+    writeFileSync(outFile, body);
+    console.log(`✅ Fetched context "${contextInput}" as ${format} → ${relative(cwd, outFile)}`);
+    return;
+  }
+
+  const payload = await fetchJson(url, `slicedata?${contextQuery}&format=${format}`);
   const { slices: allSlices } = payload;
   const displayContext = allSlices[0]?.context || contextInput;
 
