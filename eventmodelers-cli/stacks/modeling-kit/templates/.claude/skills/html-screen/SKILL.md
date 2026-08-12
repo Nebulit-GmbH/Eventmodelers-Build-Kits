@@ -66,6 +66,17 @@ Guidelines:
 - Don't add `<html>`/`<head>`/`<body>` tags to a page — every page is a body-only fragment. The canvas wraps each page in its own `<html><head>` (stylesheet + resize script) `<body>...</body></html>` at render time, so anything sent is placed inside that generated `<body>`.
 - Bulma CSS (0.9.4) is loaded by default in that `<head>` — classes like `title`, `button`, `is-primary`, `field`/`control`/`input` etc. all work out of the box, no need to write custom CSS for standard form/layout components. Note headings need a size modifier too, e.g. `class="title is-1"` — a bare `title` class alone is always 2rem regardless of the tag (`h1` vs `h2` etc.).
 
+### Marks — only when the user explicitly asks for one
+
+The canvas has a native "Marks" feature (outline highlight, optional blur-outside spotlight) for calling out part of a screen. **Do not add marks by default.** Only apply one of the two effects below when the request explicitly asks to highlight/mark/call out/circle/spotlight or blur/obscure part of the screen (e.g. "highlight the submit button", "blur everything except the email field"). An ordinary "design a screen" request gets no marks.
+
+Since this skill only has a `pages`/`backgroundColor` field to send (no separate marks API), reproduce the same visual language directly as inline CSS on the target element(s) — self-contained in the page HTML, same as any other styling in Step 3:
+
+- **Mark / highlight an area** — add to the target element's `style`: `outline:4px solid <color> !important;outline-offset:1px;`. Default color `#e74c3c` (red) unless the user names one; other options mirror the app's mark picker: `#1e293b` (dark slate), `#2ecc71` (green), `#3b82f6` (blue), `#f1c40f` (yellow), `#ffffff` (white).
+- **Blur outside / spotlight an area** — add `style="filter:blur(6px) !important;"` to every other top-level sibling/section on the page so only the called-out element stays sharp. Combine with the outline above if the user asked to both mark and blur.
+
+Apply these only to the specific element(s) the request describes — don't guess at additional areas to call out.
+
 ## Step 4 — Render the pages
 
 **Updating an existing node** (`nodeId` was given) — always sends the **complete** pages array, not just the changed/new entry:
