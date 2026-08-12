@@ -1430,7 +1430,9 @@ async function runModeling(kitDir, projectDir, verbose = false) {
       log(`channel "${channelName}": ${status}`);
       if (status === 'SUBSCRIBED') drain().catch((err) => log(`initial drain error: ${err.message}`));
     },
-  );
+  ).catch((err) => {
+    log(`realtime subscribe failed, prompts won't be pushed live: ${err.message}`);
+  });
 
   setInterval(async () => {
     try {
