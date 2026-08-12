@@ -1566,10 +1566,12 @@ async function runModeling(kitDir, projectDir, verbose = false) {
 
 const program = new Command();
 
+const { version: packageVersion } = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+
 program
   .name('eventmodelers')
   .description('Eventmodelers CLI — real-time Claude agent + skills for Claude Code, for any stack')
-  .version('1.0.0')
+  .version(packageVersion)
   .option('--config <path>', 'Path to an explicit config.json, overriding directory-based resolution (individual fields can also be set via EVENTMODELERS_* env vars, which always win)')
   .option('--print', 'Print follow-up commands (e.g. claude mcp add) instead of prompting to run them');
 
