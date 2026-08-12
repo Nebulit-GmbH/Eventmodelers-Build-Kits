@@ -19,7 +19,10 @@ sits alongside slice folders). Every step below is grounded in the `RegisterCust
 (`src/main/java/.../foo/register/`, test in
 `src/test/java/.../foo/register/RegisterCustomerDecisionModelTest.java`) and, for the compound-identifier
 case in Step 1, the `SubscribeToCourse` slice (`src/main/java/.../foo/subscribetocourse/`) — both
-verified, compiled and passing under `mvn test` against `io.axoniq.framework:axoniq-framework-bom:5.1.1`.
+verified, compiled and passing under `mvn test` (Maven) / `./gradlew test` (Gradle) against
+`io.axoniq.framework:axoniq-framework-bom:5.1.1`. This project's build tool can be either Maven
+(`pom.xml`) or Gradle (`build.gradle`/`build.gradle.kts`) — detect which is present and use the
+matching command; never assume Maven.
 
 ## Step 0: Read the slice definition
 
@@ -327,16 +330,8 @@ This flag is irrelevant to the Step 7 test below — that test never boots Sprin
 
 ## Step 7: Test — `AxonTestFixture`, no Spring context
 
-One-time `pom.xml` addition (no version needed — resolved via the project's existing
-`axoniq-framework-bom` → `axon-framework-bom` import):
-
-```xml
-<dependency>
-    <groupId>org.axonframework</groupId>
-    <artifactId>axon-test</artifactId>
-    <scope>test</scope>
-</dependency>
-```
+One-time build-file addition — Maven/Gradle snippets for the `axon-test` dependency:
+see [references/axon-test-fixture-patterns.md](references/axon-test-fixture-patterns.md) §0.
 
 ```java
 package {basePackage}.slices.{context}.{slicename};
@@ -441,5 +436,5 @@ Before considering the slice done:
 - [ ] Every `specifications[]` scenario has a corresponding test method
 - [ ] If `storylines[]` is present: every COMMAND beat for this slice's command has a storyline test — or was deliberately skipped as untraceable
 - [ ] No business rule exists in the handler that isn't traceable to slice.json's `description`/`comments`
-- [ ] `mvn compile -q`, then run the slice's own tests only
+- [ ] Compile — `mvn compile -q` (Maven) or `./gradlew compileJava -q` (Gradle) — then run the slice's own tests only
 - [ ] If checks pass, commit with `feat: {Slice Name}` and set slice status to `Done`

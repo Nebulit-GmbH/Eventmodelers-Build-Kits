@@ -66,9 +66,10 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 5. **Verify against slice.json**: Cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code. No invented fields — if it is not in slice.json, it must not be in the code.
 
-6. Run quality checks:
-   - Compile: `./mvnw compile -q`
-   - Test (slice only): `./mvnw test -Dtest="<SliceName>*" -q`
+6. Run quality checks. Detect the build tool first (`pom.xml` → Maven, `build.gradle`/`build.gradle.kts`
+   → Gradle at the project root) — support both, never assume Maven:
+   - Compile: `./mvnw compile -q` (Maven) · `./gradlew compileJava -q` (Gradle)
+   - Test (slice only): `./mvnw test -Dtest="<SliceName>*" -q` (Maven) · `./gradlew test --tests "*<SliceName>*" -q` (Gradle)
 
 7. If checks pass, commit all changes with message: `feat: [Slice Name]`.
 
