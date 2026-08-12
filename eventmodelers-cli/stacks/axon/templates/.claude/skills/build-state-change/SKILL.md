@@ -35,12 +35,18 @@ Read `.build-kit/.slices/{context}/{slicename}/slice.json`. Extract, and use **o
 
 Never invent a field, business rule, or event that isn't in slice.json.
 
+## Step 0a: Determine `{basePackage}`
+
+Every code example below is rooted at `{basePackage}.slices.{context}.{slicename}`. Resolve
+`{basePackage}` as documented in `.build-kit/CLAUDE.md`'s Structure section — never hardcode
+`io.axoniq.quickstart` (the shipped quickstart scaffold's package) or any other specific package.
+
 ## Step 1: Command
 
 **Exactly one field has `idAttribute: true` in slice.json** — annotate it directly:
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 import org.axonframework.messaging.commandhandling.annotation.Command;
 import org.axonframework.modelling.annotation.TargetEntityId;
@@ -61,13 +67,13 @@ one field directly.** Instead build a compound id record and put `@TargetEntityI
 verified against the `SubscribeToCourse` slice (`email` + `courseId` both `idAttribute: true`):
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 public record {SliceName}Id(String field1, String field2) {}
 ```
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 import org.axonframework.messaging.commandhandling.annotation.Command;
 import org.axonframework.modelling.annotation.TargetEntityId;
@@ -93,7 +99,7 @@ Check `src/main/java/.../{context}/events/` first; add to the existing sealed/ma
 than creating a duplicate.
 
 ```java
-package io.axoniq.quickstart.slices.{context}.events;
+package {basePackage}.slices.{context}.events;
 
 import org.axonframework.eventsourcing.annotation.EventTag;
 import org.axonframework.messaging.eventhandling.annotation.Event;
@@ -119,10 +125,10 @@ Package-private, mutable field(s) — **not** an immutable `State` record with f
 check needs, nothing else.
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
-import io.axoniq.quickstart.slices.{context}.events.{EventName};
-import io.axoniq.quickstart.slices.{context}.events.EventTags;
+import {basePackage}.slices.{context}.events.{EventName};
+import {basePackage}.slices.{context}.events.EventTags;
 import org.axonframework.eventsourcing.annotation.EventCriteriaBuilder;
 import org.axonframework.eventsourcing.annotation.EventSourcingHandler;
 import org.axonframework.eventsourcing.annotation.reflection.EntityCreator;
@@ -164,7 +170,7 @@ resolved automatically from `Configuration` — pass it plus the event class str
 tempting to think `andBeingOneOfTypes(new QualifiedName({EventName}.class))` should work without it,
 since `QualifiedName` has a `Class<?>` constructor. Verified experimentally that it does NOT:
 `QualifiedName(Class<?>)`'s only job is `clazz.getName()` — the raw Java class name
-(`io.axoniq.quickstart.slices.foo.events.CustomerRegistered`) — not the `@Event(namespace, name)` value
+(`{basePackage}.slices.foo.events.CustomerRegistered`) — not the `@Event(namespace, name)` value
 the event was actually appended under (`Foo.CustomerRegistered`). Swapping to it in
 `SubscribeToCourseDecisionModel` as a test made 2 of 3 passing tests fail immediately, silently, with
 no exception pointing at the real cause — the criteria just stopped matching anything, identical in
@@ -220,9 +226,9 @@ itself.
 ## Step 4: Command handler
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
-import io.axoniq.quickstart.slices.{context}.events.{EventName};
+import {basePackage}.slices.{context}.events.{EventName};
 import org.axonframework.messaging.commandhandling.annotation.CommandHandler;
 import org.axonframework.messaging.core.Metadata;
 import org.axonframework.messaging.eventhandling.gateway.EventAppender;
@@ -255,7 +261,7 @@ exist as a type in this version.
 ## Step 5: REST endpoint — only if slice.json shows an inbound `SCREEN` dependency on the command
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 import org.axonframework.messaging.commandhandling.gateway.CommandGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -323,9 +329,9 @@ One-time `pom.xml` addition (no version needed — resolved via the project's ex
 ```
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
-import io.axoniq.quickstart.slices.{context}.events.{EventName};
+import {basePackage}.slices.{context}.events.{EventName};
 import org.axonframework.eventsourcing.configuration.EventSourcedEntityModule;
 import org.axonframework.eventsourcing.configuration.EventSourcingConfigurer;
 import org.axonframework.messaging.commandhandling.configuration.CommandHandlingModule;

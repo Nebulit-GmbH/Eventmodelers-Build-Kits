@@ -9,7 +9,7 @@ directly, and tests use `WebTestClient`, not `MockMvc`.
 ## Controller
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 import org.axonframework.messaging.commandhandling.gateway.CommandGateway;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -59,7 +59,7 @@ shape for the first one, matching the project's WebFlux stack and the `@Conditio
 feature-flag convention (tests disable all slices by default; opt in per test class):
 
 ```java
-package io.axoniq.quickstart.slices.{context}.{slicename};
+package {basePackage}.slices.{context}.{slicename};
 
 import org.axonframework.messaging.commandhandling.gateway.CommandGateway;
 import org.junit.jupiter.api.Test;

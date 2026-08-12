@@ -19,7 +19,8 @@ description: >
 > **Preview feature** — AF5 Workflow APIs may change without notice and are not yet for production.
 
 New workflow slices live under
-`src/main/java/de/eventmodelers/slices/{context}/automation/{slicename}/`.
+`src/main/java/.../slices/{context}/automation/{slicename}/` — see Step 0 below for how to resolve the
+`{basePackage}` this path is rooted at.
 
 ---
 
@@ -32,6 +33,11 @@ Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workf
 - A `WorkflowModule` bean in any `@Configuration` class
 - Classes annotated with `@Workflow`
 - Existing `*Workflow.java` files under any slice package
+
+**Determine `{basePackage}`** — every path in this skill is rooted at
+`{basePackage}.slices.{context}.automation.{slicename}`. Resolve `{basePackage}` as documented in
+`.build-kit/CLAUDE.md`'s Structure section.
+
 - The `WorkflowModule` dependency in `pom.xml`:
 
 ```xml
@@ -92,7 +98,7 @@ The simplest way to define a workflow using `@Workflow`:
 
 ```java
 // File: {slicename}/{SliceName}Workflow.java
-package de.eventmodelers.slices.{context}.automation.{slicename};
+package {basePackage}.slices.{context}.automation.{slicename};
 
 import org.axonframework.workflow.annotation.Workflow;
 import org.axonframework.workflow.SimpleWorkflowContext;
@@ -100,7 +106,7 @@ import org.axonframework.workflow.SimpleWorkflowContext;
 @Workflow(
     idProperty       = "{triggerEventIdField}",    // field name on the trigger event that becomes the workflow ID
     startOnEventClass = {TriggerEvent}.class,       // event that starts a new workflow instance
-    workflowNamespace = "de.eventmodelers.slices.{context}"
+    workflowNamespace = "{basePackage}.slices.{context}"
 )
 public class {SliceName}Workflow {
 
@@ -333,7 +339,7 @@ public void execute(SimpleWorkflowContext ctx) {
 
 ```java
 @Workflow(idProperty = "id", startOnEventClass = OrderPlaced.class,
-          workflowNamespace = "de.eventmodelers.slices.{context}")
+          workflowNamespace = "{basePackage}.slices.{context}")
 public class {SliceName}Workflow {
 
     public void execute(SimpleWorkflowContext ctx) { /* ... */ }
@@ -476,14 +482,14 @@ class {SliceName}WorkflowIntegrationTest extends AbstractDeclarativeTestBase {
 ## Files to Create / Modify
 
 ```
-src/main/java/de/eventmodelers/slices/{context}/automation/{slicename}/
+src/main/java/.../slices/{context}/automation/{slicename}/
 ├── {SliceName}Workflow.java              ← @Workflow class (execute method + lifecycle listeners)
 └── {SliceName}WorkflowServices.java      ← @Component step handlers (Spring beans)
 
-src/main/java/de/eventmodelers/slices/{context}/
+src/main/java/.../slices/{context}/
 └── WorkflowConfiguration.java            ← WorkflowModule bean (one per context, create if missing)
 
-src/test/java/de/eventmodelers/slices/{context}/automation/{slicename}/
+src/test/java/.../slices/{context}/automation/{slicename}/
 └── {SliceName}WorkflowTest.java          ← unit tests with mocked context + services
 ```
 

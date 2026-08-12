@@ -21,6 +21,10 @@ description: >
 
 Before writing any code, read the target project's `.build-kit/CLAUDE.md`
 
+**Determine `{basePackage}`** — every code example below is rooted at
+`{basePackage}.slices.{context}.{slicename}`. Resolve `{basePackage}` as documented in
+`.build-kit/CLAUDE.md`'s Structure section.
+
 ## Step 1: Ensure Events Exist
 
 Before implementing the read slice, verify that all events the projector handles exist in the
@@ -70,7 +74,7 @@ comments** — those are only for write slices.
 ### Slice package structure
 
 ```
-de/<package>/{context}/slices/{slicename}/
+.../slices/{context}/{slicename}/     (i.e. {basePackage}.slices.{context}.{slicename} — see Step 0)
 ├── Get{SliceName}.java       ← query record + nested Result
 ├── {SliceName}Summary.java   ← read model (projection output shape)
 ├── {SliceName}Projector.java ← @Component with @EventHandler + @QueryHandler
@@ -252,7 +256,7 @@ Pure unit tests — instantiate the projector directly, no Spring context needed
 Fast, no container startup.
 
 ```java
-// File: src/test/java/de/<package>/{context}/slices/{slicename}/{SliceName}ProjectorTest.java
+// File: src/test/java/.../slices/{context}/{slicename}/{SliceName}ProjectorTest.java
 class {SliceName}ProjectorTest {
 
     private {SliceName}Projector projector;

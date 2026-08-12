@@ -38,6 +38,10 @@ Read the target project's `.build-kit/CLAUDE.md` and explore existing slices. Lo
 - Feature flag patterns (Step 4 — optional)
 - Spring Boot test annotation: check if the project defines a meta-annotation over `@SpringBootTest`
 
+**Determine `{basePackage}`** — every path below is rooted at
+`{basePackage}.slices.{context}.automation.{slicename}`. Resolve `{basePackage}` as documented in
+`.build-kit/CLAUDE.md`'s Structure section.
+
 ## Step 1: Understand the Input
 
 Extract these elements regardless of input format:
@@ -131,7 +135,7 @@ If a command fails, the event handler fails and the event processor retries.
 ### Stateless Automation
 
 New automation slices live under
-`src/main/java/de/eventmodelers/slices/{context}/automation/{slicename}/`.
+`src/main/java/.../slices/{context}/automation/{slicename}/`.
 
 #### Strategy interface (if needed)
 
@@ -280,7 +284,7 @@ Add to ALL config files when using `@ConditionalOnProperty`:
 **For stateless automations** — pure unit tests with a mocked `CommandDispatcher`:
 
 ```java
-// File: src/test/java/de/eventmodelers/slices/{context}/automation/{slicename}/{AutomationName}Test.java
+// File: src/test/java/.../slices/{context}/automation/{slicename}/{AutomationName}Test.java
 class {AutomationName}ProcessorTest {
 
     private {AutomationName}Processor processor;

@@ -2,6 +2,13 @@
 
 Read Events in src/events to understand the global structure.
 
+`<basePackage>` in this project's Java code (`src/main/java/<basePackage>/slices/...`) is this
+project's own Java package prefix, not a fixed value — resolve it, in order: (1) the package of the
+project's `@SpringBootApplication` class, (2) the package of any existing slice already under
+`.../slices/{context}/{slicename}/`, (3) only if no code exists yet, Maven's `<groupId>` in `pom.xml`
+or Gradle's `group` property in `build.gradle`/`build.gradle.kts`. Never hardcode
+`io.axoniq.quickstart` (the shipped quickstart scaffold's package) or any other specific package.
+
 ## File Structure Constraints
 
 - **Strict Path Limitation**: if not instructed otherwise, only check `src/slices/{slicename}/*.ts`
