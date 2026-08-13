@@ -504,15 +504,31 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
 }
 
+const RETRY_BASE_MS = 60_000;
+const RETRY_MAX_MS = 10 * 60_000;
+const RETRY_FLAT_ATTEMPTS = 3;
+
+// First 3 retries stay at a flat 60s (covers transient blips like a network hiccup
+// or a momentary 401); from the 4th retry on, the delay doubles each attempt, capped
+// at 10 minutes — so a persistent failure (e.g. Claude credits exhausted) backs off
+// instead of hammering the same task every 60s forever.
+function retryDelayMs(attempt) {
+  if (attempt <= RETRY_FLAT_ATTEMPTS) return RETRY_BASE_MS;
+  return Math.min(RETRY_BASE_MS * 2 ** (attempt - RETRY_FLAT_ATTEMPTS), RETRY_MAX_MS);
+}
+
 async function runWithRetry(label, fn) {
+  let attempt = 0;
   while (true) {
     try {
       console.log(`[ralph] ${label}`);
       await fn();
       return;
     } catch (err) {
-      console.error(`[ralph] Error — retrying in 60s:`, err.message);
-      await new Promise((r) => setTimeout(r, 60_000));
+      attempt++;
+      const delay = retryDelayMs(attempt);
+      console.error(`[ralph] Error (attempt ${attempt}) — retrying in ${Math.round(delay / 1000)}s:`, err.message);
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
 }
