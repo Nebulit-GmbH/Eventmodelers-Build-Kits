@@ -29,7 +29,8 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `delete_node` | `boardId`, `nodeId` | Delete a node. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
 | `create_drawing` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... | Freehand canvas annotation (path/rect/text) — never placed in a cell | — (no REST equivalent; MCP-only) |
 | `find_nodes_in_drawing` | `boardId`, `drawingId` | Nodes fully contained inside a drawing's bounding box | — (no REST equivalent; MCP-only) |
-| `create_chapter` | `boardId`, `x?`, `y?` | Create a timeline | §2 `POST .../chapters` |
+| `create_chapter` | `boardId`, `x?`, `y?` | Create a timeline. Omitting `x`/`y` auto-stacks it below the lowest existing chapter (by its *actual current* row-height total, not the height it was created with — safe even after `add_lane` growth), plus a fixed margin | §2 `POST .../chapters` |
+| `get_chapter_bounds` | `boardId` | Absolute canvas bounding box `{id, title, x, y, width, height}` of every chapter on the board — width/height derived from each chapter's current row/column layout, not a guessed default. Use before picking explicit `x`/`y` for `create_chapter` (e.g. placing below the chapter with the largest `y + height`) to avoid overlapping one that grew since it was created | §2 `GET .../chapters/bounds` |
 | `add_column` | `boardId`, `timelineId`, `index?` | Add a column | §2 `POST .../timelines/:id/columns` |
 | `delete_column` | `boardId`, `timelineId`, `columnId` | Delete a column | §2 `DELETE .../columns/:columnId` |
 | `add_lane` | `boardId`, `timelineId`, `type`, `label?`, `index?` | Add a lane/row | §2 `POST .../timelines/:id/lanes` |
@@ -216,6 +217,15 @@ Create a chapter node.
 
 **Request body**: `{ position?: { x: number, y: number } }`  
 **Response**: `200` — chapter data
+
+Omitting `position` auto-stacks the new chapter below the lowest existing chapter on the board, using each existing chapter's *actual current* row-height total (not the height it was created with) plus a fixed margin — so a chapter that grew via `add_lane`/`add_column` after another was stacked below it won't get overlapped by yet another auto-stacked chapter.
+
+---
+
+### GET `/api/org/:orgId/boards/:boardId/chapters/bounds`
+Get the absolute canvas bounding box of every chapter on the board — the same real-current-size derivation `create_chapter`'s auto-stacking uses internally, exposed for callers who want to compute a placement themselves (e.g. an explicit `x`/`y`, or a position relative to a specific chapter rather than "below everything").
+
+**Response**: `200` — `{ chapters: Array<{ id: string, title?: string, x: number, y: number, width: number, height: number }> }`
 
 ---
 
