@@ -63,6 +63,8 @@ mcp__eventmodelers__create_slice { "boardId": "<BOARD_ID>", "timelineId": "<TL>"
 
 Pick `type` based on what you decided in Step 1 — `state-change` for a new command, `state-view` for a new read model, `automation` for a new automation. Always pass `nodes.interaction.title` as the command/read model/automation name you decided on in Step 1 — per the Core Concept above, the slice is *named after that element*, and the backend only derives the slice title from this field; omitting it produces a useless generic "State Change"/"State View"/"Automation" label instead. This also creates the slice's `SLICE_BORDER` automatically — no separate `create_slice_definition` call needed.
 
+If the chapter has more than one lane of the same type (e.g. several actor lanes for different user roles), `create_slice` places each node in the **first** matching lane by default — pass `nodes.<actor|interaction|swimlane>.rowId` (the target row's id, from the chapter's `timelineData.rows`) to target a specific lane instead of the first one.
+
 **Fallback (no MCP):**
 ```bash
 curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slices \

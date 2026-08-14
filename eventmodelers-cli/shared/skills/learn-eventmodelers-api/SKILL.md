@@ -26,7 +26,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `get_board_events` | `boardId` | All board events, in sequence | §1 `GET .../events` |
 | `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
 | `submit_node_events` | `boardId`, `events[]` | Create/update nodes (raw `NodeChangeEvent`/edge events) | §3 `POST .../nodes/events` |
-| `delete_node` | `boardId`, `nodeId` | Delete a node | (via `node:deleted` event, §3) |
+| `delete_node` | `boardId`, `nodeId` | Delete a node. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
 | `create_drawing` | `boardId`, `kind`, `x`, `y`, `width`, `height`, ... | Freehand canvas annotation (path/rect/text) — never placed in a cell | — (no REST equivalent; MCP-only) |
 | `find_nodes_in_drawing` | `boardId`, `drawingId` | Nodes fully contained inside a drawing's bounding box | — (no REST equivalent; MCP-only) |
 | `create_chapter` | `boardId`, `x?`, `y?` | Create a timeline | §2 `POST .../chapters` |
@@ -34,12 +34,12 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `delete_column` | `boardId`, `timelineId`, `columnId` | Delete a column | §2 `DELETE .../columns/:columnId` |
 | `add_lane` | `boardId`, `timelineId`, `type`, `label?`, `index?` | Add a lane/row | §2 `POST .../timelines/:id/lanes` |
 | `remove_lane` | `boardId`, `timelineId`, `rowId` | Remove a lane | — (extends §2; no direct REST route) |
-| `move_node_in_timeline` | `boardId`, `timelineId`, `movedNodeId`, `toCellId` | Move a placed node to another cell | — (MCP-only convenience) |
+| `move_node_in_timeline` | `boardId`, `timelineId`, `movedNodeId`, `toCellId` | Move a placed node to another cell — its previous cell is automatically cleared | — (MCP-only convenience) |
 | `move_timeline_structure` | `boardId`, `timelineId`, `kind` (`'column'\|'lane'`), `id`, `toIndex` | Reorder a column or lane (row) — `kind` picks which `id` refers to | — (MCP-only convenience) |
 | `move_timeline_position` | `boardId`, `timelineId`, `x`, `y` | Move a chapter node on canvas | — (MCP-only convenience) |
-| `drop_node_to_cell` | `boardId`, `timelineId`, `cellId`, `nodeId`, `nodeType` | Place an existing node into a cell | §2 `POST .../cells/:cellId/drop` |
-| `clear_cell` | `boardId`, `timelineId`, `cellId` | Remove+delete the node in a cell | — (MCP-only convenience) |
-| `create_slice` | `boardId`, `timelineId`, `type`, `index?` | Create a full slice (column + nodes + SLICE_BORDER) | §5 `POST .../slices` |
+| `drop_node_to_cell` | `boardId`, `timelineId`, `cellId`, `nodeId`, `nodeType` | Place an existing node into a cell — if it was already placed elsewhere on this timeline, that cell is automatically cleared | §2 `POST .../cells/:cellId/drop` |
+| `clear_cell` | `boardId`, `timelineId`, `cellId` | Unassign the node from a cell without deleting it — the cell becomes empty and the node survives (unplaced); no-op if already empty. Use `delete_node` to remove the node entirely | — (MCP-only convenience) |
+| `create_slice` | `boardId`, `timelineId`, `type`, `index?`, `nodes?: {actor?, interaction?, swimlane?}` (each `{rowId?, title?}`) | Create a full slice (column + nodes + SLICE_BORDER). `rowId` targets a specific lane when the chapter has more than one lane of that type (e.g. several actor lanes); omit to use the first matching lane | §5 `POST .../slices` |
 | `create_slice_definition` | `boardId`, `timelineId`, `columnId`, `title`, `data?`, `meta?` | Create a SLICE_BORDER over an existing column | §5 `POST .../slice-definitions` |
 | `place_element` | `boardId`, `timelineId`, `elementType`, `title`, `columnIndex?` | Find/create an empty cell in the right lane and place a COMMAND/READMODEL/EVENT | — (MCP-only convenience; composes §2+§3) |
 | `list_slices` | `boardId` | List slices (id, title, status) | §8 `GET .../slicedata/slices` |
@@ -254,7 +254,7 @@ Add a lane (row) to a timeline.
 ---
 
 ### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/cells/:cellId/drop`
-Drop a node into a timeline cell. Validates placement rules.
+Drop a node into a timeline cell. Validates placement rules. If the node was already placed in another cell on this timeline, that cell is automatically cleared as part of the same operation — a node can only ever occupy one cell.
 
 **Request body**: `{ nodeId: string, nodeType: ElementType }`
 
@@ -282,6 +282,8 @@ All node endpoints require header: `x-user-id`
 Submit node change events.
 
 Any `node:created` event carrying a `chapterId` plus `cellId`/`cellName` (i.e. placing a node on a timeline) also triggers a best-effort, fire-and-forget auto-connect to type-compatible neighbors — same rules as the auto-connect endpoint below. Failures there never fail this call.
+
+A `node:deleted` event cascades: if the deleted node is a chapter (timeline), every node placed in one of its cells and any node parented to it (e.g. a SLICE_BORDER spanning one of its columns) is deleted too, along with all their edges.
 
 **Request body**: `NodeChangeEvent[]`
 
@@ -427,9 +429,9 @@ Create a complete slice (1 column + 3 nodes automatically placed).
   type: 'state-change' | 'state-view' | 'automation'
   index?: number
   nodes?: {
-    actor?: Partial<NodeData>
-    interaction?: Partial<NodeData>
-    swimlane?: Partial<NodeData>
+    actor?: Partial<NodeData> & { rowId?: string }
+    interaction?: Partial<NodeData> & { rowId?: string }
+    swimlane?: Partial<NodeData> & { rowId?: string }
   }
 }
 ```
@@ -438,6 +440,8 @@ Create a complete slice (1 column + 3 nodes automatically placed).
 - `state-change` → HTML_SCREEN (actor) + COMMAND (interaction) + EVENT (swimlane)
 - `state-view` → HTML_SCREEN (actor) + READMODEL (interaction) + EVENT (swimlane)
 - `automation` → AUTOMATION (actor) + COMMAND (interaction) + EVENT (swimlane)
+
+Each chapter has exactly one actor/interaction/swimlane lane by default, but a chapter can have several lanes of the same type (e.g. multiple actor lanes). Without a `rowId`, the node is always placed in the **first** lane of the matching type — pass `nodes.<actor|interaction|swimlane>.rowId` (a row id from the chapter's `timelineData.rows`) to target a specific lane instead. An invalid `rowId` (not found, or found but the wrong lane type) is a `400 ROW_NOT_FOUND`/`ROW_TYPE_MISMATCH` error.
 
 The actor HTML_SCREEN is created as a **stub** — a single visibly-placeholder page ("Untitled screen — design pending") unless `nodes.actor.pages` is passed explicitly. Whoever calls this (the `add-next-slice` skill — the one that creates a brand-new slice from scratch, as opposed to `eventmodeling-slicing-event-models`, which only makes existing elements explicit) is responsible for immediately replacing that stub via the `html-screen` skill — including gathering the board's existing screens first so the new one matches their established style, since `html-screen` itself has no visibility into other screens.
 
