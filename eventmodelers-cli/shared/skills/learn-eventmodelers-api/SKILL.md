@@ -48,6 +48,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `get_slice_data` | `boardId`, `contextName?`, `contextId?`, `sliceId?` | Full element graph for slices in a context | §8 `GET /slicedata` |
 | `get_spec_info` | `boardId`, `timelineId` | EVENT/COMMAND/READMODEL nodes valid in GWT steps | §6 `GET .../spec-info` |
 | `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]` | Append GWT scenario(s) to a column's spec node | §6 `POST .../scenarios` |
+| `add_storyline` | `boardId`, `timelineId`, `columnId`, `storylines[]` | **Experimental — only use when explicitly asked for a storyline/walkthrough.** Append storyline(s) (ordered, branchable beats over existing elements) to a column's spec node | §6 `POST .../storylines` |
 | `set_connection` | `boardId`, `source`, `target`, `action` (`'connect'\|'remove'`) | Add or remove a type-checked directed edge | — (via `edges` on §3 events) |
 | `auto_connect_node` | `boardId`, `nodeId` | Re-run auto-connect for a node | §3 `POST .../nodes/:nodeId/auto-connect` |
 | `add_comment` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'\|'QUESTION'`), `author?` | Add a comment — `QUESTION` flags gaps/edge cases during review | — (via comment events) |
@@ -520,6 +521,48 @@ Get valid elements for a context (by name lookup).
 Get valid elements for a specific slice.
 
 **Response**: `200` — `{ chapterId: string, elements: ElementRecord[] }`
+
+---
+
+### Storylines (experimental)
+
+> **Only create a storyline when the user's request explicitly asks for one** — the word
+> "storyline", "walkthrough", or "narrative" (or equivalent) must appear in what they asked for.
+> Otherwise keep creating normal GWT scenarios via `add_scenario`/`POST .../scenarios` as before.
+
+An ordered, branchable walkthrough of existing board elements ("beats"), stored alongside GWT
+scenarios on the same SCENARIO spec node, in a sibling `meta.storylines` collection.
+
+### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/columns/:columnId/storylines`
+Append one or more storylines to a column's spec node. The spec node is auto-created if missing
+(shared with scenarios).
+
+**Request body**: a single storyline object or an array:
+```typescript
+{
+  id: string
+  title: string          // must be unique within the spec node
+  description?: string
+  layout?: 'horizontal' | 'vertical'
+  beats: Array<{
+    instanceId: string   // unique per beat, even when refId repeats
+    refId: string        // board node id — must belong to the same timeline
+    type?: string
+    title?: string
+    isError?: boolean    // marks an alternate/error branch off the previous beat
+    fields?: unknown[]
+    expectEmptyList?: boolean
+    exampleMode?: string
+    examples?: unknown[]
+  }>
+}
+```
+
+**Response**:
+- `201` — `{ specNodeId, storylines, added, isNewNode }`
+- `400` — validation error
+- `404` — timeline, column, or referenced node not found
+- `409` — duplicate storyline title
 
 ---
 

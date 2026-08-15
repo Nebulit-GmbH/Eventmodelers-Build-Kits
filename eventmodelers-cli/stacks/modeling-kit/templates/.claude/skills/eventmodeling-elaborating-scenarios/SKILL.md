@@ -13,6 +13,61 @@ allowed-tools:
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
+## Storylines — an On-Demand Alternative to GWT Scenarios (Experimental)
+
+**By default, this skill always produces GWT scenarios.** Storylines are a separate, experimental
+artifact — only build one when the user's request explicitly asks for a "storyline", "walkthrough",
+or "narrative". Never generate a storyline as a side effect of ordinary scenario elaboration.
+
+A GWT scenario asserts one isolated transition: a single precondition, a single action, a single
+resulting outcome. A storyline instead narrates one specific use case as an ordered sequence of
+**beats**, where the *same* element (usually a read model) is walked through multiple states across
+one flow — something no single GWT scenario can express, since GWT only ever asserts one
+before/after pair at a time.
+
+**Example** — a customer-activation walkthrough of a Todos read model:
+1. **Beat 1** — the Todos read model, starting empty.
+2. **Beat 2** — after a `CustomerRegistered` event, the same Todos read model now shows one entry
+   (an "activate your account" todo).
+3. **Beat 3** — after a `CustomerActivated` event, the same Todos read model is empty again (the
+   todo was completed and removed).
+
+Three separate GWT scenarios could each assert one of those transitions in isolation, but a
+storyline threads all three together as one narrated walkthrough of the read model's lifecycle —
+useful for a stakeholder-facing walkthrough of a use case, not for exhaustive GWT coverage. Keep
+producing ordinary Given/When/Then scenarios for everything else.
+
+### Storyline data shape
+
+```json
+{
+  "id": "<uuid>",
+  "title": "Customer activation walkthrough",
+  "description": "Optional narrative summary",
+  "layout": "horizontal",
+  "beats": [
+    { "instanceId": "<uuid>", "refId": "<readmodel-node-id>", "type": "READMODEL", "title": "Todos", "exampleMode": "list", "expectEmptyList": true, "examples": [] },
+    { "instanceId": "<uuid>", "refId": "<event-node-id>", "type": "EVENT", "title": "CustomerRegistered" },
+    { "instanceId": "<uuid>", "refId": "<readmodel-node-id>", "type": "READMODEL", "title": "Todos", "exampleMode": "list", "examples": [{"task": "Activate your account"}] },
+    { "instanceId": "<uuid>", "refId": "<event-node-id-2>", "type": "EVENT", "title": "CustomerActivated" },
+    { "instanceId": "<uuid>", "refId": "<readmodel-node-id>", "type": "READMODEL", "title": "Todos", "exampleMode": "list", "expectEmptyList": true, "examples": [] }
+  ]
+}
+```
+
+- `layout`: `"horizontal"` or `"vertical"` — how the beats are laid out in the storyline editor.
+- Each beat has an `instanceId` (unique per beat, even when the same `refId` repeats — this is what
+  lets the *same* element, like the Todos read model above, appear multiple times across the
+  walkthrough, once per state) and a `refId` (the board node this beat walks through — any element
+  type, not just EVENT/COMMAND/READMODEL — e.g. a SCREEN beat to show the resulting UI).
+- `isError` marks a beat as an alternate/error branch off the previous beat.
+- `fields`, `expectEmptyList`, `exampleMode`, `examples` mirror the same fields GWT scenario steps
+  use, letting a beat show concrete example data the same way a "then" readmodel step does.
+
+Post storylines via `POST .../timelines/:tl/columns/:col/storylines` (see `learn-eventmodelers-api`
+for the full endpoint contract) — the same auto-create-if-missing SCENARIO spec node scenarios use,
+in a sibling `meta.storylines` collection.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already specified: scenario coverage depth (happy path + validation + state violations), known edge cases to include, and stakeholders available for review. Interview when coverage goals are unclear or edge cases haven't been identified.
