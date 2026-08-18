@@ -397,15 +397,19 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
 
 export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
-export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false }) {
+export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
   local.agentId = ensureAgentId(kitDir, agentType);
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
 
-  if (!hasCredentials(local)) {
-    console.log(`         mode: local-only (no platform sync)\n`);
+  // localOnly (set via `eventmodelers run --local`) forces this branch even when
+  // credentials are present — it skips fetchPlatformConfig's network call to
+  // ${baseUrl}/api/config and startRealtimeAgent entirely, so the loop never
+  // reaches out to the platform at all.
+  if (localOnly || !hasCredentials(local)) {
+    console.log(`         mode: local-only (no platform sync)${localOnly ? ' — forced by --local' : ''}\n`);
     await ralphLoop(kitDir, local, onTask, onPlannedSlice);
     return;
   }

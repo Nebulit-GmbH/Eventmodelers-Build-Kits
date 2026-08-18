@@ -1772,6 +1772,7 @@ program
   .option('--ollama', 'Use ralph-ollama.js instead of the default Claude runner (build-kit stacks only)')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Modeling-kit installs only — there is no cold-spawn/tasks.json loop for modeling-kit. Built into the CLI, not a per-project file.')
+  .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .action(async (opts) => {
     const cwd = process.cwd();
@@ -1797,6 +1798,10 @@ program
     if (opts.modeling) {
       if (opts.bash || opts.ollama) {
         console.error('❌ --modeling is mutually exclusive with --bash/--ollama — those select a build-kit runner, which --modeling has no use for.');
+        process.exit(1);
+      }
+      if (opts.local) {
+        console.error('❌ --modeling has no local-only mode — it is always driven by the org-wide realtime prompt queue, so --local has no use for it.');
         process.exit(1);
       }
       if (!modelingKitDir) {
@@ -1850,9 +1855,11 @@ program
     console.log(`▶ Starting ${relative(cwd, runnerPath)}...\n`);
     const cmd = runner.endsWith('.sh') ? `"${runnerPath}"` : `node "${runnerPath}"`;
     try {
-      // Only ralph-claude.js reads this — the bash loop and the ollama executor have
-      // their own separate output paths with no stream-json parsing to gate.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '' } });
+      // Only ralph-claude.js reads RALPH_VERBOSE — the bash loop and the ollama executor have
+      // their own separate output paths with no stream-json parsing to gate. RALPH_LOCAL is
+      // read by all three runners (ralph.js's startRalph, and ralph.sh directly) to force the
+      // local-only branch even when .eventmodelers/config.json has valid credentials.
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '' } });
     } catch (err) {
       process.exit(err.status || 1);
     }

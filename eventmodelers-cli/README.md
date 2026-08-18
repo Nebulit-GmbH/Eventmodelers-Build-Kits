@@ -105,6 +105,7 @@ npx @eventmodelers/cli re-init                      # refresh an already-install
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --ollama                 # same, via local Ollama (ralph-ollama.js)
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
+npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title

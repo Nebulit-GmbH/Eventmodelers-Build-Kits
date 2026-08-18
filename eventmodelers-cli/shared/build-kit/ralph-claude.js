@@ -96,6 +96,7 @@ startRalph({
   projectDir,
   onTask: runClaude,
   onPlannedSlice: runClaude,
+  localOnly: process.env.RALPH_LOCAL === '1',
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);
   process.exit(1);

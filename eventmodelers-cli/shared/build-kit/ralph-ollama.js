@@ -33,6 +33,7 @@ startRalph({
   projectDir,
   onTask: runOllama,
   // onPlannedSlice omitted — ollama-agent manages its own task queue
+  localOnly: process.env.RALPH_LOCAL === '1',
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);
   process.exit(1);
