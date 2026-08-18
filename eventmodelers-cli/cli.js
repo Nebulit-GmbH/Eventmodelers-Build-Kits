@@ -1635,11 +1635,22 @@ credentialFlags(program
   .command('re-init')
   .description('Refresh an already-installed kit from the current CLI version — re-copies skills and the kit dir (.build-kit or .agent-modeling-kit) so you pick up script/skill updates after upgrading. Unlike `init`, never touches the project root scaffold or the root CLAUDE.md router, and leaves existing credentials alone unless --force is passed.')
   .option('--modeling', 'Refresh the modeling kit (.agent-modeling-kit) instead of a build kit')
+  .option('--stack <name>', `Override which stack to refresh from (${Object.keys(REINITIABLE_STACKS).join(', ')}) instead of the one recorded in install-manifest.json — use this when the manifest is missing/stale, or to switch a .build-kit install to a different stack`)
   .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const targetDir = process.cwd();
+
+    if (opts.modeling && opts.stack) {
+      console.error('❌ --modeling and --stack are mutually exclusive — pick one.');
+      process.exit(1);
+    }
+
+    if (opts.stack && !REINITIABLE_STACKS[opts.stack]) {
+      console.error(`❌ Unknown stack "${opts.stack}". Available: ${Object.keys(REINITIABLE_STACKS).join(', ')}`);
+      process.exit(1);
+    }
 
     const kitDirName = opts.modeling ? MODELING_KIT.kitDirName : STACKS.node.kitDirName;
     const kitDir = join(targetDir, kitDirName);
@@ -1650,12 +1661,12 @@ credentialFlags(program
     }
 
     const manifest = readJsonSafe(join(kitDir, '.eventmodelers', 'install-manifest.json'));
-    const stackKey = opts.modeling ? MODELING_KIT.key : manifest.stack;
+    const stackKey = opts.modeling ? MODELING_KIT.key : (opts.stack || manifest.stack);
     const stackCfg = stackKey ? REINITIABLE_STACKS[stackKey] : null;
 
     if (!stackCfg) {
       console.error(`❌ Can't tell which stack ${relative(targetDir, kitDir)} was installed from (${manifest.stack ? `"${manifest.stack}" isn't one re-init recognizes — likely a --git community stack` : 'its install manifest predates this tracking, or is missing'}).`);
-      console.error('   Re-run the original `init --git <url> --stack <name>` command by hand instead.');
+      console.error('   Pass --stack <name> explicitly, or re-run the original `init --git <url> --stack <name>` command by hand instead.');
       process.exit(1);
     }
 

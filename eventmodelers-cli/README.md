@@ -312,13 +312,16 @@ npx @eventmodelers/cli listen --port 4000            # same, on a different port
 ```bash
 npx @eventmodelers/cli re-init                      # refresh the installed build kit (.build-kit/) + its skills
 npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit (.agent-modeling-kit/) + its skills
+npx @eventmodelers/cli re-init --stack supabase      # override which stack to refresh from (manifest missing/stale, or switching stacks)
 ```
 
 `re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/`ralph.sh`/skills without re-scaffolding a project you've since built on top of.
 
+Pass `--stack <name>` to override the stack instead of relying on the manifest — useful if the manifest is missing/stale, or you want to point a `.build-kit` install at a different built-in stack's templates. It's mutually exclusive with `--modeling`.
+
 Credentials are left alone unless you pass `--force` — same rule `init` already follows when everything required is already configured. `--global` defaults to however skills were originally installed; pass it explicitly to move them.
 
-If the kit dir predates install-manifest.json tracking, or was installed via `init --git <url>` (a community/custom stack, not one of the built-in `STACKS` keys), `re-init` can't tell what to re-copy and tells you to re-run the original `init` command by hand instead.
+If the kit dir predates install-manifest.json tracking, or was installed via `init --git <url>` (a community/custom stack, not one of the built-in `STACKS` keys), and you don't pass `--stack` yourself, `re-init` can't tell what to re-copy and tells you to re-run the original `init` command by hand instead.
 
 ### Uninstall
 
