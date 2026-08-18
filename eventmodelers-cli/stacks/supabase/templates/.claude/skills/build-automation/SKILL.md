@@ -43,6 +43,7 @@ From the slice definition, extract:
   - `processorId` — unique kebab-case identifier
 - **commands[]** — command data fields
 - **events[]** — events emitted by the command
+- **storylines[]** (optional) — narrated walkthroughs; see the note in Step 2
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 
@@ -57,6 +58,8 @@ Follow the **build-state-change** skill to create:
 **Do NOT create a `routes.ts`** for automations — the command is fired internally by the processor, not via HTTP.
 
 Refer to the build-state-change skill for the full command handler structure.
+
+> **Storyline-derived tests**: if slice.json has a `storylines[]` array, build-state-change's Step 4b applies here too — treat the trigger EVENT beat as the "given" and the fired command's resulting EVENT beat(s) as "then", exactly as it would for an ordinary command-change slice. Skip silently if there's nothing relevant.
 
 ---
 
@@ -260,6 +263,7 @@ src/common/
 - [ ] `schema.migrate()` is called in `loadPostgresEventstore.ts`
 - [ ] No `routes.ts` created (automations are not exposed via HTTP)
 - [ ] Command handler tests cover idempotency (what happens if the command fires twice)
+- [ ] If `storylines[]` is present, storyline-derived command-handler tests were added per build-state-change's Step 4b (or skipped with a documented reason)
 - [ ] Every processor in `processors[]` has a corresponding `processor.ts` implementation
 - [ ] Command data fields map exclusively from fields available on the trigger event per slice.json — no invented mappings
 - [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`

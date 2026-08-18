@@ -49,6 +49,7 @@ Extract, regardless of input format:
 | **Business rules** | Preconditions, invariants, idempotency — from `description` / `comments` only |
 | **State needed for rules** | Which read model must be inspected (DCB) to evaluate a rule |
 | **Specifications** | Each GWT / scenario maps 1:1 to an executable spec |
+| **Storylines** (optional) | `storylines[]` — ordered walkthrough "beats"; a `COMMAND → EVENT` transition in one is a supplementary spec source, see Step 5a |
 
 **If a field is not in `slice.json`, it does not go in the code.** If requirements are unclear, ask
 the user before proceeding.
@@ -142,6 +143,31 @@ Chronicle integration specs use `Given<context>` + `ChronicleOutOfProcessFixture
 
 Run `dotnet test --filter "FullyQualifiedName~<SliceName>"`. Fix all failures.
 
+## Step 5a — Storyline-derived specs (optional)
+
+If `storylines[]` is non-empty — a storyline embedded in this slice's slice.json already belongs
+entirely to this slice, no need to match beats against `commands[]` by id/title — look for a
+`COMMAND → EVENT` transition: a `type: "COMMAND"` beat, followed by its resulting event beat(s) —
+possibly followed by a READMODEL beat after that.
+
+- **Establish** — append every event from the storyline's start up to (not including) the command
+  beat.
+- **Because** — `Handle()` the command, built from the beat's `fields`.
+- **should_\*** — assert the expected event(s) (the beat(s) immediately following the command).
+
+Only the `COMMAND → EVENT` half lives here — if the storyline continues `EVENT → READMODEL`, that
+half is a separate spec in **build-state-view** (its Step 4a). Don't chase a single spec across
+both a command dispatch and a read-model assertion unless the project already has an established
+pattern doing that — Chronicle integration specs assert appended events, not read-model state,
+and vice versa for projection specs.
+
+Place these alongside the `specifications[]`-derived specs but in their own
+`and_<storyline-title>.cs` file, so a reader can tell at a glance which specs are exhaustive
+coverage and which are one narrated walkthrough.
+
+Skip silently (no spec) when the transition isn't isolable — e.g. the command beat has no
+traceable preceding events.
+
 ## Step 6 — Frontend (only if the command is UI-triggered)
 
 After `dotnet build` generated the proxy (co-located next to the `.cs`), add
@@ -155,6 +181,8 @@ page. See the shared conventions doc's React section and [references/patterns.md
 - [ ] Every `events[]` entry → an `[EventType]` record; names match exactly; fields match.
 - [ ] Every specification / GWT scenario → an executable spec.
 - [ ] No business rule in `Handle()` that is absent from the slice `description` / `comments`.
+- [ ] A `storylines[]` `COMMAND → EVENT` transition for this command has a spec, or was
+      deliberately skipped (not silently ignored).
 - [ ] `dotnet build` is clean (0 warnings / 0 errors); slice specs pass.
 
 ## References

@@ -26,6 +26,7 @@ From the slice definition, extract:
 - **commands[]** — list of commands with their data fields
 - **events[]** — list of events emitted by each command
 - **specifications[]** — test scenarios (given/when/then)
+- **storylines[]** (optional) — narrated walkthroughs that may yield additional command-handler tests; see Step 4b
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 
@@ -229,6 +230,23 @@ Add one test per specification in the slice.json. If the spec has no preconditio
 
 ---
 
+## Step 4b — Storyline-derived tests (optional)
+
+Some slices also have a `storylines[]` array in slice.json — narrated walkthroughs of one use case as an ordered sequence of beats (`elements[]`). Most slices have no storylines; skip this step silently when `storylines[]` is empty or absent.
+
+A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `commands[]` by id/title. For each storyline, find a `type: COMMAND` beat directly followed by its EVENT beat(s). That pair is a command-handler test — the same shape as the specifications-derived tests above:
+- `given` — the cumulative ordered EVENT beats from the start of the storyline up to (but not including) the command beat
+- `when` — the command, built from the beat's `fields`
+- `then` — the event(s) immediately following the command beat, built from their `fields`
+
+Add these alongside the specifications-derived tests in the same `describe` block, or in their own block named after the storyline's `title` if it helps distinguish them.
+
+A storyline walking COMMAND → EVENT → READMODEL is **not** one test here: the READMODEL half belongs to **build-state-view** — `DeciderSpecification` can only assert emitted events, never read-model state.
+
+Skip (do not fabricate) a segment when the command beat has no immediately-following event beat relevant to this slice, or when the beat's fields don't give enough to construct a valid command.
+
+---
+
 ## Step 5 — Create `routes.ts`
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
@@ -340,5 +358,6 @@ Before marking this slice as `Done`, verify the implementation against slice.jso
 - [ ] Every event in `events[]` has a corresponding type in `{Context}Events.ts` — names match exactly
 - [ ] Every field in each event's data has a corresponding field in the TypeScript event type
 - [ ] Every entry in `specifications[]` maps to a test case in `{SliceName}.test.ts`
+- [ ] If `storylines[]` is present, each command-to-event transition relevant to this slice has a corresponding test (or a documented reason it was skipped)
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

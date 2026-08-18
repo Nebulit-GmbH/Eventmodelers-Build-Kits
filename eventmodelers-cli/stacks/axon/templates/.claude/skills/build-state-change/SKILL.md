@@ -30,6 +30,8 @@ Read `.build-kit/.slices/{context}/{slicename}/slice.json`. Extract, and use **o
 - `specifications[]` (GWT scenarios) → one test method per scenario
 - Which command field(s) have `idAttribute: true` — these carry `@TargetEntityId` (see Step 1) and the
   matching event field(s) carry `@EventTag`
+- `storylines[]` (optional, may be absent) → narrated walkthroughs with ordered `elements[]` "beats";
+  see Step 7b for how a COMMAND beat in one of these can add a supplementary test
 
 Never invent a field, business rule, or event that isn't in slice.json.
 
@@ -384,6 +386,36 @@ Fluent API cheat sheet and known gotchas (wrong `EventCriteria`/`Tag` package, a
 was renamed between AF5 patch versions, `Customization.disableAxonServer()` not existing in 5.1.1):
 see [references/axon-test-fixture-patterns.md](references/axon-test-fixture-patterns.md).
 
+## Step 7b: Storyline-Derived Tests (Optional)
+
+`slice.json` may carry a `storylines[]` array alongside `specifications[]` — narrated walkthroughs
+where an ordered sequence of `elements[]` "beats" (EVENT/COMMAND/READMODEL/...) shows one use case
+end to end. This is a secondary, supplementary source — `specifications[]` (Step 7) stays the
+primary and default source of test methods. Most slices have no `storylines[]`; skip this step
+silently when there's nothing relevant.
+
+A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need
+to match beats against `commands[]` by id/title. Find beats whose `type` is `COMMAND`. For each such
+beat, the storyline gives you a ready-made `AxonTestFixture` test: `given` =
+the cumulative ordered `EVENT` beats preceding it in the storyline, `when` = the command built from
+the beat's `fields`, `then` = the `EVENT` beat(s) immediately following it in the storyline.
+
+```java
+@Test
+@DisplayName("Storyline: {storyline.title} — {commandBeat.title}")
+void storylineBeat() {
+    fixture.given().event(new {PrecedingEventName}(/* fields from earlier beats */))
+           .when().command(new {SliceName}Command(/* fields from the command beat */))
+           .then().success()
+           .events(new {EventName}(/* fields from the following event beat */));
+}
+```
+
+Do **not** try to also assert read-model state in this same test — that half (the following
+EVENT→READMODEL beats) belongs to `build-state-view`'s own storyline step, since this fixture never
+touches a projector. If the beat immediately after the command isn't an EVENT, don't force a test —
+leave it undocumented rather than fabricating an assertion.
+
 ## Final Verification
 
 Before considering the slice done:
@@ -391,6 +423,7 @@ Before considering the slice done:
 - [ ] Every field in slice.json's `commands[]` is in the Command record — no invented fields, none missing
 - [ ] Every field in slice.json's `events[]` is in the Event record — no invented fields, none missing
 - [ ] Every `specifications[]` scenario has a corresponding test method
+- [ ] If `storylines[]` is present: every COMMAND beat for this slice's command has a storyline test — or was deliberately skipped as untraceable
 - [ ] No business rule exists in the handler that isn't traceable to slice.json's `description`/`comments`
 - [ ] `mvn compile -q`, then run the slice's own tests only
 - [ ] If checks pass, commit with `feat: {Slice Name}` and set slice status to `Done`

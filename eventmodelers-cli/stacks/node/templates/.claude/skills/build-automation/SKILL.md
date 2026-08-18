@@ -43,6 +43,7 @@ From the slice definition, extract:
   - `processorId` — unique kebab-case identifier
 - **commands[]** — command data fields
 - **events[]** — events emitted by the command
+- **storylines[]** (optional) — present only when the board author built an explicit walkthrough for this flow; most slices have none. See the note at the end of Step 2.
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 
@@ -57,6 +58,10 @@ Follow the **build-state-change** skill to create:
 **Do NOT create a `routes.ts`** for automations — the command is fired internally by the processor, not via HTTP.
 
 Refer to the build-state-change skill for the full command handler structure.
+
+### Storyline-derived tests
+
+If `storylines[]` includes a beat sequence running through this automation's trigger event → this slice's command, the command-handler test for that segment is already covered by build-state-change's own "Storyline-derived tests" step — it runs as part of following that skill above. This skill has no separate reactor-test format: the processor's event-to-command field mapping is exercised only indirectly, through that command-handler test, never by a dedicated `processor.test.ts`.
 
 ---
 
@@ -264,3 +269,4 @@ src/common/
 - [ ] Command data fields map exclusively from fields available on the trigger event per slice.json — no invented mappings
 - [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
+- [ ] If `storylines[]` is present, its command-handler segment was covered via build-state-change's storyline-derived tests (no separate reactor test needed)

@@ -26,6 +26,7 @@ From the slice definition, extract:
 - **commands[]** — list of commands with their data fields
 - **events[]** — list of events emitted by each command
 - **specifications[]** — test scenarios (given/when/then)
+- **storylines[]** (optional) — present only when the board author built an explicit walkthrough for this flow; most slices have none. See "Storyline-derived tests" under Step 4.
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 
@@ -227,6 +228,16 @@ describe('{SliceName} Specification', () => {
 
 Add one test per specification in the slice.json. If the spec has no precondition events, use `given([])`.
 
+### Storyline-derived tests (optional)
+
+`storylines[]` in slice.json (optional — only present when the board author built an explicit walkthrough) can also supply command-handler tests, in addition to the specifications-derived ones above. A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `commands[]` by id/title. Just scan each storyline's ordered `elements` for a `type: COMMAND` beat, followed by its emitted EVENT beat(s):
+
+- `given` — the cumulative ordered events from the start of the storyline up to (not including) the command beat
+- `when` — the command, built from that beat's `fields`
+- `then` — the following EVENT beat(s)' data
+
+Put these in their own `describe` block named after the storyline (same pattern as build-state-view's Storyline-derived tests section). Don't try to also assert read-model state in this test — a `DeciderSpecification` test only sees emitted events, never a materialized read model; the READMODEL half of the same storyline segment is build-state-view's job, not this skill's.
+
 ---
 
 ## Step 5 — Create `routes.ts`
@@ -342,3 +353,4 @@ Before marking this slice as `Done`, verify the implementation against slice.jso
 - [ ] Every entry in `specifications[]` maps to a test case in `{SliceName}.test.ts`
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
+- [ ] If `storylines[]` is present, a storyline-derived test was added for every COMMAND beat matching this slice's command

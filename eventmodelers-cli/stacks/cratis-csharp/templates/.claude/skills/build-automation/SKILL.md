@@ -36,6 +36,7 @@ slice, which services are available for side effects, and how existing translati
 | **Target command** | For translation: which command to `Execute`, and how its fields map from the event |
 | **Idempotency** | The reaction must be safe to run more than once (replay/recovery) |
 | **Specifications** | Each scenario → an executable spec |
+| **Storylines** (optional) | `storylines[]` — ordered walkthrough "beats"; an event-triggering-this-reactor transition is a supplementary spec source, see Step 4a |
 
 If a command field has no source in the trigger event or an injected service, do not invent it.
 
@@ -86,6 +87,26 @@ command); for automations, assert the side-effect service was invoked. Cover ide
 slice calls for it. One spec per scenario. Run `dotnet test --filter "FullyQualifiedName~<SliceName>"`.
 See [references/patterns.md](references/patterns.md).
 
+## Step 4a — Storyline-derived specs (optional)
+
+If `storylines[]` is non-empty — a storyline embedded in this slice's slice.json already belongs
+entirely to this slice, no need to match beats against `events[]`/`commands[]` by id/title — look
+for an `EVENT → (COMMAND | EVENT)` transition: a trigger event beat, followed by the command it
+triggers (translation) or a further event/side-effect signal (automation).
+
+- **Establish** — append the trigger event (and any preceding events in the storyline needed to
+  reach it).
+- **Because** — invoke/replay the reactor.
+- **should_\*** — for a translation, assert `ICommandPipeline.Execute` was called with the mapped
+  command from the beat's `fields`; for a plain automation, assert the mocked side-effect service
+  was invoked.
+
+If the storyline continues past the triggered command into that command's own event, or into a
+read model, those halves belong to **build-state-change** / **build-state-view** respectively — a
+reactor spec only covers the event-in → reaction-out step.
+
+Skip silently when the beat sequence can't be isolated (e.g. no traceable trigger event).
+
 ## Final verification — does the implementation match `slice.json`?
 
 - [ ] The reactor observes exactly the trigger event(s) named in the slice.
@@ -93,6 +114,8 @@ See [references/patterns.md](references/patterns.md).
 - [ ] No new events written via `IEventLog` — only via `ICommandPipeline`.
 - [ ] The reaction is idempotent; the reactor is stateless.
 - [ ] Every scenario → an executable spec; `dotnet build` clean; specs pass.
+- [ ] A `storylines[]` transition triggering this reactor has a spec, or was deliberately skipped
+      (not silently ignored).
 
 ## References
 - [references/patterns.md](references/patterns.md) — full reactor/translation code and reactor specs.

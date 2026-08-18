@@ -22,6 +22,7 @@ From the slice definition, extract:
 - **context** — bounded context
 - **events[]** — events this projection handles (its `canHandle` list)
 - **readModel / fields** — the columns of the output table
+- **storylines[]** (optional) — narrated walkthroughs that may yield additional projection tests; see Step 5b
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 
@@ -306,6 +307,22 @@ Write one `it` block per specification in the slice.json. Use `given([events]).w
 
 ---
 
+## Step 5b — Storyline-derived tests (optional)
+
+Some slices also have a `storylines[]` array in slice.json — narrated walkthroughs where the *same* read model repeats across several beats in one ordered `elements[]` list, showing its state at different points in a single flow. Most slices have no storylines; skip this step silently when `storylines[]` is empty or absent.
+
+A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `readmodels[]` by id/title. For each storyline, scan `elements[]` for pairs of adjacent `type: 'READMODEL'` beats with only EVENT beat(s) in between. Each such pair is a clean, self-contained projection test — the same shape as the specifications-derived tests above:
+- `given` — the cumulative ordered EVENT beats from the start of the storyline through the intervening event(s), not just the two beats either side (earlier events in the same storyline still apply to accumulated state)
+- `then` — assert the read model matches the later beat's shape, using its `fields`/`examples`/`expectEmptyList` exactly like a specifications-derived assertion
+
+Put these in their own `describe` block per storyline, named after the storyline's `title` (e.g. `describe('Storyline: {storyline.title}', ...)`) — never merge them into the `specifications[]` suite; storylines are a supplementary narrative check, not a replacement for scenario coverage.
+
+Skip (do not fabricate) a segment when:
+- a COMMAND beat sits between two read-model beats — that half belongs to **build-state-change** (the command → event transition); only the event → read-model half after it is testable here
+- a beat (e.g. SCREEN) can't be traced to an event affecting the read model
+
+---
+
 ## Step 6 — Create `routes.ts`
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
@@ -390,6 +407,8 @@ src/common/
 - [ ] `finally { await db.destroy() }` present in every `evolve` handler
 - [ ] Tests use `runFlywayMigrations()` to apply the real schema
 - [ ] One test scenario per specification in slice.json
+- [ ] If `storylines[]` is present, each read-model-to-read-model transition relevant to this slice has a corresponding storyline test (or a documented reason it was skipped)
+- [ ] Storyline-derived tests live in their own `describe` block, separate from the specifications suite
 - [ ] Every field in the read model definition in slice.json has a column in the migration and a field in the TypeScript type — no invented columns
 - [ ] Every event type in `events[]` is listed in the projection's `canHandle` — no assumed events
 - [ ] No extra columns or fields were added beyond what slice.json defines

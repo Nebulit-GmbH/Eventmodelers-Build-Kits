@@ -204,6 +204,48 @@ Do not design your own test cases unless specifically instructed to do so.
 | Event in Given | call `projector.on(event)` |
 | Information in Then | `assertThat(result.items()).containsExactlyInAnyOrder(...)` |
 
+## Step 4b: Storyline-Derived Tests (Optional)
+
+`slice.json` may also carry a `storylines[]` array — narrated walkthroughs where the *same* read
+model appears as multiple ordered "beats" across one flow (see `elements[]` on each storyline).
+This is a secondary, supplementary source: `specifications[]` (Step 4) remains the primary and
+default source of test cases. Most slices have no `storylines[]` — skip this step silently when
+there's nothing relevant.
+
+A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need
+to match beats against `readmodels[]` by id/title. For each storyline, find beats whose `type` is
+`READMODEL`. Two such beats **adjacent with only `EVENT` beat(s) between them** describe one clean,
+isolable projection test:
+
+- events = the cumulative ordered `EVENT` beats from the start of the storyline through the
+  intervening event(s)
+- expected result = the later `READMODEL` beat's `fields`/`examples`/`expectEmptyList`
+
+Write these as ordinary `@Test` methods (Step 5's `projector.on(event)` / `projector.handle(query)`
+pattern applies unchanged), but keep them in a clearly separate `@Nested` class named after the
+storyline's title, so they never get confused with the exhaustive `specifications[]` suite:
+
+```java
+@Nested
+@DisplayName("Storyline: {storyline.title}")
+class StorylineTests {
+    @Test
+    @DisplayName("after {EventName}, read model shows {expected state}")
+    void beatTransition() {
+        projector.on(new {EventName}(/* fields from the intervening beat(s) */));
+
+        var result = projector.handle(new Get{SliceName}(/* filter */));
+
+        assertThat(result.items()).containsExactly(/* expected shape from the later beat */);
+    }
+}
+```
+
+If a beat between two read-model states is a `COMMAND` rather than an `EVENT`, that half belongs
+to `build-state-change` (its own command-handler test), not here — only project the `EVENT`→
+`READMODEL` half. If a storyline segment involves a `SCREEN`/other untraceable beat, don't force a
+test — leave it undocumented in code rather than fabricating an assertion.
+
 ## Step 5: Implement the Slice Test
 
 Pure unit tests — instantiate the projector directly, no Spring context needed.
@@ -278,5 +320,6 @@ Before marking this slice as `Done`, verify the implementation against slice.jso
 - [ ] Every field in the read model / query result definition in slice.json has a field in `{SliceName}Summary` — no invented fields
 - [ ] Every event type in `events[]` has an `@EventHandler` in the projector — no events missed or assumed
 - [ ] Every GWT scenario in `specifications[]` maps to a test case in `{SliceName}ProjectorTest`
+- [ ] If `storylines[]` is present: every adjacent READMODEL↔READMODEL beat pair for this slice's read model (with only EVENT beats between) has a `@Nested` storyline test — or was deliberately skipped as untraceable
 - [ ] No extra query parameters or filter logic were added beyond what slice.json defines
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code

@@ -36,6 +36,7 @@ state-change skill's Step 0 for the resolve endpoint).
 | **Source events** | Which events feed each field (projections **join events, never read models**) |
 | **Queries** | The queries to expose; whether each is snapshot or real-time (observable) |
 | **Specifications** | Each scenario → an executable spec proving the projection result |
+| **Storylines** (optional) | `storylines[]` — ordered walkthrough "beats"; a read-model chain in one is a supplementary spec source, see Step 4a |
 
 If a field has no source event in `slice.json`, do not invent one. One read model per use case —
 never reuse a model across slices.
@@ -100,6 +101,32 @@ Write specs proving the projection/reducer produces the expected read model from
 one spec per scenario in `slice.json`. Run `dotnet test --filter "FullyQualifiedName~<SliceName>"`.
 See [references/patterns.md](references/patterns.md).
 
+## Step 4a — Storyline-derived specs (optional)
+
+If the slice's `storylines[]` array (in `slice.json`, alongside `specifications[]`) is non-empty —
+a storyline embedded in this slice's slice.json already belongs entirely to this slice, no need to
+match beats against `readmodels[]` by id/title — look for a **read-model chain**: two beats of
+`type: "READMODEL"`, with only `EVENT` beat(s) between them. That's a self-contained projection
+spec:
+
+- **Establish** — append every event from the storyline's start up through the intervening
+  event(s), in order.
+- **Because** — run the projection.
+- **should_\*** — assert against the *later* beat's `fields`/`examples`/`expectEmptyList`.
+
+Put these in their own `for_<ReadModel>/when_<storyline-title>/` folder (not `when_<behavior>/`),
+so they're never confused with the exhaustive `specifications[]` suite — a storyline is a
+narrated walkthrough, not exhaustive coverage.
+
+If the storyline's transition into this read model is instead `COMMAND → EVENT → READMODEL`, only
+the `EVENT → READMODEL` half belongs here — the `COMMAND → EVENT` half is a separate spec in
+**build-state-change** (see its Step 5a). Don't try to assert read-model state from a dispatched
+command in one spec unless the project already has an established pattern for that.
+
+Skip a beat sequence entirely — no spec, no placeholder — if it can't be isolated (e.g. a SCREEN
+beat with no traceable event). A storyline is source material for tests, not a mandate to write
+one for every beat.
+
 ## Step 5 — Frontend
 
 Add `<Module>/<Feature>/<Slice>/<Component>.tsx` importing the co-located generated query proxy from
@@ -113,6 +140,8 @@ feature's composition page; add routing in `App.tsx` if it's a new page.
 - [ ] Every source event used exists; projections map from **events**, never read models.
 - [ ] Every query in the slice is exposed as a static method; observable where the slice wants live data.
 - [ ] Every scenario → an executable spec.
+- [ ] A `storylines[]` read-model chain for this read model has a spec, or was deliberately
+      skipped (not silently ignored).
 - [ ] `dotnet build` clean; specs pass.
 
 ## References

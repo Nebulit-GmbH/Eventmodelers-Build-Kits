@@ -55,6 +55,9 @@ If the Event Modeling artifact includes slice details with `## Scenarios (GWTs)`
 test cases. GWT format for automations: `Given (events) → Then (command | NOTHING)`. Events in
 Given include read-model-building events first, trigger event last.
 
+`slice.json` may also carry an optional `storylines[]` array — see the "Storyline-Derived Tests"
+section under Step 5 for how a trigger-event beat in one of these can add a supplementary test.
+
 If the slice details contain `## Implementation Guidelines`, **follow them**.
 
 ### Stateless vs With Read Model Decision
@@ -387,6 +390,25 @@ class {AutomationName}ProcessorTest {
 | Command in Then | `verify(commandDispatcher).send(eq(expectedCommand), any())` |
 | NOTHING in Then | `verifyNoInteractions(commandDispatcher)` |
 
+### Storyline-Derived Tests (Optional)
+
+`slice.json` may also carry a `storylines[]` array — narrated walkthroughs with an ordered
+`elements[]` "beats" sequence (EVENT/COMMAND/READMODEL/...). This is a secondary, supplementary
+source; `specifications[]` above stays the primary and default source of test cases. Most slices
+have no `storylines[]` — skip silently when there's nothing relevant.
+
+A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need
+to match beats against `events[]`/`commands[]` by id/title. Find a beat whose `type` is `EVENT`
+immediately followed by a `COMMAND` beat. That pair is a ready-made test: `given` = the cumulative
+preceding `EVENT` beats (setup events) through the trigger beat, `then` =
+`verify(commandDispatcher).send(eq(...), any())` built from the command beat's fields — same shape
+as the "Mapping GWT Scenarios to Tests" row above, just sourced from the storyline instead of
+`specifications[]`.
+
+If the beat following the trigger event isn't a COMMAND this automation dispatches (e.g. it's a
+READMODEL or SCREEN beat), don't force a test — leave it undocumented rather
+than fabricating an assertion.
+
 ## References
 
 - [Stateless Automation Example](references/automation-test-example.md) — Complete Java test example
@@ -403,5 +425,6 @@ Before marking this slice as `Done`, verify the implementation against slice.jso
 - [ ] The command dispatched matches the target command defined in slice.json
 - [ ] All fields mapped from trigger event to command come from the event fields defined in slice.json — no invented mappings
 - [ ] Every GWT scenario in `specifications[]` maps to a test case in the test class
+- [ ] If `storylines[]` is present: every trigger-EVENT→target-COMMAND beat pair for this automation has a storyline test — or was deliberately skipped as untraceable
 - [ ] No filtering conditions were invented — all conditions come from slice.json `description` or `comments`
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
