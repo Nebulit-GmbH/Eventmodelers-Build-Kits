@@ -68,12 +68,14 @@ Guidelines:
 
 ### Marks — only when the user explicitly asks for one
 
-The canvas has a native "Marks" feature (outline highlight, optional blur-outside spotlight) for calling out part of a screen. **Do not add marks by default.** Only apply one of the two effects below when the request explicitly asks to highlight/mark/call out/circle/spotlight or blur/obscure part of the screen (e.g. "highlight the submit button", "blur everything except the email field"). An ordinary "design a screen" request gets no marks.
+The canvas has a native "Marks" feature (outline highlight, plus an optional "blur outside" or "white outside" spotlight) for calling out part of a screen — see `HtmlEditorModal.tsx`'s Highlight tool and `markBlur.ts`/`markStyles.ts` in the main app. **Do not add marks by default.** Only apply the effects below when the request explicitly asks to highlight/mark/call out/circle/spotlight, or blur/obscure/white-out part of the screen (e.g. "highlight the submit button", "blur everything except the email field", "white out everything but the header"). An ordinary "design a screen" request gets no marks.
 
-Since this skill only has a `pages`/`backgroundColor` field to send (no separate marks API), reproduce the same visual language directly as inline CSS on the target element(s) — self-contained in the page HTML, same as any other styling in Step 3:
+This skill only has a `pages`/`backgroundColor` field to send (no separate marks API — the native feature persists marks as board metadata, not through this render call), so reproduce the same visual language directly as inline CSS on the target element(s), self-contained in the page HTML same as any other styling in Step 3. No `<script>`/`<style>` tags are needed (and `<script>` is stripped anyway) — inline `style="..."` reproduces the same CSS the native feature injects:
 
-- **Mark / highlight an area** — add to the target element's `style`: `outline:4px solid <color> !important;outline-offset:1px;`. Default color `#e74c3c` (red) unless the user names one; other options mirror the app's mark picker: `#1e293b` (dark slate), `#2ecc71` (green), `#3b82f6` (blue), `#f1c40f` (yellow), `#ffffff` (white).
-- **Blur outside / spotlight an area** — add `style="filter:blur(6px) !important;"` to every other top-level sibling/section on the page so only the called-out element stays sharp. Combine with the outline above if the user asked to both mark and blur.
+- **Mark / highlight an area** — add to the target element's `style`: `outline:4px solid <color> !important;outline-offset:1px;`. Default color `#e74c3c` (red) unless the user names one; other options mirror the app's mark picker (`ColorPicker.tsx`): `#1e293b` (dark slate), `#2ecc71` (green), `#3b82f6` (blue), `#f1c40f` (yellow), `#ffffff` (white).
+- **Blur outside / spotlight an area** — add `style="filter:blur(6px) !important;"` to every other top-level sibling/section on the page so only the called-out element stays sharp.
+- **White outside / spotlight an area** — same idea, but instead add `style="filter:brightness(0) invert(1) !important;"` to every other top-level sibling/section (collapses them to solid white — works uniformly across text, shapes, and images, unlike a plain background-color override). Use this only when the user says "white out" / "whiteout" rather than "blur" — the two are mutually exclusive per mark in the native tool, so never apply both blur and white filters to the same sibling.
+- Combine the outline rule with either spotlight rule if the user asked to both mark *and* blur/white-out.
 
 Apply these only to the specific element(s) the request describes — don't guess at additional areas to call out.
 
