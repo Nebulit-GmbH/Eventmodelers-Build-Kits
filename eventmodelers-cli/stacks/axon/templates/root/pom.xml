@@ -4,7 +4,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>io.axoniq.quickstart</groupId>
     <artifactId>quickstart</artifactId>
-    <name>Axoniq Platform Quickstart</name>
+    <name>Axoniq Quickstart</name>
     <version>0.0.1-SNAPSHOT</version>
 
     <properties>
@@ -19,6 +19,8 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-webflux</artifactId>
         </dependency>
+
+
 
         <!-- Read model persistence: Spring Data JPA + PostgreSQL, default for all projections -->
         <dependency>
@@ -41,6 +43,14 @@
         <dependency>
             <groupId>io.axoniq.platform</groupId>
             <artifactId>axoniq-platform-spring-boot-starter</artifactId>
+        </dependency>
+
+        <!-- Auto-starts docker-compose.yml services (e.g. postgres) on app run -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-docker-compose</artifactId>
+            <scope>runtime</scope>
+            <optional>true</optional>
         </dependency>
 
         <!-- Testing -->
