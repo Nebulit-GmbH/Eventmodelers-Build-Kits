@@ -10,7 +10,7 @@ export async function createSupabaseRealtimeAdapter(cfg, initialToken) {
   await supabase.realtime.setAuth(initialToken);
 
   return {
-    subscribe(topic, handlers, onStatus) {
+    async subscribe(topic, handlers, onStatus) {
       let channel = supabase.channel(topic, { config: { private: true } });
       for (const [event, handler] of Object.entries(handlers)) {
         channel = channel.on('broadcast', { event }, (msg) => handler(msg.payload));
