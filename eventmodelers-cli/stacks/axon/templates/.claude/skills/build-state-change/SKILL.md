@@ -312,6 +312,8 @@ in all three places:
 - `META-INF/additional-spring-configuration-metadata.json` — add a `{"name": "...", "type":
   "java.lang.Boolean", "description": "..."}` entry
 
+See [references/feature-flag-patterns.md](references/feature-flag-patterns.md) for the full pattern.
+
 This flag is irrelevant to the Step 7 test below — that test never boots Spring, so
 `@ConditionalOnProperty` never runs.
 

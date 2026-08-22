@@ -7,8 +7,7 @@ description: >
   (long-running, durable, multi-step processes) instead of plain @EventHandler automations.
   Determines WHICH slices need a Workflow, then implements them using the AF5 Workflow engine.
   Use when: (1) given a set of automation slice.json definitions, decide which ones should be
-  Workflows; (2) user asks to "convert automation to workf
-  low", "implement as workflow",
+  Workflows; (2) user asks to "convert automation to workflow", "implement as workflow",
   or "use Axon Workflow for this slice"; (3) a slice has multi-step logic, needs to wait for
   external input/approval, requires compensation/rollback, or spans significant time.
   NOTE: AF5 Workflows are in Preview — APIs may change; not intended for production use yet.

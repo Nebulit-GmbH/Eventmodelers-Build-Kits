@@ -415,8 +415,6 @@ than fabricating an assertion.
 
 ## References
 
-- [Stateless Automation Example](references/automation-test-example.md) — Complete Java test example
-- [Automation with Read Model Example](references/automation-with-read-model-test-example.md) — Multi-command test
 - [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
 
 ---
