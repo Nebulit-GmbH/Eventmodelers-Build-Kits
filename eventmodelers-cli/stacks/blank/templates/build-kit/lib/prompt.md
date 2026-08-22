@@ -38,6 +38,17 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 17. Append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 18. Finish the iteration.
 
+## Escalating Ambiguity
+
+**If the slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need
+in order to proceed — do not guess, and do not build anyway.** Invoke `/request-feedback` with the
+specific question; it posts the question as a comment on the slice and marks it `Blocked` on the
+board (overriding the `InProgress` set in step 5), then stop this iteration without finishing the
+build — reply `<promise>DONE</promise>` as if the iteration's work was to raise the question, not to
+implement the slice. This is an escalation path, not a routine step — read the slice.json and the
+matching build skill's own instructions fully first; most slices are fully specified and need none of
+this.
+
 ## Progress Report Format
 
 APPEND to progress.txt (never replace, always append):

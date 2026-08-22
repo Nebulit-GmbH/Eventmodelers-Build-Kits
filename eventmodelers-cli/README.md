@@ -94,8 +94,9 @@ Use skills in Claude Code with `/skill-name`:
 | `/update-slice-status` | Update slice status on the board |
 | `/load-slice` | Persist board slices to disk (backend stacks) |
 | `/build-state-change`, `/build-state-view`, `/build-automation`, `/build-webhook` | Implement a slice's command/view/automation/webhook (backend stacks) |
+| `/request-feedback` | Post a QUESTION comment and mark a slice `Blocked` when it's genuinely ambiguous (backend stacks) |
 
-Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, and `/update-slice-status` have no stack-specific content and install into every stack from `shared/skills/` instead.
+Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, `/update-slice-status`, and `/request-feedback` have no stack-specific content and install into every stack from `shared/skills/` instead.
 
 ## Everyday commands
 
@@ -346,7 +347,7 @@ npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-ki
 
 ### Adding a stack
 
-Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
+Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`, `request-feedback`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
 
 Once your `init --build-kit` scaffold (see above) works against a real backend, promote it to a first-class stack:
 

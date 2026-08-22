@@ -48,6 +48,8 @@ Inspect the `sliceStatus` in the payload:
 
 This is the build trigger. Setting `InProgress` and building are one atomic step:
 
+**If the slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need in order to proceed — do not guess, and do not build anyway.** Invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked` (superseding the `InProgress` set in step 1), then drop this task without finishing the build. This is an escalation path, not a routine step — most slices are fully specified.
+
 1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
 
    **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.

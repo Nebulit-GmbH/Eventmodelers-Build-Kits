@@ -9,6 +9,13 @@ and follow the conventions distilled in
 `.build-kit/.claude/skills/_shared/cratis-conventions.md`. **The shipped example slice
 under `SomeModule/SomeFeature/` is the concrete pattern to copy** — match its structure exactly.
 
+**If a slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need in
+order to proceed — do not guess, and do not build anyway.** Invoke the `request-feedback` skill with
+the specific question; it posts the question as a comment on the slice and marks it `Blocked`, and you
+then stop work on this slice for this run. This is an escalation path, not a routine step — read
+`slice.json` and the matching build skill's own instructions fully first; most slices are fully
+specified and need none of this.
+
 ## Structure (learn from `SomeModule/SomeFeature/`)
 
 ```

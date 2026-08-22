@@ -91,6 +91,17 @@ Use the skills available in `.claude/skills/` to interact with the board.
 
 After completing a task, remove it from the array and write the updated array back to `.build-kit/tasks.json`. If the array is now empty, write `[]`.
 
+## Escalating Ambiguity
+
+**If the slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need
+in order to proceed — do not guess, and do not build anyway.** Invoke `/request-feedback` with the
+specific question; it posts the question as a comment on the slice and marks it `Blocked` on the
+board (overriding the `InProgress` set earlier), then stop this iteration without finishing the
+build — reply `<promise>DONE</promise>` as if the iteration's work was to raise the question, not to
+implement the slice. This is an escalation path, not a routine step — read the slice.json and the
+matching build skill's own instructions fully first; most slices are fully specified and need none of
+this.
+
 ## Progress Report Format
 
 APPEND to `progress.txt` (never replace):

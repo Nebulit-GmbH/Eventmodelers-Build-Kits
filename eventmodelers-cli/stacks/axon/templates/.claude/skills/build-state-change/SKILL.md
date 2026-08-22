@@ -121,8 +121,16 @@ public static final String {TAG_CONSTANT} = "idField";
 ## Step 3: Decision-model entity
 
 Package-private, mutable field(s) — **not** an immutable `State` record with free-standing
-`decide()`/`evolve()` static methods. One boolean/value field per fact the command handler's rule
-check needs, nothing else.
+`decide()`/`evolve()` static methods.
+
+**Derive the field(s) from this slice's `specifications[]` (Step 0), not from the event's shape.**
+Each GWT scenario's `given`/`then` pair states the one decision the command handler must make and the
+prior fact that decision depends on — that fact is the field. Re-read the scenarios before naming
+fields: a "given no prior activity" / "given already {X}" pair means one boolean flag for {X}; a
+scenario that discriminates on a value (not just presence/absence) means a value field holding that
+value, not a boolean. Add exactly one field per fact a scenario actually branches on — an event can
+carry several fields, but the entity only needs the ones a `specifications[]` scenario checks. Do not
+add a field just because the corresponding event happens to carry that data.
 
 ```java
 package {basePackage}.slices.{context}.{slicename};
