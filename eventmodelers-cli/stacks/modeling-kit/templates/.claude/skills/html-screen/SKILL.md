@@ -68,18 +68,56 @@ Guidelines:
 
 ### Marks — only when the user explicitly asks for one
 
-The canvas has a native "Marks" feature (outline highlight, plus an optional "blur outside" or "white outside" spotlight) for calling out part of a screen — see `HtmlEditorModal.tsx`'s Highlight tool and `markBlur.ts`/`markStyles.ts` in the main app. **Do not add marks by default.** Only apply the effects below when the request explicitly asks to highlight/mark/call out/circle/spotlight, or blur/obscure/white-out part of the screen (e.g. "highlight the submit button", "blur everything except the email field", "white out everything but the header"). An ordinary "design a screen" request gets no marks.
+The canvas has a native "Marks" feature (outline highlight, plus an optional "blur outside" or "white outside" spotlight) for calling out part of a screen — confirmed against the app's own source (`HtmlEditorModal.tsx`, `canvas/nodes/markHtml.ts`, `markBlur.ts`, `markStyles.ts`, `canvas/nodes/HtmlScreenNode.tsx`). **Do not add marks by default.** Only apply marks when the request explicitly asks to highlight/mark/call out/circle/spotlight, or blur/obscure/white-out part of the screen (e.g. "highlight the submit button", "blur everything except the email field", "white out everything but the header"), or when another skill's own instructions ask for a component to be marked/highlighted (e.g. `eventmodeling-identifying-outputs` Step 5b, which explicitly requests a mark per screen copy — that counts as an explicit ask). An ordinary "design a screen" request gets no marks.
 
-This skill only has a `pages`/`backgroundColor` field to send (no separate marks API — the native feature persists marks as board metadata, not through this render call), so reproduce the same visual language directly as inline CSS on the target element(s), self-contained in the page HTML same as any other styling in Step 3. No `<script>`/`<style>` tags are needed (and `<script>` is stripped anyway) — inline `style="..."` reproduces the same CSS the native feature injects:
+**Never fake this with hand-written inline CSS** (`filter:blur(...)`, `outline:...`, `opacity:...`, `pointer-events:...` on page elements) — that is not how the native feature works and won't match how the app itself renders a mark. A real mark has **two halves that must both be set together**, in the same page/meta update:
 
-- **Mark / highlight an area** — add to the target element's `style`: `outline:4px solid <color> !important;outline-offset:1px;`. Default color `#e74c3c` (red) unless the user names one; other options mirror the app's mark picker (`ColorPicker.tsx`): `#1e293b` (dark slate), `#2ecc71` (green), `#3b82f6` (blue), `#f1c40f` (yellow), `#ffffff` (white).
-- **Blur outside / spotlight an area** — add `style="filter:blur(6px) !important;"` to every other top-level sibling/section on the page so only the called-out element stays sharp.
-- **White outside / spotlight an area** — same idea, but instead add `style="filter:brightness(0) invert(1) !important;"` to every other top-level sibling/section (collapses them to solid white — works uniformly across text, shapes, and images, unlike a plain background-color override). Use this only when the user says "white out" / "whiteout" rather than "blur" — the two are mutually exclusive per mark in the native tool, so never apply both blur and white filters to the same sibling.
-- Combine the outline rule with either spotlight rule if the user asked to both mark *and* blur/white-out.
+**Half 1 — bake the mark onto the target element, inside the page HTML itself.** Pick the one element that should stay sharp (a row, a card, a tile — whatever the "component" is) and add two attributes to it, merging into any `class`/other attributes it already has:
+- `data-em-mark-id="em-<short-unique-id>"` — a unique id for this mark, referenced by half 2 below.
+- `class="em-mark em-mark-<colorhex-without-#>"` — e.g. `em-mark em-mark-e74c3c` for the default red `#e74c3c`. This class is what actually draws the `outline:4px solid <color> !important;outline-offset:1px;` — its stylesheet is injected by the app itself at render time, not something to write into the page.
 
-Apply these only to the specific element(s) the request describes — don't guess at additional areas to call out.
+Do not add any blur/white styling directly to other elements — that part is entirely driven by half 2.
 
-**Marked screens and field scoping**: when the same underlying screen is rendered multiple times as separate nodes — once per slice, each with a different mark/highlight calling out a different part of the UI — scope each node's `meta.fields` (Step 5 below) to only the data inside that node's highlighted area, not the full screen. Three slice-specific screen nodes sharing one visual base should end up with three different, narrower field lists, each matching what that node's mark calls out.
+**Half 2 — add the matching entry to `meta.marks`**, an array of objects (one per mark on this node, across all its pages):
+
+```json
+{
+  "id": "em-<same-id-as-the-data-em-mark-id-attribute>",
+  "color": "#e74c3c",
+  "pageIndex": 0,
+  "blurOutside": true,
+  "whiteOutside": false
+}
+```
+
+- `id` — must exactly match the `data-em-mark-id` value baked into the page in half 1. This is how the app's render script finds the marked element and applies blur/white to every *other* top-level branch of `<body>` (walking down, only recursing into branches that contain the marked element — see `markBlur.ts`'s `markOutsideScript`). No coordinates are needed or supported; targeting is purely by this shared id.
+- `color` — must match the color used in the `em-mark-<colorhex>` class in half 1. Default `#e74c3c` (red) unless the user names one; other options mirror the app's mark picker: `#1e293b` (dark slate), `#2ecc71` (green), `#3b82f6` (blue), `#f1c40f` (yellow), `#ffffff` (white).
+- `pageIndex` — which page in the `pages` array this mark's target element is on (0-based).
+- `blurOutside` — `true` to blur every other top-level section (a spotlight effect). Mutually exclusive with `whiteOutside`.
+- `whiteOutside` — `true` to collapse every other top-level section to solid white instead of blurring it. Use only when the user says "white out"/"whiteout" rather than "blur" — never set both `blurOutside` and `whiteOutside` on the same mark.
+
+Set both halves in one `node:changed` call (or immediately paired calls) so the node is never left with one half but not the other:
+
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
+    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
+    "meta": {
+      "type": "HTML_SCREEN",
+      "title": "<Screen Title>",
+      "pages": ["<div>...<tr data-em-mark-id=\"em-abc123\" class=\"em-mark em-mark-e74c3c\">...crisp row...</tr>...</div>"],
+      "marks": [{"id": "em-abc123", "color": "#e74c3c", "pageIndex": 0, "blurOutside": true, "whiteOutside": false}],
+      "fields": [...]
+    }
+  }]
+}
+```
+
+Pick a fresh, short random suffix for each mark id (`em-` + a few random alphanumeric characters) — don't reuse one across nodes/marks.
+
+**Marked screens and field scoping**: when the same underlying screen is rendered multiple times as separate nodes — once per slice, each with a different mark calling out a different part of the UI — scope each node's `meta.fields` (Step 5 below) to only the data inside that node's marked area, not the full screen. Three slice-specific screen nodes sharing one visual base should end up with three different, narrower field lists, each matching what that node's mark calls out.
 
 ## Step 4 — Render the pages
 
