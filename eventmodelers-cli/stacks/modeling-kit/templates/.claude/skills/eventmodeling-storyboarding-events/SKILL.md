@@ -561,7 +561,7 @@ When placing screens on the board, follow these alignment rules:
 
 ### Multi-component screens are broken apart in Step 5, not here
 
-Storyboarding renders **one plain screen per screen state** — do not pre-split a screen into per-component copies here. Deciding how many components a view screen actually has, and breaking it apart into one highlighted copy per component, is `eventmodeling-identifying-outputs`'s job (its "Step 5a — Enumerate consumers and identify components" and "Step 5b — Break apart multi-component screens into copies"), because a component is defined by its read model and read models aren't designed until Step 5. During storyboarding, just place the single screen one column to the right of where its read model will end up (per the table above); document which read model it will query even before that read model exists.
+Storyboarding renders **one plain screen per screen state** — do not pre-split a screen into per-component copies here. Deciding how many components a view screen actually has, and breaking it apart into one highlighted copy per component, is `eventmodeling-identifying-outputs`'s job (its "Step 5a — Enumerate consumers and identify components" and "Step 5c — Break apart multi-component screens into copies"), because a component is defined by its read model and read models aren't designed until Step 5. During storyboarding, just place the single screen one column to the right of where its read model will end up (per the table above); document which read model it will query even before that read model exists.
 
 ### Placing Automations
 
