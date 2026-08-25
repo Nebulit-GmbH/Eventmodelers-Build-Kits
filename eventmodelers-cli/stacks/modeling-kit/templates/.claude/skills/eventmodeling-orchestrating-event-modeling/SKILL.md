@@ -35,8 +35,12 @@ These rules govern how every element is placed on the board. Enforce them throug
 ### Never stack read models at the end
 Placing all read models in new columns at the very end of the timeline severs the visual connection to the events they're derived from. The board must show a coherent left-to-right narrative where each slice is self-contained.
 
-### One read model per screen region — the main defense against backward arrows
-A screen-wide read model that has to aggregate from events scattered across many columns is the most common source of backward-arrow layout errors: it can only occupy one column, but its regions each pull from different, differently-positioned source events. The fix is architectural, not just positional — **split the read model by UI region before it ever gets placed.** A screen with a stats row and a list below it is two read models and two screen copies (each copy showing the full screen with the non-relevant region blurred/dimmed via CSS, the relevant region left normal), not one. Each narrower read model then sits naturally close to its own source event, and the `EVENT → READMODEL → SCREEN` chain for each region stays short and forward. See `eventmodeling-identifying-outputs` ("One read model per screen region") and `eventmodeling-storyboarding-events` ("View screens with multiple data regions get one copy per region") for the mechanics — apply this during Steps 3 and 5, before the placement problem exists, rather than reordering columns to patch it afterward.
+### One read model per component, not one read model per screen
+A read model does not necessarily serve a whole screen — **one component in a screen resembles one read model.** Storyboarding (Step 3) only produces a plain screen per screen state; it does not decide components. That decision, and the work of breaking a multi-component screen apart into copies, happens in Step 5 (Identifying Outputs), because a component is defined by its read model.
+
+A screen-wide read model that has to aggregate from events scattered across many columns is the most common source of unnecessary coupling — a "god read model." A screen with a stats row and a list below it is two components: two read models and two screen copies of the *same page* (same screen name on both copies; the copies differ only in which component is marked/highlighted crisp while the other is blurred/dimmed), not one screen-wide read model. Each narrower read model then sits naturally close to its own source event, and the `EVENT → READMODEL → SCREEN` chain for each component stays short and forward. See `eventmodeling-identifying-outputs`'s "Step 5a — Enumerate consumers and identify components" and "Step 5b — Break apart multi-component screens into copies" for the mechanics — apply this during Step 5, before the placement problem exists, rather than reordering columns to patch it afterward.
+
+Not every wide fan-in is this problem, though: a single homogeneous list/table (e.g. a catalog whose per-row status comes from many different lifecycle events) is still **one** component, and its read model legitimately needs to subscribe to many events spread across the timeline — that's a "roll-up" component, not a god read model. Treat that classification as an assumption, not a given: `eventmodeling-identifying-outputs` Step 5a records it as an inline MARKDOWN note (per "Documenting decisions inline" above) explaining why the component is one roll-up rather than several bundled ones, instead of force-splitting it or letting it pass unremarked.
 
 ### No unplaced elements (0,0 nodes)
 
@@ -248,11 +252,13 @@ role or system processor.
 
 Invoke `eventmodeling-identifying-outputs`.
 
-**Input**: Event list + Commands from Step 4.
+**Input**: Event list + Commands from Step 4 + the plain screens placed in Step 3.
 **Output to carry forward**: Read model definitions — projections of events
-optimized for UI and processor queries.
+optimized for UI and processor queries — one per screen component, with any
+multi-component screen already broken apart into same-named, highlighted
+screen copies (this step's Step 5a/5b, not Step 3's job).
 **Gate**: Every screen data need from the storyboards is satisfied by a read
-model.
+model, and no read model spans more than one component.
 
 ---
 

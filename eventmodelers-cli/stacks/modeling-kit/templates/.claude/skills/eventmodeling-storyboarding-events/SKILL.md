@@ -559,16 +559,9 @@ When placing screens on the board, follow these alignment rules:
 
 > **Do not create standalone screen columns that are disconnected from commands or read models.** Every screen must either share its column with the command it submits, or be placed one column to the right of the read model it displays.
 
-### View screens with multiple data regions get one copy per region
+### Multi-component screens are broken apart in Step 5, not here
 
-If a view screen has more than one visually distinct data region (a stats row, a list below it, a summary card next to a detail panel, etc.), **do not design it as a single screen fed by one screen-wide read model.** Each region gets its own screen copy and, in Step 5, its own read model in its own column:
-
-- Render the **same full screen layout** once per region.
-- In each copy, the region that copy is meant to foreground stays normal; every other region is visually de-emphasized — `filter: blur(3px); opacity: 0.45; pointer-events: none;` on the wrapper of the non-relevant region(s) reads clearly in an HTML_SCREEN render (Bulma classes still apply normally underneath the blur).
-- Title each copy after the region, e.g. `"Librarian Dashboard — Statistics"` and `"Librarian Dashboard — Recently Added"`, not both just `"Librarian Dashboard"`.
-- Place each copy in its own column, one column to the right of the read model that will feed it (per the table above) — this is normally a different column per copy, since each region typically has a different natural source event.
-
-This is why the copies matter even though the underlying screen looks the same: it keeps each `READMODEL → SCREEN` connection narrow and forward (see `eventmodeling-identifying-outputs`'s "One read model per screen region" section), instead of one wide read model forced to straddle far-apart source events and pushed into a single column that can't sit correctly relative to every region's own event.
+Storyboarding renders **one plain screen per screen state** — do not pre-split a screen into per-component copies here. Deciding how many components a view screen actually has, and breaking it apart into one highlighted copy per component, is `eventmodeling-identifying-outputs`'s job (its "Step 5a — Enumerate consumers and identify components" and "Step 5b — Break apart multi-component screens into copies"), because a component is defined by its read model and read models aren't designed until Step 5. During storyboarding, just place the single screen one column to the right of where its read model will end up (per the table above); document which read model it will query even before that read model exists.
 
 ### Placing Automations
 

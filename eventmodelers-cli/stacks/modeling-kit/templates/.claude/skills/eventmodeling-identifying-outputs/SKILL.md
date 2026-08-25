@@ -346,7 +346,9 @@ Does not produce commands (info-only)
 
 ## Output Format
 
-Instead of writing a markdown document, **place each READMODEL (and any missing AUTOMATION) on the board** using the `node:created` API. Screens are typically already placed from Step 3 (storyboarding) — do not re-place them unless one is clearly missing. Automations are placed here when analysis reveals a processor that reads state and issues commands but is not yet on the board.
+Instead of writing a markdown document, **place each READMODEL (and any missing AUTOMATION) on the board** using the `node:created` API. Screens are typically already placed from Step 3 (storyboarding) as one plain screen per screen state — Step 3 does not pre-split anything, so working out how many components a screen actually has is this step's job (Step 5a below), not something to re-derive from storyboarding's output. Do not re-place an existing screen unless one is clearly missing. Automations are placed here when analysis reveals a processor that reads state and issues commands but is not yet on the board.
+
+This step proceeds as a sequence of lettered sub-steps: identify each screen's components (5a), break multi-component screens apart into copies (5b), then design and place one read model per component (5c onward).
 
 > **CRITICAL: Every READMODEL node MUST include `meta.fields` with a `mapping` on every field.** A read model without fields — or with fields that lack `mapping` — has no data lineage and cannot be traced back to its source events.
 
@@ -372,31 +374,39 @@ READ MODEL → AUTOMATION → COMMAND → EVENT
 
 Treat any screen or automation without an incoming read model as a gap unless it provably needs no prior state at all (e.g., a blank registration form).
 
-### One read model per screen region, not one read model per screen
+### Step 5a — Enumerate consumers and identify components
 
-**Do not default to a single monolithic read model that supplies an entire screen.** If a screen has more than one visually distinct data region (e.g. a stats row plus a list below it, or a summary card plus a detail table), each region gets its **own** read model, sourced only from the events that region actually needs — not the union of every event any part of the screen touches.
+**Before designing any read model, enumerate every SCREEN and AUTOMATION already placed on the board** (from Step 3 — Storyboarding). Storyboarding hands off one plain screen per screen state and does not pre-split anything — deciding how many components a screen actually has is this step's decision, because a component is defined by its read model: **one component in a screen resembles one read model.**
 
-Why this matters, beyond tidiness:
-- **It prevents backward arrows.** A single screen-wide read model is forced to aggregate from whatever events each of its regions needs, which often means reaching back across many columns to events scattered throughout the timeline — and the read model can only sit in one column, so some of those connections end up spanning a wide gap or, worse, pushing the read model's column later than some of its screen's other consumers require. Splitting by region lets each narrower read model sit close to its own natural source event(s), keeping every `EVENT → READMODEL` arrow short and forward.
-- **Regions evolve independently.** A stats tile and a "recently added" list are driven by different events, change at different rates, and are typically owned by different slices in implementation. Bundling them into one read model couples their release/change cadence for no reason.
-
-**How to realize this on the board**: each region's read model gets its own column (inserted immediately after that region's primary source event, per the placement rule above) and its own **screen copy** — a duplicate of the same screen layout where the region that read model drives is shown normally and every other region is visually de-emphasized (e.g. `filter: blur(3px); opacity: 0.45; pointer-events: none;` on the non-relevant regions, keeping the target region crisp, optionally with a highlight border). Title each copy after the region it foregrounds, e.g. `"Librarian Dashboard — Statistics"` and `"Librarian Dashboard — Recently Added"` as two separate HTML_SCREEN nodes, each in its own column, each wired `READMODEL → SCREEN` to only its own read model. This is the `html-screen` skill's job when asked to produce the copy — pass it the full original screen markup plus which region to foreground.
-
-Before finalizing any read model, ask: "does this screen have more than one visually distinct data region?" If yes, split — don't ask whether splitting is worth the extra columns, it always is at this scale, since the alternative is a hidden coupling and a higher chance of a backward-arrow layout error.
-
-### Read models serve existing screens and automations
-
-**Before designing any read model, enumerate every SCREEN and AUTOMATION already placed on the board** (from Step 3 — Storyboarding). Read models exist to serve those elements:
-
+Read models exist to serve the elements already on the board:
 - Every **view screen** (output/read model screen) needs at least one read model to supply its data.
 - Every **automation** that makes a decision based on system state needs at least one read model to read from.
 - Every **command/input screen** needs a read model unless it is a blank creation form with no prior state to display (this is the rare exception, not the rule).
 
-After the step is done, **every SCREEN and every AUTOMATION on the board must be connected to at least one read model** via a `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection. If a screen or automation has no incoming read model connection, it is a gap — either a read model is missing or the connection arrow is missing.
+For each SCREEN node, look at its rendered layout and its `meta.fields` and identify its components — groups of fields/UI elements a user would perceive as one area: a stats tile, a list below it, a summary card, a detail panel, a status column in a table, etc. **Most screens genuinely have exactly one component — do not force a split.** A screen has more than one component only when a user would point at two separate areas and describe them as different things.
+
+A single homogeneous list/table is still one component, even when its rows draw on many different event types (e.g. a catalog whose per-row status is set by many different lifecycle events scattered across the timeline). Splitting is about visually distinct *areas* of a screen, not about how many event types feed one area — don't split a table by row or by source event. Flag this kind of component as a **roll-up component**: its read model will legitimately need wide fan-in (many `EVENT → READMODEL` connections spanning much of the timeline) because it projects current state across an entity's full lifecycle rather than from one recent slice. This is expected, not a modeling error — but treat calling it a roll-up component as an **assumption**, not a fact, and document it as one: use the orchestrating skill's "Documenting decisions inline, at any step" mechanic (a MARKDOWN note in the feedback lane, placed in the component's column) to record explicitly *why* you concluded this is a legitimate single roll-up rather than an unsplit multi-component screen — e.g. "CopyAvailabilityView treated as one roll-up component: availability is a single per-copy status derived across that copy's full lifecycle (repair, loss, reservation, return), not several screen areas bundled together." That note is what lets a later reader (or reviewer) tell a deliberate roll-up apart from a missed split, instead of re-litigating or silently re-flagging it as a god read model.
+
+After this step is done, **every SCREEN and every AUTOMATION on the board must be connected to at least one read model** via a `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection, and every screen identified above as having 2+ components must have been broken apart per Step 5b before any read model is placed. If a screen or automation has no incoming read model connection, it is a gap — either a read model is missing or the connection arrow is missing.
 
 > **Placement rule**: A read model must be placed in a column that already contains a SCREEN or AUTOMATION it serves. Do not place read models in columns with no screen or automation — doing so creates orphaned read models that will never have a consumer.
 
-### Pull field mappings from Step 3 — they are the spec, not a guess
+### Step 5b — Break apart multi-component screens into copies
+
+**Do not default to a single monolithic read model that supplies an entire screen.** For every screen identified in Step 5a as having 2+ components, break it apart into one screen copy per component before designing its read models:
+
+- Each copy is the **same page**, so it **keeps the same screen name/title** — do not rename copies after their component (e.g. don't title one copy `"Librarian Dashboard — Statistics"` and another `"Librarian Dashboard — Recently Added"`; both stay `"Librarian Dashboard"`).
+- Distinguish copies visually, not by name: **mark/highlight the one component each copy is about**, using the same CSS technique used throughout this workflow — de-emphasize every non-relevant component (`filter: blur(3px); opacity: 0.45; pointer-events: none;` on its wrapper) and leave the component of interest crisp, optionally with a highlight border class on it.
+- Use the `html-screen` skill to produce each copy: pass it the original screen's markup plus which component to keep crisp. This is the skill's job — don't hand-roll the markup here.
+- Place each copy in its own column, one column to the right of the read model that will feed it — this is normally a different column per copy, since each component typically has a different natural source event.
+
+Why this matters, beyond tidiness:
+- **It prevents backward arrows.** A single screen-wide read model is forced to aggregate from whatever events each of its components needs, which often means reaching back across many columns to events scattered throughout the timeline — and the read model can only sit in one column, so some of those connections end up spanning a wide gap or, worse, pushing the read model's column later than some of its screen's other consumers require. Splitting by component lets each narrower read model sit close to its own natural source event(s), keeping every `EVENT → READMODEL` arrow short and forward.
+- **Components evolve independently.** A stats tile and a "recently added" list are driven by different events, change at different rates, and are typically owned by different slices in implementation. Bundling them into one read model couples their release/change cadence for no reason.
+
+Before finalizing any read model, ask: "does this screen contain more than one component?" If yes and it wasn't already broken apart, do it now — don't ask whether it's worth the extra columns, it always is at this scale, since the alternative is a hidden coupling and a higher chance of a backward-arrow layout error.
+
+### Step 5c — Pull field mappings from Step 3 — they are the spec, not a guess
 
 **Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.trogonai/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
 
@@ -406,7 +416,7 @@ For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from mem
 - If a field's `mapping` names a read model that isn't `"<CommandTitle>.<fieldName>"` or `"session:..."` or `"derived:..."`, it is a read-model reference — treat it as a requirement, not a suggestion.
 - A screen with no fields, or with fields that carry no read-model-shaped mapping, is **not** evidence that it needs no read model. Re-check it against the three rules above (view screen / automation / command screen showing prior state) before concluding it's the rare blank-form exception — and say explicitly why it qualifies.
 
-### Field data lineage — the `mapping` attribute on READMODEL fields
+### Step 5d — Field data lineage — the `mapping` attribute on READMODEL fields
 
 Every field on a READMODEL must carry a `mapping` that says exactly which event (or command) field it is projected from. Use one of these forms:
 
@@ -446,7 +456,7 @@ Read models go in the `interaction` lane — **in the same column as the SCREEN 
 
 > **Timeline alignment rule**: Place the read model in the same column as its consumer screen/automation. If that column already holds a COMMAND (state-change slice occupies the interaction row), insert a new column immediately after (`{"index": N+1}`) and place both the READMODEL and any new SCREEN there. Do not append read model columns to the end of the timeline — doing so severs the visual left→right flow from data projection to UI consumption.
 
-### Placing READMODEL and AUTOMATION nodes with `cellId` (Mandatory)
+### Step 5e — Placing READMODEL and AUTOMATION nodes with `cellId` (Mandatory)
 
 **Every `node:created` call MUST include `cellId`.** Without it the node has no cell reference and will appear stranded at position 0,0 — not in any timeline column.
 
@@ -522,7 +532,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
-### Preventing backward arrows (mandatory pre-placement check)
+### Step 5f — Preventing backward arrows (mandatory pre-placement check)
 
 The timeline must always progress left-to-right. A `READMODEL → SCREEN` connection going right-to-left is a layout error.
 
@@ -544,7 +554,7 @@ For each view screen S that queries this read model:
 
 **View screens go in the column immediately to the right of the read model they display** — either because they were placed there in Step 3, or because you move them here now.
 
-### Wire connections after placing each READMODEL (and its SCREEN)
+### Step 5g — Wire connections after placing each READMODEL (and its SCREEN)
 
 After `place-element` returns the READMODEL node ID, create the arrows that complete the slice:
 
@@ -604,13 +614,14 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 
-### Mandatory per-node verification (run before declaring this step done)
+### Step 5h — Mandatory per-node verification (run before declaring this step done)
 
 Do not declare Step 5 complete on the strength of the read models you happened to design. Instead, **re-fetch every SCREEN and AUTOMATION node on the board** (`get_nodes` per type — don't rely on the list built earlier in this step, the board may have moved on) and check each one individually:
 
 1. Does it now have an incoming `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection?
 2. If not — is it a provably blank creation form with no prior state? State the reason in one line (e.g. `"Register Account" screen: blank form, no prior state — exempt`).
 3. If it's neither connected nor exempt, it is an **unresolved gap**. Fix it now: design the missing read model (pulling from its `meta.fields`/`mapping` as above) and wire the connection. Do not move to Step 6 with an unresolved gap silently carried forward — either fix it or explicitly flag it to the user as accepted debt.
+4. Does any screen still carry more than one component undivided (a Step 5a/5b miss)? If so, break it apart now per Step 5b before counting it as resolved.
 
 List the result of this pass (connected / exempt / fixed) for every screen and automation checked — this list is the evidence the orchestrator's Step 5 gate ("every screen data need is satisfied by a read model") actually holds, not just an assumption.
 
@@ -729,7 +740,9 @@ Identify UI needs without event sources:
 - [ ] **Every SCREEN from storyboarding is connected to at least one read model** (via `READMODEL → SCREEN`); only blank creation forms may be exempt — verified via the mandatory per-node pass above, not assumed
 - [ ] **Every AUTOMATION from storyboarding is connected to at least one read model** (via `READMODEL → AUTOMATION`) — same per-node verification
 - [ ] **No read model is placed without a connected SCREEN or AUTOMATION consumer**
-- [ ] **No read model spans more than one visually distinct screen region** — a screen with N distinct data regions gets N read models and N highlighted screen copies, not one screen-wide read model
+- [ ] **No read model spans more than one component** — a screen with N distinct components gets N read models and N highlighted screen copies (same screen name, one component crisp per copy), not one screen-wide read model
+- [ ] **Every multi-component screen was broken apart in Step 5b** — each copy keeps the original screen's name, differs only in which component is marked/highlighted
+- [ ] **Roll-up components are flagged, not force-split** — a single homogeneous list/table with wide event fan-in is documented as an explicit assumption (inline MARKDOWN note, per "Documenting decisions inline"), not silently accepted or mistaken for an unsplit multi-component screen
 - [ ] Every read model has clear purpose
 - [ ] Every data field has event source
 - [ ] Update logic for each event is explicit
