@@ -172,9 +172,7 @@ Update this file as each step completes.
 
 ## Phase Transition Protocol (Mandatory After Every Step)
 
-After each step completes, before invoking the next skill:
-
-### 1. Write a phase summary to memory
+After each step completes, before invoking the next skill, write a phase summary to memory.
 
 Append a summary block to `.trogonai/interviews/[project-name]/EVENTMODELING.md`:
 
@@ -186,12 +184,6 @@ Append a summary block to `.trogonai/interviews/[project-name]/EVENTMODELING.md`
 ```
 
 Also update the Interview Trail table row for this step (Status → Done, Key Output → one-line summary).
-
-### 2. Compact the context
-
-After writing the summary, run `/compact` to clear the accumulated context before loading the next skill. The summary written above is the handoff — the next skill reads it from the file, not from the conversation history.
-
-This keeps each step's context lean and prevents token bloat from accumulating across all 11 steps.
 
 ---
 
@@ -480,4 +472,4 @@ specific needs:
 - [ ] Completeness check shows no unresolved field traceability gaps
 - [ ] Validation returns PASS or PASS WITH WARNINGS with all critical issues resolved
 - [ ] Interview trail in `.trogonai/` updated with status of each completed step
-- [ ] Phase summary written to memory and `/compact` run after every completed step before loading the next skill
+- [ ] Phase summary written to memory after every completed step before loading the next skill

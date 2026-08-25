@@ -215,7 +215,7 @@ Order Entry UI
 
 ### 5. Organize Screens by Swimlane (Actor/System)
 
-**MANDATORY**: Use the **Role Catalog** from Step 1 (eventmodeling-brainstorming-events) as the source of swimlanes. Every human role in the catalog MUST have its own swimlane. Every system actor that has a UI or todo-list view gets a swimlane too.
+**MANDATORY**: Use the **Role Catalog** from Step 1 (eventmodeling-brainstorming-events) as the source of swimlanes. Every human role in the catalog MUST have its own swimlane. Every system actor that has a UI or todo-list view gets a swimlane too — but this swimlane is narrative-only (see "Board Integration" below): system actors never get a physical actor lane of their own on the board, only human roles do.
 
 Group screens by who interacts with them:
 
@@ -254,7 +254,7 @@ Swimlane: Fulfillment System (System Actor)
 
 This shows which actors interact with which screens and helps visualize system boundaries.
 
-**This grouping is not just narrative** — "Board Integration" below turns each swimlane in this catalog into its own physical actor lane on the board, so a screen's role determines which lane it is actually placed in, not just how it is described in the report.
+**This grouping is not just narrative for human roles** — "Board Integration" below turns each *human role's* swimlane in this catalog into its own physical actor lane on the board, so a screen's role determines which lane it is actually placed in, not just how it is described in the report. System actor swimlanes stay narrative-only: their automations are placed in the chapter's shared default actor lane, never a lane fabricated to mimic a human role's lane (see "Placing Automations" below).
 
 ### 6. Show Processor "Todo List" Pattern
 For automated processors, show the todo list metaphor:
@@ -321,9 +321,9 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 
 After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any screen node where data fields are unclear or missing sources are identified.
 
-## Resolve One Actor Lane Per Role (do this once, before placing any screens)
+## Resolve One Actor Lane Per Human Role (do this once, before placing any screens)
 
-**Each role/actor gets its own physical lane — never place two different roles' screens in the same actor row.** A chapter is created with exactly one default `actor` lane, but a chapter can hold several actor-type lanes at once (`learn-eventmodelers-api` §2, `POST .../lanes`). Build a role→lane map once per chapter, before the screen-placement loop, instead of resolving it screen-by-screen:
+**Each human role gets its own physical lane — never place two different human roles' screens in the same actor row.** **System actors and processors are not part of this map** — they are never given a labeled lane of their own; every automation renders in the chapter's shared default actor lane instead (see "Placing Automations" below). A chapter is created with exactly one default `actor` lane, but a chapter can hold several actor-type lanes at once (`learn-eventmodelers-api` §2, `POST .../lanes`). Build a role→lane map covering human roles only, once per chapter, before the screen-placement loop, instead of resolving it screen-by-screen:
 
 1. Fetch the chapter and collect every row where `type === "actor"`, keyed by its `label`:
 
@@ -339,7 +339,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a Q
      "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
    ```
 
-2. For every human role and system actor in the Role Catalog (Step 1's swimlane list above), check the map for a `label` that matches the role name (case-insensitive). If found, reuse that `rowId`.
+2. For every **human role only** in the Role Catalog (Step 1's swimlane list above), check the map for a `label` that matches the role name (case-insensitive). If found, reuse that `rowId`. **Skip system actors/processors entirely** — do not create or look up a lane for them here; they never get an entry in this map.
 
 3. **If no matching lane exists, create one** — labeled with the role name, so the lane is visibly identifiable on the board:
 
@@ -360,7 +360,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a Q
 
 4. **Leave the chapter's original default actor lane alone** — there is no rename endpoint for an existing lane, so don't try to relabel it or force the first role into it. It is fine for it to stay unused; every role, including the first one, gets a freshly labeled lane from Step 3.
 
-The result is a `{ roleName: actorRowId }` map used by every screen placed in this chapter (Step A below) — resolve it once, not per screen, and re-fetch/extend it only if a new role appears mid-session that wasn't in the original catalog.
+The result is a `{ roleName: actorRowId }` map, covering human roles only, used by every SCREEN placed in this chapter (Step A below) — resolve it once, not per screen, and re-fetch/extend it only if a new human role appears mid-session that wasn't in the original catalog. **AUTOMATION nodes never consult this map** — they always target the chapter's default actor lane (see "Placing Automations" below).
 
 ## Mandatory Field Definitions on Screen Nodes
 
@@ -443,7 +443,7 @@ A screen that only has a title and no fields is an empty placeholder — place t
 
 Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen` rendering path below) is the default for every screen** — render a real HTML/CSS mockup, not a wireframe sketch. Only use the sketch path (plain SCREEN node, grid elements) when the user's request explicitly asked for a "sketch", "wireframe", or "low-fidelity mockup". The correct order for every screen is:
 
-**Step A — Compute the cell ID.** Screens go in **that screen's own role's actor lane** in their target column — look up `actorRowId` from the role→lane map built above, keyed by the screen's role (e.g. "Admin", "User"). Never fall back to "the" actor lane as if there were only one.
+**Step A — Compute the cell ID.** This applies to SCREEN nodes (human roles only) — AUTOMATION nodes follow "Placing Automations" below instead. Screens go in **that screen's own role's actor lane** in their target column — look up `actorRowId` from the role→lane map built above, keyed by the screen's role (e.g. "Admin", "User"). Never fall back to "the" actor lane as if there were only one.
 
 1. Determine the target column (same column as the event/command, OR one column to the right of the read model).
 2. `actorRowId = roleLaneMap[<this screen's role>]` — the map was already resolved once for the whole chapter; do not re-fetch the chapter per screen. If this screen's role is genuinely new (wasn't in the original Role Catalog), resolve/create its lane now the same way (see above) and add it to the map before continuing.
@@ -597,7 +597,9 @@ Storyboarding renders **one plain screen per screen state** — do not pre-split
 
 ### Placing Automations
 
-When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in that system actor's own actor lane instead of a SCREEN — resolved from the role→lane map the same way as a human role. Automations go in the same column as the COMMAND they trigger and the READMODEL that feeds them.
+When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in the chapter's **default actor lane** instead of a SCREEN — never create, reuse, or look up a per-system-actor lane for it, and never resolve it through the human role→lane map above. Automations go in the same column as the COMMAND they trigger and the READMODEL that feeds them.
+
+**Do not design automation actor lanes to mimic human ones.** A "Payment Processor" or "Inventory System" swimlane in the narrative report (Step 5 above) is a documentation grouping only — it must never be materialized as its own labeled `actor`-type lane on the board. Only human roles get a physical lane; every automation, regardless of which system actor it narratively belongs to, renders in the same shared default actor lane.
 
 A column is an automation column (not a screen column) when:
 - The action is triggered by the system, not a user gesture
@@ -609,7 +611,7 @@ Examples:
 - Inventory check fires after payment authorized → AUTOMATION "Reserve Inventory"
 - Notification service sends an email → AUTOMATION "Send Confirmation Email"
 
-Human roles get SCREEN nodes. System actors and processors get AUTOMATION nodes. Place both types during storyboarding — do not defer automations to a later step.
+Human roles get SCREEN nodes placed in their own labeled actor lane. System actors and processors get AUTOMATION nodes placed in the shared default actor lane. Place both types during storyboarding — do not defer automations to a later step.
 
 ### One Screen Per Column (Hard Rule)
 
@@ -643,6 +645,8 @@ Present as:
 #### [Other Human Role Swimlanes — one per role in the catalog]
 
 ### System Actor Swimlanes
+
+_(Narrative grouping only — these are not physical board lanes. Every automation below renders in the chapter's shared default actor lane; see "Placing Automations".)_
 
 #### Payment Processor Swimlane
 - Screen 1: Payment Verification (automated)
@@ -728,9 +732,10 @@ Failure produces: [Event]
 - [ ] Alternative states are shown
 - [ ] Error states are shown
 - [ ] **Every human role from the Role Catalog has at least one swimlane**
-- [ ] **Every swimlane is labeled with the role/actor name from the catalog**
-- [ ] **Swimlanes organized by actor/system**
-- [ ] **Every role's swimlane is a real, distinct `actor`-type lane on the board (`meta.timelineData.rows`), not just a grouping in the markdown report** — no two different roles share the same `actorRowId`
+- [ ] **Every human-role swimlane is labeled with the role name from the catalog**
+- [ ] **Swimlanes organized by actor/system in the narrative report**
+- [ ] **Every human role's swimlane is a real, distinct `actor`-type lane on the board (`meta.timelineData.rows`), not just a grouping in the markdown report** — no two different human roles share the same `actorRowId`
+- [ ] **No system actor / processor has been given its own labeled actor lane** — every AUTOMATION node sits in the chapter's default actor lane, never a lane fabricated to mimic a human role's
 - [ ] **Human role screens clearly separated from processor screens**
 - [ ] **Processor todo list pattern shown for automated systems**
 - [ ] **System boundaries visible through swimlane organization**
