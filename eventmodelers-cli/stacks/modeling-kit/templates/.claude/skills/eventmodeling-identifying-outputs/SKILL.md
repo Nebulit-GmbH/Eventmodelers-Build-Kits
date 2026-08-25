@@ -384,6 +384,16 @@ After the step is done, **every SCREEN and every AUTOMATION on the board must be
 
 > **Placement rule**: A read model must be placed in a column that already contains a SCREEN or AUTOMATION it serves. Do not place read models in columns with no screen or automation — doing so creates orphaned read models that will never have a consumer.
 
+### Pull field mappings from Step 3 — they are the spec, not a guess
+
+**Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.trogonai/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
+
+For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields`. Step 3 already required every field to carry a `mapping`, and for view fields that mapping is already in the exact form `"<ReadModelTitle>.<fieldName>"` — recorded specifically so this step doesn't have to re-guess it.
+
+- **Group the screen's fields by the `<ReadModelTitle>` already named in their `mapping`.** That grouping — not a fresh read of the screen's visuals — is the read model's title and field list. Build the READMODEL node from it directly.
+- If a field's `mapping` names a read model that isn't `"<CommandTitle>.<fieldName>"` or `"session:..."` or `"derived:..."`, it is a read-model reference — treat it as a requirement, not a suggestion.
+- A screen with no fields, or with fields that carry no read-model-shaped mapping, is **not** evidence that it needs no read model. Re-check it against the three rules above (view screen / automation / command screen showing prior state) before concluding it's the rare blank-form exception — and say explicitly why it qualifies.
+
 ### Field data lineage — the `mapping` attribute on READMODEL fields
 
 Every field on a READMODEL must carry a `mapping` that says exactly which event (or command) field it is projected from. Use one of these forms:
@@ -582,6 +592,16 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 
+### Mandatory per-node verification (run before declaring this step done)
+
+Do not declare Step 5 complete on the strength of the read models you happened to design. Instead, **re-fetch every SCREEN and AUTOMATION node on the board** (`get_nodes` per type — don't rely on the list built earlier in this step, the board may have moved on) and check each one individually:
+
+1. Does it now have an incoming `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection?
+2. If not — is it a provably blank creation form with no prior state? State the reason in one line (e.g. `"Register Account" screen: blank form, no prior state — exempt`).
+3. If it's neither connected nor exempt, it is an **unresolved gap**. Fix it now: design the missing read model (pulling from its `meta.fields`/`mapping` as above) and wire the connection. Do not move to Step 6 with an unresolved gap silently carried forward — either fix it or explicitly flag it to the user as accepted debt.
+
+List the result of this pass (connected / exempt / fixed) for every screen and automation checked — this list is the evidence the orchestrator's Step 5 gate ("every screen data need is satisfied by a read model") actually holds, not just an assumption.
+
 After all read models, screens, automations, and connections are in place, present the Read Model Catalog summary as text to the user.
 
 ---
@@ -694,8 +714,8 @@ Identify UI needs without event sources:
 
 ### Read Model Design
 - [ ] **Typical pattern applied**: most screens follow `READ MODEL → SCREEN → COMMAND → EVENT`
-- [ ] **Every SCREEN from storyboarding is connected to at least one read model** (via `READMODEL → SCREEN`); only blank creation forms may be exempt
-- [ ] **Every AUTOMATION from storyboarding is connected to at least one read model** (via `READMODEL → AUTOMATION`)
+- [ ] **Every SCREEN from storyboarding is connected to at least one read model** (via `READMODEL → SCREEN`); only blank creation forms may be exempt — verified via the mandatory per-node pass above, not assumed
+- [ ] **Every AUTOMATION from storyboarding is connected to at least one read model** (via `READMODEL → AUTOMATION`) — same per-node verification
 - [ ] **No read model is placed without a connected SCREEN or AUTOMATION consumer**
 - [ ] Every read model has clear purpose
 - [ ] Every data field has event source

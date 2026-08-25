@@ -79,6 +79,8 @@ This skill only has a `pages`/`backgroundColor` field to send (no separate marks
 
 Apply these only to the specific element(s) the request describes — don't guess at additional areas to call out.
 
+**Marked screens and field scoping**: when the same underlying screen is rendered multiple times as separate nodes — once per slice, each with a different mark/highlight calling out a different part of the UI — scope each node's `meta.fields` (Step 5 below) to only the data inside that node's highlighted area, not the full screen. Three slice-specific screen nodes sharing one visual base should end up with three different, narrower field lists, each matching what that node's mark calls out.
+
 ## Step 4 — Render the pages
 
 **Updating an existing node** (`nodeId` was given) — always sends the **complete** pages array, not just the changed/new entry:
@@ -133,7 +135,54 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$N
 
 Expect `204 No Content` on success from either curl call.
 
-## Step 5 — Report back
+## Step 5 — Define field data lineage (mandatory)
+
+Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even if the mockup itself looks complete.
+
+| Field type | `mapping` | Example |
+|---|---|---|
+| User types a value, sent as a command | `"<CommandTitle>.<fieldName>"` | `"ReserveBike.bikeId"` |
+| Read from session | `"session:<fieldName>"` | `"session:customerId"` |
+| Displayed data, sourced from a read model | `"<ReadModelTitle>.<fieldName>"` | `"ActiveReservationView.status"` |
+| Calculated/formatted only for display | `"derived:<expression>"` | `"derived:formatDuration(durationMinutes)"` |
+
+Name the read model even if it doesn't exist as a board node yet — this skill only renders the screen, it does not create READMODEL nodes or connections (that's `eventmodeling-identifying-outputs` or `place-element`, if the model is taken that far). But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. If you can't say which read model a displayed field comes from, that's a sign the model is missing something — not a reason to skip the field.
+
+If this node is one of several sharing the same visual base with different marks/highlights (see "Marked screens and field scoping" above), only list the fields that fall inside *this* node's highlighted area — not every field the shared screen shows.
+
+Set `cardinality` too (`"Single"` unless the field is a repeated/list value), then push the fields onto the node:
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
+    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "type": "HTML_SCREEN", "fields": [
+      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
+    ] }
+  }]
+}
+```
+
+**Fallback (no MCP):**
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
+    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "type": "HTML_SCREEN", "fields": [
+      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
+    ] }
+  }]'
+```
+
+## Step 6 — Report back
 
 Tell the user:
 - The node ID that was created or updated

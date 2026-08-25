@@ -1413,6 +1413,22 @@ async function runModeling(kitDir, projectDir, verbose = false) {
 
   const channelName = `org:${cfg.organizationId}`;
   const realtime = await createRealtimeAdapter(cfg, realtimeToken);
+
+  let lastTokenRefreshAt = 0;
+  async function refreshRealtimeToken(reason) {
+    // Guard against hammering the token endpoint: a rejected channel retries every
+    // ~14s on its own, so without this a bad token would trigger a refresh call per retry.
+    if (Date.now() - lastTokenRefreshAt < 5000) return;
+    lastTokenRefreshAt = Date.now();
+    try {
+      realtimeToken = await getRealtimeToken();
+      await realtime.setAuth(realtimeToken);
+      log(`token refreshed (${reason})`);
+    } catch (err) {
+      log(`token refresh failed (${reason}): ${err.message}`);
+    }
+  }
+
   realtime.subscribe(
     channelName,
     {
@@ -1429,19 +1445,19 @@ async function runModeling(kitDir, projectDir, verbose = false) {
     (status) => {
       log(`channel "${channelName}": ${status}`);
       if (status === 'SUBSCRIBED') drain().catch((err) => log(`initial drain error: ${err.message}`));
+      // A bad/stale token otherwise sits in realtime-js's own rejoin-retry loop until the
+      // next scheduled refresh below — up to 10 minutes of failed joins. Refresh immediately
+      // instead of waiting on the clock.
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        refreshRealtimeToken(status).catch(() => {});
+      }
     },
   ).catch((err) => {
     log(`realtime subscribe failed, prompts won't be pushed live: ${err.message}`);
   });
 
-  setInterval(async () => {
-    try {
-      realtimeToken = await getRealtimeToken();
-      await realtime.setAuth(realtimeToken);
-      log('token refreshed');
-    } catch (err) {
-      log(`token refresh failed: ${err.message}`);
-    }
+  setInterval(() => {
+    refreshRealtimeToken('scheduled').catch(() => {});
   }, 10 * 60 * 1000);
 
   const ping = async () => {

@@ -35,6 +35,9 @@ Before making any API calls, plan all N screens. For each screen, decide:
 - `screenTitle` — human-readable name (e.g. "Enter Credentials")
 - `pages` (default) — one or more complete HTML/CSS fragments for this screen (see "HTML page design" below), or `elements` — a minimal list of grid elements (see "Sketch path" below, aim for 5–8 elements) **only** when the sketch path applies for this storyboard
 - `visualDescription` — a prose description of the screen's visual layout and content (2–4 sentences) that lets someone who cannot see the image understand what is shown: what UI sections appear, what text/labels are visible, where buttons and inputs are placed, and the overall purpose of the screen
+- `fields` — one entry per piece of data this screen displays or captures, each with a `mapping` naming its source (see "Field data lineage" in Step 5b below). Plan this alongside the visuals, not as an afterthought — every displayed value needs a named source.
+
+If several screens in this storyboard share the same visual base but each highlights a different part of it (e.g. one shared mockup, marked up differently per slice), scope each screen's `fields` to only the data inside *that* screen's highlighted area — not the full shared mockup. Different highlight, different (narrower) field list.
 
 Then **create one task per screen** using TaskCreate, naming each task after the screen title. This gives you a visible queue of work. Create the screens directly after each task has been planned.
 
@@ -256,6 +259,44 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
 ```
 
 Pass the already-computed `actorCellId` directly as `cellId` in either path. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
+
+### Step 5b(ii) — Set field data lineage (mandatory)
+
+Push the `fields` planned in Step 2 onto the node with a `node:changed` call. Every field needs a `mapping`:
+
+| Field type | `mapping` | Example |
+|---|---|---|
+| User types a value, sent as a command | `"<CommandTitle>.<fieldName>"` | `"ReserveBike.bikeId"` |
+| Displayed data, sourced from a read model | `"<ReadModelTitle>.<fieldName>"` | `"ActiveReservationView.status"` |
+| Calculated/formatted only for display | `"derived:<expression>"` | `"derived:formatDuration(durationMinutes)"` |
+
+Name the read model even if it doesn't exist as a board node yet — this skill only creates SCREEN/HTML_SCREEN nodes, never READMODEL nodes or connections. But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. Set `cardinality` too (`"Single"` unless it's a repeated/list value).
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__submit_node_events {
+  "boardId": "<BOARD_ID>",
+  "events": [{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",
+    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "type": "HTML_SCREEN", "fields": [ /* planned fields */ ] }
+  }]
+}
+```
+
+**Fallback (no MCP):**
+```bash
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
+  -H "Content-Type: application/json" \
+  -d '[{
+    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",
+    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
+    "changedAttributes": ["meta.fields"],
+    "meta": { "type": "HTML_SCREEN", "fields": [ /* planned fields */ ] }
+  }]'
+```
 
 ### Step 5c — Mark the task complete
 
