@@ -35,6 +35,9 @@ These rules govern how every element is placed on the board. Enforce them throug
 ### Never stack read models at the end
 Placing all read models in new columns at the very end of the timeline severs the visual connection to the events they're derived from. The board must show a coherent left-to-right narrative where each slice is self-contained.
 
+### One read model per screen region — the main defense against backward arrows
+A screen-wide read model that has to aggregate from events scattered across many columns is the most common source of backward-arrow layout errors: it can only occupy one column, but its regions each pull from different, differently-positioned source events. The fix is architectural, not just positional — **split the read model by UI region before it ever gets placed.** A screen with a stats row and a list below it is two read models and two screen copies (each copy showing the full screen with the non-relevant region blurred/dimmed via CSS, the relevant region left normal), not one. Each narrower read model then sits naturally close to its own source event, and the `EVENT → READMODEL → SCREEN` chain for each region stays short and forward. See `eventmodeling-identifying-outputs` ("One read model per screen region") and `eventmodeling-storyboarding-events` ("View screens with multiple data regions get one copy per region") for the mechanics — apply this during Steps 3 and 5, before the placement problem exists, rather than reordering columns to patch it afterward.
+
 ### No unplaced elements (0,0 nodes)
 
 After each step that creates elements (Steps 1–5), scan for any nodes that have no cell reference and are stranded at the default canvas position (0,0). These arise when `node:created` is called without `cellId`.

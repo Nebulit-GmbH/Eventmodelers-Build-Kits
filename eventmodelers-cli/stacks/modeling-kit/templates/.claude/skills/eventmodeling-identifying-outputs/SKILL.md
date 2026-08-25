@@ -372,6 +372,18 @@ READ MODEL → AUTOMATION → COMMAND → EVENT
 
 Treat any screen or automation without an incoming read model as a gap unless it provably needs no prior state at all (e.g., a blank registration form).
 
+### One read model per screen region, not one read model per screen
+
+**Do not default to a single monolithic read model that supplies an entire screen.** If a screen has more than one visually distinct data region (e.g. a stats row plus a list below it, or a summary card plus a detail table), each region gets its **own** read model, sourced only from the events that region actually needs — not the union of every event any part of the screen touches.
+
+Why this matters, beyond tidiness:
+- **It prevents backward arrows.** A single screen-wide read model is forced to aggregate from whatever events each of its regions needs, which often means reaching back across many columns to events scattered throughout the timeline — and the read model can only sit in one column, so some of those connections end up spanning a wide gap or, worse, pushing the read model's column later than some of its screen's other consumers require. Splitting by region lets each narrower read model sit close to its own natural source event(s), keeping every `EVENT → READMODEL` arrow short and forward.
+- **Regions evolve independently.** A stats tile and a "recently added" list are driven by different events, change at different rates, and are typically owned by different slices in implementation. Bundling them into one read model couples their release/change cadence for no reason.
+
+**How to realize this on the board**: each region's read model gets its own column (inserted immediately after that region's primary source event, per the placement rule above) and its own **screen copy** — a duplicate of the same screen layout where the region that read model drives is shown normally and every other region is visually de-emphasized (e.g. `filter: blur(3px); opacity: 0.45; pointer-events: none;` on the non-relevant regions, keeping the target region crisp, optionally with a highlight border). Title each copy after the region it foregrounds, e.g. `"Librarian Dashboard — Statistics"` and `"Librarian Dashboard — Recently Added"` as two separate HTML_SCREEN nodes, each in its own column, each wired `READMODEL → SCREEN` to only its own read model. This is the `html-screen` skill's job when asked to produce the copy — pass it the full original screen markup plus which region to foreground.
+
+Before finalizing any read model, ask: "does this screen have more than one visually distinct data region?" If yes, split — don't ask whether splitting is worth the extra columns, it always is at this scale, since the alternative is a hidden coupling and a higher chance of a backward-arrow layout error.
+
 ### Read models serve existing screens and automations
 
 **Before designing any read model, enumerate every SCREEN and AUTOMATION already placed on the board** (from Step 3 — Storyboarding). Read models exist to serve those elements:
@@ -717,6 +729,7 @@ Identify UI needs without event sources:
 - [ ] **Every SCREEN from storyboarding is connected to at least one read model** (via `READMODEL → SCREEN`); only blank creation forms may be exempt — verified via the mandatory per-node pass above, not assumed
 - [ ] **Every AUTOMATION from storyboarding is connected to at least one read model** (via `READMODEL → AUTOMATION`) — same per-node verification
 - [ ] **No read model is placed without a connected SCREEN or AUTOMATION consumer**
+- [ ] **No read model spans more than one visually distinct screen region** — a screen with N distinct data regions gets N read models and N highlighted screen copies, not one screen-wide read model
 - [ ] Every read model has clear purpose
 - [ ] Every data field has event source
 - [ ] Update logic for each event is explicit
