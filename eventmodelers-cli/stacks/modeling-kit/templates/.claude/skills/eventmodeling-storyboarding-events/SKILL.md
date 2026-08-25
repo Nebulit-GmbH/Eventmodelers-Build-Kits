@@ -254,6 +254,8 @@ Swimlane: Fulfillment System (System Actor)
 
 This shows which actors interact with which screens and helps visualize system boundaries.
 
+**This grouping is not just narrative** — "Board Integration" below turns each swimlane in this catalog into its own physical actor lane on the board, so a screen's role determines which lane it is actually placed in, not just how it is described in the report.
+
 ### 6. Show Processor "Todo List" Pattern
 For automated processors, show the todo list metaphor:
 
@@ -283,6 +285,8 @@ Processor logic → Items processed
 Success → InventoryReserved event produced + todo marked done
 Failure → InventoryFailed event produced + todo marked failed
 ```
+
+**When it comes time to elaborate scenarios for this todo list (`eventmodeling-elaborating-scenarios`), reach for a storyline rather than plain GWT scenarios.** A todo list is exactly the shape a storyline is built for: the *same* read model (the todo list itself) walked through multiple states — empty → item added → item marked done/failed — which is one narrated walkthrough, not a set of isolated before/after pairs. See that skill's "Storylines" section for the data shape and posting mechanics.
 
 ### 7. Identify Missing Data
 Highlight where data doesn't have a clear source:
@@ -316,6 +320,47 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 ```
 
 After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any screen node where data fields are unclear or missing sources are identified.
+
+## Resolve One Actor Lane Per Role (do this once, before placing any screens)
+
+**Each role/actor gets its own physical lane — never place two different roles' screens in the same actor row.** A chapter is created with exactly one default `actor` lane, but a chapter can hold several actor-type lanes at once (`learn-eventmodelers-api` §2, `POST .../lanes`). Build a role→lane map once per chapter, before the screen-placement loop, instead of resolving it screen-by-screen:
+
+1. Fetch the chapter and collect every row where `type === "actor"`, keyed by its `label`:
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$CHAPTER_ID" }
+   # → meta.timelineData.rows — collect every row where type === "actor" into { label → rowId }
+   ```
+
+   **Fallback (no MCP):**
+   ```bash
+   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+   ```
+
+2. For every human role and system actor in the Role Catalog (Step 1's swimlane list above), check the map for a `label` that matches the role name (case-insensitive). If found, reuse that `rowId`.
+
+3. **If no matching lane exists, create one** — labeled with the role name, so the lane is visibly identifiable on the board:
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "actor", "label": "<Role Name>" }
+   ```
+
+   **Fallback (no MCP):**
+   ```bash
+   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
+     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+     -H "Content-Type: application/json" \
+     -d '{"type": "actor", "label": "<Role Name>"}'
+   ```
+
+   Add the returned `rowId` to the map under that role's name. Do this once per role, not once per screen.
+
+4. **Leave the chapter's original default actor lane alone** — there is no rename endpoint for an existing lane, so don't try to relabel it or force the first role into it. It is fine for it to stay unused; every role, including the first one, gets a freshly labeled lane from Step 3.
+
+The result is a `{ roleName: actorRowId }` map used by every screen placed in this chapter (Step A below) — resolve it once, not per screen, and re-fetch/extend it only if a new role appears mid-session that wasn't in the original catalog.
 
 ## Mandatory Field Definitions on Screen Nodes
 
@@ -398,24 +443,11 @@ A screen that only has a title and no fields is an empty placeholder — place t
 
 Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen` rendering path below) is the default for every screen** — render a real HTML/CSS mockup, not a wireframe sketch. Only use the sketch path (plain SCREEN node, grid elements) when the user's request explicitly asked for a "sketch", "wireframe", or "low-fidelity mockup". The correct order for every screen is:
 
-**Step A — Compute the cell ID.** Screens go in the **actor lane** of their target column.
+**Step A — Compute the cell ID.** Screens go in **that screen's own role's actor lane** in their target column — look up `actorRowId` from the role→lane map built above, keyed by the screen's role (e.g. "Admin", "User"). Never fall back to "the" actor lane as if there were only one.
 
 1. Determine the target column (same column as the event/command, OR one column to the right of the read model).
-2. Fetch the chapter to find the actor row ID.
-
-   **Prefer MCP:**
-   ```
-   mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$CHAPTER_ID" }
-   # → meta.timelineData.rows — find the row where type === "actor"
-   ```
-
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-   # → timelineData.rows — find the row where type === "actor"
-   ```
-3. `cellId = actorRow.id + "-" + columnId`
+2. `actorRowId = roleLaneMap[<this screen's role>]` — the map was already resolved once for the whole chapter; do not re-fetch the chapter per screen. If this screen's role is genuinely new (wasn't in the original Role Catalog), resolve/create its lane now the same way (see above) and add it to the map before continuing.
+3. `cellId = actorRowId + "-" + columnId`
 
 **Step B (default) — Create the HTML_SCREEN node and render it in one atomic call.** Use `create_screen` with `contentType: "html"` — this creates the node, places it in `cellId`, and renders its pages together, so there is no window where the node exists without content:
 
@@ -554,8 +586,8 @@ When placing screens on the board, follow these alignment rules:
 
 | Screen type | Where it goes on the board |
 |-------------|---------------------------|
-| **Input/command screen** (triggers a command) | **Actor row, same column as the COMMAND and EVENT** it produces. The screen and command share a column — the screen sits in the actor row, the command in the interaction row, the event in the swimlane row. |
-| **View/output screen** (displays a read model) | **Actor row, one column to the RIGHT of the READ MODEL** it displays. The read model occupies the interaction row of the preceding column; the screen gets its own column immediately after. This column is finalised in Step 5 (Identifying Outputs) — during storyboarding, just document which read model each view screen will query. |
+| **Input/command screen** (triggers a command) | **The role's own actor lane, same column as the COMMAND and EVENT** it produces. The screen and command share a column — the screen sits in that role's actor lane, the command in the interaction row, the event in the swimlane row. |
+| **View/output screen** (displays a read model) | **The role's own actor lane, one column to the RIGHT of the READ MODEL** it displays. The read model occupies the interaction row of the preceding column; the screen gets its own column immediately after. This column is finalised in Step 5 (Identifying Outputs) — during storyboarding, just document which read model each view screen will query. |
 
 > **Do not create standalone screen columns that are disconnected from commands or read models.** Every screen must either share its column with the command it submits, or be placed one column to the right of the read model it displays.
 
@@ -565,7 +597,7 @@ Storyboarding renders **one plain screen per screen state** — do not pre-split
 
 ### Placing Automations
 
-When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in the actor row instead of a SCREEN. Automations go in the same column as the COMMAND they trigger and the READMODEL that feeds them.
+When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in that system actor's own actor lane instead of a SCREEN — resolved from the role→lane map the same way as a human role. Automations go in the same column as the COMMAND they trigger and the READMODEL that feeds them.
 
 A column is an automation column (not a screen column) when:
 - The action is triggered by the system, not a user gesture
@@ -698,6 +730,7 @@ Failure produces: [Event]
 - [ ] **Every human role from the Role Catalog has at least one swimlane**
 - [ ] **Every swimlane is labeled with the role/actor name from the catalog**
 - [ ] **Swimlanes organized by actor/system**
+- [ ] **Every role's swimlane is a real, distinct `actor`-type lane on the board (`meta.timelineData.rows`), not just a grouping in the markdown report** — no two different roles share the same `actorRowId`
 - [ ] **Human role screens clearly separated from processor screens**
 - [ ] **Processor todo list pattern shown for automated systems**
 - [ ] **System boundaries visible through swimlane organization**

@@ -374,6 +374,8 @@ Do not create unnecessary swimlanes. Before adding a lane, check whether an exis
 
 **Never** add a swimlane just to group things visually or because a second role appears — use the existing lane if the type matches.
 
+**Exception: a second `swimlane`-type lane for another system's own events.** When an external/other-team system's events cross into this chapter as integration triggers for an automation (see `eventmodeling-identifying-outputs` Step 5b), add a second swimlane lane labeled for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all.
+
 ---
 
 ## Workshop Facilitation Guide

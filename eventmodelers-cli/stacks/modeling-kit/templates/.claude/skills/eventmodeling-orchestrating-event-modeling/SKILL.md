@@ -26,6 +26,9 @@ These rules govern how every element is placed on the board. Enforce them throug
 ### State-change slice (SCREEN → COMMAND → EVENT)
 - COMMAND and EVENT go in **the same column** — the command produces the event.
 - SCREEN (input/command screen) goes in the **actor row of that same column**.
+- **A COMMAND never stands alone.** Every COMMAND must have exactly one issuer in the actor row of its own column: a SCREEN when a human triggers it, an AUTOMATION when a processor or external-system integration triggers it. There is no third option and no exemption — a command with an empty actor-row cell is an unresolved gap the moment it's placed, not something to leave for a later step to notice. This applies just as much to a command that only *represents* an externally-triggered integration event crossing into this chapter (Step 1/Step 6 territory) as to any other command: place an AUTOMATION for the external actor even when that actor's own decision logic is out of scope for this model — the automation node documents *that* something triggers the command, not *how* it decides to.
+
+  Every AUTOMATION placed this way still needs its own todo-list READMODEL per `eventmodeling-identifying-outputs` Step 5b — including one whose trigger is an external integration signal. There is no exemption for this either: even when the only visible trigger is the automation's own resulting event, model a todo list that opens and closes within that same slice (per Step 5b's worked pattern) rather than leaving the automation without an incoming READMODEL.
 
 ### State-view slice (EVENT → READ MODEL → SCREEN)
 - READ MODEL goes in the **interaction row** of a column that is **immediately after the primary source event's column** — never at the end of the timeline.
@@ -41,6 +44,15 @@ A read model does not necessarily serve a whole screen — **one component in a 
 A screen-wide read model that has to aggregate from events scattered across many columns is the most common source of unnecessary coupling — a "god read model." A screen with a stats row and a list below it is two components: two read models and two screen copies of the *same page* (same screen name on both copies; the copies differ only in which component is marked/highlighted crisp while the other is blurred/dimmed), not one screen-wide read model. Each narrower read model then sits naturally close to its own source event, and the `EVENT → READMODEL → SCREEN` chain for each component stays short and forward. See `eventmodeling-identifying-outputs`'s "Step 5a — Enumerate consumers and identify components" and "Step 5c — Break apart multi-component screens into copies" for the mechanics — apply this during Step 5, before the placement problem exists, rather than reordering columns to patch it afterward.
 
 Not every wide fan-in is this problem, though: a single homogeneous list/table (e.g. a catalog whose per-row status comes from many different lifecycle events) is still **one** component, and its read model legitimately needs to subscribe to many events spread across the timeline — that's a "roll-up" component, not a god read model. Treat that classification as an assumption, not a given: `eventmodeling-identifying-outputs` Step 5a records it as an inline MARKDOWN note (per "Documenting decisions inline" above) explaining why the component is one roll-up rather than several bundled ones, instead of force-splitting it or letting it pass unremarked.
+
+### The >3-events heuristic — evaluate, don't rubber-stamp
+
+Whenever a read model ends up connected to more than 3 events, stop and actively evaluate whether it can be split — do not wave it through as "probably a roll-up" just because it's technically one visual component. Two distinct checks, both required:
+
+1. **Field-level minimality.** Re-derive, field by field, exactly which connected events each field actually needs. Any event connected to the read model that no field's `mapping` traces back to is a prunable connection — remove it (`set_connection` with `action: "remove"`), regardless of how the read model got wide. This is a pure hygiene check and applies even to a legitimate roll-up.
+2. **Kind-of-computation split.** Within one visual component, a field needing 1-2 simple, non-overlapping events (e.g. a monotonic counter incremented/decremented by its own dedicated events) is a fundamentally different kind of computation from a field needing wide fan-in across a whole entity's lifecycle (e.g. "is this available right now," which by construction depends on every event that can change that state). When a read model bundles both kinds, split the wide-fan-in field(s) out into their own read model and screen-copy, even if the surrounding fields stay together in a narrower one — don't let a handful of cheap counters justify leaving a genuine roll-up field un-isolated, and don't let a genuine roll-up field justify dragging cheap counters along with it.
+
+A read model that is wide purely because it's a true single-entity roll-up (per the definition above) and has already been pruned to its minimum event set per check (1) does not need further splitting — document it and move on. The heuristic is a prompt to check every time, not a mandate to always split.
 
 ### No unplaced elements (0,0 nodes)
 
@@ -97,9 +109,11 @@ For each returned node, check whether it has a valid cell assignment. A node wit
 Never leave an unplaced node on the board when proceeding to the next step.
 
 ### No backward arrows
-The timeline must always progress left-to-right. Every connection arrow — SCREEN→COMMAND, COMMAND→EVENT, EVENT→READMODEL, READMODEL→SCREEN — must point to the right or downward (within the same column). A right-to-left arrow is always a layout error.
+The timeline must always progress left-to-right — this is the goal to design toward, not just a validation check to run afterward. Every connection arrow — SCREEN→COMMAND, COMMAND→EVENT, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND — must point to the right or downward (within the same column). A right-to-left arrow among these is always a layout error, full stop.
 
-Before wiring any connection, verify that `column(source) ≤ column(target)`. If this is violated:
+**`EVENT → READMODEL` is the one exception — and it stays an exception, not a second acceptable default.** Confirmed against the platform API (`learn-eventmodelers-api` §3 — `POST .../connections`): an event in a later column may legitimately connect to a read model in an earlier column, and vice versa, because a read model is a continuously-listening projection, not a point-in-time action — it can be fed by an event anywhere on its timeline, including one placed after it. Always try to place a read model so its connections read forward first; reach for this exception only when a genuine roll-up's wide fan-in makes an all-forward layout impractical (see "God read models" above), not as a default way to avoid column planning. When you do rely on it, don't "fix" the wide-fan-in read model by relocating it to sit after its last source event just to eliminate the backward arrows — that column surgery is unnecessary and, for a genuine roll-up, often impossible to do cleanly without breaking other consumers. The one real signal to watch for is a **connected event that isn't actually used by any field** on the read model — that's a prunable connection regardless of column position, not a column-ordering problem.
+
+Before wiring any of the five forward-only pairs, verify that `column(source) ≤ column(target)`. If this is violated:
 - Move the earlier-placed element to the correct column, OR
 - Insert a new column at the right position to restore the correct order.
 
