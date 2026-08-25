@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-validating-event-models-checklist
-description: "Validate event-sourced CQRS models against 16 architectural checks across 7 phases. Identifies anti-patterns and confirms compliance with event sourcing principles. Use when reviewing event models for production readiness or after completing event modeling steps. Do not use for: reviewing incomplete or in-progress models (use eventmodeling-validating-event-models), or for elaborating new scenarios (use eventmodeling-elaborating-scenarios)."
+description: "Validate event-sourced CQRS models against 17 architectural checks across 7 phases. Identifies anti-patterns and confirms compliance with event sourcing principles. Use when reviewing event models for production readiness or after completing event modeling steps. Do not use for: reviewing incomplete or in-progress models (use eventmodeling-validating-event-models), or for elaborating new scenarios (use eventmodeling-elaborating-scenarios)."
 allowed-tools:
   - Write
   - Bash
@@ -12,7 +12,7 @@ allowed-tools:
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-**Purpose**: Validate any event-sourced CQRS event model against 16 architectural checks across 7 phases. Identifies anti-patterns and confirms compliance with event sourcing principles.
+**Purpose**: Validate any event-sourced CQRS event model against 17 architectural checks across 7 phases. Identifies anti-patterns and confirms compliance with event sourcing principles.
 
 **Applies To**: Any domain - e-commerce, banking, SaaS, marketplace, healthcare, etc.
 
@@ -24,7 +24,7 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 **What It Does**:
 1. Reads current board state (EVENT, COMMAND, READMODEL nodes) as input
-2. Systematically applies 16 validation checks across 7 phases
+2. Systematically applies 17 validation checks across 7 phases
 2. Identifies violations of event sourcing principles (domain-agnostic)
 3. Flags anti-patterns (calculations as events, non-entity streams, etc.)
 4. Verifies read model/event distinction
@@ -59,12 +59,13 @@ Use the board nodes as the model input. After the checklist, use `handle-comment
 
 ## Validation Phases (Domain-Agnostic)
 
-### Phase 1: Event Stream & Command Handler State Validation (3 checks)
+### Phase 1: Event Stream & Command Handler State Validation (4 checks)
 - Check 1.1: Each event belongs to exactly one stream
 - Check 1.2: Each command handler owns its own [CommandHandler]State class
 - Check 1.3: No hard dependencies between command handlers (orchestrated via events only)
+- Check 1.4: Each command is issued by exactly one thing — no COMMAND node has more than one inbound SCREEN/AUTOMATION edge
 
-**Anti-pattern to catch**: Sharing state across handlers or treating state as persistent aggregate
+**Anti-pattern to catch**: Sharing state across handlers or treating state as persistent aggregate; a command wired from two issuers (commonly a `place-element` auto-connect artifact where the command's own column holds an AUTOMATION and the previous column's SCREEN also gets wired in — see `learn-eventmodelers-api` §3 auto-connect "Known gap")
 
 ### Phase 2: Event Quality Validation (3 checks)
 - Check 2.1: Events represent domain facts, not calculations
@@ -204,6 +205,24 @@ Reconstruct [CommandHandler]State on-demand
 
 **Why**: State is derived from events, never stored. Events are source of truth. This enables consistent replay, audit trails, and time-travel debugging.
 
+### 5. Command With Multiple Issuers
+```
+ ANTI-PATTERN:
+FlagLoanOverdue (COMMAND) has two inbound edges:
+- "Flag Overdue Loans" (AUTOMATION, same column)
+- "Adjust Due Date" (SCREEN, previous column)
+- Result: unclear who/what actually triggers the command; validation and UI-vs-automation
+  authority checks (e.g. Role & Actor Attribution) can no longer be answered
+
+ CORRECT:
+FlagLoanOverdue (COMMAND) has exactly one inbound edge, from the AUTOMATION that owns it.
+If the SCREEN's user genuinely needs to trigger the same outcome, that's a second,
+distinctly-named command (or the SCREEN issuing it directly, with the automation removed) —
+not two issuers sharing one command.
+```
+
+**Why**: A command is never issued by more than one thing. Each command represents one specific trigger's decision to act — collapsing two triggers onto one command node hides which actor is actually responsible, and usually means either a naming/slice-boundary mistake or a stray auto-connect edge (`learn-eventmodelers-api` §3, "Known gap"). Fix by removing the extra edge via `set_connection` (`action: "remove"`), not by keeping both.
+
 ---
 
 ## Questions to Ask During Validation
@@ -233,7 +252,7 @@ Reconstruct [CommandHandler]State on-demand
 ## Success Criteria
 
  **Model is validated when**:
-- All 16 checks pass (or have documented workarounds)
+- All 17 checks pass (or have documented workarounds)
 - No critical anti-patterns identified
 - All 3 final questions answer YES
 - Event sourcing principles clearly upheld
@@ -306,7 +325,7 @@ Running the checklist after Step 2 prevents wasting time on later steps if core 
 
 ## Checklist Questions by Domain
 
-The skill applies the same 16 checks regardless of domain. Here's how to think about it in different contexts:
+The skill applies the same 17 checks regardless of domain. Here's how to think about it in different contexts:
 
 **E-commerce domain**:
 - Events: OrderCreated, OrderConfirmed, PaymentAuthorized, OrderShipped
@@ -338,7 +357,7 @@ The principle is the same across all domains: **immutable facts as events, calcu
 
 ## Quality Checklist
 
-- [ ] All 16 checks evaluated — no check skipped without documented justification
+- [ ] All 17 checks evaluated — no check skipped without documented justification
 - [ ] Every FAIL result includes the specific event, handler, or stream that violated the check
 - [ ] Anti-patterns identified by name with the exact model element that triggered the flag
 - [ ] Final verdict is one of: PASS / PASS WITH WARNINGS / FAIL — no ambiguous outcomes
@@ -359,6 +378,6 @@ The principle is the same across all domains: **immutable facts as events, calcu
 
 ## Validation Checklist Reference
 
-The 16-point checklist is defined in the **Validation Phases** section above.
+The 17-point checklist is defined in the **Validation Phases** section above.
 Each check includes the anti-pattern to catch and questions to ask when evaluating your model.
 

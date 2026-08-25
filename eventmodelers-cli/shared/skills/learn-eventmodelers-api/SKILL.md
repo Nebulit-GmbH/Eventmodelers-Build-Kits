@@ -110,6 +110,7 @@ READMODEL      // Query result / materialized view
 SCENARIO       // GWT scenario
 LANE           // Timeline row
 SLICE_BORDER   // Slice boundary marker
+MARKDOWN       // Free-text markdown note — the content type a `feedback` lane accepts (see §2)
 ```
 
 ---
@@ -283,6 +284,33 @@ Drop a node into a timeline cell. Validates placement rules. If the node was alr
 
 ---
 
+### Feedback lanes and MARKDOWN nodes (free-text notes)
+
+A chapter has no `feedback` lane by default — add one first via the lanes endpoint above (`{"type": "feedback", "label": "Notes"}`), which returns a `laneId`. This is a normal row in `meta.timelineData.rows` (`type: "feedback"`) alongside `actor`/`interaction`/`swimlane`/`spec`.
+
+Place a free-text markdown note in that lane the same way any other node is placed — a plain `node:created` event through `POST .../nodes/events` (§3), **not** the cell-drop endpoint above. `cellId` is `"<feedbackRowId>-<columnId>"`, same convention as every other lane:
+
+```json
+{
+  "id": "<event-uuid>",
+  "eventType": "node:created",
+  "nodeId": "<node-uuid>",
+  "boardId": "<boardId>",
+  "timestamp": 1234567890,
+  "chapterId": "<chapterId>",
+  "cellId": "<feedbackRowId>-<columnId>",
+  "meta": {
+    "type": "MARKDOWN",
+    "title": "Modeling Reasoning — <Chapter Name>",
+    "description": "# Heading\n\nFull markdown body here — headings, lists, bold, etc. all render."
+  }
+}
+```
+
+The node's content lives in `meta.description` (a plain string of markdown source) — **not** `meta.content`; that field is silently accepted and stored but never rendered, producing a visibly empty note. There is no `fields[]` array on this element type, and no separate render/sketch call is needed (unlike SCREEN/HTML_SCREEN). `node.type` comes back as `"markdown"` (lowercase) on read.
+
+---
+
 ## 3. Nodes
 
 **File**: `src/slices/change/api-nodes/routes.ts`
@@ -314,6 +342,7 @@ interface NodeChangeEvent {
       backgroundColor?: string
       title?: string
       url?: string
+      linkedTo?: string            // origin node id — marks this node as a linked copy (see below)
       // ...other node data fields
       // Do NOT set a "type" here — the server derives the node's render type from
       // meta.type automatically. Setting one yourself risks it being read as the
@@ -363,9 +392,26 @@ Auto-connect a node to its timeline neighbors — mirrors the frontend's auto-co
 
 Incompatible or already-connected neighbors are reported in `skipped`, not an error. Returns an empty result for nodes not placed on any timeline, or not a connectable element type (e.g. SCENARIO/spec nodes are never auto-connected).
 
+**Known gap**: the "own column already has a SCREEN" guard checks only for a SCREEN specifically — not an AUTOMATION. Placing an AUTOMATION in a COMMAND's own column, with a SCREEN sitting in the previous column, wires *both* into the COMMAND, leaving it with two issuers. A command is never issued by more than one thing — see `place-element` Step 7c for the check-and-fix.
+
+**Connections (both auto-connect and `set_connection`) only ever pair nodes on the same timeline** — a node in Chapter A can never be wired directly to a node in Chapter B, even when the type pair is otherwise valid (e.g. EVENT→READMODEL). No direct cross-timeline connection is possible.
+
+**The supported workaround is a linked copy**: place a copy of the source EVENT into its own swimlane on the *consuming* timeline, with `node.data.linkedTo` set to the origin node's id (see `linkedTo` in the `NodeChangeEvent` shape above; `eventmodeling-checking-completeness` documents how to recognize one when reading the board — it's an intentional copy, never a duplicate to clean up). Once the copy exists on the consuming timeline, it's a same-timeline node like any other and can be wired normally (e.g. linked-EVENT→READMODEL→SCREEN) to satisfy that context's local data need. Only fall back to documenting an integration gap when a linked copy genuinely isn't the right shape for the need (e.g. the consuming context needs live/aggregate data no single event copy can represent).
+
 **Response**:
 - `200` — `{ connected: [{edgeId, source, target, created}], skipped: [{nodeId, reason}] }`
 - `404` — node not found
+
+---
+
+### POST `/api/org/:orgId/boards/:boardId/connections`
+Create a single type-checked directed edge between two existing nodes — the REST fallback for `set_connection`.
+
+**Request body**: `{ source: string, target: string }` (node ids)
+
+**Response**: `200`/`201` — `{ edgeId, source, target }` on success · `400` — the pair is not one of the allowed type combinations · `404` — a node id doesn't exist
+
+**`EVENT → READMODEL` is exempt from column ordering** — an event in a later column can connect to a read model in an earlier column, and vice versa. A read model is a continuously-listening projection, not a point-in-time action, so it can be fed by an event anywhere on its timeline. Every other pair (`SCREEN → COMMAND`, `COMMAND → EVENT`, `READMODEL → SCREEN`, `READMODEL → AUTOMATION`, `AUTOMATION → COMMAND`) is still forward-only. If a connection you expect to work gets rejected, retry once before concluding it's blocked — a transient rejection has been observed on an otherwise-valid pair.
 
 ---
 

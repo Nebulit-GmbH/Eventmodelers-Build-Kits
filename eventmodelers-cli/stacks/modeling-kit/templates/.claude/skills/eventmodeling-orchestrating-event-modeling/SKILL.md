@@ -13,7 +13,7 @@ allowed-tools:
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-Coordinates the 10-step Event Modeling workflow. Each step delegates to a
+Coordinates the 11-step Event Modeling workflow. Each step delegates to a
 specialized skill — this skill holds the sequence, transition conditions, and
 what to carry forward between steps.
 
@@ -101,6 +101,10 @@ Screens placed during Step 3 (Storyboarding) are provisional positions. Steps 4 
 ### Column insertion
 Use `POST /timelines/:tl/columns` with `{"index": N}` to insert a column at a specific position (shifts existing columns right). Do not use `{}` (append) when placing read models or view screens — always target the correct position.
 
+### Documenting decisions inline, at any step
+
+Separate from the Step 11 chapter-level reasoning note: at **any** step (1–10), if that step makes a decision or assumption important enough that a later reader could otherwise misread the model, add a small MARKDOWN note in the **column where that decision applies** (same feedback-lane + MARKDOWN mechanics as Step 11 — see there for the exact calls). Use sparingly — this is for a genuine "why is it like this" moment (an assumption that fills a gap the brief left open, a rejected alternative, a non-obvious constraint), not routine narration of what a step did.
+
 ---
 
 ## Interview Phase
@@ -166,7 +170,7 @@ Also update the Interview Trail table row for this step (Status → Done, Key Ou
 
 After writing the summary, run `/compact` to clear the accumulated context before loading the next skill. The summary written above is the handoff — the next skill reads it from the file, not from the conversation history.
 
-This keeps each step's context lean and prevents token bloat from accumulating across all 9 steps.
+This keeps each step's context lean and prevents token bloat from accumulating across all 11 steps.
 
 ---
 
@@ -266,9 +270,14 @@ if Conway's Law boundaries are not relevant to the project.
 Invoke `eventmodeling-elaborating-scenarios`.
 
 **Input**: Commands and read models.
-**Output to carry forward**: Given-When-Then specifications for each command
-and view, posted to the board spec cells.
-**Gate**: Every command has scenarios covering **all applicable types** from the elaborating-scenarios workflow — not just happy path + one error case. See the gate checklist below.
+**Output to carry forward**: Given-When-Then specifications (or storylines, for
+walkthrough-style coverage) for every command **and every read model**, posted
+to the board spec cells.
+**Gate**: Every command has scenarios covering **all applicable types** from
+the elaborating-scenarios workflow — not just happy path + one error case —
+**and every READMODEL on the board has at least one view scenario**. See the
+gate checklist below. A command-only pass is an incomplete Step 7, even if
+every command's coverage looks exhaustive.
 
 > **Do not reduce scenarios to a simple good-case / bad-case pair.** The `eventmodeling-elaborating-scenarios` skill defines a structured scenario workshop covering seven scenario types per command. All applicable types must be written before this step is complete.
 
@@ -283,7 +292,9 @@ and view, posted to the board spec cells.
 
 For each type, ask the relevant question against the business case and write a scenario if the situation can occur. Do not decide based on brevity — decide based on the domain.
 
-> The `eventmodeling-elaborating-scenarios` skill designs scenarios **and** posts them to the board. It uses `GET /timelines/$TL/spec-info` to resolve node IDs, then `POST /timelines/$TL/columns/$COL/scenarios` with all scenarios for that column in one call (array body). The SCENARIO spec node is created automatically. Ensure the timeline and column IDs are resolved and passed to the skill before invoking it.
+> **Read models need scenarios too — easy to forget since the seven types above are command-shaped.** Every READMODEL needs at least one view scenario (GWT or storyline); a read model with zero scenarios is as incomplete as a command with zero. `eventmodeling-elaborating-scenarios`'s own checklist covers the details — connectivity rules, GWT-vs-storyline judgment per read model, and avoiding redundancy between a storyline and its GWTs — don't re-derive those here, just enforce the gate.
+
+> The `eventmodeling-elaborating-scenarios` skill designs scenarios **and** posts them to the board. It uses `GET /timelines/$TL/spec-info` to resolve node IDs, then `POST /timelines/$TL/columns/$COL/scenarios` with all scenarios for that column in one call (array body) — this applies identically whether the column holds a COMMAND or a READMODEL. The SCENARIO spec node is created automatically. Ensure the timeline and column IDs are resolved and passed to the skill before invoking it.
 
 ---
 
@@ -331,6 +342,76 @@ already had one.
 
 ---
 
+### Step 11: Document Reasoning
+
+Not delegated to a separate skill — performed directly by this orchestrating skill, since the reasoning being documented is the *orchestrator's own* accumulated context across all prior steps, not something a single-step skill has visibility into.
+
+**Input**: The complete, sliced, validated model (Steps 1–10) plus this session's own record of decisions made along the way — assumptions added beyond the literal brief, sequencing corrections, business rules deliberately encoded as scenarios rather than events, read-model sharing choices, and any cross-context/integration gaps found (e.g. during Step 6 or Step 9).
+
+**Output to carry forward**: One MARKDOWN node per chapter, placed in that chapter's first column, containing the full modeling reasoning for that bounded context in as much detail as the session actually has to give — not a boilerplate template filled in thinly.
+
+**Gate**: Every chapter on the board has exactly one reasoning MARKDOWN node in its first column, non-empty, written after the model for that chapter was already complete (so it can describe the *finished* shape, not a plan).
+
+**Mechanics** — a chapter has no `feedback` lane by default; add one first, then place a MARKDOWN node in it:
+
+1. **Add a feedback lane** (once per chapter, skip if one already exists — check `meta.timelineData.rows` for `type === "feedback"` first):
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "feedback", "label": "Notes" }
+   ```
+
+   **Fallback (no MCP):**
+   ```bash
+   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
+     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+     -H "Content-Type: application/json" \
+     -d '{"type":"feedback","label":"Notes"}'
+   # → { laneId, type, label, index, totalLanes }
+   ```
+
+2. **Resolve the first column's ID** — the leftmost entry in `meta.timelineData.columns` (same chapter fetch used throughout this workflow for row/column lookups).
+
+3. **Create the MARKDOWN node**, `cellId = "<feedbackLaneId>-<firstColumnId>"`:
+
+   **Prefer MCP:**
+   ```
+   mcp__eventmodelers__submit_node_events {
+     "boardId": "$BOARD_ID",
+     "events": [{
+       "id": "<event-uuid>", "eventType": "node:created", "nodeId": "<node-uuid>",
+       "boardId": "$BOARD_ID", "timestamp": 1234567890,
+       "chapterId": "$CHAPTER_ID", "cellId": "<feedbackLaneId>-<firstColumnId>",
+       "meta": { "type": "MARKDOWN", "title": "Modeling Reasoning — <Chapter Name>", "description": "<full markdown body>" }
+     }]
+   }
+   ```
+
+   **Fallback (no MCP):**
+   ```bash
+   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+     -H "Content-Type: application/json" \
+     -d '[{"id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>","boardId":"<BOARD_ID>",
+           "timestamp":1234567890,"chapterId":"<CHAPTER_ID>","cellId":"<feedbackLaneId>-<firstColumnId>",
+           "meta":{"type":"MARKDOWN","title":"Modeling Reasoning — <Chapter Name>","description":"<full markdown body>"}}]'
+   ```
+
+   The note's body lives in **`meta.description`** as plain markdown source — headings, lists, bold, code fences, tables all render. **Not `meta.content`** — that field is accepted and stored without error but never rendered by the board UI, producing a visibly empty note; this was caught by comparing against a note authored directly in the UI, so treat it as confirmed, not a guess. There is no separate render/sketch call (unlike SCREEN/HTML_SCREEN) and no `fields[]` array on this element type.
+
+**What the note should actually contain** — write for the next person (or next session) who opens this board cold, not for whoever just built it:
+- **Scope**: what business process this chapter covers, and its stream roots (identity keys).
+- **Assumptions added beyond the literal brief** — anything invented to fill a gap the requirements left open, and why (e.g. adding a resolution event so a state isn't a one-way trap door).
+- **Business rules deliberately encoded as scenarios, not new events** — so a reader doesn't mistake a missing event for an oversight.
+- **Sequencing or design corrections made mid-workflow** — e.g. a column reorder because an event's original placement implied the wrong causality.
+- **Read model design rationale** — especially where one read model deliberately serves several screens/automations, so it doesn't read as a missing 1:1 mapping.
+- **Any cross-context or integration gaps found** (Step 6 Conway's Law, or discovered incidentally, e.g. a same-timeline connection constraint blocking a needed cross-chapter data dependency) — state the finding and the viable resolutions, matching whatever TASK/QUESTION comment was also posted on the affected node.
+- **Closing summary**: element counts and the validation verdict for this chapter's slice of the model.
+
+If a chapter's story is genuinely simple, say so briefly rather than padding — but for any chapter with real design decisions behind it, this note is the place those decisions survive past the session that made them.
+
+---
+
 ## Final Output
 
 A complete, sliced event model consisting of:
@@ -344,10 +425,11 @@ A complete, sliced event model consisting of:
 - Completeness verification
 - Validation report with readiness verdict
 - Slice definitions marking every independently deployable feature boundary
+- A Modeling Reasoning MARKDOWN node in each chapter's first column, documenting the design decisions, assumptions, and any integration gaps behind that chapter's model
 
 ### Optional Follow-on Skills
 
-These skills are not part of the 10-step main path but extend the model for
+These skills are not part of the 11-step main path but extend the model for
 specific needs:
 
 - **`eventmodeling-designing-event-models`** — Use when stream identity,
@@ -364,12 +446,14 @@ specific needs:
 ## Quality Checklist
 
 - [ ] No elements stranded at 0,0 — every EVENT, COMMAND, READMODEL, SCREEN, and AUTOMATION has a valid `cellId` in its chapter
-- [ ] All 10 modeling steps completed — no step skipped without explicit reason
+- [ ] All 11 modeling steps completed — no step skipped without explicit reason
 - [ ] Every COMMAND, READMODEL, and AUTOMATION has a matching slice definition on the board
+- [ ] Every chapter has a Modeling Reasoning MARKDOWN node in its first column, written after that chapter's model was complete
 - [ ] Role Catalog exists with named human roles and system processors
 - [ ] Every command is attributed to a specific role from the Role Catalog
 - [ ] Every read model satisfies at least one UI or processor query need
 - [ ] At least one Given-When-Then scenario exists per command
+- [ ] At least one view scenario (GWT or storyline) exists per READMODEL — not just per command
 - [ ] Completeness check shows no unresolved field traceability gaps
 - [ ] Validation returns PASS or PASS WITH WARNINGS with all critical issues resolved
 - [ ] Interview trail in `.trogonai/` updated with status of each completed step

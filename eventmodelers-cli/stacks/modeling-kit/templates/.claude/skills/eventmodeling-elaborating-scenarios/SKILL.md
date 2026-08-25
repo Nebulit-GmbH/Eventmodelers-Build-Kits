@@ -19,6 +19,8 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 artifact — only build one when the user's request explicitly asks for a "storyline", "walkthrough",
 or "narrative". Never generate a storyline as a side effect of ordinary scenario elaboration.
 
+**Exception — the mandatory read-model scenario pass** (see the "Per read model" section of the Quality Checklist below): when the user's request already frames read-model coverage as open to either form — e.g. "add scenarios for the read models, GWT or storylines", or the orchestrating skill's Step 7 gate, which requires exactly that — the explicit-ask condition is satisfied at that request level, not per read model. Within that pass, decide GWT vs. storyline **per read model** based on domain fit (does this read model's row genuinely walk through multiple states worth narrating?), not by asking again for every individual read model and not by defaulting to GWT for all of them just because that's the baseline elsewhere in this skill. Outside that pass — an ad-hoc "write scenarios for X" with no mention of storylines — the strict on-demand rule above still applies unchanged.
+
 A GWT scenario asserts one isolated transition: a single precondition, a single action, a single
 resulting outcome. A storyline instead narrates one specific use case as an ordered sequence of
 **beats**, where the *same* element (usually a read model) is walked through multiple states across
@@ -804,11 +806,18 @@ After posting, tell the user:
 
 **No command has only 2 scenarios unless all other types were reviewed and found inapplicable.**
 
+**Per read model — this is a separate, equally mandatory pass, not an afterthought of the command pass above:**
+- [ ] **Every READMODEL on the board has at least one view scenario** — GWT (`given`: source EVENTs, `when`: empty, `then`: the READMODEL) or a storyline. A model with dozens of command scenarios and 0 read-model scenarios is not a complete Step 7 — it's easy to walk away thinking coverage is thorough because the command side looks exhaustive, so check the read-model side explicitly before reporting this step done.
+- [ ] **Population scenario** — the view shows correct data after its source event(s)
+- [ ] **Removal/update scenario, where applicable** — a row disappears or changes (`expectEmptyList: true` for list-type views) after an event that supersedes it (expiry, return, archival, withdrawal, status change, etc.). `EVENT → READMODEL` is exempt from column ordering (see `learn-eventmodelers-api` §3), so a later event connecting back to an earlier-placed read model is normal — add the connection if it's missing rather than assuming the scenario is impossible. Only skip this scenario, with a documented gap (TASK comment), when the superseding event genuinely lives in a different chapter.
+- [ ] **GWT vs. storyline decided per read model, not applied uniformly** — reach for a storyline wherever the *same* read model row genuinely walks through multiple states worth narrating; the rest of the read models in the same model may be correctly GWT-only. Don't default to one format for every read model just because it worked for the first one, and don't judge "multiple states" by counting *distinct connected event types* — that undercounts real candidates. **A single event type recurring with different data is just as valid a storyline driver as several different event types**: `AccountFunded($40)` then `AccountFunded($70)` walking a balance read model from $40 to $110 is exactly as strong a storyline as a multi-event lifecycle. In practice this means almost every list/aggregate read model qualifies — a titles list growing from one row to two as the same `TitleAdded`-shaped event recurs, a dashboard's counters incrementing as the same `CopyAdded` event recurs, are both genuine storylines, not "just" GWT territory. Ask "does replaying this read model's *actually connected* event(s) more than once produce an interesting accumulated/changed state?" — not "how many different event types feed this."
+- [ ] **No redundancy or contradiction between a read model's GWT scenarios and its storyline** — if both exist for the same read model, read the storyline's beats before finalizing the GWTs. A GWT that asserts the same state a beat already shows is redundant (delete it); a GWT written without tracing the same causal sequence the storyline encodes can end up asserting something the storyline's beats actually contradict (e.g. claiming two entities coexist in a view when the storyline correctly shows one superseding the other) — delete or fix it, never leave a contradiction on the board.
+- [ ] **Cross-context read models handled honestly** — if a read model's true source events live in a different chapter, `given` can't reference them (same-timeline-only, like connections); write the scenario with an empty `given` and say so explicitly in the scenario title, rather than silently omitting the scenario or fabricating a same-timeline event that isn't the real source
+
 **Format and posting:**
 - [ ] State preconditions are explicit in Given (not just "Given an order")
 - [ ] Actions are clear in When
 - [ ] Outcomes are verifiable in Then (event produced or rejection with reason)
-- [ ] Every view has at least one update scenario
 - [ ] All scenarios posted to board spec cells via the `/scenarios` API
 - [ ] **Workshop facilitation approach documented**
 - [ ] **All stakeholder roles (PO, Dev, QA, Domain Expert) perspectives captured**

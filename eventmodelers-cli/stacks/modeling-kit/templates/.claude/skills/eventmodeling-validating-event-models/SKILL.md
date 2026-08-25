@@ -80,6 +80,7 @@ Verify each swimlane has:
 ### 2. Consistency Checks
 
 - [ ] **Event-Stream Mapping**: Every event belongs to exactly one lane
+- [ ] **Single Command Issuer**: Every command is issued by exactly one SCREEN or AUTOMATION — never two. Check each COMMAND node's inbound edges; more than one SCREEN/AUTOMATION wired into the same command is a CRITICAL violation (commonly an auto-connect artifact — see `place-element` Step 7c)
 - [ ] **Command Outcomes**: Every command produces events OR documents rejection
 - [ ] **Deterministic Projections**: State can only be derived one way from events
 - [ ] **No Side Effects in Projections**: Pure state reconstruction logic
@@ -192,6 +193,7 @@ Format findings as comments:
 | Orphaned events | Events no one listens to | Link to projections or commands |
 | No read models | Commands reading query/read models for validation | Add separate query read models; keep command state minimal |
 | Circular dependencies | Projection A depends on B, B on A | Redesign stream boundaries |
+| Command issued by multiple things | COMMAND node has 2+ inbound SCREEN/AUTOMATION edges | Keep the deliberate same-column issuer, remove the rest via `set_connection` (`action: "remove"`) — see `place-element` Step 7c |
 
 ## Key Principles for Event Sourcing
 
@@ -233,6 +235,7 @@ A model is **ready for code generation** if:
 - [ ] State projection is deterministic from events
 - [ ] Commands validate against current state only
 - [ ] Each command either produces events or rejects (no silent failures)
+- [ ] **No command has more than one inbound SCREEN/AUTOMATION edge (a command is never issued by more than one thing)**
 - [ ] Event causality/command-event mapping is clear
 - [ ] State transitions are documented
 - [ ] No direct references between lanes

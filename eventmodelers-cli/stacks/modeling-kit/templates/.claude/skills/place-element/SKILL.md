@@ -446,6 +446,34 @@ Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
 
 ---
 
+## Step 7c — Verify the command has exactly one issuer
+
+**A command is never issued by more than one thing.** Run this check whenever `elementType` is `SCREEN`, `AUTOMATION`, or `COMMAND` — placing any of these can trigger the server's fire-and-forget auto-connect (`learn-eventmodelers-api` §3), which wires `SCREEN→COMMAND` and `AUTOMATION→COMMAND` edges to type-compatible neighbors in the node's own column and the previous column.
+
+**Why this can go wrong**: auto-connect only skips the previous column's SCREEN when the COMMAND's own column already has a SCREEN — it does not check for an AUTOMATION there. So a COMMAND whose own column holds an AUTOMATION, with a SCREEN sitting in the previous column, ends up wired from *both* — the automation (same column) and the screen (previous column) — and now looks issued by two things.
+
+After placing, resolve the relevant COMMAND node (the one just placed, or the one in the same/adjacent column as the SCREEN/AUTOMATION just placed) and inspect its edges:
+
+**Prefer MCP:**
+```
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<COMMAND_NODE_ID>" }
+```
+
+Count inbound edges where `target === COMMAND_NODE_ID` and the source node is type `SCREEN` or `AUTOMATION`.
+
+- **0 or 1 such edge** → fine, nothing to do.
+- **2 or more** → keep the edge whose source sits in the COMMAND's own column (the deliberate, same-slice issuer) and remove every other one:
+
+```
+mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }
+```
+
+If it's not clear which edge is the deliberate one (e.g. neither source sits in the COMMAND's own column), do not guess — leave both edges and post a `QUESTION` comment on the COMMAND node via `handle-comment` instead, describing the ambiguity.
+
+**Fallback (no MCP)**: there is no documented single-purpose REST endpoint for edge removal outside `/nodes/events`. Connect MCP via the `connect` skill first; if that's genuinely not possible, skip the auto-fix and post a `QUESTION` comment on the COMMAND node flagging the double issuer for manual resolution instead of fabricating a payload.
+
+---
+
 ## Step 8 — Report back
 
 Tell the user:
