@@ -207,8 +207,8 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   }]'
 ```
 
-**Stack timelines vertically so they do not overlap.**
-After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first and place the new chapter below the lowest one (`y = maxExistingY + 1200`). Pass this directly as `x`/`y` on `create_chapter` above, or reposition an existing chapter with:
+**Stack timelines vertically so they do not overlap, and in general place new chapters close to existing ones they relate to.**
+After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first. Prefer placing the new chapter directly below the existing chapter it is most closely related to (e.g. the same bounded context or an adjacent workflow), rather than mechanically appending below the lowest one — this keeps related chapters visually near each other on the canvas. Only fall back to `y = maxExistingY + 1200` when no related chapter exists yet. Pass this directly as `x`/`y` on `create_chapter` above, or reposition an existing chapter with:
 
 **Prefer MCP:**
 ```
@@ -353,6 +353,8 @@ mcp__eventmodelers__submit_node_events {
 
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
+> **One EVENT per column (hard rule).** A column is a single moment in the timeline — never place two EVENT nodes in the same column, even when they sit in different swimlane rows (e.g. two systems under Conway's Law). Step A above always appends a fresh column per event, which already satisfies this; if you ever reuse an existing column instead of appending, first confirm no swimlane row in that column already holds an EVENT. **Don't resolve this by checkerboarding across swimlanes** — see "Swimlane Rules (Mandatory)" below: this chapter's own swimlane carries the continuous story; the other swimlane only ever gets an isolated single-column handover, then the story resumes back in this swimlane.
+
 ### Mode B — Free-form brainstorming (no chapter yet)
 
 When chapters have not been created yet, events may be created without `chapterId` or `cellId`. They appear as free-floating sticky notes on the canvas. This is valid during open discovery.
@@ -366,17 +368,15 @@ An event left without a chapter and cell reference will never appear in any time
 
 ## Swimlane Rules (Mandatory)
 
-Do not create unnecessary swimlanes. Before adding a lane, check whether an existing lane already covers the element's type. If yes, place the element in that lane.
+**Use swimlanes sparingly — a swimlane exists for exactly one purpose: marking where integration with another system happens. Nothing else justifies one.** Not a different actor, not a different role, not visual grouping, not "an explicit business rule" in the abstract. Every chapter starts with, and in the common case keeps, a single default swimlane holding all of this bounded context's own domain events. Before adding a lane, check whether an existing lane already covers the element's type. If yes, place the element in that lane.
 
-**Only create a new swimlane when:**
-- A new actor is introduced that has no existing lane, **or**
-- An explicit business rule requires a distinct lane
+**The only valid reason to create a second `swimlane`-type lane: another system's own events cross into this chapter as integration triggers for an automation** (see `eventmodeling-identifying-outputs` Step 5b). Label it for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all.
 
-**Never** add a swimlane just to group things visually or because a second role appears — use the existing lane if the type matches.
-
-**Exception: a second `swimlane`-type lane for another system's own events.** When an external/other-team system's events cross into this chapter as integration triggers for an automation (see `eventmodeling-identifying-outputs` Step 5b), add a second swimlane lane labeled for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all.
+**Never** add a swimlane for any other reason — not a new actor, not a new role, not visual grouping. Human roles get their own **actor** lane during Step 3 (Storyboarding) — a different row type entirely — never a new swimlane here.
 
 **When two swimlanes exist side by side, tell a continuous story from this chapter's own swimlane as much as possible — don't checkerboard between them.** Having a second swimlane for an external system does not mean every other column should alternate between "our event" and "their event." Keep a run of consecutive columns in this chapter's own swimlane while the domain process is unfolding, and only place an event in the external swimlane where a real cross-system trigger occurs (the external system reacting to, or producing, an event that actually drives the next step of this chapter's process). If two adjacent columns each have an event in a different swimlane but neither one triggers or is triggered by the other, that's a sign the events were placed for visual symmetry rather than because the story actually crossed system boundaries there — revisit the plotting instead.
+
+**An event in the other swimlane is a handover, not a relocation.** It marks a single moment where control passes to the other system — it does not mean the narrative now belongs to that swimlane for a run of columns. Immediately after the handover column, the story resumes in *this* chapter's own swimlane (the next column back in this swimlane), not in the other one. The other swimlane should typically show isolated, single-column events at each genuine handover point, never a multi-column stretch of its own — a long run of consecutive events in the external swimlane is a sign the events belong in a chapter of their own, not this one's.
 
 ---
 
@@ -504,7 +504,7 @@ Present as a Role Catalog:
 ```
 
 This catalog feeds directly into:
-- **Step 3 (Storyboarding)**: One swimlane per human role
+- **Step 3 (Storyboarding)**: One actor lane per human role (not a swimlane — see Swimlane Rules above)
 - **Step 4 (Inputs)**: Every command attributed to a specific role/actor
 - **Step 7 (Scenarios)**: Scenarios reference roles by name
 - **Step 8 (Completeness)**: Verify every role has at least one command path
@@ -674,5 +674,5 @@ Include error and boundary conditions:
 - [ ] No overlapping event semantics — two events don't mean the same thing
 - [ ] Every event is placed into a **named chapter** — no event left in an untitled or default timeline
 - [ ] **Multiple chapters are stacked vertically** (y offset of 1200 per chapter) — no two chapters overlap on the canvas
-- [ ] No unnecessary swimlanes created — existing lanes reused when the type matches; new lanes added only for new actors or explicit business rules
-- [ ] **When a second (external-system) swimlane exists, events follow one continuous story from this chapter's own swimlane as much as possible** — no mechanical alternation between the two swimlanes column-to-column; the external swimlane is only used where a genuine cross-system trigger occurs
+- [ ] No unnecessary swimlanes created — a swimlane exists only to mark integration with another system; never added for a new actor, a new role, or visual grouping
+- [ ] **When a second (external-system) swimlane exists, events follow one continuous story from this chapter's own swimlane throughout** — the external swimlane only ever holds isolated single-column handovers, never a run of its own, and the story resumes in this chapter's swimlane immediately after each one

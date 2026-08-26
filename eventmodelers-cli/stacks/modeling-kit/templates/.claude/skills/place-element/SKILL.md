@@ -237,6 +237,8 @@ Using the `timelineData` already fetched in Step 3 (re-fetch if a column was jus
 
 Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
+**One EVENT per column (hard rule).** A column represents a single moment in the timeline. When `elementType` is `EVENT`, an occupied column means occupied *at all* — even if the existing EVENT sits in a different swimlane row (e.g. a different system under Conway's Law). Never place two EVENT nodes in the same column just because they're in different swimlanes. Before treating the column as available, check `cells` for **every** row whose `type === "swimlane"`, not only `targetRow` — if any of those cells already holds an EVENT node, treat the column as occupied and insert a new column immediately after (see the table below), not the target column itself.
+
 **Check if the cell is already occupied.**
 
 **No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `meta.timelineData.cells` you already fetched in Step 3 via `get_node` on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
@@ -253,6 +255,7 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
 |---|---|---|
 | `READMODEL` | `COMMAND` (state-change slice already owns this column) | Insert a **new column immediately after** the current column (not at the end) and use that new column as the target. |
 | `SCREEN` (view/output screen) | any | Same as READMODEL — insert immediately after. |
+| `EVENT` | `EVENT` in **any other swimlane row of the same column** | Insert a new column immediately after — an EVENT never shares a column with another EVENT, even across different swimlanes. |
 | Any | Same element type | Stop and tell the user — true conflict, no safe default. |
 | Any | Different type but not a known pairing | Stop and tell the user. |
 

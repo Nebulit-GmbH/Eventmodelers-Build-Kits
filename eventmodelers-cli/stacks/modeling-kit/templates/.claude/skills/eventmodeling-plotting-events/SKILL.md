@@ -129,7 +129,9 @@ Work within the chosen timeline only. For each event in the final chronological 
 | `boardId` | `BOARD_ID` |
 | `timelineId` | the chapter this event belongs to |
 
-Reuse existing empty columns, do not blindly create new ones.
+Reuse existing empty columns, do not blindly create new ones. "Empty" means no EVENT anywhere in that column — **never place two EVENT nodes in the same column, even across different swimlanes**; each column is a single moment in the timeline. If the column already holds an EVENT in another swimlane, place this one in a new column instead (see `place-element`'s one-EVENT-per-column rule).
+
+**Do not resolve that conflict by checkerboarding.** When a chapter has more than one swimlane (e.g. a second system's events, see `eventmodeling-brainstorming-events`'s Swimlane Rules), the chapter's own swimlane carries the continuous story throughout — do not alternate "our event, their event, our event, their event" column by column just because each needs its own column, and do not give the other swimlane a multi-column run of its own either. An event in the other swimlane is a single-column handover: it marks one moment where control passes to the other system, and the very next column returns to this chapter's own swimlane to continue the story. Two swimlanes trading events every column with no genuine trigger behind each handover is a sign of forcing visual symmetry rather than following the actual causal order — re-sequence instead. If the other swimlane ends up needing a long run of its own consecutive events, that's a sign those events belong in a chapter of their own, not this one.
 
 Process events in order, one at a time. Do not skip any event.
 
