@@ -388,11 +388,11 @@ Get a single node.
 ---
 
 ### POST `/api/org/:orgId/boards/:boardId/nodes/:nodeId/auto-connect`
-Auto-connect a node to its timeline neighbors — mirrors the frontend's auto-connect-on-place behavior. Looks only at the node's own timeline column and the previous column (never ahead), and creates `edge:added` events to every type-compatible neighbor found there, using the same pairing rules as connections created via node events (COMMAND→EVENT, SCREEN→COMMAND, EVENT→READMODEL, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND). A COMMAND is not wired to the previous column's SCREEN if its own column already has one.
+Auto-connect a node to its timeline neighbors — mirrors the frontend's auto-connect-on-place behavior. Looks only at the node's own timeline column and the previous column (never ahead), and creates `edge:added` events to every type-compatible neighbor found there, using the same pairing rules as connections created via node events (COMMAND→EVENT, SCREEN→COMMAND, EVENT→READMODEL, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND).
 
 Incompatible or already-connected neighbors are reported in `skipped`, not an error. Returns an empty result for nodes not placed on any timeline, or not a connectable element type (e.g. SCENARIO/spec nodes are never auto-connected).
 
-**Known gap**: the "own column already has a SCREEN" guard checks only for a SCREEN specifically — not an AUTOMATION. Placing an AUTOMATION in a COMMAND's own column, with a SCREEN sitting in the previous column, wires *both* into the COMMAND, leaving it with two issuers. A command is never issued by more than one thing — see `place-element` Step 7c for the check-and-fix.
+A COMMAND is driven by exactly one upstream trigger — one SCREEN or one AUTOMATION, never both. The previous column's SCREEN/AUTOMATION is skipped whenever the COMMAND already has an inbound trigger, whether that's a SCREEN or AUTOMATION sitting in its own column, or a pre-existing inbound edge already in the DB (e.g. from a prior auto-connect run or a manual connection).
 
 **Connections (both auto-connect and `set_connection`) only ever pair nodes on the same timeline** — a node in Chapter A can never be wired directly to a node in Chapter B, even when the type pair is otherwise valid (e.g. EVENT→READMODEL). No direct cross-timeline connection is possible.
 
@@ -411,7 +411,7 @@ Create a single type-checked directed edge between two existing nodes — the RE
 
 **Response**: `200`/`201` — `{ edgeId, source, target }` on success · `400` — the pair is not one of the allowed type combinations · `404` — a node id doesn't exist
 
-**`EVENT → READMODEL` is exempt from column ordering** — an event in a later column can connect to a read model in an earlier column, and vice versa. A read model is a continuously-listening projection, not a point-in-time action, so it can be fed by an event anywhere on its timeline. Every other pair (`SCREEN → COMMAND`, `COMMAND → EVENT`, `READMODEL → SCREEN`, `READMODEL → AUTOMATION`, `AUTOMATION → COMMAND`) is still forward-only. If a connection you expect to work gets rejected, retry once before concluding it's blocked — a transient rejection has been observed on an otherwise-valid pair.
+**`EVENT → READMODEL` is conditionally exempt from column ordering** — an event in a later column can connect to a read model in an earlier column, but only when that read model already feeds an AUTOMATION (i.e. a `READMODEL → AUTOMATION` edge already exists). Such an accumulator read model is a continuously-listening projection, not a point-in-time action, so it can go on collecting events from anywhere later on its timeline (e.g. a running total feeding a downstream process). A plain display read model with no automation still rejects a backward connection — wire the `READMODEL → AUTOMATION` edge first if the backward connect is rejected and you expect this exemption to apply. This exemption is deliberate-only via this endpoint — auto-connect never infers a backward `EVENT → READMODEL` pairing. Every other pair (`SCREEN → COMMAND`, `COMMAND → EVENT`, `READMODEL → SCREEN`, `READMODEL → AUTOMATION`, `AUTOMATION → COMMAND`) is always forward-only, no exceptions. If a connection you expect to work gets rejected, retry once before concluding it's blocked — a transient rejection has been observed on an otherwise-valid pair.
 
 ---
 

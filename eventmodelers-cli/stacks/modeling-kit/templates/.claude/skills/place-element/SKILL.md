@@ -448,9 +448,7 @@ Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
 
 ## Step 7c — Verify the command has exactly one issuer
 
-**A command is never issued by more than one thing.** Run this check whenever `elementType` is `SCREEN`, `AUTOMATION`, or `COMMAND` — placing any of these can trigger the server's fire-and-forget auto-connect (`learn-eventmodelers-api` §3), which wires `SCREEN→COMMAND` and `AUTOMATION→COMMAND` edges to type-compatible neighbors in the node's own column and the previous column.
-
-**Why this can go wrong**: auto-connect only skips the previous column's SCREEN when the COMMAND's own column already has a SCREEN — it does not check for an AUTOMATION there. So a COMMAND whose own column holds an AUTOMATION, with a SCREEN sitting in the previous column, ends up wired from *both* — the automation (same column) and the screen (previous column) — and now looks issued by two things.
+**A command is never issued by more than one thing.** The server's fire-and-forget auto-connect (`learn-eventmodelers-api` §3) already enforces this — it skips wiring the previous column's SCREEN/AUTOMATION into a COMMAND that already has an inbound trigger, whether that trigger came from the COMMAND's own column or from a pre-existing edge in the DB. Still, run this check whenever `elementType` is `SCREEN`, `AUTOMATION`, or `COMMAND` as a sanity check — e.g. a manual `set_connection` call, or an edge created before this guard existed, can still leave a COMMAND with two issuers.
 
 After placing, resolve the relevant COMMAND node (the one just placed, or the one in the same/adjacent column as the SCREEN/AUTOMATION just placed) and inspect its edges:
 

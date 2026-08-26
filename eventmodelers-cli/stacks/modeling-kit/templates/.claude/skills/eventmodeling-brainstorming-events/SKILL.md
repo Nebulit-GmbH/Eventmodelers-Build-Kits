@@ -376,6 +376,8 @@ Do not create unnecessary swimlanes. Before adding a lane, check whether an exis
 
 **Exception: a second `swimlane`-type lane for another system's own events.** When an external/other-team system's events cross into this chapter as integration triggers for an automation (see `eventmodeling-identifying-outputs` Step 5b), add a second swimlane lane labeled for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all.
 
+**When two swimlanes exist side by side, tell a continuous story from this chapter's own swimlane as much as possible — don't checkerboard between them.** Having a second swimlane for an external system does not mean every other column should alternate between "our event" and "their event." Keep a run of consecutive columns in this chapter's own swimlane while the domain process is unfolding, and only place an event in the external swimlane where a real cross-system trigger occurs (the external system reacting to, or producing, an event that actually drives the next step of this chapter's process). If two adjacent columns each have an event in a different swimlane but neither one triggers or is triggered by the other, that's a sign the events were placed for visual symmetry rather than because the story actually crossed system boundaries there — revisit the plotting instead.
+
 ---
 
 ## Workshop Facilitation Guide
@@ -673,3 +675,4 @@ Include error and boundary conditions:
 - [ ] Every event is placed into a **named chapter** — no event left in an untitled or default timeline
 - [ ] **Multiple chapters are stacked vertically** (y offset of 1200 per chapter) — no two chapters overlap on the canvas
 - [ ] No unnecessary swimlanes created — existing lanes reused when the type matches; new lanes added only for new actors or explicit business rules
+- [ ] **When a second (external-system) swimlane exists, events follow one continuous story from this chapter's own swimlane as much as possible** — no mechanical alternation between the two swimlanes column-to-column; the external swimlane is only used where a genuine cross-system trigger occurs

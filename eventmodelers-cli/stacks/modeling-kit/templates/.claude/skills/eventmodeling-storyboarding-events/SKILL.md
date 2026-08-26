@@ -613,6 +613,17 @@ Examples:
 
 Human roles get SCREEN nodes placed in their own labeled actor lane. System actors and processors get AUTOMATION nodes placed in the shared default actor lane. Place both types during storyboarding — do not defer automations to a later step.
 
+### Maintain a Consistent Actor Perspective Across Columns
+
+Tell the story from **one actor's perspective as much as possible**. When walking the timeline column by column, keep placing screens in the same role's lane as the previous screen unless the process genuinely hands the story off to a different actor (e.g. a Member requests a reservation, then the Librarian must act on that request — that's a real handoff, place the Librarian's screen next). Do not alternate actors column-to-column just because a different role's read model also changed at that point — a state change only earns its own screen when someone would actually look at it as the next beat in the story, not for symmetry between lanes.
+
+Before placing a screen, ask "whose turn is it in the story?" If the answer is still the same actor as the last screen, keep the story there — it's fine, and expected, for a stretch of consecutive columns to belong entirely to one actor while another actor's lane sits empty. It's also fine to occasionally cut away to show what another actor sees, but that should read as a deliberate narrative beat, not a mechanical alternation.
+
+```
+✅ Consistent: Member screens in cols 1, 2, 3 (their whole request flow), then Librarian screens in cols 4, 5 (their whole fulfillment flow)
+❌ Checkerboard: Librarian, Member, Librarian, Member, Librarian across cols 1-5 with no real handoff driving each switch
+```
+
 ### One Screen Per Column (Hard Rule)
 
 **Never place more than one SCREEN node in the same column**, even across different actor lanes. Each column represents a single moment in the timeline. Two screens in the same column means two different interactions at the same moment — that breaks the visual narrative and always signals a design error.
@@ -722,6 +733,7 @@ Failure produces: [Event]
 
 - [ ] **Every screen has rendered content** — HTML pages by default (`create_screen`/`render_screen` with `contentType: "html"` returned success), or a wireframe sketch only when explicitly requested — no exceptions
 - [ ] **No column contains more than one SCREEN node** across all actor lanes
+- [ ] **Screens follow one actor's perspective across consecutive columns** — no mechanical alternation between two actors' lanes column-to-column; a different actor's screen appears only where the story genuinely hands off to them
 - [ ] Every screen's wireframe shows real field labels matching the event/command fields
 - [ ] Every displayed field has a source event
 - [ ] Every user action maps to a command
@@ -747,6 +759,7 @@ Failure produces: [Event]
 3. **Completeness**: All needed data is visible
 4. **Clarity**: UI clearly shows system state
 5. **Consistency**: Same data presented consistently across screens
+6. **Narrative Continuity**: Tell the story from one actor's perspective across consecutive columns; switch actors only for a genuine handoff, not for symmetry between lanes
 
 ## Common Patterns
 

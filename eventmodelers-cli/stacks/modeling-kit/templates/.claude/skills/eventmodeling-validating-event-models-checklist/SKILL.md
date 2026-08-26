@@ -65,7 +65,7 @@ Use the board nodes as the model input. After the checklist, use `handle-comment
 - Check 1.3: No hard dependencies between command handlers (orchestrated via events only)
 - Check 1.4: Each command is issued by exactly one thing — no COMMAND node has more than one inbound SCREEN/AUTOMATION edge
 
-**Anti-pattern to catch**: Sharing state across handlers or treating state as persistent aggregate; a command wired from two issuers (commonly a `place-element` auto-connect artifact where the command's own column holds an AUTOMATION and the previous column's SCREEN also gets wired in — see `learn-eventmodelers-api` §3 auto-connect "Known gap")
+**Anti-pattern to catch**: Sharing state across handlers or treating state as persistent aggregate; a command wired from two issuers — auto-connect itself now guards against this (see `learn-eventmodelers-api` §3), so a double-issuer command found on the board is most likely a manual `set_connection` call or an edge left over from before that guard existed, not a fresh auto-connect artifact
 
 ### Phase 2: Event Quality Validation (3 checks)
 - Check 2.1: Events represent domain facts, not calculations
@@ -221,7 +221,7 @@ distinctly-named command (or the SCREEN issuing it directly, with the automation
 not two issuers sharing one command.
 ```
 
-**Why**: A command is never issued by more than one thing. Each command represents one specific trigger's decision to act — collapsing two triggers onto one command node hides which actor is actually responsible, and usually means either a naming/slice-boundary mistake or a stray auto-connect edge (`learn-eventmodelers-api` §3, "Known gap"). Fix by removing the extra edge via `set_connection` (`action: "remove"`), not by keeping both.
+**Why**: A command is never issued by more than one thing. Each command represents one specific trigger's decision to act — collapsing two triggers onto one command node hides which actor is actually responsible, and usually means either a naming/slice-boundary mistake or a stray manual/pre-existing edge (auto-connect itself now guards against this — see `learn-eventmodelers-api` §3). Fix by removing the extra edge via `set_connection` (`action: "remove"`), not by keeping both.
 
 ---
 
