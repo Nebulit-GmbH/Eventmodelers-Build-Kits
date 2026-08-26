@@ -51,6 +51,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `add_storyline` | `boardId`, `timelineId`, `columnId`, `storylines[]` | **Experimental — only use when explicitly asked for a storyline/walkthrough.** Append storyline(s) (ordered, branchable beats over existing elements) to a column's spec node | §6 `POST .../storylines` |
 | `set_connection` | `boardId`, `source`, `target`, `action` (`'connect'\|'remove'`) | Add or remove a type-checked directed edge | — (via `edges` on §3 events) |
 | `auto_connect_node` | `boardId`, `nodeId` | Re-run auto-connect for a node | §3 `POST .../nodes/:nodeId/auto-connect` |
+| `link_element` | `boardId`, `nodeId`, `targetNodeId` | Link two existing same-type nodes: `targetNodeId` is replaced with a full copy of `nodeId`'s meta plus `meta.linkedTo`. Linking means first create, then link | §3 `POST .../nodes/:nodeId/link` |
 | `add_comment` | `boardId`, `nodeId`, `text`, `type?` (`'COMMENT'\|'TASK'\|'QUESTION'`), `author?` | Add a comment — `QUESTION` flags gaps/edge cases during review | — (via comment events) |
 | `update_comment` | `boardId`, `nodeId`, `commentId`, `action` (`'resolve'\|'delete'`) | Resolve or delete a comment | — (via comment events) |
 | `create_screen` | `boardId`, `contentType` (`'image'\|'sketch'\|'html'`), `nodeId?`, `chapterId`, `cellId?`/`cellName?`, plus content fields (`imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`), `description?` | Create + place a new screen node (SCREEN or HTML_SCREEN) atomically, in one call | §4 `POST .../images/:id/sketch` + `image-nodes` |
@@ -342,7 +343,7 @@ interface NodeChangeEvent {
       backgroundColor?: string
       title?: string
       url?: string
-      linkedTo?: string            // origin node id — marks this node as a linked copy (see below)
+      linkedTo?: string            // rendering mirror only — meta.linkedTo (below) is authoritative
       // ...other node data fields
       // Do NOT set a "type" here — the server derives the node's render type from
       // meta.type automatically. Setting one yourself risks it being read as the
@@ -354,6 +355,7 @@ interface NodeChangeEvent {
     title?: string
     description?: string
     fields?: Record<string, unknown>
+    linkedTo?: string            // origin node id — the authoritative linked-copy pointer
     // ...
   }
   edges?: Array<{
@@ -396,7 +398,7 @@ A COMMAND is driven by exactly one upstream trigger — one SCREEN or one AUTOMA
 
 **Connections (both auto-connect and `set_connection`) only ever pair nodes on the same timeline** — a node in Chapter A can never be wired directly to a node in Chapter B, even when the type pair is otherwise valid (e.g. EVENT→READMODEL). No direct cross-timeline connection is possible.
 
-**The supported workaround is a linked copy**: place a copy of the source EVENT into its own swimlane on the *consuming* timeline, with `node.data.linkedTo` set to the origin node's id (see `linkedTo` in the `NodeChangeEvent` shape above; `eventmodeling-checking-completeness` documents how to recognize one when reading the board — it's an intentional copy, never a duplicate to clean up). Once the copy exists on the consuming timeline, it's a same-timeline node like any other and can be wired normally (e.g. linked-EVENT→READMODEL→SCREEN) to satisfy that context's local data need. Only fall back to documenting an integration gap when a linked copy genuinely isn't the right shape for the need (e.g. the consuming context needs live/aggregate data no single event copy can represent).
+**The supported workaround is a linked copy**: place a plain EVENT node into its own swimlane on the *consuming* timeline, then call `link_element` (below) to link it to the origin node. Linking means first create, then link. `eventmodeling-checking-completeness` documents how to recognize a linked copy when reading the board — it's an intentional copy, never a duplicate to clean up.
 
 **Response**:
 - `200` — `{ connected: [{edgeId, source, target, created}], skipped: [{nodeId, reason}] }`
@@ -412,6 +414,20 @@ Create a single type-checked directed edge between two existing nodes — the RE
 **Response**: `200`/`201` — `{ edgeId, source, target }` on success · `400` — the pair is not one of the allowed type combinations · `404` — a node id doesn't exist
 
 **`EVENT → READMODEL` is conditionally exempt from column ordering** — an event in a later column can connect to a read model in an earlier column, but only when that read model already feeds an AUTOMATION (i.e. a `READMODEL → AUTOMATION` edge already exists). Such an accumulator read model is a continuously-listening projection, not a point-in-time action, so it can go on collecting events from anywhere later on its timeline (e.g. a running total feeding a downstream process). A plain display read model with no automation still rejects a backward connection — wire the `READMODEL → AUTOMATION` edge first if the backward connect is rejected and you expect this exemption to apply. This exemption is deliberate-only via this endpoint — auto-connect never infers a backward `EVENT → READMODEL` pairing. Every other pair (`SCREEN → COMMAND`, `COMMAND → EVENT`, `READMODEL → SCREEN`, `READMODEL → AUTOMATION`, `AUTOMATION → COMMAND`) is always forward-only, no exceptions. If a connection you expect to work gets rejected, retry once before concluding it's blocked — a transient rejection has been observed on an otherwise-valid pair.
+
+---
+
+### POST `/api/org/:orgId/boards/:boardId/nodes/:nodeId/link`
+Link two existing same-type nodes — the REST fallback for `link_element`. Linking means first create, then link: `targetNodeId` must already exist. It's replaced with a full copy of `:nodeId`'s meta (not a merge) plus `meta.linkedTo`. COMMAND/EVENT/READMODEL only; `:nodeId` must not itself already be a linked copy.
+
+**Request body**:
+```typescript
+{
+  targetNodeId: string  // existing same-type node to convert into a linked copy
+}
+```
+
+**Response**: `200` — `{ nodeId, linkedTo, type }` · `400` — missing `targetNodeId`, type mismatch, self-link, unsupported element type, or the original is itself a linked copy · `404` — the original or `targetNodeId` doesn't exist
 
 ---
 
