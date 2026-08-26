@@ -13,31 +13,40 @@ allowed-tools:
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-## Storylines — an On-Demand Alternative to GWT Scenarios (Experimental)
+## GWT vs. Storyline — Decision Rule
 
-**By default, this skill always produces GWT scenarios.** Storylines are a separate, experimental
-artifact — only build one when the user's request explicitly asks for a "storyline", "walkthrough",
-or "narrative". Never generate a storyline as a side effect of ordinary scenario elaboration.
+A GWT scenario asserts one isolated transition (one precondition → one action → one outcome). A
+storyline instead narrates one use case as an ordered sequence of **beats**, walking the *same*
+element (usually a read model) through multiple states in one flow — something no single GWT can
+express.
 
-**Exception — the mandatory read-model scenario pass** (see the "Per read model" section of the Quality Checklist below): when the user's request already frames read-model coverage as open to either form — e.g. "add scenarios for the read models, GWT or storylines", or the orchestrating skill's Step 7 gate, which requires exactly that — the explicit-ask condition is satisfied at that request level, not per read model. Within that pass, decide GWT vs. storyline **per read model** based on domain fit (does this read model's row genuinely walk through multiple states worth narrating?), not by asking again for every individual read model and not by defaulting to GWT for all of them just because that's the baseline elsewhere in this skill. Outside that pass — an ad-hoc "write scenarios for X" with no mention of storylines — the strict on-demand rule above still applies unchanged.
+**Commands: always GWT.** A command has no state progression to narrate — it validates one
+input against one state and either succeeds or is rejected. Never write a storyline for a command.
 
-A GWT scenario asserts one isolated transition: a single precondition, a single action, a single
-resulting outcome. A storyline instead narrates one specific use case as an ordered sequence of
-**beats**, where the *same* element (usually a read model) is walked through multiple states across
-one flow — something no single GWT scenario can express, since GWT only ever asserts one
-before/after pair at a time.
+**Read models: storyline when the read model goes through a series of clear state transitions
+driven by events; GWT otherwise.** Decide this **per read model**, not once for the whole pass:
+does replaying this read model's actually-connected event(s) more than once produce an interesting
+accumulated/changed state worth narrating? A single event type recurring with different data counts
+just as much as a multi-event lifecycle — e.g. `AccountFunded($40)` then `AccountFunded($70)`
+walking a balance from $40 to $110 is a genuine storyline driver. **Todo lists are a prime
+candidate**: an item appears when opened and disappears when completed, which is exactly the kind
+of state progression a storyline is for — as is any read model whose rows accumulate, update, or
+get removed across a sequence of events (balances, counters, statuses). Yes → storyline. No →
+GWT-only. Make this call before drafting any payload — a batch pass that reuses one schema for
+every command *and* every read model is a sign the per-read-model judgment got skipped.
+
+Even where a read model gets a storyline, still write GWTs for the specific scenarios the
+storyline doesn't cover — validation failures, cross-context sourcing, or any transition outside
+the narrated flow. Storyline and GWT are complementary, not exclusive: the storyline covers the
+narrated lifecycle, GWT covers everything else about that read model.
 
 **Example** — a customer-activation walkthrough of a Todos read model:
-1. **Beat 1** — the Todos read model, starting empty.
-2. **Beat 2** — after a `CustomerRegistered` event, the same Todos read model now shows one entry
-   (an "activate your account" todo).
-3. **Beat 3** — after a `CustomerActivated` event, the same Todos read model is empty again (the
-   todo was completed and removed).
+1. **Beat 1** — Todos read model, empty.
+2. **Beat 2** — after `CustomerRegistered`, Todos shows one entry ("activate your account").
+3. **Beat 3** — after `CustomerActivated`, Todos is empty again (todo completed and removed).
 
-Three separate GWT scenarios could each assert one of those transitions in isolation, but a
-storyline threads all three together as one narrated walkthrough of the read model's lifecycle —
-useful for a stakeholder-facing walkthrough of a use case, not for exhaustive GWT coverage. Keep
-producing ordinary Given/When/Then scenarios for everything else.
+A storyline threads all three beats into one walkthrough; three separate GWTs could each assert one
+transition but not the lifecycle.
 
 ### Storyline data shape
 
@@ -274,6 +283,14 @@ As scenarios are written, ensure each role checks:
 Work through each question with the domain in mind. If the answer is "that situation cannot occur in this business" then no scenario is needed for that type — but that judgment must come from the domain, not from a desire to write fewer scenarios.
 
 ## Workflow
+
+### 0. Decide GWT vs. storyline for every READMODEL — before drafting any scenario payload
+
+Apply the decision test from "GWT vs. Storyline — Decision Rule" above to every READMODEL on the
+board (or in scope). Produce a visible artifact — one line per READMODEL, "yes → storyline" or
+"no → GWT-only" with a one-clause reason — before writing the first scenario payload, not as a
+checklist review after. Deciding this list up front is what stops a batch pass from silently
+collapsing into one reused schema for every command and read model alike.
 
 For each command and view, write scenarios in Given-When-Then format:
 
@@ -812,7 +829,7 @@ After posting, tell the user:
 - [ ] **Every READMODEL on the board has at least one view scenario** — GWT (`given`: source EVENTs, `when`: empty, `then`: the READMODEL) or a storyline. A model with dozens of command scenarios and 0 read-model scenarios is not a complete Step 7 — it's easy to walk away thinking coverage is thorough because the command side looks exhaustive, so check the read-model side explicitly before reporting this step done.
 - [ ] **Population scenario** — the view shows correct data after its source event(s)
 - [ ] **Removal/update scenario, where applicable** — a row disappears or changes (`expectEmptyList: true` for list-type views) after an event that supersedes it (expiry, return, archival, withdrawal, status change, etc.). `EVENT → READMODEL` is exempt from column ordering **only when the read model already feeds an AUTOMATION** (`READMODEL → AUTOMATION` edge; see `learn-eventmodelers-api` §3 and `eventmodeling-orchestrating-event-modeling`'s "No backward arrows") — a later event connecting back to an earlier-placed todo-list read model is normal for that accumulator shape, so add the connection if it's missing rather than assuming the scenario is impossible. If the read model has no automation to feed, the backward connection is rejected — by Step 5 this should already have been modeled the forward way (see `eventmodeling-identifying-outputs` Step 5g's copy pattern: a new read model + screen copy in the later event's column, never a link back). If it wasn't, write the scenario against that forward-placed copy rather than the original. Only skip this scenario, with a documented gap (TASK comment), when the superseding event genuinely lives in a different chapter.
-- [ ] **GWT vs. storyline decided per read model, not applied uniformly** — reach for a storyline wherever the *same* read model row genuinely walks through multiple states worth narrating; the rest of the read models in the same model may be correctly GWT-only. Don't default to one format for every read model just because it worked for the first one, and don't judge "multiple states" by counting *distinct connected event types* — that undercounts real candidates. **A single event type recurring with different data is just as valid a storyline driver as several different event types**: `AccountFunded($40)` then `AccountFunded($70)` walking a balance read model from $40 to $110 is exactly as strong a storyline as a multi-event lifecycle. In practice this means almost every list/aggregate read model qualifies — a titles list growing from one row to two as the same `TitleAdded`-shaped event recurs, a dashboard's counters incrementing as the same `CopyAdded` event recurs, are both genuine storylines, not "just" GWT territory. Ask "does replaying this read model's *actually connected* event(s) more than once produce an interesting accumulated/changed state?" — not "how many different event types feed this."
+- [ ] **GWT vs. storyline decided per read model, not applied uniformly** — apply the decision test from "GWT vs. Storyline — Decision Rule" above to each read model individually; some may qualify for a storyline while the rest of the same model are correctly GWT-only. Don't default to one format for every read model just because it worked for the first one.
 - [ ] **No redundancy or contradiction between a read model's GWT scenarios and its storyline** — if both exist for the same read model, read the storyline's beats before finalizing the GWTs. A GWT that asserts the same state a beat already shows is redundant (delete it); a GWT written without tracing the same causal sequence the storyline encodes can end up asserting something the storyline's beats actually contradict (e.g. claiming two entities coexist in a view when the storyline correctly shows one superseding the other) — delete or fix it, never leave a contradiction on the board.
 - [ ] **Cross-context read models handled honestly** — if a read model's true source events live in a different chapter, `given` can't reference them (same-timeline-only, like connections); write the scenario with an empty `given` and say so explicitly in the scenario title, rather than silently omitting the scenario or fabricating a same-timeline event that isn't the real source
 

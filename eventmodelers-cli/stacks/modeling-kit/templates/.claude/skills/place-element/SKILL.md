@@ -239,6 +239,8 @@ Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
 **One EVENT per column (hard rule).** A column represents a single moment in the timeline. When `elementType` is `EVENT`, an occupied column means occupied *at all* — even if the existing EVENT sits in a different swimlane row (e.g. a different system under Conway's Law). Never place two EVENT nodes in the same column just because they're in different swimlanes. Before treating the column as available, check `cells` for **every** row whose `type === "swimlane"`, not only `targetRow` — if any of those cells already holds an EVENT node, treat the column as occupied and insert a new column immediately after (see the table below), not the target column itself.
 
+**Same swimlane for events emitted by the same command.** When one command emits more than one event, each event still gets its own column (per the hard rule above), but all of them belong in the *same* swimlane row, placed in adjacent columns immediately after the command. Do not scatter a command's sibling events across different swimlane rows — one command producing multiple events is one system doing multiple things in sequence, not several systems reacting independently.
+
 **Check if the cell is already occupied.**
 
 **No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `meta.timelineData.cells` you already fetched in Step 3 via `get_node` on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
