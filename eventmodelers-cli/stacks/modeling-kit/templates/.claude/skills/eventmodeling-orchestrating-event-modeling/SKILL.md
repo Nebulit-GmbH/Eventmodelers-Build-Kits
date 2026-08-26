@@ -17,6 +17,15 @@ Coordinates the 11-step Event Modeling workflow. Each step delegates to a
 specialized skill — this skill holds the sequence, transition conditions, and
 what to carry forward between steps.
 
+## Do not cut corners to save tokens or effort
+
+A correct model is the entire point of this workflow — it is not optional scope that can be traded away when a step gets expensive or a placement rule turns out to be inconvenient. If satisfying a rule (a todo-list automation, a missing read model for a command screen, a proper translation-automation chain for an external trigger) requires more columns, more nodes, or more tool calls than expected, that is not a signal to remove the requirement or invent an exemption — it is a signal to spend the additional calls. Budget and token cost are never a valid reason to:
+- delete an automation, event, or read model that the rules call for, in order to avoid a placement conflict — solve the placement conflict instead (see the column-layout patterns throughout this file and in `eventmodeling-identifying-outputs`);
+- label a command screen's missing read model as "session-context" or "accepted debt" when the rules don't actually exempt it — only a genuinely blank creation form is exempt; every other command screen needs a real read model, even a small identity/lookup one;
+- collapse a two-chained-translation-automation requirement (external EVENT → translation automation → internal EVENT → worker automation) into a single direct connection because it's simpler.
+
+If you catch yourself reasoning "this would need N more columns/nodes, let me simplify instead" — that is exactly the moment to stop and do the correct, larger version. A model with more nodes that is right is a better outcome than a smaller one that skips required elements. Flag genuine scope trade-offs to the user explicitly rather than resolving them unilaterally by cutting the model.
+
 ---
 
 ## Timeline Alignment Rules

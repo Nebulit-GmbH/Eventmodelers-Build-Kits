@@ -1,13 +1,15 @@
 ---
 name: discover-storyboard
-description: Navigate an existing web app using browser automation MCP (Puppeteer/Playwright/Chrome DevTools), capture screenshots at each step, and build one or more storyboard timelines on the board with real screenshots as SCREEN nodes — ready for event modeling
+description: Navigate an existing web app using browser automation MCP (Puppeteer/Playwright/Chrome DevTools), capture each step, and build one or more storyboard timelines on the board as HTML_SCREEN nodes reconstructed from the real page markup — ready for event modeling
 ---
 
 # Discover Storyboard
 
 > **FIRST — before invoking `connect` or anything else**: check for a browser automation MCP (Step 0). If none is found, stop immediately.
 
-You are discovering the UI flows of an existing system by navigating it with a browser, taking screenshots, and uploading them to the eventmodelers board as SCREEN nodes — one per column, arranged chronologically in timelines so the team can build an event model from the real application.
+You are discovering the UI flows of an existing system by navigating it with a browser, capturing each screen, and uploading it to the eventmodelers board as a SCREEN node — one per column, arranged chronologically in timelines so the team can build an event model from the real application.
+
+**Default rendering mode is HTML, not raw screenshots.** Every SCREEN node this skill places is by default an `HTML_SCREEN` — a real, editable HTML/CSS reconstruction of the captured page (built from `CONTENT_TOOL`'s markup, cleaned up with Bulma classes per the `html-screen` skill's conventions), not a flat image. Raw screenshot images (`contentType: "image"`) are used **only** when the user explicitly asks for screenshots/images during Step 2 — never as the default, and never as a fallback chosen for convenience. An HTML reconstruction is editable, themeable, and consistent with every other screen produced elsewhere in this toolkit; a screenshot is an inert picture. See Step 7b for the two paths.
 
 ---
 
@@ -77,6 +79,10 @@ Ask the user:
 
 Wait for the answer (or a blank/skip). Save as `discoveryGuidance`. If blank, set to `"explore all visible flows"`.
 
+### Rendering mode
+
+Default `renderMode` to `"html"` — screens are placed as `HTML_SCREEN` reconstructions, never raw images, unless the user's answer to Question 2 (or `$ARGUMENTS`) explicitly asks for screenshots/images (e.g. "use screenshots", "capture images", "I want the actual pixels"). Only in that case set `renderMode = "image"`. Do not ask a separate question for this — infer it from the guidance already given, defaulting to `"html"` when nothing image-related was said.
+
 ### Additional parameters (from `$ARGUMENTS` only — do not ask)
 
 | Field | How to find it | Default |
@@ -107,8 +113,8 @@ Use the browser tools identified in Step 0. Process screens **one at a time** �
 
 1. Navigate to `startUrl` using `NAVIGATE_TOOL`
 2. Wait briefly for the page to settle
-3. Take a screenshot using `SCREENSHOT_TOOL` — save to `/tmp/discover-storyboard/screen-001.png`
-4. Use `CONTENT_TOOL` to read the page structure and compose a `description` for this screen covering three things:
+3. If `renderMode == "image"`: take a screenshot using `SCREENSHOT_TOOL` — save to `/tmp/discover-storyboard/screen-001.png`. If `renderMode == "html"` (default): skip the screenshot — `CONTENT_TOOL`'s markup (next step) is what gets placed.
+4. Use `CONTENT_TOOL` to read the page structure. When `renderMode == "html"`, also capture the markup needed to reconstruct this screen (Step 7b) — the visible content, layout structure, form fields/labels, buttons, and any status/data values shown, enough to rebuild a faithful HTML mockup, not just a text summary. Compose a `description` for this screen covering three things:
    - **What it shows**: the main content and purpose of this screen
    - **How the user got here**: `"Initial load"` for the entry screen
    - **What actions are possible**: list the primary user actions available (buttons, forms, links that lead somewhere meaningful) — expressed as intent, not UI labels (e.g. "user can submit a new order", "user can filter products by category")
@@ -120,7 +126,8 @@ screens = [
     index: 1,
     title: "<page title or heading>",
     url: "<current url>",
-    filepath: "/tmp/discover-storyboard/screen-001.png",
+    filepath: "/tmp/discover-storyboard/screen-001.png",   // only populated when renderMode == "image"
+    capturedMarkup: "<captured content/structure used to rebuild the HTML mockup>",  // only populated when renderMode == "html"
     flowHint: "<which flow this belongs to, e.g. 'Navigation / Home'>",
     description: "Shows <what>. Arrived via: initial load. Actions: <user can do X>, <user can do Y>, <user can do Z>."
   }
@@ -151,15 +158,16 @@ For each subsequent screen (up to `maxScreenshots`):
 - Repeated UI patterns with identical structure
 
 After each interaction:
-1. Take a screenshot → save to `/tmp/discover-storyboard/screen-NNN.png` (increment counter)
-2. Use `CONTENT_TOOL` to read the page and compose a `description` covering:
+1. If `renderMode == "image"`: take a screenshot → save to `/tmp/discover-storyboard/screen-NNN.png` (increment counter). If `renderMode == "html"` (default): skip the screenshot.
+2. Use `CONTENT_TOOL` to read the page and, when `renderMode == "html"`, capture the markup needed to rebuild this screen (same bar as Step 4a — enough to reconstruct a faithful mockup, not just a summary). Compose a `description` covering:
    - **What it shows**: the main content and purpose of this screen
    - **How the user got here**: the action taken to reach this screen (e.g. "clicked 'Add to cart'", "submitted login form")
    - **What actions are possible**: primary user actions expressed as intent (e.g. "user can confirm the order", "user can apply a discount code")
 3. Append to `screens` array with:
    - `title` — the page/modal title
    - `url` — current URL
-   - `filepath` — local file path
+   - `filepath` — local file path (only when `renderMode == "image"`)
+   - `capturedMarkup` — captured content/structure (only when `renderMode == "html"`)
    - `flowHint` — which logical flow this screen belongs to
    - `description` — "Shows <what>. Arrived via: <interaction>. Actions: <user can do X>, <user can do Y>."
 
@@ -316,7 +324,7 @@ Response includes `{ columnId, index, totalColumns }` — `index` is the new `co
 
 Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
 
-### 7b — Create the SCREEN node with its screenshot, atomically
+### 7b — Create the SCREEN node, atomically
 
 Generate a UUID for `SCREEN_NODE_ID`:
 
@@ -324,9 +332,28 @@ Generate a UUID for `SCREEN_NODE_ID`:
 python3 -c "import uuid; print(uuid.uuid4())"
 ```
 
-This step must create the node and attach the real screenshot in a single call — never split into "upload image" then "create node" (or vice versa), which leaves a window where the node exists with no image or an image with no node.
+This step must create the node and attach its content (HTML pages, or the screenshot) in a single call — never split into "upload content" then "create node" (or vice versa), which leaves a window where the node exists with no content.
 
-**Prefer MCP:**
+**Default path — `renderMode == "html"` (use unless the user explicitly asked for screenshots/images in Step 2):**
+
+Reconstruct the captured screen as a real HTML/CSS fragment from `screen.capturedMarkup`, following the `html-screen` skill's conventions: full-size markup (16px body text, generous padding), one self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper), no `<script>`/inline handlers, Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, tables, tags for status badges, etc.). Reproduce the real layout, labels, form fields, buttons, and any live data/status values seen on the actual page — this is a faithful reconstruction of the discovered screen, not a generic mockup.
+
+```
+mcp__eventmodelers__create_screen {
+  "boardId": "<BOARD_ID>",
+  "contentType": "html",
+  "nodeId": "<SCREEN_NODE_ID>",
+  "chapterId": "<CHAPTER_ID>",
+  "cellId": "<CELL_ID>",
+  "pages": ["<reconstructed HTML fragment for this screen>"],
+  "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"
+}
+```
+
+**Never pass an empty `pages` array** — an empty array produces a blank placeholder, same as in `html-screen`/`eventmodeling-storyboarding-events`.
+
+**Image path — `renderMode == "image"` only, when the user explicitly asked for screenshots:**
+
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
@@ -340,7 +367,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP)** — the same atomic operation via the `image-nodes` endpoint (not the plain `images/:id` endpoint, which only updates an existing node's image and does not place it):
+**Fallback (no MCP)** — the same atomic operation via the `image-nodes` endpoint (not the plain `images/:id` endpoint, which only updates an existing node's image and does not place it) — image path only:
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID" \
   -H "x-token: $TOKEN" \
@@ -348,8 +375,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
   -F "chapterId=$CHAPTER_ID" \
   -F "cellName=$CELL_NAME"
 ```
+For the HTML path with no MCP, use the `html-screen-nodes` endpoint per the `html-screen` skill's fallback mechanics instead.
 
-Response: `204` on success. Log failures in the final report but continue to the next screen — do not stop the entire run.
+Response: `204`/success on success. Log failures in the final report but continue to the next screen — do not stop the entire run.
 
 ### 7d — Report per-screen progress
 
