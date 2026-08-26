@@ -555,7 +555,9 @@ The model is **complete** when:
 ## Next Steps
 
 If completeness check passes:
-→ Proceed to code generation
+→ Proceed to Step 9 (`eventmodeling-validating-event-models`) — completeness is not the
+  final gate; validation, slicing, and documentation (Steps 9–11) still follow before
+  the model is ready for code generation.
 
 If gaps found:
 → Return to appropriate step to fix

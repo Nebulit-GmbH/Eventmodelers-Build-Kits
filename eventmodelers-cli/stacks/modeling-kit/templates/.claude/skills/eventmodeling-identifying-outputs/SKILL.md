@@ -590,6 +590,8 @@ For each view screen S that queries this read model:
 
 **View screens go in the column immediately to the right of the read model they display** — either because they were placed there in Step 3, or because you move them here now.
 
+**The same rule applies to `EVENT → READMODEL`.** If a later event needs to update data a read model already feeds to a SCREEN, do not connect that later event back into the existing read model — the platform only accepts an `EVENT → READMODEL` backward connection when the read model already has a `READMODEL → AUTOMATION` edge (the todo-list pattern from Step 5b). For any read model feeding a SCREEN, resolve the update the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there — same title, updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature. Never link the new copy back to the earlier read model instance.
+
 ### Step 5h — Wire connections after placing each READMODEL (and its SCREEN)
 
 After `place-element` returns the READMODEL node ID, create the arrows that complete the slice:

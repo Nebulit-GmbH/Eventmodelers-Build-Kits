@@ -280,6 +280,20 @@ If no matching row is found, stop and report the error — the timeline may be m
 
 ---
 
+## Step 6a — Referencing a node on a different timeline
+
+**Connections only ever pair nodes on the same timeline** — a node in Chapter A can never be wired directly to a node in Chapter B, even for an otherwise-valid type pair (e.g. `EVENT → READMODEL`). If the element you're placing needs to connect to something that lives on a *different* timeline, do not place it and then attempt `set_connection`/auto-connect across timelines — it will fail.
+
+Instead, create a **linked copy**: place the new node normally (Step 7, same title/type as the origin), then call `link_element` to mark it as a copy of the origin node:
+
+```
+mcp__eventmodelers__link_element { "boardId": "<BOARD_ID>", "nodeId": "<origin-node-id>", "targetNodeId": "<newly-placed-node-id>" }
+```
+
+(REST fallback: `POST .../nodes/:nodeId/link` with `{ "targetNodeId": "<newly-placed-node-id>" }` — see `learn-eventmodelers-api` §3.) This replaces the new node's meta with a full copy of the origin's, sets `meta.linkedTo`, and only works for COMMAND/EVENT/READMODEL. Once linked, wire the local copy to its neighbors with normal same-timeline `set_connection`/auto-connect calls. `eventmodeling-checking-completeness` treats any `linkedTo`-marked node it finds as this intentional pattern, never a duplicate to flag.
+
+---
+
 ## Step 7 — Create the node
 
 ### Step 7a — SCREEN only: create and render in one atomic call

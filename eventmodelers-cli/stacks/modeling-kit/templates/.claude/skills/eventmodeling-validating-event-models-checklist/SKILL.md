@@ -17,8 +17,8 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 **Applies To**: Any domain - e-commerce, banking, SaaS, marketplace, healthcare, etc.
 
 **When to Use**:
-- After completing Step 2 (Event Plot) of 7-step event modeling
-- After completing Step 7 (Scenarios) before declaring model complete
+- After completing Step 2 (Event Plot) of the 11-step event modeling workflow, as an early structural check
+- Alongside Step 9 (Validate), as the optional production-readiness pass before declaring model complete
 - When reviewing an existing event model for production readiness
 - When suspicious of architectural issues in event design
 
@@ -311,11 +311,13 @@ Step 2: The Plot (Sequence)
   ↓
 Fix any violations
   ↓
-Step 3-7: Complete remaining steps
+Step 3-8: Storyboard, Inputs, Outputs, Conway's Law, Scenarios, Completeness
   ↓
-→ RUN eventmodeling-validating-event-models-checklist again (final validation)
+Step 9: Validate (eventmodeling-validating-event-models)
   ↓
-PASS → Code generation
+→ RUN eventmodeling-validating-event-models-checklist again (production-readiness pass)
+  ↓
+PASS → Step 10: Slice, Step 11: Document Reasoning → Code generation
 FAIL → Fix identified issues
 ```
 
@@ -368,7 +370,7 @@ The principle is the same across all domains: **immutable facts as events, calcu
 
 ## Related Skills
 
-- **eventmodeling-orchestrating-event-modeling**: Main skill coordinating the 7-step event modeling process
+- **eventmodeling-orchestrating-event-modeling**: Main skill coordinating the 11-step event modeling process
 - **eventmodeling-brainstorming-events**: Extract events from requirements (Step 1)
 - **eventmodeling-plotting-events**: Sequence events chronologically (Step 2)
 - **eventmodeling-designing-event-models**: Design your complete event model

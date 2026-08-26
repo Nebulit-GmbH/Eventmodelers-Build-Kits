@@ -113,7 +113,11 @@ Never leave an unplaced node on the board when proceeding to the next step.
 ### No backward arrows
 The timeline must always progress left-to-right — this is the goal to design toward, not just a validation check to run afterward. Every connection arrow — SCREEN→COMMAND, COMMAND→EVENT, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND — must point to the right or downward (within the same column). A right-to-left arrow among these is always a layout error, full stop.
 
-**`EVENT → READMODEL` is the one exception — and it stays an exception, not a second acceptable default.** Confirmed against the platform API (`learn-eventmodelers-api` §3 — `POST .../connections`): an event in a later column may legitimately connect to a read model in an earlier column, and vice versa, because a read model is a continuously-listening projection, not a point-in-time action — it can be fed by an event anywhere on its timeline, including one placed after it. Always try to place a read model so its connections read forward first; reach for this exception only when a genuine roll-up's wide fan-in makes an all-forward layout impractical (see "God read models" above), not as a default way to avoid column planning. When you do rely on it, don't "fix" the wide-fan-in read model by relocating it to sit after its last source event just to eliminate the backward arrows — that column surgery is unnecessary and, for a genuine roll-up, often impossible to do cleanly without breaking other consumers. The one real signal to watch for is a **connected event that isn't actually used by any field** on the read model — that's a prunable connection regardless of column position, not a column-ordering problem.
+**`EVENT → READMODEL` has exactly one exception, and it is narrow.** A read model that already carries a `READMODEL → AUTOMATION` edge — i.e. a todo-list read model feeding an automation, per `eventmodeling-identifying-outputs` Step 5b — may also be fed by a later-column event closing an item it opened earlier. That accumulator shape is what the todo-list pattern exists for, and it is confirmed against the platform API (`learn-eventmodelers-api` §3 — `POST .../connections`). **Outside that one case, the platform rejects the connection, for good reason:** without it, a read model would become a moving target for whatever screen or scenario later reaches back into it.
+
+For every other read model — in particular one feeding a SCREEN rather than an AUTOMATION — never connect a later event back into it, no matter how convenient. If a later event needs to update what a screen already shows, resolve it the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there (same title, updated data, optionally re-marked/highlighted per `html-screen`'s Marks feature). Never link the new copy back to the earlier instance.
+
+A wide fan-in read model (many connected events, one column) is a different problem with a different fix — see "one read model per component" and the >3-events heuristic above. It is never a justification for a backward arrow. The one real signal to treat as a prunable connection regardless of column position is a **connected event that isn't actually used by any field** on the read model.
 
 Before wiring any of the five forward-only pairs, verify that `column(source) ≤ column(target)`. If this is violated:
 - Move the earlier-placed element to the correct column, OR
@@ -338,7 +342,7 @@ If FAIL: address findings and re-invoke `eventmodeling-validating-event-models`.
 
 **Optional — Production Readiness Checklist**: Invoke
 `eventmodeling-validating-event-models-checklist` when the model is destined
-for production. It runs 23 architectural checks across 7 phases and returns a
+for production. It runs 17 architectural checks across 7 phases and returns a
 PASS / PASS WITH WARNINGS / FAIL verdict independently of Step 9. A PASS on
 Step 9 does not substitute for this checklist when production readiness is
 required.
@@ -463,6 +467,7 @@ specific needs:
 ## Quality Checklist
 
 - [ ] No elements stranded at 0,0 — every EVENT, COMMAND, READMODEL, SCREEN, and AUTOMATION has a valid `cellId` in its chapter
+- [ ] No `EVENT → READMODEL` connection points backward unless the read model already has a `READMODEL → AUTOMATION` edge (todo-list pattern) — every other later-event update uses a new read model + screen copy, never a link back to the earlier instance
 - [ ] All 11 modeling steps completed — no step skipped without explicit reason
 - [ ] Every COMMAND, READMODEL, and AUTOMATION has a matching slice definition on the board
 - [ ] Every chapter has a Modeling Reasoning MARKDOWN node in its first column, written after that chapter's model was complete
