@@ -652,6 +652,17 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 
+4. **Document the reasoning for each connected event** — for every EVENT → READMODEL edge wired in step 1 (including any added later, e.g. via Step 5g's backward-connection exemption or a Step 5c/copy pattern), record why that event feeds this read model: which field(s) it sets or updates, and why. Use one MARKDOWN note per read model, in that read model's own column (same feedback-lane + MARKDOWN mechanics as `eventmodeling-orchestrating-event-modeling`'s "Documenting decisions inline, at any step" / Step 11 — add the chapter's feedback lane first if it doesn't already exist, then place the note at `cellId = "<feedbackLaneId>-<readModelColumnId>"`). Extend the existing note (don't create a second one) when the read model later gains another connected event.
+
+   Example body:
+   ```markdown
+   ## Event → field reasoning — OrderStatusView
+
+   - **OrderPlaced** → sets `orderId`, `status: "placed"`, `items[]` — the read model's creation event; the order doesn't exist before it.
+   - **OrderShipped** → updates `status: "shipped"`, `trackingNumber` — the only event carrying a tracking number.
+   - **OrderCancelled** → updates `status: "cancelled"` — terminal state, no further events expected after this.
+   ```
+
 ### Step 5i — Mandatory per-node verification (run before declaring this step done)
 
 Do not declare Step 5 complete on the strength of the read models you happened to design. Instead, **re-fetch every SCREEN and AUTOMATION node on the board** (`get_nodes` per type — don't rely on the list built earlier in this step, the board may have moved on) and check each one individually:
@@ -662,6 +673,7 @@ Do not declare Step 5 complete on the strength of the read models you happened t
 4. If a SCREEN is neither connected nor exempt, it is an **unresolved gap**. Fix it now: design the missing read model (pulling from its `meta.fields`/`mapping` as above) and wire the connection. Do not move to Step 6 with an unresolved gap silently carried forward — either fix it or explicitly flag it to the user as accepted debt.
 5. Does any screen still carry more than one component undivided (a Step 5a/5c miss)? If so, break it apart now per Step 5c before counting it as resolved.
 6. **Re-fetch every READMODEL too** and run the >3-events heuristic (`eventmodeling-orchestrating-event-modeling`) on each one field by field — including read models a MARKDOWN note already justified as a roll-up. A prior note documents one field's irreducible fan-in; it does not exempt the rest of that node's fields from this check. The failure mode this catches: a wide-fan-in field (e.g. live per-copy availability) bundled together with a cheap, low-fan-in identity/fact field (e.g. a title set by 1-2 events) that has nothing to do with the roll-up — that pairing is always two read models, never one, no matter how the note reads.
+7. **Every READMODEL has its event-reasoning MARKDOWN note (Step 5h.4)**, and that note accounts for *every* inbound `EVENT → READMODEL` edge on the node — not just the one from when it was first placed. If a read model gained a connected event later and the note wasn't extended, fix it now rather than carrying the gap forward.
 
 List the result of this pass (connected / exempt / fixed) for every screen and automation checked — this list is the evidence the orchestrator's Step 5 gate ("every screen data need is satisfied by a read model") actually holds, not just an assumption.
 
@@ -785,6 +797,7 @@ Identify UI needs without event sources:
 - [ ] **Every multi-component screen was broken apart in Step 5c** — each copy keeps the original screen's name, differs only in which component is marked/highlighted
 - [ ] **Every automation's todo-list read model identifies its opening and closing events** (Step 5b) — including the automation's own resulting event as a closing event where applicable, not just the triggering event
 - [ ] **A field's genuinely irreducible wide fan-in is documented per-field** (inline MARKDOWN note, per "Documenting decisions inline") — and that note is never treated as clearing every other field on the same read model from the >3-events check; a cheap identity/fact field bundled alongside a wide roll-up field is always split out, never excused by the roll-up's own note
+- [ ] **Every read model has an event-reasoning MARKDOWN note** (Step 5h.4) covering every connected event and which field(s) it sets or updates
 - [ ] Every read model has clear purpose
 - [ ] Every data field has event source
 - [ ] Update logic for each event is explicit
