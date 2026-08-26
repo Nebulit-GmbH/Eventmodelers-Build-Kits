@@ -1,6 +1,6 @@
 {
   "name": "@eventmodelers/cli",
-  "version": "1.0.31",
+  "version": "1.0.32",
   "description": "Eventmodelers CLI — real-time Claude agent + skills for Claude Code, for any stack (Node, Supabase, Axon, Cratis, or modeling-only)",
   "type": "module",
   "bin": {
