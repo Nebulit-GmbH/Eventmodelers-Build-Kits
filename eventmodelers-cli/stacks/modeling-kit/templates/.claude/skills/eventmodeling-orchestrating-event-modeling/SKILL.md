@@ -37,7 +37,7 @@ These rules govern how every element is placed on the board. Enforce them throug
 - SCREEN (input/command screen) goes in the **actor row of that same column**.
 - **A COMMAND never stands alone.** Every COMMAND must have exactly one issuer in the actor row of its own column: a SCREEN when a human triggers it, an AUTOMATION when a processor or external-system integration triggers it. There is no third option and no exemption — a command with an empty actor-row cell is an unresolved gap the moment it's placed, not something to leave for a later step to notice. This applies just as much to a command that only *represents* an externally-triggered integration event crossing into this chapter (Step 1/Step 6 territory) as to any other command: place an AUTOMATION for the external actor even when that actor's own decision logic is out of scope for this model — the automation node documents *that* something triggers the command, not *how* it decides to.
 
-  Every AUTOMATION placed this way still needs its own todo-list READMODEL per `eventmodeling-identifying-outputs` Step 5b — including one whose trigger is an external integration signal. There is no exemption for this either: even when the only visible trigger is the automation's own resulting event, model a todo list that opens and closes within that same slice (per Step 5b's worked pattern) rather than leaving the automation without an incoming READMODEL.
+  Every AUTOMATION placed this way still needs its own todo-list READMODEL, and one further rule governs *how* it's triggered: **an automation can only ever be directly triggered by an internal event — never by another system's event.** A signal arriving from a second swimlane must first be translated into an internal event by its own dedicated translation automation (external EVENT → todo-list READMODEL → translation AUTOMATION+COMMAND+*internal* EVENT) before any worker automation reacts to it — never one automation whose todo list is opened by the external EVENT directly. There is no exemption for a "pure relay" automation either — even one triggered only by its own resulting event still gets a todo list that opens and closes within the same slice. This is designed immediately after Step 4, in **Step 4b — Design Automation Chains** (`eventmodeling-designing-automation-chains`), precisely so it's resolved before Step 5 ever has to catch it as a gap.
 
 ### State-view slice (EVENT → READ MODEL → SCREEN)
 - READ MODEL goes in the **interaction row** of a column that is **immediately after the primary source event's column** — never at the end of the timeline.
@@ -71,7 +71,7 @@ This is a **business-modeling decision, not a technical one** — it is not trig
 
 The question to ask is simply: **is this fact worth a new event?** A derived condition — "is this available right now," "has this moved to its next stage," etc. — is worth its own event when it's a fact a domain expert would recognize and name in its own right (not just "some field I compute"), and when that fact is valuable to a later step in the process — another automation would react to it, a different bounded context would want to subscribe to it, some downstream process needs to trigger off of it. If both hold, it deserves to exist as its own dedicated event — e.g. "the copy was marked available" — not just as derived read-model logic recomputed from several other events.
 
-When that's the case, model it as its own event, produced via the same todo-list + automation translation pattern Step 5b uses for external integrations, but triggered internally by whichever raw events can produce that outcome. If the condition is purely for display, with nothing downstream that would ever act on it, it stays a plain read-model projection — no new event needed, no matter how many raw events feed it or how wide the resulting fan-in looks.
+When that's the case, model it as its own event, produced via the same todo-list + automation translation pattern `eventmodeling-designing-automation-chains` (Step 4b) uses for external integrations, but triggered internally by whichever raw events can produce that outcome. If the condition is purely for display, with nothing downstream that would ever act on it, it stays a plain read-model projection — no new event needed, no matter how many raw events feed it or how wide the resulting fan-in looks.
 
 **Only fold together causes that are genuinely redundant for the same outcome — never causes that carry distinct business meaning.** A derived condition's causes typically split into two groups: several distinct events that all mean the *same* thing from the business's point of view (e.g. `CopyReservationReleased`, `CopyReturned`, and `CopyReturnedFromRepair` all mean "the copy is available again"), and several distinct events that each mean something the business still wants told apart (e.g. `CopyReserved` → Reserved, `CopyCheckedOut` → CheckedOut, `CopySentForRepair` → UnderRepair, `CopyReportedLost` → Lost, `CopyWithdrawn` → Withdrawn). Only the first group is safe to consolidate — a dedicated event like `CopyMarkedAvailable` collapses "N different reasons, same outcome" into one reusable signal without losing information. Collapsing the second group into something like a generic `CopyMarkedUnavailable` would erase the *why*, which some downstream consumer may actually need — leave those as separate events and direct connections, even though the read model's fan-in then stays wider than the fully-consolidated ideal. That remaining fan-in is not a failure of anything — it means those events are each individually meaningful, not synonymous with each other, and collapsing them would have been the actual modeling mistake.
 
@@ -132,7 +132,7 @@ Never leave an unplaced node on the board when proceeding to the next step.
 ### No backward arrows
 The timeline must always progress left-to-right — this is the goal to design toward, not just a validation check to run afterward. Every connection arrow — SCREEN→COMMAND, COMMAND→EVENT, READMODEL→SCREEN, READMODEL→AUTOMATION, AUTOMATION→COMMAND — must point to the right or downward (within the same column). A right-to-left arrow among these is always a layout error, full stop.
 
-**`EVENT → READMODEL` has exactly one exception, and it is narrow.** A read model that already carries a `READMODEL → AUTOMATION` edge — i.e. a todo-list read model feeding an automation, per `eventmodeling-identifying-outputs` Step 5b — may also be fed by a later-column event closing an item it opened earlier. That accumulator shape is what the todo-list pattern exists for, and it is confirmed against the platform API (`learn-eventmodelers-api` §3 — `POST .../connections`). **Outside that one case, the platform rejects the connection, for good reason:** without it, a read model would become a moving target for whatever screen or scenario later reaches back into it.
+**`EVENT → READMODEL` has exactly one exception, and it is narrow.** A read model that already carries a `READMODEL → AUTOMATION` edge — i.e. a todo-list read model feeding an automation, per `eventmodeling-designing-automation-chains` (Step 4b) — may also be fed by a later-column event closing an item it opened earlier. That accumulator shape is what the todo-list pattern exists for, and it is confirmed against the platform API (`learn-eventmodelers-api` §3 — `POST .../connections`). **Outside that one case, the platform rejects the connection, for good reason:** without it, a read model would become a moving target for whatever screen or scenario later reaches back into it.
 
 For every other read model — in particular one feeding a SCREEN rather than an AUTOMATION — never connect a later event back into it, no matter how convenient. If a later event needs to update what a screen already shows, resolve it the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there (same title, updated data, optionally re-marked/highlighted per `html-screen`'s Marks feature). Never link the new copy back to the earlier instance.
 
@@ -279,15 +279,35 @@ role or system processor.
 
 ---
 
+### Step 4b: Design Automation Chains
+
+Invoke `eventmodeling-designing-automation-chains`.
+
+**Input**: Every AUTOMATION placed in Step 4, each already paired with its own
+COMMAND in one column.
+**Output to carry forward**: Every automation's todo-list READMODEL, placed
+and wired; every externally-triggered automation resolved into a two-stage
+translation chain (external EVENT → todo-list READMODEL → translation
+AUTOMATION+COMMAND+internal EVENT → worker automation's own todo list).
+**Gate**: No AUTOMATION on the board lacks an incoming `READMODEL →
+AUTOMATION` connection, and no automation's todo list is opened directly by
+another system's (second-swimlane) event. Skip this step only if Step 4
+placed zero automations.
+
+---
+
 ### Step 5: Identify Outputs
 
 Invoke `eventmodeling-identifying-outputs`.
 
-**Input**: Event list + Commands from Step 4 + the plain screens placed in Step 3.
+**Input**: Event list + Commands from Step 4 + automation chains already
+resolved in Step 4b + the plain screens placed in Step 3.
 **Output to carry forward**: Read model definitions — projections of events
-optimized for UI and processor queries — one per screen component, with any
+optimized for UI queries — one per screen component, with any
 multi-component screen already broken apart into same-named, highlighted
-screen copies (this step's Step 5a/5c, not Step 3's job).
+screen copies (this step's Step 5a/5c, not Step 3's job). Automation
+todo-list read models are already complete from Step 4b and are not
+re-derived here — this step only ever designs screen-facing read models.
 **Gate**: Every screen data need from the storyboards is satisfied by a read
 model, and no read model spans more than one component.
 
@@ -487,7 +507,8 @@ specific needs:
 
 - [ ] No elements stranded at 0,0 — every EVENT, COMMAND, READMODEL, SCREEN, and AUTOMATION has a valid `cellId` in its chapter
 - [ ] No `EVENT → READMODEL` connection points backward unless the read model already has a `READMODEL → AUTOMATION` edge (todo-list pattern) — every other later-event update uses a new read model + screen copy, never a link back to the earlier instance
-- [ ] All 11 modeling steps completed — no step skipped without explicit reason
+- [ ] All 11 modeling steps completed (plus Step 4b whenever Step 4 placed any automations) — no step skipped without explicit reason
+- [ ] Every AUTOMATION has a todo-list READMODEL, and no automation's todo list is opened directly by another system's event (Step 4b)
 - [ ] Every COMMAND, READMODEL, and AUTOMATION has a matching slice definition on the board
 - [ ] Every chapter has a Modeling Reasoning MARKDOWN node in its first column, written after that chapter's model was complete
 - [ ] Role Catalog exists with named human roles and system processors

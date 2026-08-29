@@ -346,9 +346,9 @@ Does not produce commands (info-only)
 
 ## Output Format
 
-Instead of writing a markdown document, **place each READMODEL (and any missing AUTOMATION) on the board** using the `node:created` API. Screens are typically already placed from Step 3 (storyboarding) as one plain screen per screen state — Step 3 does not pre-split anything, so working out how many components a screen actually has is this step's job (Step 5a below), not something to re-derive from storyboarding's output. Do not re-place an existing screen unless one is clearly missing. Automations are placed here when analysis reveals a processor that reads state and issues commands but is not yet on the board.
+Instead of writing a markdown document, **place each READMODEL (and any missing AUTOMATION) on the board** using the `node:created` API. Screens are typically already placed from Step 3 (storyboarding) as one plain screen per screen state — Step 3 does not pre-split anything, so working out how many components a screen actually has is this step's job (Step 5a below), not something to re-derive from storyboarding's output. Do not re-place an existing screen unless one is clearly missing. Automations are placed here only in the rare case where analysis reveals a processor that reads state and issues commands but was missed entirely in Step 4 — if that happens, immediately apply `eventmodeling-designing-automation-chains`'s rules to it (todo-list read model, translation chain if externally triggered) before continuing, rather than leaving it for Step 5i's defensive re-check to catch.
 
-This step proceeds as a sequence of lettered sub-steps: identify each screen's components (5a), identify todo-list read models for automations (5b), break multi-component screens apart into copies (5c), then design and place one read model per component (5d onward).
+This step proceeds as a sequence of lettered sub-steps: identify each screen's components (5a), break multi-component screens apart into copies (5c), then design and place one read model per component (5d onward). Every automation's todo-list read model and any translation chain is designed in **Step 4b** (`eventmodeling-designing-automation-chains`), immediately after Step 4 — not here. This step only ever designs screen-facing read models; Step 5i below re-checks automations defensively, not as this step's primary job.
 
 > **CRITICAL: Every READMODEL node MUST include `meta.fields` with a `mapping` on every field.** A read model without fields — or with fields that lack `mapping` — has no data lineage and cannot be traced back to its source events.
 
@@ -372,7 +372,7 @@ Automations follow:
 READ MODEL → AUTOMATION → COMMAND → EVENT
 ```
 
-Treat any screen or automation without an incoming read model as a gap. A screen may be exempt if it provably needs no prior state at all (e.g., a blank registration form) — an **automation is never exempt**: every automation gets a todo-list read model, even a trivial one that opens and closes within the same slice (see Step 5b).
+Treat any screen or automation without an incoming read model as a gap. A screen may be exempt if it provably needs no prior state at all (e.g., a blank registration form) — an **automation is never exempt**: every automation gets a todo-list read model, even a trivial one that opens and closes within the same slice. For automations, that read model was already designed in **Step 4b** (`eventmodeling-designing-automation-chains`); this step's job is limited to the defensive re-check in Step 5i below.
 
 ### Step 5a — Enumerate consumers and identify components
 
@@ -380,7 +380,7 @@ Treat any screen or automation without an incoming read model as a gap. A screen
 
 Read models exist to serve the elements already on the board:
 - Every **view screen** (output/read model screen) needs at least one read model to supply its data.
-- Every **automation** needs at least one read model to read from — its todo list. This applies to every automation without exception, not only ones that visibly "decide" something; see Step 5b for how to identify it.
+- Every **automation** needs at least one read model to read from — its todo list. This applies to every automation without exception, not only ones that visibly "decide" something; this was already handled in Step 4b (`eventmodeling-designing-automation-chains`) for every automation placed in Step 4.
 - Every **command/input screen** needs a read model unless it is a blank creation form with no prior state to display (this is the rare exception, not the rule).
 
 For each SCREEN node, look at its rendered layout and its `meta.fields` and identify its components — groups of fields/UI elements a user would perceive as one area: a stats tile, a list below it, a summary card, a detail panel, a status column in a table, etc. **Most screens genuinely have exactly one component — do not force a split.** A screen has more than one component only when a user would point at two separate areas and describe them as different things.
@@ -393,40 +393,7 @@ After this step is done, **every SCREEN and every AUTOMATION on the board must b
 
 > **Placement rule**: A read model must be placed immediately upstream of the SCREEN or AUTOMATION it serves — sharing that column when possible (a SCREEN with a free interaction row), or one column to the left when not (any AUTOMATION; a SCREEN whose column is already occupied). Do not place a read model with no screen or automation in the very next column — doing so creates an orphaned read model that will never have a consumer.
 
-### Step 5b — Identify todo-list read models for automations
-
-**Every AUTOMATION needs a todo-list read model — this is not optional, and there is no "pure relay" exemption.** An automation is a processor: it reacts to events, decides what work is outstanding, and issues commands to get that work done. The read model that tells it what's outstanding is its **todo list** — a queue of pending work items, not a snapshot of current entity state.
-
-**The pattern**: one or more events *open* an item on the todo list (something now needs doing); one or more events *close* it (the work is done — remove the item). A todo list can be opened and closed by more than one event type on either side, and the set of opening events doesn't need to match the set of closing events in count or shape — whatever the domain calls for.
-
-**Worked example**: an automation that reacts to `CustomerRegistered` by sending a welcome notification.
-- Todo list: **NotificationsToSend** — one row per pending notification.
-- `CustomerRegistered` **opens** a row (a notification now needs sending).
-- `NotificationSent` (the event this automation's own resulting command produces) **closes** that row (removes it — the list only ever shows outstanding work).
-- The automation (`Send Welcome Notification`) reads `NotificationsToSend`, and for every open row issues `SendNotification`.
-
-Even an automation that looks like a "pure signal relay" still has a todo list — model it anyway: it documents that the automation is idempotent/complete once its own event fires, and keeps every automation consistent with the same `READMODEL → AUTOMATION → COMMAND → EVENT` pattern instead of silently exempting some as "too simple to need one."
-
-**There is no such thing as an invisible or informal "signal" — a trigger is always a real EVENT node, placed in a second swimlane when it belongs to another system.**
-
-**An automation can only ever be directly triggered by an internal event — never by another system's event.** A "trigger" arriving from a second swimlane is not itself the thing that drives your domain's work; it first has to be *translated* into an internal event. Do not model this as one automation whose todo list is opened by the external EVENT and that also does the real work (e.g. an automation reading a todo list opened by `ReservationRequested` from another system's swimlane and directly issuing `ReserveCopy`) — that lets an external system trigger domain work with no translation step, which this model doesn't allow. **Apply this now, in Step 5** — Conway's Law (Step 6) only confirms the boundary, it doesn't introduce the chain. When an integration trigger comes from another team's system, model it as **two chained automations**, never one:
-
-1. **Translation automation** — converts the external fact into an internal one; the other system's own decision logic is out of scope. Its todo list is opened by the external EVENT and closed by the internal EVENT its own command produces — the one and only place an external EVENT may open a todo list.
-   - **Three separate columns**, left to right: `[external EVENT] → [todo-list READMODEL] → [AUTOMATION + COMMAND + internal EVENT]`. Never crammed into one or two — the "one EVENT per column" rule applies here too.
-   - **Name the internal EVENT for its business meaning, not the transport** — usually the same name as the external EVENT (e.g. external `CopyReserved` → internal `CopyReserved`; the swimlane already shows which is which), never a mechanical `<X>SignalReceived`/`<X>RequestReceived` suffix. Same for the automation/command: `Record Reservation`/`RecordReservation`, not `Record Reservation Signal`/`RecordReservationSignal`.
-   - Its command and event carry no business decision — they only exist to produce the internal fact the next automation needs.
-2. **Worker automation** — the one that does the actual work (the domain reaction the process is really about, e.g. `ReserveCopy`). Its todo list is opened **only** by the internal EVENT the translation automation produced (this chapter's own swimlane) — never by the external EVENT directly — and closed by whatever event marks that work done.
-
-Wire the todo lists the standard way for each automation separately: for the translation automation, the external EVENT (second swimlane) **opens** the row and its own resulting internal EVENT **closes** it; for the worker automation, that same internal EVENT **opens** its row and its own resulting EVENT **closes** it. `EVENT → READMODEL` connections from both swimlanes are unaffected by which swimlane the event sits in.
-
-**Fields**: a todo-list read model's fields describe the pending item — the identity it's about (e.g. `customerId`) plus enough context to act on it (e.g. `email`, `notificationType`). Do not add a `status` field to mark items done — a todo list's "open" state is *membership in the list itself* (the row exists at all), not a status flag on a row that never leaves. If the same underlying data is also useful with an explicit status column for a different consumer, that is a different read model, not this one.
-
-**Connections and placement**: the todo-list read model goes in the interaction lane, **one column before** its automation (actor lane) — the automation's own column already holds the COMMAND it issues, so the read model can never share that column. Same `READMODEL → AUTOMATION` placement covered in Step 5f below.
-- Connect READMODEL → AUTOMATION **first** (the automation reads its own todo list) — the closing connection below is only accepted once this edge exists.
-- Connect every **opening** EVENT → READMODEL.
-- Connect every **closing** EVENT → READMODEL — including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already feeds an AUTOMATION (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the `READMODEL → AUTOMATION` edge above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient.
-
-After this step, every AUTOMATION on the board must have an incoming `READMODEL → AUTOMATION` connection to a todo-list read model — treat a connectionless automation exactly like a connectionless screen with no exemption: a gap to fix, not something to note and move past.
+> **Automation todo-list read models are designed in Step 4b, not here.** The full pattern — every automation's todo-list read model, the "no invisible signal" rule, and the two-chained-automation translation requirement for externally-triggered automations — now lives in `eventmodeling-designing-automation-chains` (Step 4b), which runs immediately after Step 4, before this step. If Step 4b ran, every automation already on the board has its todo-list read model wired; Step 5i below only re-checks this defensively. The rare exception is an automation discovered only now, during output analysis (see "Output Format" above) — if that happens, apply `eventmodeling-designing-automation-chains`'s rules to it directly rather than re-deriving them here.
 
 ### Step 5c — Break apart multi-component screens into copies
 
@@ -591,7 +558,7 @@ For each view screen S that queries this read model as its primary read model:
 
 **View screens normally share the column of the (primary) read model they display** — either because they were placed there in Step 3, or because you move them here now. They only sit one column to the right of it when that shared column wasn't available.
 
-**The same rule applies to `EVENT → READMODEL`.** If a later event needs to update data a read model already feeds to a SCREEN, do not connect that later event back into the existing read model — the platform only accepts an `EVENT → READMODEL` backward connection when the read model already has a `READMODEL → AUTOMATION` edge (the todo-list pattern from Step 5b). For any read model feeding a SCREEN, resolve the update the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there — same title, updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature. Never link the new copy back to the earlier read model instance.
+**The same rule applies to `EVENT → READMODEL`.** If a later event needs to update data a read model already feeds to a SCREEN, do not connect that later event back into the existing read model — the platform only accepts an `EVENT → READMODEL` backward connection when the read model already has a `READMODEL → AUTOMATION` edge (the todo-list pattern from Step 4b, `eventmodeling-designing-automation-chains`). For any read model feeding a SCREEN, resolve the update the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there — same title, updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature. Never link the new copy back to the earlier read model instance.
 
 ### Step 5h — Wire connections after placing each READMODEL (and its SCREEN)
 
@@ -670,7 +637,7 @@ Do not declare Step 5 complete on the strength of the read models you happened t
 
 1. Does it now have an incoming `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection?
 2. If it's a SCREEN and not connected — is it a provably blank creation form with no prior state? State the reason in one line (e.g. `"Register Account" screen: blank form, no prior state — exempt`). This exemption applies to screens only.
-3. If it's an AUTOMATION and not connected, it is **never** exempt — go back to Step 5b and identify its todo-list read model now.
+3. If it's an AUTOMATION and not connected, it is **never** exempt — this should already be resolved by Step 4b (`eventmodeling-designing-automation-chains`); if it isn't, apply that skill's rules now to identify its todo-list read model.
 4. If a SCREEN is neither connected nor exempt, it is an **unresolved gap**. Fix it now: design the missing read model (pulling from its `meta.fields`/`mapping` as above) and wire the connection. Do not move to Step 6 with an unresolved gap silently carried forward — either fix it or explicitly flag it to the user as accepted debt.
 5. Does any screen still carry more than one component undivided (a Step 5a/5c miss)? If so, break it apart now per Step 5c before counting it as resolved.
 6. **Re-fetch every READMODEL too** and run the >3-events heuristic (`eventmodeling-orchestrating-event-modeling`) on each one field by field — including read models a MARKDOWN note already justified as a roll-up. A prior note documents one field's irreducible fan-in; it does not exempt the rest of that node's fields from this check. The failure mode this catches: a wide-fan-in field (e.g. live per-copy availability) bundled together with a cheap, low-fan-in identity/fact field (e.g. a title set by 1-2 events) that has nothing to do with the roll-up — that pairing is always two read models, never one, no matter how the note reads.
@@ -791,12 +758,12 @@ Identify UI needs without event sources:
 ### Read Model Design
 - [ ] **Typical pattern applied**: most screens follow `READ MODEL → SCREEN → COMMAND → EVENT`
 - [ ] **Every SCREEN from storyboarding is connected to at least one read model** (via `READMODEL → SCREEN`); only blank creation forms may be exempt — verified via the mandatory per-node pass above, not assumed
-- [ ] **Every AUTOMATION from storyboarding is connected to at least one todo-list read model** (via `READMODEL → AUTOMATION`, Step 5b) — no exemption for automations, unlike screens; even a simple relay automation gets one
-- [ ] **No automation's todo list is opened directly by another system's (second-swimlane) EVENT unless that automation is itself the translation automation** (Step 5b) — an automation doing the actual domain work is only ever opened by an internal event; a second-swimlane EVENT feeding straight into a work automation's todo list is a missing translation automation
+- [ ] **Every AUTOMATION from storyboarding is connected to at least one todo-list read model** (via `READMODEL → AUTOMATION`, Step 4b) — no exemption for automations, unlike screens; even a simple relay automation gets one
+- [ ] **No automation's todo list is opened directly by another system's (second-swimlane) EVENT unless that automation is itself the translation automation** (Step 4b) — an automation doing the actual domain work is only ever opened by an internal event; a second-swimlane EVENT feeding straight into a work automation's todo list is a missing translation automation
 - [ ] **No read model is placed without a connected SCREEN or AUTOMATION consumer**
 - [ ] **No read model spans more than one component** — a screen with N distinct components gets N read models and N highlighted screen copies (same screen name, one component crisp per copy), not one screen-wide read model
 - [ ] **Every multi-component screen was broken apart in Step 5c** — each copy keeps the original screen's name, differs only in which component is marked/highlighted
-- [ ] **Every automation's todo-list read model identifies its opening and closing events** (Step 5b) — including the automation's own resulting event as a closing event where applicable, not just the triggering event
+- [ ] **Every automation's todo-list read model identifies its opening and closing events** (Step 4b) — including the automation's own resulting event as a closing event where applicable, not just the triggering event
 - [ ] **A field's genuinely irreducible wide fan-in is documented per-field** (inline MARKDOWN note, per "Documenting decisions inline") — and that note is never treated as clearing every other field on the same read model from the >3-events check; a cheap identity/fact field bundled alongside a wide roll-up field is always split out, never excused by the roll-up's own note
 - [ ] **Every read model has an event-reasoning MARKDOWN note** (Step 5h.4) covering every connected event and which field(s) it sets or updates
 - [ ] Every read model has clear purpose
