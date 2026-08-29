@@ -445,7 +445,7 @@ Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen
 
 **Step A — Compute the cell ID.** This applies to SCREEN nodes (human roles only) — AUTOMATION nodes follow "Placing Automations" below instead. Screens go in **that screen's own role's actor lane** in their target column — look up `actorRowId` from the role→lane map built above, keyed by the screen's role (e.g. "Admin", "User"). Never fall back to "the" actor lane as if there were only one.
 
-1. Determine the target column (same column as the event/command, OR one column to the right of the read model).
+1. Determine the target column (same column as the event/command for a command/input screen, OR the same column as the read model for a view/output screen — one column to the right only if that shared column isn't available).
 2. `actorRowId = roleLaneMap[<this screen's role>]` — the map was already resolved once for the whole chapter; do not re-fetch the chapter per screen. If this screen's role is genuinely new (wasn't in the original Role Catalog), resolve/create its lane now the same way (see above) and add it to the map before continuing.
 3. `cellId = actorRowId + "-" + columnId`
 
@@ -587,17 +587,17 @@ When placing screens on the board, follow these alignment rules:
 | Screen type | Where it goes on the board |
 |-------------|---------------------------|
 | **Input/command screen** (triggers a command) | **The role's own actor lane, same column as the COMMAND and EVENT** it produces. The screen and command share a column — the screen sits in that role's actor lane, the command in the interaction row, the event in the swimlane row. |
-| **View/output screen** (displays a read model) | **The role's own actor lane, one column to the RIGHT of the READ MODEL** it displays. The read model occupies the interaction row of the preceding column; the screen gets its own column immediately after. This column is finalised in Step 5 (Identifying Outputs) — during storyboarding, just document which read model each view screen will query. |
+| **View/output screen** (displays a read model) | **The role's own actor lane, the SAME column as the READ MODEL** it displays (READMODEL in the interaction row, screen in the actor row — a downward connection, not a backward one). Only bumps one column to the right if that column's interaction row is already taken by something else. If the screen displays more than one read model, only the primary one shares its column — every additional read model goes further left. This column is finalised in Step 5 (Identifying Outputs) — during storyboarding, just document which read model each view screen will query. |
 
-> **Do not create standalone screen columns that are disconnected from commands or read models.** Every screen must either share its column with the command it submits, or be placed one column to the right of the read model it displays.
+> **Do not create standalone screen columns that are disconnected from commands or read models.** Every screen must either share its column with the command it submits, or share its column with the (primary) read model it displays.
 
 ### Multi-component screens are broken apart in Step 5, not here
 
-Storyboarding renders **one plain screen per screen state** — do not pre-split a screen into per-component copies here. Deciding how many components a view screen actually has, and breaking it apart into one highlighted copy per component, is `eventmodeling-identifying-outputs`'s job (its "Step 5a — Enumerate consumers and identify components" and "Step 5c — Break apart multi-component screens into copies"), because a component is defined by its read model and read models aren't designed until Step 5. During storyboarding, just place the single screen one column to the right of where its read model will end up (per the table above); document which read model it will query even before that read model exists.
+Storyboarding renders **one plain screen per screen state** — do not pre-split a screen into per-component copies here. Deciding how many components a view screen actually has, and breaking it apart into one highlighted copy per component, is `eventmodeling-identifying-outputs`'s job (its "Step 5a — Enumerate consumers and identify components" and "Step 5c — Break apart multi-component screens into copies"), because a component is defined by its read model and read models aren't designed until Step 5. During storyboarding, just place the single screen in the same column where its read model will end up (per the table above); document which read model it will query even before that read model exists.
 
 ### Placing Automations
 
-When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in the chapter's **default actor lane** instead of a SCREEN — never create, reuse, or look up a per-system-actor lane for it, and never resolve it through the human role→lane map above. Automations go in the same column as the COMMAND they trigger and the READMODEL that feeds them.
+When a processor or system actor reacts to events automatically (no human interaction), place an **AUTOMATION** node in the chapter's **default actor lane** instead of a SCREEN — never create, reuse, or look up a per-system-actor lane for it, and never resolve it through the human role→lane map above. Automations go in the same column as the COMMAND they trigger. Unlike a view screen, an automation's READMODEL is never in that same column — the automation's own column already holds the COMMAND it issues (interaction row), so the read model that feeds it always goes one column to the left.
 
 **Do not design automation actor lanes to mimic human ones.** A "Payment Processor" or "Inventory System" swimlane in the narrative report (Step 5 above) is a documentation grouping only — it must never be materialized as its own labeled `actor`-type lane on the board. Only human roles get a physical lane; every automation, regardless of which system actor it narratively belongs to, renders in the same shared default actor lane.
 

@@ -391,7 +391,7 @@ Once a component's fields are genuinely homogeneous (every field needs the same 
 
 After this step is done, **every SCREEN and every AUTOMATION on the board must be connected to at least one read model** via a `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection, and every screen identified above as having 2+ components must have been broken apart per Step 5c before any read model is placed. If a screen or automation has no incoming read model connection, it is a gap — either a read model is missing or the connection arrow is missing.
 
-> **Placement rule**: A read model must be placed in a column that already contains a SCREEN or AUTOMATION it serves. Do not place read models in columns with no screen or automation — doing so creates orphaned read models that will never have a consumer.
+> **Placement rule**: A read model must be placed immediately upstream of the SCREEN or AUTOMATION it serves — sharing that column when possible (a SCREEN with a free interaction row), or one column to the left when not (any AUTOMATION; a SCREEN whose column is already occupied). Do not place a read model with no screen or automation in the very next column — doing so creates an orphaned read model that will never have a consumer.
 
 ### Step 5b — Identify todo-list read models for automations
 
@@ -421,7 +421,7 @@ Wire the todo lists the standard way for each automation separately: for the tra
 
 **Fields**: a todo-list read model's fields describe the pending item — the identity it's about (e.g. `customerId`) plus enough context to act on it (e.g. `email`, `notificationType`). Do not add a `status` field to mark items done — a todo list's "open" state is *membership in the list itself* (the row exists at all), not a status flag on a row that never leaves. If the same underlying data is also useful with an explicit status column for a different consumer, that is a different read model, not this one.
 
-**Connections and placement**: the todo-list read model goes in the interaction lane, same column as its automation (actor lane) — the same `READMODEL → AUTOMATION` placement covered in Step 5f below.
+**Connections and placement**: the todo-list read model goes in the interaction lane, **one column before** its automation (actor lane) — the automation's own column already holds the COMMAND it issues, so the read model can never share that column. Same `READMODEL → AUTOMATION` placement covered in Step 5f below.
 - Connect READMODEL → AUTOMATION **first** (the automation reads its own todo list) — the closing connection below is only accepted once this edge exists.
 - Connect every **opening** EVENT → READMODEL.
 - Connect every **closing** EVENT → READMODEL — including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already feeds an AUTOMATION (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the `READMODEL → AUTOMATION` edge above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient.
@@ -435,7 +435,7 @@ After this step, every AUTOMATION on the board must have an incoming `READMODEL 
 - Each copy is the **same page**, so it **keeps the same screen name/title** — do not rename copies after their component (e.g. don't title one copy `"Librarian Dashboard — Statistics"` and another `"Librarian Dashboard — Recently Added"`; both stay `"Librarian Dashboard"`).
 - Distinguish copies visually, not by name: **mark/highlight the one component each copy is about**, using the `html-screen` skill's native Marks feature — see that skill's "Marks" section for the full mechanism. In short: the component of interest gets `data-em-mark-id`/`em-mark em-mark-<colorhex>` baked onto it in the page HTML, paired with a matching `meta.marks` entry (`{id, color, pageIndex, blurOutside: true}`) that blurs every other top-level section. Never hand-roll this with inline `filter`/`outline`/`opacity` CSS — that does not match how the app itself renders a mark.
 - Use the `html-screen` skill to produce each copy: pass it the original screen's markup, explicitly asking it to mark/highlight the one component to keep crisp and blur the rest (this satisfies `html-screen`'s "only when the user explicitly asks for one" condition for its Marks feature — the ask comes from this step). This is the skill's job — don't hand-roll the markup here.
-- Place each copy in its own column, one column to the right of the read model that will feed it — this is normally a different column per copy, since each component typically has a different natural source event.
+- Place each copy in its own column, the **same column** as the read model that will feed it (insert a new column immediately before if that copy's column is already occupied) — this is normally a different column per copy, since each component typically has a different natural source event.
 
 Why this matters, beyond tidiness:
 - **It prevents backward arrows.** A single screen-wide read model is forced to aggregate from whatever events each of its components needs, which often means reaching back across many columns to events scattered throughout the timeline — and the read model can only sit in one column, so some of those connections end up spanning a wide gap or, worse, pushing the read model's column later than some of its screen's other consumers require. Splitting by component lets each narrower read model sit close to its own natural source event(s), keeping every `EVENT → READMODEL` arrow short and forward.
@@ -489,9 +489,9 @@ Every field must also set `"cardinality"` — use `"Single"` unless the field ge
 }
 ```
 
-Read models go in the `interaction` lane — **in the same column as the SCREEN or AUTOMATION they serve** (READMODEL in interaction row, SCREEN in actor row of the same column).
+Read models go in the `interaction` lane. For a **SCREEN**, the primary read model shares the SCREEN's column (READMODEL in interaction row, SCREEN in actor row of the same column) — unless that column's interaction row is already occupied (e.g. a command/input screen, where the COMMAND already sits there), in which case the read model goes one column to the left instead. For an **AUTOMATION**, the read model always goes one column to the left, never the same column — an automation's own column already holds the COMMAND it issues. If a consumer needs more than one read model, only the primary one gets this placement; every additional read model goes further left still.
 
-> **Timeline alignment rule**: Place the read model in the same column as its consumer screen/automation. If that column already holds a COMMAND (state-change slice occupies the interaction row), insert a new column immediately after (`{"index": N+1}`) and place both the READMODEL and any new SCREEN there. Do not append read model columns to the end of the timeline — doing so severs the visual left→right flow from data projection to UI consumption.
+> **Timeline alignment rule**: Place the read model in the same column as its consumer screen when that column is free, or one column before its consumer (screen or automation) when it isn't. Insert the new column immediately **before** the consumer's column (`{"index": consumerColumnIndex}`, shifting the consumer right) rather than after — the read model must sit upstream of (to the left of) the element it feeds. Do not append read model columns to the end of the timeline — doing so severs the visual left→right flow from data projection to UI consumption.
 
 ### Step 5f — Placing READMODEL and AUTOMATION nodes with `cellId` (Mandatory)
 
@@ -499,14 +499,16 @@ Read models go in the `interaction` lane — **in the same column as the SCREEN 
 
 **For a READMODEL** (interaction lane):
 
-**Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell (including inserting a new column when the target column is already occupied by a COMMAND) and creating the node into one call:
+**Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell (including inserting a new column when the target column is already occupied by a COMMAND) and creating the node into one call. **Target column depends on the consumer type**:
+- **SCREEN**: target the screen's own column index — `place_element` inserts a new column before it automatically if that column's interaction row is already occupied (e.g. a command/input screen).
+- **AUTOMATION**: target `consumerColumnIndex - 1` (one column to the *left* of the automation) — never the automation's own column index, since it already holds the COMMAND the automation issues.
 ```
 mcp__eventmodelers__place_element {
   "boardId": "<BOARD_ID>",
   "timelineId": "<CHAPTER_ID>",
   "elementType": "READMODEL",
   "title": "ActiveReservationView",
-  "columnIndex": <consumerScreenOrAutomationColumnIndex>
+  "columnIndex": <consumerScreenColumnIndex>  // or <automationColumnIndex - 1> for an AUTOMATION consumer
 }
 ```
 Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) on the returned node id:
@@ -528,18 +530,18 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP)** — the full manual sequence:
 
-1. Find the column where the consumer SCREEN or AUTOMATION lives. Fetch the timeline to get the interaction row ID:
+1. Find the column where the consumer SCREEN or AUTOMATION lives. For an AUTOMATION, the read model's target column is always the one immediately **before** it (skip straight to inserting that column — its interaction row is guaranteed occupied by the automation's own COMMAND). For a SCREEN, target the screen's own column. Fetch the timeline to get the interaction row ID:
    ```bash
    curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
      "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
    # → timelineData.rows — find the row where type === "interaction"
    ```
-2. Check if the interaction cell is already occupied (existing COMMAND):
+2. Check if the target interaction cell is already occupied (existing COMMAND):
    ```bash
    curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<interactionRowId>-<columnId>" \
      -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
    ```
-   If a COMMAND occupies that cell, insert a new column immediately after (`{"index": currentIndex + 1}`) and use that column's ID instead.
+   If a COMMAND occupies that cell, insert a new column immediately **before** it (`{"index": currentIndex}` — this shifts the consumer's column, and everything after it, one to the right) and use that new column's ID instead. The read model must end up upstream of (to the left of) its consumer, never downstream of it.
 3. `cellId = interactionRow.id + "-" + columnId`
 4. Create the READMODEL:
    ```bash
@@ -558,7 +560,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
      }]'
    ```
 
-**For an AUTOMATION** (actor lane, same column as its READMODEL):
+**For an AUTOMATION** (actor lane) — its READMODEL always goes **one column to its left**, never the same column: the automation's own column already holds the COMMAND it issues (interaction row), so the read model can't also live there.
 
 **Prefer MCP** — same `place_element` call with `"elementType": "AUTOMATION"`, then `submit_node_events` for fields, as above.
 
@@ -571,25 +573,23 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 ### Step 5g — Preventing backward arrows (mandatory pre-placement check)
 
-The timeline must always progress left-to-right. A `READMODEL → SCREEN` connection going right-to-left is a layout error.
+The timeline must always progress left-to-right, or downward within the same column. A `READMODEL → SCREEN` connection going right-to-left is a layout error.
 
-The correct layout is: **READMODEL in column N, SCREEN in column N+1** (the screen is always one column to the right of its read model). Before placing each read model, find the view screen it serves and verify the column order:
+The correct layout is: **READMODEL and its (primary) view SCREEN share the same column** — READMODEL in the interaction row, SCREEN in the actor row, a downward connection. The read model only sits in a separate column, immediately **before** the screen's, when the screen's column is already unavailable to it (its interaction row is occupied by something else, e.g. a COMMAND on a command/input screen). If a screen displays more than one read model, only the primary read model shares the screen's column — every additional read model goes further left, never to the right. Before placing each read model, find the view screen it serves and verify the column order:
 
 ```
-For each view screen S that queries this read model:
-  If column(S) <= intended column(READMODEL):
-    → The screen is not to the right of the read model. Fix before placing.
-    Option A: Insert a new column immediately after the read model's column
-              and move screen S there.
+For each view screen S that queries this read model as its primary read model:
+  If column(S)'s interaction row is free:
+    → Place the READMODEL in column(S) itself (same column as S). No adjustment needed.
+  If column(S)'s interaction row is already occupied:
+    → Insert a new column immediately before column(S) and place the READMODEL there instead.
     Use POST /timelines/:tl/columns {"index": N} to insert,
-    then node:changed to update the screen node's cell.
-  If column(S) == intended column(READMODEL) + 1:
-    → Screen is already in the correct column directly to the right. No adjustment needed.
-  If column(S) > intended column(READMODEL) + 1:
-    → Gap between read model and screen. Move the read model to column(S) - 1, or move the screen to column(READMODEL) + 1.
+    then node:changed to update any node whose cell needs to move.
+  If the read model ends up more than one column away from S with nothing in between:
+    → Gap between read model and screen. Close it: move the read model into column(S) (if free) or column(S) - 1.
 ```
 
-**View screens go in the column immediately to the right of the read model they display** — either because they were placed there in Step 3, or because you move them here now.
+**View screens normally share the column of the (primary) read model they display** — either because they were placed there in Step 3, or because you move them here now. They only sit one column to the right of it when that shared column wasn't available.
 
 **The same rule applies to `EVENT → READMODEL`.** If a later event needs to update data a read model already feeds to a SCREEN, do not connect that later event back into the existing read model — the platform only accepts an `EVENT → READMODEL` backward connection when the read model already has a `READMODEL → AUTOMATION` edge (the todo-list pattern from Step 5b). For any read model feeding a SCREEN, resolve the update the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there — same title, updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature. Never link the new copy back to the earlier read model instance.
 
@@ -619,7 +619,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
      -d '{"source":"<eventNodeId>","target":"<readmodelNodeId>"}'
    ```
 
-2. **READMODEL → SCREEN** — connect to the existing SCREEN node in the actor row of the next column (screens are typically already placed from Step 3).
+2. **READMODEL → SCREEN** — connect to the existing SCREEN node in the actor row of the same column (or the column immediately after, only when that column wasn't available to the read model — screens are typically already placed from Step 3).
 
    **Prefer MCP:**
    ```
@@ -635,7 +635,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    ```
 
 3. **READMODEL → AUTOMATION** — if the read model is consumed by an automatic process (scheduler, background job, external trigger), place the AUTOMATION node and connect it:
-   - Place the AUTOMATION in the automation lane, in the column immediately to the right of its read model (same rule as screens).
+   - Place the AUTOMATION in the automation lane, in the column immediately to the right of its read model — unlike a view screen, this is unconditional for automations: the automation's own column always holds the COMMAND it issues, so its read model never shares that column.
    - Then connect:
 
    **Prefer MCP:**
