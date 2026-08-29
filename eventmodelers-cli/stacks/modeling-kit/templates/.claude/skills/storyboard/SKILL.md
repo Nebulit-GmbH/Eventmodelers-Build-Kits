@@ -45,6 +45,7 @@ Then **create one task per screen** using TaskCreate, naming each task after the
 
 Write normal, full-size HTML/CSS for each screen — as if designing a real webpage, not a tiny thumbnail. The canvas node renders this at a real page width and visually scales it down to fit, so there is no need to shrink font sizes or padding.
 
+- **Keep it simple — this is a view-only mockup, not a working app.** No JavaScript, no interactivity beyond what a static page can show. Keep the CSS compact: inline styles or a handful of Bulma classes are enough — don't write a large embedded `<style>` block.
 - Each page is one complete, standalone HTML fragment — not a `data-step` div nested inside a shared blob. A multi-step flow is multiple pages, each fully self-contained.
 - Inline styles (`style="..."`) are the simplest way to keep each page self-contained.
 - No `<script>` tags, no inline event handlers (`onclick`, `onload`, ...), no `javascript:` URIs — these are stripped server-side before persisting. This is a static visual mockup, not an interactive prototype.

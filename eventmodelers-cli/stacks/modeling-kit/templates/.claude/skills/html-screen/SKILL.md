@@ -59,6 +59,7 @@ Skip this step entirely when creating a brand-new node (no `nodeId` given) — g
 Write normal, full-size HTML/CSS for each page — as if designing a real webpage, not a tiny thumbnail. The canvas node renders this at a real page width and visually scales it down to fit, so there is no need to shrink font sizes or padding to fit a small box; design at a realistic scale (e.g. 16px body text, generous padding) and let the node handle the shrink.
 
 Guidelines:
+- **Keep it simple — this is a view-only mockup, not a working app.** No JavaScript, no interactivity beyond what a static page can show (enforced server-side, see below). Keep the CSS compact: inline styles or a handful of Bulma classes are enough — don't write a large embedded `<style>` block or reinvent what Bulma already gives you for free.
 - Each page is one complete, standalone HTML fragment — not a `data-step` div nested inside a shared blob. A multi-step flow (e.g. cart → payment → confirmation) is three separate pages in the array, each fully self-contained.
 - Inline styles (`style="..."`) are the simplest way to keep each page self-contained.
 - No `<script>` tags, no inline event handlers (`onclick`, `onload`, ...), no `javascript:` URIs — these are stripped server-side from every page before persisting regardless of what's sent. This is a static visual mockup, not an interactive prototype.
