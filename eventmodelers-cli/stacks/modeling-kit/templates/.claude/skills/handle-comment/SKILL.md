@@ -5,7 +5,7 @@ description: Place, resolve, or delete a comment on an eventmodelers board node.
 
 # Handle Comment
 
-> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
@@ -37,15 +37,7 @@ Route to the matching section below based on `action`.
 mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK|QUESTION>", "author": "<author>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"text":"<text>","type":"<type>","author":"<author>"}'
-```
-
-Response: `201 {"id":"<commentId>"}`
+**Fallback (no MCP):** see `references/api-fallback.md` — "Action: place".
 
 **Batching (when called in bulk, e.g. from `wdyt`):** send one request per comment — there is no batch endpoint for comments. Fire them sequentially, not in a single payload.
 
@@ -67,11 +59,7 @@ Type: <type> | Author: <author>
 mcp__eventmodelers__get_node_comments { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments" \
-  -H "Authorization: Bearer $TOKEN"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Action: resolve — Step A (resolve comment ID)".
 
 Find the comment whose `text` contains the `text` argument (case-insensitive). If multiple match, list them and ask the user to confirm. If none match, stop: "No comment found matching '<text>' on node `<nodeId>`."
 
@@ -82,11 +70,7 @@ Find the comment whose `text` contains the `text` argument (case-insensitive). I
 mcp__eventmodelers__update_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "commentId": "$COMMENT_ID", "action": "resolve" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments/$COMMENT_ID/resolve" \
-  -H "Authorization: Bearer $TOKEN"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Action: resolve — Step B (resolve)".
 
 **Report:** `Resolved comment <commentId> on node <nodeId>`
 
@@ -112,10 +96,6 @@ Wait for an explicit "yes". On any other response, stop: "Deletion cancelled."
 mcp__eventmodelers__update_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "commentId": "$COMMENT_ID", "action": "delete" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID/comments/$COMMENT_ID" \
-  -H "Authorization: Bearer $TOKEN"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Action: delete — Step C (delete)".
 
 **Report:** `Deleted comment <commentId> from node <nodeId>`

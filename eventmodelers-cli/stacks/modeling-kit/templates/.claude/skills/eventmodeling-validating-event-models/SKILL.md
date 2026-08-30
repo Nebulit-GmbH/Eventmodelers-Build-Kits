@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-validating-event-models
-description: "Step 9 of Event Modeling - Validate event-sourced models for completeness, consistency, and event sourcing principles. Ensures events are immutable facts, state projections are deterministic, and commands are pure. Identifies gaps and suggests improvements before code generation. Use when reviewing models before code generation. Do not use for: the structured 23-check production checklist (use eventmodeling-validating-event-models-checklist) or field-level completeness verification (use eventmodeling-checking-completeness)."
+description: "Step 9 of Event Modeling - Validate event-sourced models for completeness, consistency, and event sourcing principles. Ensures events are immutable facts, state projections are deterministic, and commands are pure. Identifies gaps and suggests improvements before code generation. Use when reviewing models before code generation. Do not use for: the structured 17-check production checklist (use eventmodeling-validating-event-models-checklist) or field-level completeness verification (use eventmodeling-checking-completeness)."
 allowed-tools:
   - Write
   - Bash
@@ -33,16 +33,7 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND" }
 mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=COMMAND"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
 After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `QUESTION` for warnings and recommendations. (That skill already handles the `add_comment` MCP-vs-curl choice internally — no separate rewrite needed here.)
 

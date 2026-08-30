@@ -100,6 +100,8 @@ Update Interview Trail:
 
 Given all events, inputs, and outputs, organize by ownership:
 
+> **This step's "swimlane" is the same boundary `eventmodeling-brainstorming-events` governs, described from the ownership angle instead of the board-mechanics angle.** That skill's Swimlane Rules restrict the board's actual `swimlane`-type lane to marking integration with another system — this step doesn't loosen that cap or add a lane per team. Under Conway's Law, "team" and "system" name the same boundary: a system this chapter's process integrates with is, by definition, owned by some other team. The diagrams below are a narrative/analysis device for documenting *who owns what* across those boundaries — not an instruction to create one board swimlane lane per team named here.
+
 ### 1. Identify System Boundaries
 Determine what constitutes a separate system/bounded context:
 

@@ -7,7 +7,7 @@ description: Live event storming facilitator — asks questions about any busine
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
-> Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+> Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — `references/api-fallback.md` has the curl fallback for every MCP call below, for sessions without MCP connected.
 
 You are a live event storming facilitator. You discover domain events through conversation — or from any input (pasted text, documents, notes) — and **immediately place them on the board as they emerge**. The timeline grows and evolves in real time. You don't wait until the end.
 
@@ -38,10 +38,7 @@ Before doing anything else, fetch all chapters (timelines) on the board.
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all chapters".
 
 **If `timelineId` was provided** (UUID or name), skip directly to [1b — Continuing an existing timeline](#1b--continuing-an-existing-timeline).
 
@@ -65,10 +62,7 @@ If `timelineId` is provided, first resolve it to a UUID if a name was given inst
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all chapters".
 
 - If the value looks like a UUID, use it directly as `CHAPTER_ID`.
 - If it looks like a name, find the CHAPTER node whose `meta.title` matches (case-insensitive) and use its `id` as `CHAPTER_ID`.
@@ -81,10 +75,7 @@ Fetch the chapter node to read its grid structure — `projection: "cells"` retu
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Fetch the chapter's grid state".
 
 From the result (`{rows, columns, cells}` via MCP's `projection: "cells"`, or `meta.timelineData` via the REST fallback):
 - `rows` — find the row with `type === "swimlane"` and save its `id` as `swimlaneRowId`
@@ -98,10 +89,7 @@ Then load the existing EVENT nodes.
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all EVENT nodes".
 
 For each EVENT node, find its cell in `timelineData.cells` where `nodeId === event.id`. That cell's `colId` gives the `columnId`. Order events by their column's position in `timelineData.columns`.
 
@@ -126,12 +114,7 @@ If no `timelineId` is provided, **create the chapter immediately** — before an
 mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 0 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
-  -H "Content-Type: application/json" \
-  -d '{"position":{"x":0,"y":0}}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Create a new chapter".
 
 Extract `id` from the response → `CHAPTER_ID`. If this fails, stop and report the error.
 
@@ -191,10 +174,7 @@ Before placing any new events, fetch the chapter node to get the current grid st
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Fetch the chapter's grid state".
 
 From the result (`rows`/`columns`/`cells` directly via MCP, or under `meta.timelineData` via the REST fallback):
 - Read `rows` to find and save `swimlaneRowId` (the row whose `type === "swimlane"`).
@@ -214,10 +194,7 @@ emptyColumns = [columnId, ...]   // in column order, ready to reuse
 mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnId": "<columnId>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns/<columnId>"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".
 
 Make all necessary API calls for this turn before responding to the user. The board is updated **before** you summarise what changed.
 
@@ -279,23 +256,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: timeline-skill" \
-  -d '[{
-    "id": "<event-uuid>",
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
-    "chapterId": "<CHAPTER_ID>",
-    "cellId": "<CELL_ID>",
-    "meta": { "type": "EVENT", "title": "<EventName>" },
-    "node": { "id": "<node-uuid>", "data": { "title": "<EventName>" } }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Create an EVENT node in a reused empty column".
 
 #### If no empty column is available — create one
 
@@ -350,22 +311,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: timeline-skill" \
-  -d '[{
-    "id": "<new-uuid>",
-    "eventType": "node:changed",
-    "nodeId": "<eventNodeId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
-    "changedAttributes": ["meta.title"],
-    "meta": { "type": "EVENT", "title": "<NewTitle>" },
-    "node": { "id": "<eventNodeId>", "data": {} }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Rename an event".
 
 Update your local state: `events[i].title = "<NewTitle>"`.
 
@@ -380,19 +326,7 @@ Two steps — delete the node, then delete the column:
 mcp__eventmodelers__delete_node { "boardId": "<BOARD_ID>", "nodeId": "<eventNodeId>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: timeline-skill" \
-  -d '[{
-    "id": "<new-uuid>",
-    "eventType": "node:deleted",
-    "nodeId": "<eventNodeId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Delete an event node".
 
 **2. Delete the column** using `columnId` from local state.
 
@@ -401,10 +335,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnId": "<columnId>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns/<columnId>"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".
 
 If `columnId` is not in local state, fetch the chapter node (`mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }`, or the curl fallback above), scan `cells` for the cell where `nodeId === eventNodeId`, and use that cell's `colId`.
 

@@ -15,23 +15,7 @@ This is the counterpart to `eventmodeling-slicing-event-models`, which only ever
 
 ## Core Concept: A Slice Is One Command, One Read Model, or One Automation — Never Combined
 
-Same rules as `eventmodeling-slicing-event-models` — the slice you create here must obey them too, not just slices made from pre-existing elements.
-
-A **Feature Slice** is the thinnest possible vertical cut through the model — exactly one decision or one query:
-
-```
-state-change slice = SCREEN/Processor → COMMAND → EVENT(s)
-state-view slice   = EVENT(s) → READMODEL → SCREEN/Processor
-automation slice   = EVENT(s) → AUTOMATION → COMMAND → EVENT(s)
-```
-
-A slice never mixes a COMMAND and a READMODEL — the platform models these as two distinct slice types (`state-change` and `state-view`). If the capability you decide on in Step 1 needs both a command and a read model (e.g. "place an order" needs the `PlaceOrder` command *and* an `OrderDetailView` read model), that's **two slices** — create them one at a time, each its own `create_slice` call.
-
-**Key characteristics**:
-- Exactly one COMMAND (state-change), exactly one READMODEL (state-view), or one AUTOMATION's command — never combined
-- Named after that command, read model, or automation
-- Independently deployable
-- Communicates with other slices via events only
+Same rules as `eventmodeling-slicing-event-models`'s own "Core Concept" section — see there for the full definition (the state-change/state-view/automation shapes, key characteristics) — the slice you create here must obey them too, not just slices made from pre-existing elements. If the capability you decide on in Step 1 needs both a command and a read model (e.g. "place an order" needs the `PlaceOrder` command *and* an `OrderDetailView` read model), that's **two slices** — create them one at a time, each its own `create_slice` call.
 
 ---
 
@@ -65,12 +49,7 @@ Pick `type` based on what you decided in Step 1 — `state-change` for a new com
 
 If the chapter has more than one lane of the same type (e.g. several actor lanes for different user roles), `create_slice` places each node in the **first** matching lane by default — pass `nodes.<actor|interaction|swimlane>.rowId` (the target row's id, from the chapter's `timelineData.rows`) to target a specific lane instead of the first one.
 
-**Fallback (no MCP):**
-```bash
-curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slices \
-  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
-  -d '{"type":"state-change","nodes":{"interaction":{"title":"CancelReservation"}}}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Create the Slice".
 
 ## Step 3: Replace the placeholder screen — matching the board's existing style
 

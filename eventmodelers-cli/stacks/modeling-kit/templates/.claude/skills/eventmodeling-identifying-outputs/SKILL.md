@@ -495,37 +495,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 # → rows (find "interaction"/"actor" rows) and cells (sparse; absent id = empty)
 ```
 
-**Fallback (no MCP)** — the full manual sequence:
-
-1. Find the column where the consumer SCREEN or AUTOMATION lives. For an AUTOMATION, the read model's target column is always the one immediately **before** it (skip straight to inserting that column — its interaction row is guaranteed occupied by the automation's own COMMAND). For a SCREEN, target the screen's own column. Fetch the timeline to get the interaction row ID:
-   ```bash
-   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-   # → timelineData.rows — find the row where type === "interaction"
-   ```
-2. Check if the target interaction cell is already occupied (existing COMMAND):
-   ```bash
-   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<interactionRowId>-<columnId>" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
-   ```
-   If a COMMAND occupies that cell, insert a new column immediately **before** it (`{"index": currentIndex}` — this shifts the consumer's column, and everything after it, one to the right) and use that new column's ID instead. The read model must end up upstream of (to the left of) its consumer, never downstream of it.
-3. `cellId = interactionRow.id + "-" + columnId`
-4. Create the READMODEL:
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: identifying-outputs" \
-     -H "Content-Type: application/json" \
-     -d '[{
-       "id": "<event-uuid>",
-       "eventType": "node:created",
-       "nodeId": "<node-uuid>",
-       "boardId": "<BOARD_ID>",
-       "timestamp": 1234567890,
-       "chapterId": "<CHAPTER_ID>",
-       "cellId": "<interactionRowId>-<columnId>",
-       "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}
-     }]'
-   ```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5f — Placing a READMODEL node (full manual sequence)".
 
 **For an AUTOMATION** (actor lane) — its READMODEL always goes **one column to its left**, never the same column: the automation's own column already holds the COMMAND it issues (interaction row), so the read model can't also live there.
 
@@ -574,18 +544,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs"
-   ```
-   Connect it:
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs" \
-     -H "Content-Type: application/json" \
-     -d '{"source":"<eventNodeId>","target":"<readmodelNodeId>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.1 — Wire EVENT → READMODEL".
 
 2. **READMODEL → SCREEN** — connect to the existing SCREEN node in the actor row of the same column (or the column immediately after, only when that column wasn't available to the read model — screens are typically already placed from Step 3).
 
@@ -594,13 +553,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs" \
-     -H "Content-Type: application/json" \
-     -d '{"source":"<readmodelNodeId>","target":"<screenNodeId>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.2 — Wire READMODEL → SCREEN".
 
 3. **READMODEL → AUTOMATION** — if the read model is consumed by an automatic process (scheduler, background job, external trigger), place the AUTOMATION node and connect it:
    - Place the AUTOMATION in the automation lane, in the column immediately to the right of its read model — unlike a view screen, this is unconditional for automations: the automation's own column always holds the COMMAND it issues, so its read model never shares that column.
@@ -611,13 +564,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-outputs" \
-     -H "Content-Type: application/json" \
-     -d '{"source":"<readmodelNodeId>","target":"<automationNodeId>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.3 — Wire READMODEL → AUTOMATION".
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 

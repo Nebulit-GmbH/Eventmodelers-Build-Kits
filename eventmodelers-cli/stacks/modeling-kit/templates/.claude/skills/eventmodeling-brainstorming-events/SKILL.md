@@ -125,11 +125,7 @@ Before brainstorming, check for EVENT nodes already on the board to avoid duplic
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Context — Check existing EVENT nodes".
 
 If events already exist, treat them as the starting list and focus on discovering what might be missing. Also check for existing chapters (timelines) so you can reuse them:
 
@@ -138,11 +134,7 @@ If events already exist, treat them as the starting list and focus on discoverin
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Context — Check existing CHAPTER nodes".
 
 ## Timeline Discovery (Mandatory Before Placing Any Event)
 
@@ -167,13 +159,7 @@ mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 1200,
 ```
 (`x`/`y` are optional — see the vertical-stacking note below. `columns` is optional too — the group's event count is already known at this point, so pass it here to create the chapter with exactly the columns this group needs, instead of the default 3 plus a follow-up `add_column` batch. Response includes the new `timelineId` and `columnIds` — one id per column, left to right, ready to use directly in Step A below.)
 
-**Fallback (no MCP) — create a chapter:**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  -H "Content-Type: application/json" -d '{}'
-# → { timelineId: "<chapterId>", ... }
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Create one chapter per group — create the chapter".
 
 **Immediately set its title** (use the workflow / bounded-context name):
 
@@ -192,20 +178,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: brainstorming-events" -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<uuid>",
-    "eventType": "node:changed",
-    "nodeId": "<chapterId>",
-    "boardId": "<boardId>",
-    "timestamp": 1234567890,
-    "meta": {"type": "CHAPTER", "title": "Reservation & Lending"}
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Create one chapter per group — set its title".
 
 **Stack timelines vertically so they do not overlap, and in general place new chapters close to existing ones they relate to.**
 After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first. Prefer placing the new chapter directly below the existing chapter it is most closely related to (e.g. the same bounded context or an adjacent workflow), rather than mechanically appending below the lowest one — this keeps related chapters visually near each other on the canvas. Only fall back to `y = maxExistingY + 1200` when no related chapter exists yet. Pass this directly as `x`/`y` on `create_chapter` above, or reposition an existing chapter with:
@@ -215,13 +188,7 @@ After creating each chapter, position it below the previous one. Use `y = index 
 mcp__eventmodelers__move_timeline_position { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "x": 0, "y": 1200 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X PUT "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/position" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  -H "Content-Type: application/json" \
-  -d '{"x": 0, "y": 1200}'   # first chapter: y=0, second: y=1200, third: y=2400, …
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Reposition an existing chapter".
 
 Record the mapping: `workflow name → chapterId`. Every subsequent event placement will reference this ID.
 
@@ -274,13 +241,7 @@ mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTE
 ```
 Use `columnIds[i]` for the i-th event in Step C below. (Omit `count`, or pass `1`, for a single event — `columnIds` is only present when `count > 1`.)
 
-**Fallback (no MCP)** — no batch form exists over REST; one call per event:
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: brainstorming-events" \
-  -H "Content-Type: application/json" -d '{}'
-# → { "columnId": "<colUuid>", "index": <n>, "totalColumns": <n> }
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mode A — Step A: Ensure enough columns exist".
 
 **Step B — Fetch the chapter to find the swimlane row ID** (only needed once per chapter):
 
@@ -289,12 +250,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-# → node.meta.timelineData.rows — find the row where type === "swimlane"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mode A — Step B: Fetch the chapter to find the swimlane row ID".
 
 **Step C — Compute, for the i-th event:** `cellId = swimlaneRow.id + "-" + columnIds[i]` (or the single `columnId` if only one column was created)
 
@@ -327,29 +283,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP) — same body via `POST .../nodes/events`:**
-```json
-[{
-  "id": "<event-uuid>",
-  "eventType": "node:created",
-  "nodeId": "<node-uuid>",
-  "boardId": "<boardId>",
-  "timestamp": 1234567890,
-  "chapterId": "<chapterId>",
-  "cellId": "<swimlaneRowId>-<columnId>",
-  "meta": {
-    "type": "EVENT",
-    "title": "BookReserved",
-    "fields": [
-      {"name": "reservationId", "type": "String",   "example": "res-789"},
-      {"name": "copyId",        "type": "String",   "example": "copy-42"},
-      {"name": "memberId",      "type": "String",   "example": "mbr-101"},
-      {"name": "expiresAt",     "type": "DateTime", "example": "2026-06-01T00:00:00Z"},
-      {"name": "reservedAt",    "type": "DateTime", "example": "2026-05-29T10:00:00Z"}
-    ]
-  }
-}]
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mode A — Step D: Create the event with cellId".
 
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
@@ -382,78 +316,9 @@ An event left without a chapter and cell reference will never appear in any time
 
 ## Workshop Facilitation Guide
 
-**Setting**: This is a collaborative brainstorming workshop. The facilitator guides participants to envision the system and extract events rapidly.
+**Setting**: This is a collaborative brainstorming workshop — the facilitator guides participants to envision the system and extract events rapidly. See `references/facilitating-event-modeling-workshops.md`'s "Step 1: Brainstorming Events" section for the full facilitation flow (goals framing, free brainstorm, gentle filtering, example dialogue) and general facilitation techniques (handling personalities, pacing, disagreement) that apply throughout.
 
-### The Brainstorming Flow
-
-**Phase 1: Understand Goals** (5-10 min)
-- Someone explains project goals
-- What problem are we solving?
-- Who are the users?
-- What are key outcomes?
-
-**Phase 2: Free Brainstorm** (15-20 min)
-Facilitator asks:
-> "What events could happen in this system? When something changes, what event occurs? Put down ANY event you think of."
-
-Participants call out events (sticky notes or digital cards):
-```text
-"Customer places order"
-"Order confirmed"
-"Payment received"
-"Inventory updated"
-"Order shipped"
-"Delivery confirmed"
-"Return requested"
-"Refund issued"
-```
-
-**Phase 3: Gentle Filtering** (10-15 min)
-Facilitator introduces state-changing concept gently:
-
-```text
-Facilitator: "Now let's think about these events. An event is something that
-CHANGED THE STATE of the system. It's something important that happened that
-others need to know about.
-
-Let me ask: Does 'Customer viewed the catalog' change anything?
-Participants: "Well... no, they just looked."
-Facilitator: "Right, so it's not an event. But if they SELECTED an item
-               from catalog, that changes what's in their cart, so that's
-               a state change. Call that 'ItemAddedToCart'."
-
-Does 'Payment received' change something?
-Participants: "Yes! Order goes from confirmed to paid."
-Facilitator: "Exactly! That's an event—state changed."
-```
-
-**Key points to clarify**:
-- "Customer logged in" → Maybe not state-changing (unless we track logins)
-- "Customer created account" → State-changing event
-- "System checked inventory" → Internal action, not state-changing
-- "Inventory reserved" → State-changing event
-- "Email sent" → Notification, not state-changing (unless we track email history)
-- "Notification requested" → Could be state-changing if we track preferences
-
-### Tips for Facilitators
-
-**Make it conversational**:
-- Don't say: "You identified a non-state-changing event"
-- Say: "Interesting! Does that actually change anything in the system?"
-
-**Use examples from their world**:
-- If e-commerce: "Like if someone just browsed but didn't buy?"
-- If banking: "Like if they just checked balance but didn't withdraw?"
-
-**Don't be rigid**:
-- If unsure whether something is state-changing, include it and refine later
-- Some events seem minor now but matter in implementation
-- Better to capture everything than miss important events
-
-**Capture the "why"**:
-- Don't just list events, capture context
-- Why would this event matter?
-- Who cares about it? (Other systems, views, business rules)
+**The core move, in brief**: ask participants for any event they can think of, capture everything without filtering first, then gently introduce the state-changing test ("did this actually change something?") to separate real events from actions/notifications/internal checks — see the reference for the full example dialogue and phrasing tips.
 
 ## Workflow
 
@@ -604,20 +469,7 @@ Present analysis in a clear markdown structure that can be directly used by the 
 
 ## Core Architectural Rule
 
- **NEVER use DDD Aggregate pattern for state design** Every command handler must have its own minimal state projection derived from events. This is non-negotiable.
-
-```text
- ANTI-PATTERN (Do NOT do this):
-OrderAggregate { orderId, customerId, items[], total, status, paymentId, address, shippedAt, cancelledAt, ... }
-Used by: ConfirmOrder, ShipOrder, CancelOrder, ApproveReturn
-Problem: Loads unused data, couples unrelated commands, violates minimal state principle
-
- CORRECT PATTERN:
-ConfirmOrderState { status, orderId }
-ShipOrderState { status, orderId, paymentId }
-CancelOrderState { status, orderId, createdAt }
-Each command loads ONLY what it needs.
-```
+**NEVER use a DDD Aggregate pattern for state design** — every command handler must have its own minimal state projection derived from events. This is non-negotiable. See `eventmodeling-designing-event-models`'s "Core Architectural Rule" for the full anti-pattern/correct-pattern worked example (`OrderAggregate` vs. per-command state) — the rule applies from this very first step, not just once design begins.
 
 ## Key Principles
 - Use **domain language**, not technical terms

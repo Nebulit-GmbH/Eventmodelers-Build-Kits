@@ -108,11 +108,7 @@ Prefer MCP:
 mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Chapters and Timelines — Resolve the Target Timeline".
 
 If multiple timelines exist, ask the user which one to work on now. Never reorder events across timelines in a single pass.
 

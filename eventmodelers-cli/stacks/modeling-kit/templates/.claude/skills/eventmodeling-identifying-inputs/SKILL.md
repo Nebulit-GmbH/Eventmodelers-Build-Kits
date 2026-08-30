@@ -409,53 +409,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP)** — the full manual sequence `place_element` replaces. Before creating each command:
-
-**Step A — Find the event's column ID.** Query the event node to read its current cell:
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EVENT_NODE_ID"
-# → node.meta.cellId is "<someRowId>-<columnId>" — extract the columnId part
-```
-
-**Step B — Fetch the chapter to find the interaction row ID:**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-# → timelineData.rows — find the row where type === "interaction"
-```
-Save `interactionRow.id`.
-
-**Step C — Compute the cell ID:**
-```
-cellId = interactionRow.id + "-" + columnId
-```
-
-**Step D — Create the command with `cellId`:**
-
-```bash
-curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: identifying-inputs" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<event-uuid>",
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<boardId>",
-    "timestamp": 1234567890,
-    "chapterId": "<chapterId>",
-    "cellId": "<interactionRowId>-<columnId>",
-    "meta": {
-      "type": "COMMAND",
-      "title": "ReserveBike",
-      "fields": [
-        {"name": "customerId", "type": "String",   "example": "cust-42",             "mapping": "session:customerId"},
-        {"name": "bikeId",     "type": "String",   "example": "bike-17",             "mapping": "user-input"},
-        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
-      ]
-    }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Creating a COMMAND node — full manual sequence (Steps A–D)".
 
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first. `node:created + cellId` is the only placement step needed.
 
@@ -487,18 +441,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
    If wiring more than one COMMAND in the same pass, prefer batching every SCREEN→COMMAND and COMMAND→EVENT pair across all of them into one `set_connections` call (see step 2 below) instead of one `set_connection` per pair.
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<actorRowId>-<columnId>" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
-   ```
-   If a SCREEN node exists, connect it:
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs" \
-     -H "Content-Type: application/json" \
-     -d '{"source":"<screenNodeId>","target":"<commandNodeId>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 1: SCREEN → COMMAND".
 
 2. **COMMAND → EVENT** — find the EVENT node in the swimlane row of the same column.
 
@@ -513,18 +456,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
-   ```
-   Connect command to its resulting event:
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs" \
-     -H "Content-Type: application/json" \
-     -d '{"source":"<commandNodeId>","target":"<eventNodeId>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 2: COMMAND → EVENT".
 
    *Note:* `get_nodes` has no `cellId` filter (only `type`) — the `get_node`-on-CHAPTER (`projection: "cells"`) + `cells` lookup above is the only way to check single-cell occupancy via MCP.
 

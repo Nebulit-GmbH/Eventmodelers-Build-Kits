@@ -45,15 +45,7 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=COMMAND"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
 Use the board nodes as the model input. After the checklist, use `handle-comment` to post `TASK` comments on nodes that fail checks (that skill covers the MCP `add_comment`/curl choice for comment-posting itself).
 
@@ -154,20 +146,8 @@ CalculationPerformed {
 **Why**: Calculations change multiple times as source data changes. Events are immutable.
 
 ### 2. Shared vs Handler-Owned State
-```
- ANTI-PATTERN:
-One shared "OrderAggregate" class used by all handlers
-- ConfirmOrderHandler shares OrderAggregate state
-- ShipOrderHandler modifies same OrderAggregate
-- Result: Tight coupling, hard to parallelize
 
- CORRECT:
-Each handler owns its own [CommandHandler]State class
-- ConfirmOrderState (only ConfirmOrderHandler uses)
-- ShipOrderState (only ShipOrderHandler uses)
-- CancelOrderState (only CancelOrderHandler uses)
-- All reconstruct state from same events, but independently
-```
+The DDD-aggregate anti-pattern — one shared state class used by every handler — versus the correct pattern of one minimal, handler-owned state class per command. See `eventmodeling-designing-event-models`'s "Core Architectural Rule" for the full worked example (`OrderAggregate` vs. per-command state).
 
 **Why**: Each handler is a micro-slice. Separate state classes maintain isolation, enable parallel teams, prevent merge conflicts.
 
@@ -206,22 +186,10 @@ Reconstruct [CommandHandler]State on-demand
 **Why**: State is derived from events, never stored. Events are source of truth. This enables consistent replay, audit trails, and time-travel debugging.
 
 ### 5. Command With Multiple Issuers
-```
- ANTI-PATTERN:
-FlagLoanOverdue (COMMAND) has two inbound edges:
-- "Flag Overdue Loans" (AUTOMATION, same column)
-- "Adjust Due Date" (SCREEN, previous column)
-- Result: unclear who/what actually triggers the command; validation and UI-vs-automation
-  authority checks (e.g. Role & Actor Attribution) can no longer be answered
 
- CORRECT:
-FlagLoanOverdue (COMMAND) has exactly one inbound edge, from the AUTOMATION that owns it.
-If the SCREEN's user genuinely needs to trigger the same outcome, that's a second,
-distinctly-named command (or the SCREEN issuing it directly, with the automation removed) —
-not two issuers sharing one command.
-```
+A command is never issued by more than one thing — a COMMAND with 2+ inbound SCREEN/AUTOMATION edges hides which actor is actually responsible. See `place-element`'s Step 7c for the full check-and-fix mechanics (which edge to keep, how to remove the rest).
 
-**Why**: A command is never issued by more than one thing. Each command represents one specific trigger's decision to act — collapsing two triggers onto one command node hides which actor is actually responsible, and usually means either a naming/slice-boundary mistake or a stray manual/pre-existing edge (auto-connect itself now guards against this — see `learn-eventmodelers-api` §3). Fix by removing the extra edge via `set_connection` (`action: "remove"`), not by keeping both.
+**Why**: Each command represents one specific trigger's decision to act — collapsing two triggers onto one command node usually means either a naming/slice-boundary mistake or a stray manual/pre-existing edge (auto-connect itself now guards against fresh occurrences — see `learn-eventmodelers-api` §3).
 
 ---
 

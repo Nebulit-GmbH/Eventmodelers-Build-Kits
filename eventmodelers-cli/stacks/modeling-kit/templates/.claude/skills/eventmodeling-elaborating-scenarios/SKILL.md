@@ -656,11 +656,7 @@ Fetch all CHAPTER nodes to find the timeline.
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER" \
-  -H "x-token: $TOKEN"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 1: Identify the Target Timeline and Column".
 
 If there is more than one chapter, ask the user which timeline to target.
 
@@ -675,12 +671,7 @@ For each target timeline, call spec-info to discover the node IDs that may appea
 mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" \
-  -H "x-token: $TOKEN"
-# → { timelineId, elements: [{ id, title, type }] }
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 2: Load Valid Step Elements".
 
 Build a lookup map: `title (lowercase) → { id, type }`. Use this to resolve scenario step names to node IDs.
 
@@ -705,17 +696,7 @@ mcp__eventmodelers__add_scenario {
 ```
 `given`/`when`/`then` are arrays of `{id, title?, type?, ...}` objects — **not** bare nodeId strings (this differs from the raw REST body shown in the fallback below). The examples in Steps 4b/4c/§Rejection already use this object shape; pass them straight through as the `scenarios` array. For a state-view scenario whose `when` needs to represent a query rather than a COMMAND, `when` may hold a single inline object that is **not** a board node: `{"id": "<generated-uuid>", "type": "QUERY", "title": "...", "fields": [{"name": "...", "example": "..."}]}`. Same server-side rules apply either way (see below).
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/columns/$COL/scenarios" \
-  -H "x-token: $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '[...scenario objects...]'
-# → 201 { specNodeId, scenarios (all), added (count), isNewNode }
-```
-
-On `409` (duplicate title) or `400` (validation error), log the error and retry without the offending scenario. On `404`, check that the timeline and column IDs are correct.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 4: Post All Scenarios for a Column in One Call".
 
 **Rules enforced by the server (do not pre-validate — let the server reject):**
 - `given`: EVENTs only
@@ -871,16 +852,6 @@ And the error is "Customer not found"
 Bad:
 Then there's an error
 ```
-
-## Scenario Organization
-
-1. **Happy Path**: Successful execution
-2. **Validation Failures**: Invalid inputs
-3. **State Violations**: Wrong pre-conditions
-4. **Duplicate Actions**: Already processed
-5. **Alternative Paths**: Different branches
-6. **Error Handling**: Failures and recovery
-7. **Compensation**: Rollback and cleanup
 
 ## Key Principles
 

@@ -62,10 +62,7 @@ Prefer MCP:
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 1: Resolve the Timeline".
 
 - **Exactly one chapter** → use it automatically, tell the user which one was selected.
 - **Multiple chapters** → list them by name/ID and use `AskUserQuestion` to ask which one to slice.
@@ -80,11 +77,7 @@ Prefer MCP:
 mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "elementTypes": ["COMMAND", "READMODEL"] }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" -H "x-token: $TOKEN"
-# → { timelineId, elements: [{ id, title, type }] } — filter client-side to type in COMMAND, READMODEL (no elementTypes param over REST)
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Enumerate Commands, Read Models, and Automations — spec-info".
 
 Separately, enumerate AUTOMATION nodes via `get_nodes { "boardId": "<BOARD_ID>", "type": "AUTOMATION", "chapterId": "<TL>" }` — `spec-info` cannot return them.
 
@@ -95,12 +88,7 @@ Prefer MCP:
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TL>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TL" -H "x-token: $TOKEN"
-# → meta.timelineData.columns: [{ id, index }]
-# → meta.timelineData.cells:   [{ id: "<rowId>-<columnId>", nodeId }]
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Enumerate Commands, Read Models, and Automations — Chapter Node".
 
 For each filtered element, find the cell whose `nodeId` matches the element's `id` — the `columnId` is the cell `id` with the leading `<rowId>-` (36 chars + hyphen) stripped off. Record `{ elementId, elementType, title, columnId }` for every COMMAND, READMODEL, and AUTOMATION.
 
@@ -111,11 +99,7 @@ Prefer MCP:
 mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices -H "x-token: $TOKEN"
-# → { slices: [{ id, title, status }] }
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Enumerate Commands, Read Models, and Automations — Check Existing Slices".
 
 A column already has a slice if its element's title matches an existing slice's title.
 
@@ -132,14 +116,7 @@ mcp__eventmodelers__create_slice_definitions { "boardId": "<BOARD_ID>", "timelin
 ```
 (`create_slice_definition`, singular, still exists for a one-off single-column case, but prefer the batch form here since Step 3 is defining every remaining column's slice in one pass.)
 
-**Fallback (no MCP):**
-```bash
-curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-definitions \
-  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
-  -d '{"columnId":"<colId>","title":"PlaceOrder"}'
-# → 200 { nodeId, timelineId, columnId, title }
-```
-(one call per column — the REST fallback has no batch form)
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 3: Define Slices".
 
 - COMMAND column → title = command name (state-change slice)
 - READMODEL column → title = read model name (state-view slice)
@@ -173,3 +150,4 @@ This is useful to surface back to the user (e.g. "`OrderDetailView` depends on `
 
 - **[patterns.md](references/patterns.md)** — naming, boundaries, cross-slice communication patterns
 - **[examples.md](references/examples.md)** — worked example of deriving slices from a timeline
+- **[api-fallback.md](references/api-fallback.md)** — curl fallback calls for every MCP operation this skill uses.

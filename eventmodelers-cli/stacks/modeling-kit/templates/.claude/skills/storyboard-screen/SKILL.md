@@ -38,17 +38,7 @@ If `nodeId` refers to a screen that has already been rendered (i.e. this is an a
 mcp__eventmodelers__get_image_snapshot_description { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/description" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent"
-```
-
-- `200` — returns the previously stored `{ elements: [...] }`. Use this as the base and apply only the requested change (e.g. edit one element's `text`/`fill`, add/remove a specific element) — leave everything else untouched.
-- `404` — no description stored yet (e.g. an older screen rendered before this endpoint existed, or a placeholder node). Fall back to designing from scratch in Step 3.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — Load existing description".
 
 Skip this step entirely when the node is brand-new (no prior render) — go straight to Step 3.
 
@@ -116,29 +106,11 @@ mcp__eventmodelers__render_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sketch" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{"description": "<what this screen shows>", "elements": [...]}'
-```
-
-Expect `204 No Content` on success.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Render the sketch".
 
 ## Step 5 — Define field data lineage (mandatory)
 
-Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even once the wireframe is rendered.
-
-| Field type | `mapping` | Example |
-|---|---|---|
-| User types a value, sent as a command | `"<CommandTitle>.<fieldName>"` | `"ReserveBike.bikeId"` |
-| Read from session | `"session:<fieldName>"` | `"session:customerId"` |
-| Displayed data, sourced from a read model | `"<ReadModelTitle>.<fieldName>"` | `"ActiveReservationView.status"` |
-| Calculated/formatted only for display | `"derived:<expression>"` | `"derived:formatDuration(durationMinutes)"` |
+Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even once the wireframe is rendered. See the `html-screen` skill's "Step 5 — Define field data lineage" for the full `mapping`-format table (command/session/read-model/derived forms).
 
 Name the read model even if it doesn't exist as a board node yet — this skill only renders the screen, it does not create READMODEL nodes or connections. But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. If you can't say which read model a displayed field comes from, that's a sign the model is missing something — not a reason to skip the field.
 
@@ -159,20 +131,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
-    "changedAttributes": ["meta.fields"],
-    "meta": { "type": "SCREEN", "fields": [
-      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
-    ] }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Define field data lineage".
 
 ## Step 6 — Report back
 

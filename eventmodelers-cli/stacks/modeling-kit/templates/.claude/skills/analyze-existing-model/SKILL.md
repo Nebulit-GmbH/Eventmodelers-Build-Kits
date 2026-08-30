@@ -33,16 +33,7 @@ If `boardId` is explicitly passed it overrides `BOARD_ID` from `connect`.
 mcp__eventmodelers__list_slices { "boardId": "$BOARD_ID" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices"
-```
-
-Response: `{ "slices": [{ "id": "<uuid>", "title": "<name>", "status": "<status>" }] }`
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — List all slices".
 
 Save the full slice list. Count total slices and group by status:
 
@@ -61,14 +52,7 @@ Fetch all `MODEL_CONTEXT` nodes to identify bounded contexts on the board:
 mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 3 — Discover contexts".
 
 - If a `contextName` argument was given, filter to that single context and skip others.
 - If no `MODEL_CONTEXT` nodes exist, continue with a single unnamed context scope.
@@ -85,20 +69,7 @@ For each resolved context, fetch the full element graph:
 mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=<CONTEXT_NAME>"
-```
-
-Each response contains a `slices` array. Each slice entry includes:
-- `id`, `title`, `status`
-- `elements`: array of `{ type, id, title, fields[] }`  — element types: `EVENT`, `COMMAND`, `READMODEL`, `SCREEN`, `AUTOMATION`
-- `specs`: array of GWT scenarios (may be empty)
-- `edges`: relationships between elements
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Fetch slice data per context".
 
 Fetch all contexts in parallel if there are multiple. Merge results, keyed by context name.
 
@@ -216,28 +187,4 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" 
 mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "Ordering" }
 ```
 
-**Fallback (no MCP):**
-```bash
-# 1. List slices
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices"
-
-# 2. Fetch MODEL_CONTEXT nodes
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
-
-# 3. Fetch full slice data for a context
-curl -s \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=Ordering"
-```
-
-Replace `$TOKEN`, `$ORG_ID`, `$BOARD_ID`, and the context name with real values resolved from the `connect` skill.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Example — full board analysis".

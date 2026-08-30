@@ -7,7 +7,7 @@ description: Place a COMMAND, READMODEL, EVENT, SCREEN, AUTOMATION, or SCENARIO 
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
-Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — `references/api-fallback.md` has the curl fallback for every MCP call below, for sessions without MCP connected.
 
 Place a single element — COMMAND, READMODEL, EVENT, SCREEN, AUTOMATION, or SCENARIO spec node — onto an existing timeline on an eventmodelers board. Uses an existing column when a position is given; only creates a new column when appending.
 ---
@@ -64,13 +64,7 @@ This tool finds or creates an empty cell in the correct lane and places the node
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 ```
 
-**Fallback (no MCP):**
-
-If `timelineId` is not provided, discover chapters on the board:
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — Discover chapters". If `timelineId` is not provided, this discovers chapters on the board.
 
 - **Exactly one chapter** → use it automatically, tell the user which one was selected.
 - **Multiple chapters** → list them by name/ID and ask the user which to target.
@@ -88,11 +82,7 @@ Always fetch the chapter node first to get the current timeline state — `proje
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TIMELINE_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TIMELINE_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 3 — Fetch the chapter node".
 
 Read `columns` (ordered array of column objects with `id` and `index`) and `cells` (from the result directly via MCP, or from `meta.timelineData` via the REST fallback).
 
@@ -142,31 +132,7 @@ mcp__eventmodelers__add_scenario {
 
 Same rules apply (given=EVENTs only, when=at most one COMMAND or QUERY, then=EVENTs only or exactly one READMODEL, `expectError`+`errorDescription` for error cases). This auto-creates the spec node if the cell is empty, same as the curl endpoint.
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/columns/$COL/scenarios" \
-  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
-  -d '[
-    {
-      "id": "<scenario-uuid>",
-      "title": "Happy path",
-      "given": [{"id":"<eventNodeId>","title":"OrderPlaced","type":"EVENT"}],
-      "when":  [{"id":"<commandNodeId>","title":"PlaceOrder","type":"COMMAND"}],
-      "then":  [{"id":"<eventNodeId2>","title":"OrderConfirmed","type":"EVENT"}]
-    },
-    {
-      "id": "<scenario-uuid>",
-      "title": "Insufficient stock",
-      "given": [{"id":"<eventNodeId>","title":"OrderPlaced","type":"EVENT"}],
-      "when":  [{"id":"<commandNodeId>","title":"PlaceOrder","type":"COMMAND"}],
-      "then":  [],
-      "expectError": true,
-      "errorDescription": "Stock below requested quantity"
-    }
-  ]'
-# → 201 { specNodeId, scenarios (all), added (count), isNewNode }
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4a — SCENARIO: append scenarios via the spec endpoint" for the full curl call and example payload.
 
 **Scenario object shapes:**
 
@@ -211,18 +177,7 @@ Only run this when position was omitted (append mode).
 mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_ID/columns" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-Response: `{ "columnId": "<uuid>", "index": <n>, "totalColumns": <n> }`
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Create a column when appending".
 
 Save `columnId` from the response.
 
@@ -245,11 +200,7 @@ Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
 **No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `cells` array you already fetched in Step 3 via `get_node` (`projection: "cells"`) on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
 
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Check cell occupancy".
 
 **If the cell is occupied**, the behaviour depends on the element type being placed:
 
@@ -269,14 +220,7 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
 mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "afterNodeId": "<occupyingNodeId>" }
 ```
 
-**Fallback (no MCP)** — no relative-insertion equivalent over REST; compute the index by hand:
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_ID/columns" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{"index": <currentColumnIndex + 1>}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Insert a column at a specific index" (no relative-insertion equivalent over REST; the index is computed by hand).
 
 If no matching row is found, stop and report the error — the timeline may be missing the required lane type.
 
@@ -292,7 +236,7 @@ Instead, create a **linked copy**: place the new node normally (Step 7, same tit
 mcp__eventmodelers__link_element { "boardId": "<BOARD_ID>", "nodeId": "<origin-node-id>", "targetNodeId": "<newly-placed-node-id>" }
 ```
 
-(REST fallback: `POST .../nodes/:nodeId/link` with `{ "targetNodeId": "<newly-placed-node-id>" }` — see `learn-eventmodelers-api` §3.) This replaces the new node's meta with a full copy of the origin's, sets `meta.linkedTo`, and only works for COMMAND/EVENT/READMODEL. Once linked, wire the local copy to its neighbors with normal same-timeline `set_connection`/auto-connect calls. `eventmodeling-checking-completeness` treats any `linkedTo`-marked node it finds as this intentional pattern, never a duplicate to flag.
+(REST fallback: see `references/api-fallback.md` — "Step 6a — Link a node to an origin on a different timeline".) This replaces the new node's meta with a full copy of the origin's, sets `meta.linkedTo`, and only works for COMMAND/EVENT/READMODEL. Once linked, wire the local copy to its neighbors with normal same-timeline `set_connection`/auto-connect calls. `eventmodeling-checking-completeness` treats any `linkedTo`-marked node it finds as this intentional pattern, never a duplicate to flag.
 
 ---
 
@@ -318,20 +262,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
-    "pages": ["<div>...</div>"]
-  }'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7a — SCREEN: create and render (HTML path)".
 
 **Sketch path (explicit request only) — `contentType: "sketch"`, plain SCREEN node:** only use this when the user explicitly asked for a "sketch"/"wireframe"/"low-fidelity mockup". Design the sketch elements first (same grid language as `storyboard-screen`):
 
@@ -349,21 +280,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/<node-uuid>/sketch" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
-    "description": {"elements": [...]},
-    "semanticDescription": "<title — what this screen shows>"
-  }'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7a — SCREEN: create and render (sketch path, explicit request only)".
 
 Pass whichever cell reference you already resolved — `CELL_ID` from Step 6, or `CELL_NAME` from Step 1's fast path (either path accepts `cellId` or `cellName`). Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once. Then skip the rest of Step 7 and go to Step 8.
 
@@ -393,28 +310,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
-    "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
-    "meta": {
-      "type": "<ELEMENT_TYPE>",
-      "title": "<title>"
-    },
-    "node": { "data": { "title": "<title>" } }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7b — Create any other node type (normal path, `cellId`)".
 
 **Fast path** (`cellName` given directly, e.g. `"A2"` — see the Step 1 shortcut) — pass `cellName` instead of `cellId` and let the backend resolve it; nothing else in the payload changes:
 
@@ -436,28 +332,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
-    "chapterId": "<TIMELINE_ID>",
-    "cellName": "<CELL_NAME>",
-    "meta": {
-      "type": "<ELEMENT_TYPE>",
-      "title": "<title>"
-    },
-    "node": { "data": { "title": "<title>" } }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7b — Create any other node type (fast path, `cellName`)".
 
 Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
 
@@ -513,39 +388,4 @@ Timeline: <timelineId>
 
 ## Example — place an EVENT via curl
 
-**This whole example is the curl fallback.** With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elementType": "EVENT", "title": "Order Placed" }` (see "Prefer MCP" above).
-
-Full working example placing an EVENT called "Order Placed" at the end of a timeline:
-
-```bash
-# 1. Add a column (append at end)
-curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/timelines/<TIMELINE_ID>/columns" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-
-# 2. Fetch chapter to find the target lane cell for the new column
-curl -s -H "x-user-id: place-element-skill" \
-  "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<TIMELINE_ID>"
-
-# 3. Create the EVENT node
-
-Do not skip the User-ID. 
-
-
-curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
-  -H "Content-Type: application/json" \
-  -H "x-user-id: place-element-skill" \
-  -d '[{
-    "id": "<event-uuid>",
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1714900000000,
-    "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
-    "meta": { "type": "EVENT", "title": "Order Placed" },
-    "node": { "id": "<node-uuid>", "data": { "title": "Order Placed" } }
-  }]'
-```
-
-Replace `<TIMELINE_ID>`, `<BOARD_ID>`, `<CELL_ID>`, `<event-uuid>`, and `<node-uuid>` with real UUIDs. Use `Date.now()` or a current unix-ms timestamp for `timestamp`.
+A full worked example (add column → fetch chapter → create node) placing an EVENT called "Order Placed" at the end of a timeline lives in `references/api-fallback.md`'s "Full worked example" section. With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elementType": "EVENT", "title": "Order Placed" }` (see "Prefer MCP" above).

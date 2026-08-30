@@ -218,13 +218,7 @@ Discovered N screens across M flows:
 mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 0 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
-  -H "x-token: $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"position":{"x":0,"y":0}}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Create chapter".
 
 Extract `id` → `CHAPTER_ID` for this flow.
 
@@ -247,24 +241,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: discover-storyboard" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<uuid>",
-    "eventType": "node:changed",
-    "nodeId": "<CHAPTER_ID>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <NOW_MS>,
-    "changedAttributes": ["meta.title"],
-    "meta": { "type": "CHAPTER", "title": "<flow name>" },
-    "node": { "id": "<CHAPTER_ID>", "data": {} }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Update chapter title".
 
 Save `CHAPTER_ID` against each flow.
 
@@ -279,11 +256,7 @@ For each chapter, fetch its current grid state — `projection: "cells"` returns
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Fetch chapter grid".
 
 From the result (`rows`/`columns`/`cells` directly via MCP, or `meta.timelineData` via the REST fallback):
 - `rows` — find the row with `type === "actor"` → save its `id` as `actorRowId` and its 0-based position in `rows` as `actorRowIndex`
@@ -311,16 +284,7 @@ mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTE
 ```
 The result's `index` field is the new column's `columnIndex` (use it directly for `CELL_NAME` — no need to recompute from the full column list).
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: discover-storyboard" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-Response includes `{ columnId, index, totalColumns }` — `index` is the new `columnIndex`.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7a — Create column".
 
 Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
 
@@ -336,7 +300,7 @@ This step must create the node and attach its content (HTML pages, or the screen
 
 **Default path — `renderMode == "html"` (use unless the user explicitly asked for screenshots/images in Step 2):**
 
-Reconstruct the captured screen as a real HTML/CSS fragment from `screen.capturedMarkup`, following the `html-screen` skill's conventions: full-size markup (16px body text, generous padding), one self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper), no `<script>`/inline handlers, Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, tables, tags for status badges, etc.). Reproduce the real layout, labels, form fields, buttons, and any live data/status values seen on the actual page — this is a faithful reconstruction of the discovered screen, not a generic mockup.
+Reconstruct the captured screen as a real HTML/CSS fragment from `screen.capturedMarkup`, following the `html-screen` skill's page-design conventions (Step 3) — full-size markup, one self-contained fragment per page, no script/inline handlers, Bulma classes. Reproduce the real layout, labels, form fields, buttons, and any live data/status values seen on the actual page — this is a faithful reconstruction of the discovered screen, not a generic mockup.
 
 ```
 mcp__eventmodelers__create_screen {
@@ -367,15 +331,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP)** — the same atomic operation via the `image-nodes` endpoint (not the plain `images/:id` endpoint, which only updates an existing node's image and does not place it) — image path only:
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -F "file=@<screen.filepath>" \
-  -F "chapterId=$CHAPTER_ID" \
-  -F "cellName=$CELL_NAME"
-```
-For the HTML path with no MCP, use the `html-screen-nodes` endpoint per the `html-screen` skill's fallback mechanics instead.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 7b — Upload image (fallback)".
 
 Response: `204`/success on success. Log failures in the final report but continue to the next screen — do not stop the entire run.
 

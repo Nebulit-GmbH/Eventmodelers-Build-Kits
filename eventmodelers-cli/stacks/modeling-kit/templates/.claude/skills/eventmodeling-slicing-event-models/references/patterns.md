@@ -65,16 +65,7 @@ This is the most common dependency: nearly every state-view slice depends on the
 
 ### 1. One Element Per Slice
 
-```
-CORRECT:
-Slice: PlaceOrder (state-change) — just the PlaceOrder command
-Slice: OrderDetailView (state-view) — just the OrderDetailView read model
-
-WRONG:
-Slice: "Order Management" containing the PlaceOrder command AND the OrderDetailView read model
-Problem: mixes a state-change and a state-view in one slice — the API models
-these as different slice types for a reason.
-```
+See the main SKILL.md's "Core Concept" section — never combine a COMMAND and a READMODEL into one slice, even under an inviting broader "feature" name.
 
 ### 2. Name the Slice After Its Element
 

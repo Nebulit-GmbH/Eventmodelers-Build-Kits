@@ -7,7 +7,7 @@ description: Build a complete visual storyboard with AI-generated screens from a
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
-Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
+Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — `references/api-fallback.md` has the curl fallback for every MCP call below, for sessions without MCP connected.
 
 > **HTML is the default content type**: every screen this skill creates is a real HTML/CSS mockup (`contentType: "html"`, HTML_SCREEN node) unless the user's request explicitly asks for a "sketch", "wireframe", or "low-fidelity mockup" — only then does a screen use the sketch path (`contentType: "sketch"`, plain SCREEN node) described under "Sketch path (explicit request only)" below. Decide this once per storyboard, before Step 2 — do not mix content types across screens in the same storyboard unless the user asked for that mix.
 
@@ -43,15 +43,7 @@ Then **create one task per screen** using TaskCreate, naming each task after the
 
 ## HTML page design (default)
 
-Write normal, full-size HTML/CSS for each screen — as if designing a real webpage, not a tiny thumbnail. The canvas node renders this at a real page width and visually scales it down to fit, so there is no need to shrink font sizes or padding.
-
-- **Keep it simple — this is a view-only mockup, not a working app.** No JavaScript, no interactivity beyond what a static page can show. Keep the CSS compact: inline styles or a handful of Bulma classes are enough — don't write a large embedded `<style>` block.
-- Each page is one complete, standalone HTML fragment — not a `data-step` div nested inside a shared blob. A multi-step flow is multiple pages, each fully self-contained.
-- Inline styles (`style="..."`) are the simplest way to keep each page self-contained.
-- No `<script>` tags, no inline event handlers (`onclick`, `onload`, ...), no `javascript:` URIs — these are stripped server-side before persisting. This is a static visual mockup, not an interactive prototype.
-- A real page background (e.g. a light gray full-bleed background behind a centered white card) reads more realistically than a bare form floating on white.
-- Don't add `<html>`/`<head>`/`<body>` tags — every page is a body-only fragment; the canvas wraps it at render time.
-- Bulma CSS (0.9.4) is loaded by default — classes like `title`, `button`, `is-primary`, `field`/`control`/`input` etc. all work out of the box. Headings need a size modifier too, e.g. `class="title is-1"`.
+Design each page as real, full-size HTML/CSS following the `html-screen` skill's conventions: full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default.
 
 ## Sketch path (explicit request only)
 
@@ -117,15 +109,7 @@ Keep all coordinates within bounds: gridX 0–50, gridY 0–40.
 mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 0 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/chapters" \
-  -H "Content-Type: application/json" \
-  -d '{"position":{"x":0,"y":0}}'
-```
-
-Extract `id` from the response → `CHAPTER_ID`.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 3 — Create a chapter".
 
 **You now have exactly one `CHAPTER_ID`. Do not create another chapter.**
 
@@ -137,11 +121,7 @@ Extract `id` from the response → `CHAPTER_ID`.
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Fetch the chapter's grid state".
 
 Parse the result (`{rows, columns, cells}` directly via MCP, or `meta.timelineData` via the REST fallback):
 - `rows` — list of row objects, each with `id` and `type`
@@ -178,13 +158,7 @@ Only SCREEN nodes are created. COMMAND and EVENT nodes are not created.
 mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5a — Add a column".
 
 Extract `columnId` from the response. Compute the actor cell ID directly:
 
@@ -214,20 +188,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$SCREEN_NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorCellId>",
-    "pages": ["<div>...</div>"]
-  }'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5b — Create the screen node and render it (HTML path)".
 
 **Sketch path (explicit request only) — `contentType: "sketch"`, plain SCREEN node:**
 
@@ -245,33 +206,13 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID/sketch" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorCellId>",
-    "description": {"elements": [...]},
-    "semanticDescription": "<screenTitle — what this screen shows>"
-  }'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5b — Create the screen node and render it (sketch path, explicit request only)".
 
 Pass the already-computed `actorCellId` directly as `cellId` in either path. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
 
 ### Step 5b(ii) — Set field data lineage (mandatory)
 
-Push the `fields` planned in Step 2 onto the node with a `node:changed` call. Every field needs a `mapping`:
-
-| Field type | `mapping` | Example |
-|---|---|---|
-| User types a value, sent as a command | `"<CommandTitle>.<fieldName>"` | `"ReserveBike.bikeId"` |
-| Displayed data, sourced from a read model | `"<ReadModelTitle>.<fieldName>"` | `"ActiveReservationView.status"` |
-| Calculated/formatted only for display | `"derived:<expression>"` | `"derived:formatDuration(durationMinutes)"` |
+Push the `fields` planned in Step 2 onto the node with a `node:changed` call. Every field needs a `mapping` — see the `html-screen` skill's "Step 5 — Define field data lineage" for the full `mapping`-format table (command/session/read-model/derived forms).
 
 Name the read model even if it doesn't exist as a board node yet — this skill only creates SCREEN/HTML_SCREEN nodes, never READMODEL nodes or connections. But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. Set `cardinality` too (`"Single"` unless it's a repeated/list value).
 
@@ -288,18 +229,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
-    "changedAttributes": ["meta.fields"],
-    "meta": { "type": "HTML_SCREEN", "fields": [ /* planned fields */ ] }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5b(ii) — Set field data lineage".
 
 ### Step 5c — Mark the task complete
 

@@ -44,37 +44,9 @@ The result gives you the ordered chain directly — save it as the chain used in
 
 ### Fallback (no MCP) — resolve both cells to nodes
 
-For each cell (target and source), resolve it to a node using the same cell-resolution strategy as the `examples` skill. Always fetch fresh:
+For each cell (target and source), resolve it to a node using the exact same cell-resolution steps as the `examples` skill's "2c — Cell name" section (fetch chapters, fetch the chapter fresh to decode the grid, decode the cell name into a `CELL_ID`, then always fetch the cell live — `get_nodes` has no `cellId` filter) — see there for the full mechanics, substituting `x-user-id: attributes-skill`.
 
-1. Fetch chapters:
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
-```
-
-If multiple chapters exist, ask the user which one to use.
-
-2. Fetch the chapter fresh to decode the grid:
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
-```
-
-Decode the cell name:
-- Column letter(s) → 0-based index (A=0, B=1, … Z=25, AA=26, …)
-- Row number → 0-based index (1→0, 2→1, …)
-s- Find the matching column in `columns` and row in `rows`.
-- Compute: **`CELL_ID = row.id + "-" + column.id`** (cell IDs are always `<rowId>-<columnId>`).
-
-3. Always fetch the cell live. No MCP equivalent: `get_nodes` only filters by `type`, not `cellId` — the alternative is `get_node` on the CHAPTER node, reading `meta.timelineData.cells` (a sparse array; an absent cell id means the cell is empty), but that reuses the same chapter fetch from step 2 rather than guaranteeing the freshest live state, so this curl call has no direct MCP replacement:
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
-```
-
-Take the first non-CHAPTER result as the node for that cell.
-
-Save as `TARGET_NODE` and `SOURCE_NODE`.
+Take the first non-CHAPTER result as the node for each cell. Save as `TARGET_NODE` and `SOURCE_NODE`.
 
 ---
 
@@ -94,11 +66,7 @@ An **inbound** edge is one where `edge.target === currentNode.id`. For each inbo
 mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$EDGE_SOURCE_ID" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EDGE_SOURCE_ID" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: attributes-skill"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "3a — Use Node Edges".
 
 ### 3b — Column-based fallback (if no edges)
 If a node has no edges, use the chapter cell layout (already in memory) to find plausible inbound neighbours:
@@ -165,32 +133,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP)** — build the payload with Python to avoid JSON escaping issues, then POST it:
-
-```bash
-python3 - <<EOF > /tmp/attributes_payload.json
-import json, time, uuid
-payload = [{
-  "id": str(uuid.uuid4()),
-  "eventType": "node:changed",
-  "nodeId": "<NODE_ID>",
-  "boardId": "<BOARD_ID>",
-  "timestamp": int(time.time() * 1000),
-  "changedAttributes": ["meta.fields"],
-  "meta": {
-    "fields": <updated_fields_as_python_list>
-  }
-}]
-print(json.dumps(payload))
-EOF
-
-curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "Content-Type: application/json" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: attributes-skill" \
-  --data-binary @/tmp/attributes_payload.json
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Apply the Change to Each Node in the Chain".
 
 Verify HTTP 200 before proceeding to the next node. If a node fails, report the error and stop.
 

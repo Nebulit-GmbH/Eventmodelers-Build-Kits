@@ -40,14 +40,7 @@ If `nodeId` refers to a screen that already has pages (i.e. this is an adjustmen
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — Load existing pages".
 
 - If `meta.pages` is a non-empty array, use it as the base. For an edit to an existing page, change only that entry and keep the rest of the array untouched. For "add a page", append a new entry to the end of the array — never merge new content into an existing page.
 - If it's empty or the node doesn't exist yet, design from scratch in Step 3.
@@ -134,16 +127,7 @@ mcp__eventmodelers__render_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{"pages": ["<div>...</div>", "<div>...</div>"]}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Updating an existing node".
 
 **Creating a new node** (no `nodeId` — one is generated and placed into `chapterId`/`cellName`):
 
@@ -161,17 +145,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-
-```bash
-NODE_ID=$(uuidgen)
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$NODE_ID" \
-  -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
-  -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '{"chapterId": "'"$CHAPTER_ID"'", "cellName": "'"$CELL_NAME"'", "pages": ["<div>...</div>"]}'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Creating a new node".
 
 Expect `204 No Content` on success from either curl call.
 
@@ -209,20 +183,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
-    "changedAttributes": ["meta.fields"],
-    "meta": { "type": "HTML_SCREEN", "fields": [
-      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
-    ] }
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Define field data lineage".
 
 ## Step 6 — Report back
 

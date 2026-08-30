@@ -23,16 +23,7 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
 ```
 
-**Fallback (no MCP):**
-```bash
-# All nodes (events, commands, read models, screens)
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=COMMAND"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
 Use these results as the source of truth for the completeness check.
 
@@ -171,11 +162,7 @@ Or, to get the full SLICE_BORDER nodes (with `columnId`) the same way as the cur
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "SLICE_BORDER" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SLICE_BORDER"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "4. Check Slice Coverage".
 
 Cross-reference each COMMAND/READMODEL node's column against the `columnId` of the SLICE_BORDER nodes:
 
@@ -292,25 +279,7 @@ Contract: Once this postcondition is true, next steps can proceed
             without re-checking payment (trust the contract).
 ```
 
-**Why Contracts Matter for Parallel Development**:
-```text
-Team A: Works on CreateOrder (Step 1)
-  → Knows postcondition: OrderCreated with specific fields
-  → Knows other teams depend on this
-
-Team B: Works on ConfirmOrder (Step 2)
-  → Can start immediately, doesn't wait for Step 1 implementation
-  → Just needs to know: "I expect OrderCreated event with these fields"
-  → Writes tests that mock the OrderCreated event
-  → When Step 1 is done, tests pass immediately
-
-Team C: Works on AuthorizePayment (Step 3)
-  → Can start immediately
-  → Expects: OrderConfirmed event with these fields
-  → When Step 2 is done, tests pass immediately
-
-Result: 3 teams working in parallel instead of waiting sequentially!
-```
+**Why contracts matter for parallel development**: a team can start building the next step immediately against the previous step's postcondition (mocking the event it depends on), instead of waiting for that step's implementation to finish. See `eventmodeling-orchestrating-event-modeling`'s linked `project-planning-with-event-modeling.md` reference for the fully worked example and the resulting flat cost curve.
 
 ### 8. Check Field Traceability
 Matrix of all fields origin → destination:
@@ -547,10 +516,6 @@ The model is **complete** when:
 | **Calculated event** | SellerRatingCalculated, InventoryTotal | **Move to read model** (recalculated state is projection) |
 | **False duplicate** | Two nodes share a title | Check `data.linkedTo` on both before reporting — a linked copy is intentional, not a gap |
 | **Missing slice** | COMMAND/READMODEL column with no SLICE_BORDER | Define a slice for that column (unless it's a linked copy) |
-
-## Reference Documentation
-
-- **[Security Analysis with Event Modeling](references/security-analysis-with-event-modeling.md)** — How to use the field traceability matrix and data flow visibility from this step to conduct a systematic security review: identifying trust boundaries, privilege escalation paths, and data exposure risks across the event model.
 
 ## Next Steps
 

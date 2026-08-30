@@ -91,13 +91,7 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "chapte
 ```
 Repeat with `"type": "COMMAND"`, `"READMODEL"`, `"SCREEN"`, `"AUTOMATION"`. On a multi-chapter board, `chapterId` keeps each check to the timeline actually in scope instead of pulling in every other chapter's nodes too.
 
-**Fallback (no MCP):**
-```bash
-for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
-  curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-    "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE"
-done
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Scan for unplaced nodes".
 
 For each returned node, check whether it has a valid cell assignment. A node without a `cellId` (or with `chapterId` missing) is unplaced.
 
@@ -109,15 +103,7 @@ For each returned node, check whether it has a valid cell assignment. A node wit
   mcp__eventmodelers__drop_node_to_cell { "boardId": "$BOARD_ID", "timelineId": "<chapterId>", "cellId": "<rowId>-<colId>", "nodeId": "<nodeId>", "nodeType": "<TYPE>" }
   ```
 
-  **Fallback (no MCP):**
-  ```bash
-  curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-    -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
-    -H "Content-Type: application/json" \
-    -d '[{"id":"<uuid>","eventType":"node:changed","nodeId":"<nodeId>","boardId":"<BOARD_ID>",
-          "timestamp":1234567890,"chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
-          "meta":{"type":"<TYPE>","title":"<title>"}}]'
-  ```
+  **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Place a found unplaced node".
 - **If it is an orphan (duplicate or no longer needed)** → delete it.
 
   **Prefer MCP:**
@@ -125,11 +111,7 @@ For each returned node, check whether it has a valid cell assignment. A node wit
   mcp__eventmodelers__delete_node { "boardId": "$BOARD_ID", "nodeId": "<nodeId>" }
   ```
 
-  **Fallback (no MCP):**
-  ```bash
-  curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<nodeId>" \
-    -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
-  ```
+  **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Delete an orphaned node".
 
 Never leave an unplaced node on the board when proceeding to the next step.
 
@@ -358,18 +340,7 @@ the elaborating-scenarios workflow — not just happy path + one error case —
 gate checklist below. A command-only pass is an incomplete Step 7, even if
 every command's coverage looks exhaustive.
 
-> **Do not reduce scenarios to a simple good-case / bad-case pair.** The `eventmodeling-elaborating-scenarios` skill defines a structured scenario workshop covering seven scenario types per command. All applicable types must be written before this step is complete.
-
-**Scenario types to work through for each command** — which apply is determined by the domain, not by a fixed rule:
-1. **Happy Path** — the normal success case
-2. **Validation Failure** — invalid or missing input
-3. **State Violation** — command issued when system is in an invalid state
-4. **Duplicate Action** — command issued again after it already succeeded
-5. **Alternative Path** — different valid outcomes depending on context
-6. **External Failure** — external system or scheduler fails
-7. **Compensation** — rollback or undo flow
-
-For each type, ask the relevant question against the business case and write a scenario if the situation can occur. Do not decide based on brevity — decide based on the domain.
+> **Do not reduce scenarios to a simple good-case / bad-case pair.** The `eventmodeling-elaborating-scenarios` skill defines a structured scenario workshop covering seven scenario types per command (Happy Path, Validation Failure, State Violation, Duplicate Action, Alternative Path, External Failure, Compensation — see that skill's own table for the question-form definition of each) — which apply is determined by the domain, not by a fixed rule. All applicable types must be written before this step is complete; do not decide based on brevity.
 
 > **Read models need scenarios too — easy to forget since the seven types above are command-shaped.** Every READMODEL needs at least one view scenario (GWT or storyline); a read model with zero scenarios is as incomplete as a command with zero. `eventmodeling-elaborating-scenarios`'s own checklist covers the details — connectivity rules, GWT-vs-storyline judgment per read model, and avoiding redundancy between a storyline and its GWTs — don't re-derive those here, just enforce the gate.
 
@@ -440,14 +411,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
    mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "feedback", "label": "Notes" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
-     -H "Content-Type: application/json" \
-     -d '{"type":"feedback","label":"Notes"}'
-   # → { laneId, type, label, index, totalLanes }
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Step 11 — Document Reasoning — Add a feedback lane".
 
 2. **Resolve the first column's ID** — the leftmost entry in `meta.timelineData.columns` (same chapter fetch used throughout this workflow for row/column lookups).
 
@@ -466,15 +430,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
    }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
-     -H "Content-Type: application/json" \
-     -d '[{"id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>","boardId":"<BOARD_ID>",
-           "timestamp":1234567890,"chapterId":"<CHAPTER_ID>","cellId":"<feedbackLaneId>-<firstColumnId>",
-           "meta":{"type":"MARKDOWN","title":"Modeling Reasoning — <Chapter Name>","description":"<full markdown body>"}}]'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Step 11 — Document Reasoning — Create the MARKDOWN node".
 
    The note's body lives in **`meta.description`** as plain markdown source — headings, lists, bold, code fences, tables all render. **Not `meta.content`** — that field is accepted and stored without error but never rendered by the board UI, producing a visibly empty note; this was caught by comparing against a note authored directly in the UI, so treat it as confirmed, not a guess. There is no separate render/sketch call (unlike SCREEN/HTML_SCREEN) and no `fields[]` array on this element type.
 
@@ -519,6 +475,10 @@ specific needs:
   complete to validate stream growth estimates and snapshotting decisions.
 - **`eventmodeling-translating-external-events`** — Use when external systems
   (webhooks, IoT, third-party APIs) need to feed into the domain model.
+
+### Further Reading
+
+- **[Project Planning with Event Modeling](references/project-planning-with-event-modeling.md)** — why explicit step contracts produce a flat cost curve and let teams build in parallel, plus velocity-based estimation and capacity planning built on workflow steps instead of story points.
 
 ---
 

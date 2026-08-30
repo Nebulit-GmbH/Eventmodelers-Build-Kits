@@ -311,13 +311,7 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN" }
 mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN" }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN"
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Board Integration — Check existing screen nodes".
 
 After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any screen node where data fields are unclear or missing sources are identified.
 
@@ -333,11 +327,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a Q
    # → rows — collect every row where type === "actor" into { label → rowId }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
-     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Resolve One Actor Lane Per Human Role — Step 1: Fetch the chapter's actor rows".
 
 2. For every **human role only** in the Role Catalog (Step 1's swimlane list above), check the map for a `label` that matches the role name (case-insensitive). If found, reuse that `rowId`. **Skip system actors/processors entirely** — do not create or look up a lane for them here; they never get an entry in this map.
 
@@ -348,13 +338,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a Q
    mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "actor", "label": "<Role Name>" }
    ```
 
-   **Fallback (no MCP):**
-   ```bash
-   curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
-     -H "Content-Type: application/json" \
-     -d '{"type": "actor", "label": "<Role Name>"}'
-   ```
+   **Fallback (no MCP):** see `references/api-fallback.md` — "Resolve One Actor Lane Per Human Role — Step 3: Create a new actor lane".
 
    Add the returned `rowId` to the map under that role's name. Do this once per role, not once per screen.
 
@@ -465,18 +449,7 @@ mcp__eventmodelers__create_screen {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorRowId>-<columnId>",
-    "pages": ["<div>...</div>"]
-  }'
-```
-Then, over REST only (no `fields` param on the HTML-screen endpoint), still set `meta.fields` via a separate `node:changed` call.
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mandatory Screen Rendering — Step B: Create the HTML_SCREEN node".
 
 The MCP `create_screen` call above already sets `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
 
@@ -503,22 +476,7 @@ mcp__eventmodelers__submit_node_events {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "id": "<event-uuid>",
-    "eventType": "node:created",
-    "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
-    "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorRowId>-<columnId>",
-    "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}
-  }]'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mandatory Screen Rendering — Step B (sketch path): Create the SCREEN node".
 
 **Step C (sketch path only) — Render the wireframe sketch immediately** (`POST /images/$NODE_ID/sketch`).
 
@@ -543,21 +501,7 @@ mcp__eventmodelers__render_screen {
 }
 ```
 
-**Fallback (no MCP):**
-```bash
-curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sketch" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "description": "<concise description of what this screen shows>",
-    "elements": [
-      {"type":"rectangle","gridX":0,"gridY":0,"gridWidth":50,"gridHeight":40,"fill":"white"},
-      {"type":"rectangle","gridX":0,"gridY":0,"gridWidth":50,"gridHeight":3,"fill":"violet"},
-      {"type":"headline","gridX":2,"gridY":1,"text":"Screen Title","fontSize":16,"fill":"white","gridWidth":46},
-      ...more elements...
-    ]
-  }'
-```
+**Fallback (no MCP):** see `references/api-fallback.md` — "Mandatory Screen Rendering — Step C (sketch path): Render the wireframe sketch".
 
 Design each wireframe using the grid description language from the `storyboard-screen` skill (50×40 grid, 1 unit = 20 px):
 
