@@ -88,7 +88,7 @@ Given UI storyboards and event timeline, identify all inputs.
 
 **PREREQUISITE**: The **Role Catalog** from Step 1 (eventmodeling-brainstorming-events) must exist. Every command identified below MUST be attributed to a specific role or system actor from that catalog.
 
-> **Scope note**: This step only places the AUTOMATION actor and its COMMAND (per the Timeline Alignment Rules in `eventmodeling-orchestrating-event-modeling`). Do not attempt to design an automation's todo-list READMODEL here, and do not resolve an externally-triggered automation into a translation chain here — that is Step 4b (`eventmodeling-designing-automation-chains`), which runs immediately after this step completes, before Step 5.
+> **Scope note**: This step only places the AUTOMATION actor and its COMMAND (per the Timeline Alignment Rules in `eventmodeling-orchestrating-event-modeling`). Do not attempt to design an automation's todo-list READMODEL here, and do not resolve an externally-triggered automation into a translation chain here — that is Step 4b (`eventmodeling-designing-automation-chains`), which runs immediately after this step completes, before Step 5. **Do not place anything at all** for a command whose only trigger is an EVENT node already sitting in another swimlane (see "Identify Processor Triggers" below) — leave that entire case, node placement included, to Step 4b.
 
 ### 1. Extract Commands from UI Actions
 For each user action in storyboard, create a command attributed to a specific role:
@@ -125,6 +125,11 @@ Validation:
     - authorizationCode must be valid
 Produces event: PaymentAuthorized
 ```
+
+**Stop and check before placing any of these**: is the "processor trigger" already a placed EVENT node in a second (external) swimlane — e.g. a `CopyReserved (ext)` event from Step 1's brainstorming — rather than an unmodeled webhook with no board node? The two cases are handled completely differently:
+
+- **No pre-existing EVENT node** (a genuine webhook/API call, like `AuthorizePayment` above): proceed as written below — place the AUTOMATION+COMMAND in one column, wire `COMMAND → EVENT` normally.
+- **A pre-existing EVENT node in another swimlane**: do **not** place the AUTOMATION/COMMAND in that event's column, and do **not** wire `COMMAND → EVENT` to it — that event already happened in another system; this chapter's command cannot be the thing that produces it. List the command in the Command Catalog as *deferred to Step 4b* and stop there. `eventmodeling-designing-automation-chains` places the correct multi-column translation-chain-plus-worker shape from scratch; anything placed here for this case would only have to be deleted and redone there.
 
 ### 2b. Understand the Processor "Todo List" Pattern
 Processors don't directly process events—they maintain a todo list driven by events:
@@ -496,6 +501,8 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
 
 2. **COMMAND → EVENT** — find the EVENT node in the swimlane row of the same column.
+
+   **Guard**: if the occupying EVENT node belongs to a different (external) swimlane than this chapter's own default swimlane, stop — do not create this connection. An external system's own event cannot be the thing this chapter's command produces; that case belongs entirely to Step 4b's translation chain. (This should not arise if the "Identify Processor Triggers" check above was followed, but re-check here before connecting, since it's the point of no return for a wrong edge.)
 
    **Prefer MCP** — same cell-map lookup, then connect:
    ```
