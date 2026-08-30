@@ -20,8 +20,8 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | Tool | Args | Purpose | REST equivalent |
 |---|---|---|---|
 | `list_boards` | — | List boards for the org | §1 `GET /api/boards` (org-scoped) |
-| `get_nodes` | `boardId`, `type?`, `name?` | List nodes, optionally by type and/or a partial case-insensitive title match | §3 `GET .../nodes` |
-| `get_node` | `boardId`, `nodeId` | Get one node | §3 `GET .../nodes/:nodeId` |
+| `get_nodes` | `boardId`, `type?`, `name?`, `chapterId?`, `nodeIds?`, `projection?` (`"line"`) | List nodes, optionally by type and/or a partial case-insensitive title match. `chapterId` scopes to one timeline — prefer this over an unscoped board-wide call whenever the step is working within one chapter (the common case); `nodeIds` fetches a known, scattered subset in one call (e.g. re-verifying exactly the nodes just touched by a batch write) instead of a full `type` refetch; `projection: "line"` maps each match to `{id, type, title}` only | §3 `GET .../nodes` |
+| `get_node` | `boardId`, `nodeId`, `projection?` (`"cells"` \| `"edges"`) | Get one node. `projection: "cells"` (CHAPTER nodes only) returns just `{rows, columns, cells}` instead of the full `timelineData` — use whenever only the grid/occupancy is needed, not the whole chapter; `projection: "edges"` returns just that node's inbound/outbound connections instead of `findNodeById`'s full record. Both are opt-in — omitting `projection` is the unchanged full response | §3 `GET .../nodes/:nodeId` |
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
 | `get_board_events` | `boardId` | All board events, in sequence | §1 `GET .../events` |
 | `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
@@ -46,7 +46,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `list_slices` | `boardId` | List slices (id, title, status) | §8 `GET .../slicedata/slices` |
 | `update_slice_status` | `boardId`, `sliceId`, `newStatus` | Change a SLICE_BORDER's `sliceStatus` | — (via `node:changed` event, §3) |
 | `get_slice_data` | `boardId`, `contextName?`, `contextId?`, `sliceId?` | Full element graph for slices in a context | §8 `GET /slicedata` |
-| `get_spec_info` | `boardId`, `timelineId` | EVENT/COMMAND/READMODEL nodes valid in GWT steps | §6 `GET .../spec-info` |
+| `get_spec_info` | `boardId`, `timelineId`, `elementTypes?` | EVENT/COMMAND/READMODEL nodes valid in GWT steps. Pass `elementTypes` (subset of `EVENT`/`COMMAND`/`READMODEL`) to avoid pulling the full element list when only one or two types are needed — filtered server-side, not just after a full fetch | §6 `GET .../spec-info` |
 | `get_board_outline` | `boardId`, `chapterId` | One chapter's structure, compact: per-column node lists (`{id, type, title, lane}`) + a flat edge list, no HTML pages / field bodies / meta. The cheap "what is where and how is it wired" read — prefer over `get_nodes` (no projection) for orientation checks | — (MCP-only convenience) |
 | `validate_model` | `boardId`, `chapterId`, `checks?[]` | Server-side Event Modeling structural checklist over one chapter — compact `findings` only. Checks: unplaced nodes, backward arrows (with the todo-list `EVENT→READMODEL` exception), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios. Replaces the manual per-type `get_nodes` + `get_node projection=edges` validation pass | — (MCP-only convenience) |
 | `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]`, `compact?` | Append GWT scenario(s) to a column's spec node. `compact: true` returns `{specNodeId, added, scenarioCount, isNewNode}` instead of echoing every scenario back | §6 `POST .../scenarios` |
