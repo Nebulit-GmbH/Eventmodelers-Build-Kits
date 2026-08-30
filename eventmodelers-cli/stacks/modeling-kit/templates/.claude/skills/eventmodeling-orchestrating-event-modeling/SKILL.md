@@ -81,11 +81,11 @@ After each step that creates elements (Steps 1–5), scan for any nodes that hav
 
 For each timeline in scope, check all node types that should be in cells.
 
-**Prefer MCP:** call `get_nodes` once per type (each call returns the full node objects, including `meta.chapterId`/cell placement, so no separate cell-occupancy lookup is needed):
+**Prefer MCP:** call `get_nodes` once per type, scoped to the timeline in question via `chapterId` (each call returns the full node objects, including cell placement, so no separate cell-occupancy lookup is needed):
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "chapterId": "$TIMELINE_ID" }
 ```
-Repeat with `"type": "COMMAND"`, `"READMODEL"`, `"SCREEN"`, `"AUTOMATION"`.
+Repeat with `"type": "COMMAND"`, `"READMODEL"`, `"SCREEN"`, `"AUTOMATION"`. On a multi-chapter board, `chapterId` keeps each check to the timeline actually in scope instead of pulling in every other chapter's nodes too.
 
 **Fallback (no MCP):**
 ```bash
@@ -145,7 +145,22 @@ Before wiring any of the five forward-only pairs, verify that `column(source) �
 Screens placed during Step 3 (Storyboarding) are provisional positions. Steps 4 and 5 may need to move them to align with the commands or read models placed later.
 
 ### Column insertion
-Use `POST /timelines/:tl/columns` with `{"index": N}` to insert a column at a specific position (shifts existing columns right). Do not use `{}` (append) when placing read models or view screens — always target the correct position.
+Use `add_column` with `{"index": N}` to insert a column at a specific position (shifts existing columns right) — or, when the insertion point is "immediately before/after a node already on the board" rather than a numeric position you'd otherwise have to compute, pass `beforeNodeId`/`afterNodeId` instead and let the tool resolve the index itself. Do not use no position at all (append) when placing read models or view screens — always target the correct position.
+
+### Prefer batch MCP tools over one-call-per-item loops
+
+Several MCP tools have a batch form that does the exact same thing as calling their singular form once per item, with the same validation rules and (where order matters, e.g. wiring a READMODEL→AUTOMATION edge before the backward EVENT→READMODEL edge that depends on it) the same in-order guarantee — just fewer round trips. Whenever a step's own instructions below show a single-item call and more than one item is being processed in the same pass, use the batch form instead:
+
+- `set_connections` (not `set_connection` repeated) — wiring multiple edges
+- `auto_connect_nodes` (not `auto_connect_node` repeated) — auto-connecting multiple freshly-placed nodes
+- `create_slice_definitions` (not `create_slice_definition` repeated) — defining multiple slices
+- `create_screens` (not `create_screen` repeated) — creating multiple HTML screens whose content is already authored
+- `move_nodes` (not `move_node_in_timeline` repeated) — moving multiple already-placed nodes within one timeline
+- `delete_nodes` / `delete_columns` (not `delete_node`/`delete_column` repeated) — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
+- `add_column`'s `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
+- `create_chapter`'s `columns` param — when the chapter's initial column count is already known, instead of creating the default 3 and appending more after
+
+Also prefer `get_nodes`' `chapterId` param over an unscoped board-wide fetch whenever the step is working within one timeline (the common case), and `get_node`'s `projection: "cells"` over a full chapter fetch whenever only `{rows, columns, cells}` is needed (most cell/column bookkeeping lookups).
 
 ### Documenting decisions inline, at any step
 

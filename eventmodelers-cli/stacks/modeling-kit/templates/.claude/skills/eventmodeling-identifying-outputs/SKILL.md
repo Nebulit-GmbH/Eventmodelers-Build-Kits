@@ -489,10 +489,10 @@ mcp__eventmodelers__submit_node_events {
   }]
 }
 ```
-To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (there is no `cellId` filter on `get_nodes` — see the note under "Wire connections" below), fetch the chapter and read its cell map:
+To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (there is no `cellId` filter on `get_nodes` — see the note under "Wire connections" below), fetch the chapter and read its cell map — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
-# → meta.timelineData.rows (find "interaction"/"actor" rows) and meta.timelineData.cells (sparse; absent id = empty)
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
+# → rows (find "interaction"/"actor" rows) and cells (sparse; absent id = empty)
 ```
 
 **Fallback (no MCP)** — the full manual sequence:
@@ -550,7 +550,8 @@ For each view screen S that queries this read model as its primary read model:
     → Place the READMODEL in column(S) itself (same column as S). No adjustment needed.
   If column(S)'s interaction row is already occupied:
     → Insert a new column immediately before column(S) and place the READMODEL there instead.
-    Use POST /timelines/:tl/columns {"index": N} to insert,
+    mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "beforeNodeId": "<S's node id>" }
+    (fallback, no MCP: POST /timelines/:tl/columns {"index": N} with N computed by hand),
     then node:changed to update any node whose cell needs to move.
   If the read model ends up more than one column away from S with nothing in between:
     → Gap between read model and screen. Close it: move the read model into column(S) (if free) or column(S) - 1.
@@ -566,10 +567,10 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 1. **EVENT → READMODEL** — find the primary source EVENT node in the swimlane row of the same column.
 
-   **Prefer MCP** — `get_nodes` has no `cellId` filter (only `type`); look up occupancy via the chapter's cell map instead, then connect with the type-checked edge tool (auto-corrects direction, skips duplicates):
+   **Prefer MCP** — `get_nodes` has no `cellId` filter (only `type`); look up occupancy via the chapter's cell map instead (`projection: "cells"`), then connect with the type-checked edge tool (auto-corrects direction, skips duplicates):
    ```
-   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
-   # → read meta.timelineData.cells["<swimlaneRowId>-<columnId>"] for the occupying node id
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
+   # → read cells["<swimlaneRowId>-<columnId>"] for the occupying node id
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
    ```
 
@@ -619,6 +620,8 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    ```
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
+
+If this step is processing more than one read model in the same pass, collect every connection resolved above (across all of them) into one `set_connections` call instead of one `set_connection` per pair — this was the single largest source of individual tool calls in this step.
 
 4. **Document the reasoning for each connected event** — for every EVENT → READMODEL edge wired in step 1 (including any added later, e.g. via Step 5g's backward-connection exemption or a Step 5c/copy pattern), record why that event feeds this read model: which field(s) it sets or updates, and why. Use one MARKDOWN note per read model, in that read model's own column (same feedback-lane + MARKDOWN mechanics as `eventmodeling-orchestrating-event-modeling`'s "Documenting decisions inline, at any step" / Step 11 — add the chapter's feedback lane first if it doesn't already exist, then place the note at `cellId = "<feedbackLaneId>-<readModelColumnId>"`). Extend the existing note (don't create a second one) when the read model later gains another connected event.
 

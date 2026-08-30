@@ -327,10 +327,10 @@ After completing the screen analysis, use the `handle-comment` skill to post a Q
 
 1. Fetch the chapter and collect every row where `type === "actor"`, keyed by its `label`:
 
-   **Prefer MCP:**
+   **Prefer MCP** — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
    ```
-   mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$CHAPTER_ID" }
-   # → meta.timelineData.rows — collect every row where type === "actor" into { label → rowId }
+   mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "$CHAPTER_ID", "projection": "cells" }
+   # → rows — collect every row where type === "actor" into { label → rowId }
    ```
 
    **Fallback (no MCP):**
@@ -460,7 +460,8 @@ mcp__eventmodelers__create_screen {
   "chapterId": "<CHAPTER_ID>",
   "cellId": "<actorRowId>-<columnId>",
   "pages": ["<div>...</div>"],
-  "description": "<concise description of what this screen shows>"
+  "description": "<concise description of what this screen shows>",
+  "fields": [ /* per "Mandatory Field Definitions" below — set in this same call */ ]
 }
 ```
 
@@ -475,8 +476,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<n
     "pages": ["<div>...</div>"]
   }'
 ```
+Then, over REST only (no `fields` param on the HTML-screen endpoint), still set `meta.fields` via a separate `node:changed` call.
 
-Once the node is created, still set `meta.fields` on it (per "Mandatory Field Definitions" above) via `node:changed` — `create_screen`/the HTML endpoint owns page content, not the field-lineage metadata.
+The MCP `create_screen` call above already sets `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
 
 Design the page(s) as real HTML/CSS, following the `html-screen` skill's guidance: write full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper — the canvas adds those), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default. Every page MUST include real field labels matching the actual event/command fields this screen captures or displays, and at least one primary action (submit/confirm button) for command screens.
 

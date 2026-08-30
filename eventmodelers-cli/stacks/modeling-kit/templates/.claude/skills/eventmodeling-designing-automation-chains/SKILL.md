@@ -120,6 +120,8 @@ For a **translation-chain automation**, place its three columns left to right in
 
 Skip a connection silently if the target cell is empty (the element may not exist yet). Log each created arrow, e.g. `→ connected READMODEL→AUTOMATION "NotificationsToSend"→"Send Welcome Notification"`.
 
+If this step is designing more than one automation's chain in the same pass, batch every connection from every automation into one `set_connections` call instead of one `set_connection` per edge — `set_connections` still applies its entries **in order**, so keep each automation's own three-edge sequence intact (READMODEL→AUTOMATION before its closing EVENT→READMODEL) within the combined array; different automations' triples can be interleaved or concatenated freely since they don't depend on each other.
+
 ## Verification (run before moving to Step 5)
 
 Re-fetch every AUTOMATION on the board (`get_nodes`, `type: "AUTOMATION"`) and check each one:

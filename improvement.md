@@ -45,21 +45,21 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 |---|---|---|---|---|
 | 1 | Restructure skills: state the automation/todo-list rule upfront (in orchestrator's global rules, not buried in Step 5b) | Step 4→5 rework: ~35 calls of pure correction | **Done** | — |
 | 2 | New dedicated sub-step: design automations + todo lists together (fold Step 5b into Step 4b) | Same as #1 — root cause is the Step 4/5 split itself | **Done** | — |
-| 3 | Fix "payload too large" on full-board node loads (reliability bug, not cost) | Reported directly; consistent with this session's payload growth (13 HTML screens, 35-column chapter) | Not started | — |
-| 4 | New composite tool `design_translation_chain` | ~25 calls per translation chain built by hand | Not started | — |
-| 5 | Batch `set_connection` → `set_connections` | ~90 individual calls this round | Not started | — |
-| 6 | Batch `create_slice_definition` → `create_slice_definitions` | 26 calls, purely mechanical | Not started | — |
-| 7 | Batch `auto_connect_node` → `auto_connect_nodes` | 13 calls in Step 4 alone | Not started | — |
-| 8 | `add_column`: `count` param + relative insertion (`beforeNodeId`/`afterNodeId`) | 2 miscounted-append incidents + 7 columns of manual right-to-left index math | Not started | — |
-| 9 | `get_nodes`/`get_node`: `chapterId` scope + `nodeIds` filter | Every one of ~280 calls this round was chapter-scoped; no way to fetch a known node subset | Not started | — |
-| 10 | Chapter fetch compact projections (`cells`/`edges`/`line`) | 2 full-chapter fetches against a 35-column `timelineData` payload | Not started | — |
-| 11 | `create_chapter`: `columns`/`eventTitles` params | First chapter needed 13 columns immediately, forcing an append burst | Not started | — |
-| 12 | `place_element`: auto-extend + compact response | Predicted failure mode (index-bookkeeping), not directly hit this round | Not started | — |
-| 13 | New composite tool `scaffold_chapter` | Would collapse much of Steps 1+4's mechanical placement | Not started | — |
+| 3 | Fix "payload too large" on full-board node loads (reliability bug, not cost) | Reported directly; consistent with this session's payload growth (13 HTML screens, 35-column chapter) | **Discarded** — see note | — |
+| 4 | New composite tool `design_translation_chain` | ~25 calls per translation chain built by hand | **Discarded** | — |
+| 5 | Batch `set_connection` → `set_connections` | ~90 individual calls this round | **Done** | — |
+| 6 | Batch `create_slice_definition` → `create_slice_definitions` | 26 calls, purely mechanical | **Done** | — |
+| 7 | Batch `auto_connect_node` → `auto_connect_nodes` | 13 calls in Step 4 alone | **Done** | — |
+| 8 | `add_column`: `count` param + relative insertion (`beforeNodeId`/`afterNodeId`) | 2 miscounted-append incidents + 7 columns of manual right-to-left index math | Partially — `count` done, relative insertion not started | — |
+| 9 | `get_nodes`/`get_node`: `chapterId` scope + `nodeIds` filter | Every one of ~280 calls this round was chapter-scoped; no way to fetch a known node subset | **Done** | — |
+| 10 | Chapter fetch compact projections (`cells`/`edges`/`line`) | 2 full-chapter fetches against a 35-column `timelineData` payload | **Done** | — |
+| 11 | `create_chapter`: `columns`/`eventTitles` params | First chapter needed 13 columns immediately, forcing an append burst | **Done** (`columns`) / **Discarded** (`eventTitles`) | — |
+| 12 | `place_element`: auto-extend + compact response | Predicted failure mode (index-bookkeeping), not directly hit this round | **Done** | — |
+| 13 | New composite tool `scaffold_chapter` | Would collapse much of Steps 1+4's mechanical placement | **Discarded** | — |
 | 14 | Batch `create_screen` → `create_screens` + inline `fields` | 15 `create_screen` calls, each needing a follow-up fields call | Not started | — |
-| 15 | `get_spec_info`: type filter | Low urgency at this board's ~60-element size | Not started | — |
-| 16 | Batch `move_node_in_timeline` → `move_nodes` | 7 individual moves during the Step 5 rework | Not started | — |
-| 17 | Batch `delete_node`/`delete_column` | ~6 individual deletions this round | Not started | — |
+| 15 | `get_spec_info`: type filter | Low urgency at this board's ~60-element size | **Done** | — |
+| 16 | Batch `move_node_in_timeline` → `move_nodes` | 7 individual moves during the Step 5 rework | **Done** | — |
+| 17 | Batch `delete_node`/`delete_column` | ~6 individual deletions this round | **Done** | — |
 
 **Projected effect of items 1-8** (the highest-leverage subset): **~280 calls → ~130-150** for an equivalent model, plus items 1-2 removing a recurring correctness risk and item 3 fixing a hard failure mode — neither of which shows up as a call-count number but both matter more than the numbers that do.
 
@@ -92,7 +92,12 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 - Add a server-side size guard that degrades to summary mode (with a note that full detail needs a follow-up) instead of failing the whole request outright.
 **Impact**: The only item on this list that's a correctness/reliability fix rather than a cost optimization — without it, sufficiently large boards can't be read at all, which is strictly worse than "costs more tokens." Should be treated as a bug-fix priority independent of where it lands on a token-cost ranking.
 
+**Implemented as**: only partially — not a fix to the underlying failure. Two candidate mitigations were tried and explicitly rejected during implementation: (1) a hard byte-size guard/truncation fallback (`MAX_NODE_RESPONSE_CHARS` degrading to a summary) — rejected outright; (2) compacting `HTML_SCREEN` `meta.pages` down to a `pageCount` by default — also rejected, `get_nodes`/`get_node` must return full, untruncated content whenever asked. Neither `get_nodes` nor `get_node` shrinks or degrades any field. The only change that shipped is item #9's `chapterId`/`nodeIds` filters — these let a caller *avoid* triggering the failure by narrowing the request itself, but an unfiltered/board-wide `get_nodes` on a sufficiently large board (many/large HTML_SCREEN pages) can still fail outright.
+
+**Discarded (2026-08-30)**: the remaining fix — pagination (`limit`/`cursor`) or a server-side guard that rejects with a clear "narrow your request" error before serializing an oversized response — is not being pursued further in this round. Both rejected mitigations above ruled out the two levers that would have made this a complete fix without a larger, separately-scoped API change (pagination semantics affect every list-style tool, not just `get_nodes`); item #9's filters remain the practical mitigation.
+
 ### 4. New composite tool: `design_translation_chain`
+**Status: Discarded** — not implemented this round; the notes below are the original proposal, kept for reference if picked up later.
 **Problem**: Even with #1 and #2 in place, the two-stage translation pattern is fiddly to execute by hand — three columns, one todo-list read model, one automation, one command, one internal event, and 5+ connections including the exempted backward "closing" edge.
 **Evidence**: This session's manual construction of two translation chains took ~25 tool calls between node creation and wiring.
 **Proposed shape**: `design_translation_chain({ boardId, timelineId, externalEventTitle, internalEventTitle, translationAutomationTitle, translationCommandTitle, todoListTitle, workerAutomationNodeId? })` — atomically creates the three columns, all nodes, and every connection (including wiring the internal event forward into `workerAutomationNodeId`'s own todo list, if given).
@@ -104,16 +109,28 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 **Proposed shape**: `set_connections({ boardId, connections: [{ source, target, action: "connect"|"remove" }, ...] })` → `{ results: [...] }`, one result per input pair, same validation rules as today.
 **Impact**: ~90 calls (Steps 4/5/7-adjacent wiring) → ~6-8.
 
+**Implemented as**: exactly the proposed shape, as a new `set_connections` MCP tool in `eventmodelers-plattform/backend/src/slices/mcp/routes.ts`, right after `set_connection`. Pure orchestration — no adapter/business-logic changes: it loops over the input array **in order**, calling the same `repo.connectNodes`/`repo.removeConnection` that back the single-pair `set_connection` tool, so every existing validation rule (type compatibility, same-timeline requirement, the backward-EVENT→READMODEL exemption, duplicate-edge skip) applies unchanged per entry. Sequential (not parallel) processing is deliberate: a later entry can depend on an earlier one already committed — e.g. wiring `READMODEL→AUTOMATION` before the backward `EVENT→READMODEL` closing edge that requires it, the exact translation-chain wiring order from `eventmodeling-designing-automation-chains`. A failing entry doesn't stop the batch — each result reports its own outcome or `{error, hint}` independently, matching `set_connection`'s existing per-call error shape. Not wrapped in a single DB transaction (matches `set_connection`'s existing non-atomic behavior; item #5 was never about atomicity, only call-count).
+
+No new tests were added at the routes.ts/MCP-tool layer — this codebase doesn't unit-test that layer directly for any existing tool (`get_nodes`, `set_connection`, `auto_connect_node` included); only the underlying adapter functions are tested, and `connectNodes`/`removeConnection` are already covered by the existing `ConnectNodes.test.ts` suite (unchanged by this addition). Full backend `tsc --noEmit` and the 164-test supabase-extensions suite pass.
+
 ### 6. Batch `create_slice_definition` → `create_slice_definitions`
 **Problem**: One call per slice, no array form.
 **Evidence**: Step 10 needed exactly 26 individual calls, one per command/read-model/automation column — purely mechanical once the column list is known.
 **Proposed shape**: `create_slice_definitions({ boardId, timelineId, slices: [{ columnId, title }, ...] })`.
 **Impact**: 26 calls → 1.
 
+**Implemented as**: exactly the proposed shape, as a new `create_slice_definitions` MCP tool in `routes.ts`, right after `create_slice_definition`. Same non-atomic, per-item pattern as item #5/#7 — loops over `slices` calling the existing `repo.createSliceDefinition` per entry, pushing either its result or `{columnId, title, error}` into `results` (order preserved, one failing entry doesn't stop the rest). No adapter changes.
+
 ### 7. Batch `auto_connect_node` → `auto_connect_nodes`
 **Problem**: One node at a time, despite already being the most efficient wiring primitive available (resolves 2 edges per call when neighbors are already correctly placed).
 **Evidence**: Step 4 needed 13 calls, one per command.
 **Proposed shape**: `auto_connect_nodes({ boardId, nodeIds: [...] })` → array of per-node results.
+
+**Implemented as**: exactly the proposed shape, as a new `auto_connect_nodes` MCP tool in `routes.ts`, right after `auto_connect_node`. Loops over `nodeIds` calling the existing `repo.autoConnectNode` per entry, pushing `{nodeId, connected, skipped}` or `{nodeId, error}` into `results` (order preserved, one failing node doesn't stop the rest). No adapter changes.
+
+Both #6 and #7 (plus #5) share the same shape: thin orchestration in `routes.ts` reusing already-tested adapter functions, so no new tests were added at the routes.ts layer, consistent with every other existing MCP tool in this codebase (none of which are unit-tested at that layer). Full backend `tsc --noEmit` and the 164-test supabase-extensions suite pass after both changes.
+
+**Soft-deprecation note (2026-08-30)**: considered removing the singular `set_connection`/`auto_connect_node`/`create_slice_definition` tools now that their batch forms exist (fewer registered MCP tools = less tool-schema context per session). Decided against it — not just a rename: the singular tools return a flat result object while the batch tools always wrap in `{results: [...]}`, so removal would break any caller (including any client outside this codebase, since this MCP server is exposed at `api.eventmodelers.ai`) still expecting the flat shape, with no way from here to confirm nothing does. Instead, all three singular tools' descriptions now steer callers toward the batch form ("Prefer set_connections (even for a single connection)...", and similarly for `auto_connect_nodes`/`create_slice_definitions`) — a zero-risk nudge, not a breaking change. Actual removal would need a real deprecation window plus usage visibility this session doesn't have.
 **Impact**: 13 calls → 1 in Step 4; would also help re-verify connections after any bulk node move.
 
 ### 8. `add_column`: count param + relative insertion
@@ -122,11 +139,17 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 **Proposed shape**: `add_column({ ..., count: N })` → `{ columnIds: [...], totalColumns }`; `add_column({ ..., beforeNodeId | afterNodeId })` resolves the index itself.
 **Impact**: Eliminates a self-inflicted failure class entirely and removes all manual index arithmetic for relative insertion.
 
+**Implemented as (count only)**: exactly the proposed shape, in `eventmodelers-plattform/backend/src/slices/extensions/supabase/chapters/AddColumn.ts` + `board-types.ts` + the `add_column` MCP tool in `routes.ts`. `AddColumnInput` gained `count?: number` (defaults to 1, unchanged behavior); `count` columns are inserted contiguously in one DB update + one chapter `node:changed` event, starting at `index` (or appended). `AddColumnResult` gained an optional `columnIds: string[]` (every created column id, left to right) — present only when `count > 1`, so the `count === 1`/omitted result shape (`columnId`/`index`/`totalColumns`) is unchanged for existing callers (`createSlice` included). Rejects `count < 1` or non-integer counts, and rejects combining an explicit `columnId` with `count > 1` (a single id can't name several new columns). Covered by 5 new tests in `AddColumn.test.ts` (append batch, positional batch with existing columns shifted right, unchanged single-column shape, invalid count, columnId+count conflict); full backend `tsc --noEmit` and the 164-test supabase-extensions suite pass.
+
+`beforeNodeId`/`afterNodeId` relative insertion is **not implemented** — only the `count` half of this item is done.
+
 ### 9. `get_nodes` / `get_node`: `nodeIds` filter *and* `chapterId` scope — nearly every call in this round was chapter-scoped anyway
 **Problem**: `get_nodes` filters by `type`/`name` only, across the *entire board*. On a multi-chapter board this pulls every chapter's events/commands/etc. together, when in practice a modeling session works within one chapter at a time — every single tool call in this round (~280 of them) targeted the one "Catalogue Management" chapter. A board-wide, unscoped fetch is the rare case, not the common one, but it's the only option offered today. There's also no way to fetch a known, scattered set of specific node IDs in one call — only a full `type` fetch or one node at a time.
 **Evidence**: This session never had a second chapter to contend with, so the cost of board-wide-by-default wasn't visible here — but it's the direct mechanism behind #3's failure mode on any board with more than one chapter's worth of history, and the other session's evidence suggests multi-chapter boards are common in practice.
 **Proposed shape**: `get_nodes({ boardId, chapterId, type?, name?, nodeIds? })` — add `chapterId` as a first-class scope alongside the existing filters (should combine with `type`, not replace it), plus `nodeIds: [...]` for fetching a known, scattered subset in one call (the natural complement to every batch-creation change above — after `set_connections`/`auto_connect_nodes` returns, re-verifying exactly the touched nodes needs this, not a full-type refetch).
 **Impact**: Makes the common case (everything in *this* chapter) the cheap, default-shaped call instead of an unscoped board-wide one; removes over-fetching whenever only a specific known subset needs re-checking. Directly reduces the blast radius of #3 on any multi-chapter board.
+
+**Implemented as**: exactly the proposed shape, in `eventmodelers-plattform/backend/src/slices/mcp/routes.ts` + `SupabaseBoardAdapter.getNodes`/`BoardAdapter` interface. `nodeIds` on the tool maps straight onto the adapter's pre-existing `ids` parameter, which the tool schema had never exposed. `chapterId` is new plumbing: `BoardAdapter.getNodes` gained a fourth `chapterId?` argument that filters by `node.parentId` (dialect-branched — `json_extract(node, '$.parentId')` on sqlite, `node->>'parentId'` on postgres — matching the existing pattern in `DeleteColumn.ts`/`DeleteNodeCascade.ts`). Both filters combine with `type` rather than replacing it, and omitting `chapterId` reproduces the old board-wide behavior exactly (covered by a characterization test). New dual-dialect test suite: `SupabaseBoardAdapter.getNodes.test.ts` (+ `.postgres.test.ts`/`.sqlite.test.ts` runners), 3 tests × 2 dialects, all passing; full backend `tsc --noEmit` and existing 150-test supabase-extensions suite also verified clean after the change.
 
 ### 10. Chapter fetch: compact projections (`projection: "cells" | "edges" | "line"`)
 **Problem**: `get_node` on a CHAPTER returns the entire `timelineData` — every row, every column, every cell's node payload — even when only the row/column ID map or one cell's occupancy is needed.
@@ -134,18 +157,25 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 **Proposed shape**: `projection: "cells"` → `{ rows, columns, cells }` only, no per-node `meta`; `projection: "edges"` → inbound/outbound connections for one node; `projection: "line"` → one compact summary row per node across `get_nodes`.
 **Impact**: Shrinks the two largest reads of this session and every future one as boards grow.
 
+**Implemented as**: exactly the proposed three variants, all **opt-in** — the default (unfiltered) response of `get_node`/`get_nodes` is completely unchanged when `projection` is omitted, unlike item #3's HTML compaction (rejected as a default) or its size-guard (rejected outright). `get_node` gained `projection: "cells" | "edges"`: `"cells"` requires the node be type `CHAPTER` (errors otherwise) and returns just `{rows, columns, cells}` via the existing `extractTimelineData` helper — no new adapter code; `"edges"` works on any node and calls the adapter's pre-existing `getEdges(boardId, [nodeId])` instead of `findNodeById`. `get_nodes` gained `projection: "line"`, mapping each matched node to `{id, type, title}`. All three are thin routing-layer additions in `routes.ts`, reusing already-tested adapter functions (`getEdges`, `extractTimelineData`) — no adapter or database changes. No new tests at the routes.ts layer (consistent with items #5-7 — that layer isn't unit-tested anywhere in this codebase); full backend `tsc --noEmit` and the 164-test supabase-extensions suite pass.
+
 ### 11. `create_chapter`: `columns` / `eventTitles` params
 **Problem**: Always creates exactly 3 columns regardless of known need.
 **Evidence**: This session's first chapter needed 13 columns immediately, forcing a follow-up append burst (source of the Step 1 miscounting incident in #8). The other session saw the same pattern at larger scale (9× `create_chapter` + 17× `add_column`).
 **Proposed shape**: `create_chapter({ ..., columns: N })`, or `create_chapter({ ..., eventTitles: [...] })` where `len(eventTitles)` sets the column count.
 **Impact**: Removes the append-burst pattern at its most common trigger point — starting a new chapter with a known event count.
 
+**Implemented as**: `columns: N` only — `eventTitles` was deliberately dropped mid-implementation (scope call, not an oversight): accepting titles that only set a count but place nothing would be a confusing API, and actually placing EVENT nodes from `create_chapter` would blur it into `place_element`'s job. In `eventmodelers-plattform/backend/src/slices/extensions/supabase/chapters/CreateChapter.ts` + `board-types.ts` + the `create_chapter` MCP tool: `createChapter` gained a `shape?: {columns?: number}` parameter (defaults to 3, unchanged), and `CreateChapterResult` gained an always-present `columnIds: string[]` (every created column's id, left to right) — a small added bonus, since callers previously had to re-fetch the chapter just to learn its column ids. Rejects a non-positive-integer `columns`. Covered by 3 new tests in `CreateChapter.test.ts`; full backend `tsc --noEmit` and the 167-test supabase-extensions suite pass.
+
 ### 12. `place_element`: auto-extend + compact response
 **Problem**: Placing at an out-of-range `columnIndex` fails outright rather than extending to fit.
 **Evidence**: Not hit directly this session (cells were always resolved manually via chapter fetch + math first), but the reported failure (`Cell "D3" does not correspond to a valid row and column` → corrective `add_column` + retry) is a predictable consequence of the same index-bookkeeping burden as #8/#10, so the fix generalizes.
 **Proposed shape**: auto-extend columns to reach an out-of-range index before placing; `compact: boolean` → `{nodeId, cellName, columnIndex}` (+ `connectedCount`).
 
+**Implemented as**: exactly the proposed shape, in the `place_element` MCP tool (`eventmodelers-plattform/backend/src/slices/mcp/routes.ts`). When an explicit `columnIndex` is at or past the timeline's current column count, `place_element` now calls `repo.addColumn` with `count` set to exactly the shortfall (reusing item #8's batch param) before placing — no separate corrective `add_column` + retry needed. `compact: boolean` (default `false`, unchanged response otherwise) shrinks the response to `{nodeId, cellName, columnIndex}`, adding `connectedCount` only when auto-connect actually wired at least one edge. No adapter changes; typechecked clean and the existing 167-test supabase-extensions suite still passes (no new tests — this tool's logic lives entirely in the routes.ts layer, which this codebase doesn't unit-test anywhere, consistent with items #5-7/#10/#11).
+
 ### 13. New composite tool: `scaffold_chapter`
+**Status: Discarded** — not implemented this round; the notes below are the original proposal, kept for reference if picked up later.
 **Problem**: No single call creates a chapter and places a full set of structural elements at once.
 **Proposed shape**: creates/reuses a chapter (`existingChapterId`) and places every element from an `elements[]` list (EVENT/COMMAND/READMODEL/AUTOMATION/SCREEN placement + connections). **Scope deliberately excludes SCENARIO/storyline authoring** — those need per-element judgment (GWT vs. storyline, which scenario types apply) that doesn't reduce to a data list the way structural placement does.
 **Impact**: Collapses much of Steps 1 and 4's mechanical placement+wiring into one call.
@@ -159,8 +189,18 @@ Ordered by relevance and impact, highest first. Work through in order; after eac
 ### 15. `get_spec_info`: type filter
 **Proposed shape**: `elementTypes: ["COMMAND","READMODEL"]` to avoid pulling the full element list when only one or two types are needed (e.g. Step 10 only needs COMMAND/READMODEL/AUTOMATION). Low urgency at this board's ~60-element size, but the list is unbounded as boards grow.
 
+**Implemented as**: exactly the proposed shape, in `eventmodelers-plattform/backend/src/slices/extensions/supabase/specs/GetSpecInfo.ts` + `BoardAdapter.ts` + the `get_spec_info` MCP tool in `routes.ts`. `elementTypes` (any subset of `EVENT`/`COMMAND`/`READMODEL`) is pushed into the SQL query itself (`whereIn('type', ...)`), not just filtered client-side after a full fetch, so a narrowed request is genuinely cheaper, not just smaller in transit. The existing `VALID_STEP_TYPES` filter still applies afterward as a safety net. Along the way, fixed a real (pre-existing, unrelated to this item) bug in `eventmodeling-slicing-event-models`'s Step 2: it instructed filtering `get_spec_info`'s result to `COMMAND`/`READMODEL`/`AUTOMATION`, but `get_spec_info` can never return `AUTOMATION` (not in `VALID_STEP_TYPES`) — that skill now calls `get_spec_info` with `elementTypes: ["COMMAND", "READMODEL"]` and separately enumerates `AUTOMATION` via `get_nodes`. Covered by 3 new dual-dialect tests in `GetSpecInfo.test.ts`; full backend `tsc --noEmit` and the 178-test supabase-extensions suite pass.
+
 ### 16. Batch `move_node_in_timeline` → `move_nodes`
 **Evidence**: The Step 4→5 rework needed 7 individual node moves. `move_nodes({ moves: [{movedNodeId, toCellId}, ...] })` would apply equally there and to any future large-scale re-layout.
 
+**Implemented as**: exactly the proposed shape, as a new `move_nodes` MCP tool in `routes.ts` (same non-atomic, per-item, order-preserving pattern as items #5-7 — loops over `moves` calling the existing `repo.moveNode` per entry, one failing move doesn't stop the rest). **Also added the REST equivalent**, at the user's request: `POST .../timelines/:timelineId/nodes/move` now accepts either the existing single-move body (`{movedNodeId, toCellId}`, unchanged) or a batch body (`{moves: [...]}`) returning `{results: [...]}` — this is the first item in this list where the batch form was extended to REST, not just MCP (items #5-7/#14 are MCP-only). No adapter changes; no new tests (routes.ts/REST-route layer isn't unit-tested anywhere in this codebase, consistent with prior items). Typecheck clean on both `eventmodelers-plattform` and `miro-eventmodeling`; the 178-test supabase-extensions suite passes.
+
 ### 17. Batch `delete_node` / `delete_column`
 Minor — only ~6 individual deletions this round (4 wrong nodes from the Step 5 correction, 2 stray columns from the #8 miscounting incidents). Worth bundling into the same batch-API pass as the above rather than standalone priority.
+
+**Implemented as**: new `delete_nodes`/`delete_columns` MCP tools in `routes.ts`, same non-atomic per-item pattern as items #5-7/#16 — `delete_nodes` loops `persistNodeEvents` per nodeId, `delete_columns` loops `repo.deleteColumn` per columnId, applied strictly in order (so `deleteColumn`'s "cannot delete the last column" check sees the timeline's current state after each prior deletion, not a stale count taken before the batch started) with per-entry error isolation. MCP-only — no REST batch form this time (unlike #16, not explicitly requested). No adapter changes; no new tests (routes.ts layer isn't unit-tested anywhere in this codebase). Typecheck clean on both repos; the 178-test supabase-extensions suite passes.
+
+---
+
+**All 17 items now resolved** (done, partially done, or explicitly discarded — see status column above) as of 2026-08-30.

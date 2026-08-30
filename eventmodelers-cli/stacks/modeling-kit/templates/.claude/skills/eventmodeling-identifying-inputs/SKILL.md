@@ -472,14 +472,15 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
 1. **SCREEN → COMMAND** — find the SCREEN node in the actor row of the same column.
 
-   **Prefer MCP** — there is no `cellId` filter on `get_nodes` (see note below), so read the chapter's cell map instead:
+   **Prefer MCP** — there is no `cellId` filter on `get_nodes` (see note below), so read the chapter's cell map instead — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
    ```
-   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    ```
-   Read `meta.timelineData.cells["<actorRowId>-<columnId>"]` for the occupying node id (a cell id absent from that sparse array is empty — no SCREEN placed yet). Then connect with the type-checked edge tool, which auto-corrects direction and skips duplicates:
+   Read `cells["<actorRowId>-<columnId>"]` for the occupying node id (a cell id absent from that sparse array is empty — no SCREEN placed yet). Then connect with the type-checked edge tool, which auto-corrects direction and skips duplicates:
    ```
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }
    ```
+   If wiring more than one COMMAND in the same pass, prefer batching every SCREEN→COMMAND and COMMAND→EVENT pair across all of them into one `set_connections` call (see step 2 below) instead of one `set_connection` per pair.
 
    **Fallback (no MCP):**
    ```bash
@@ -498,9 +499,9 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
    **Prefer MCP** — same cell-map lookup, then connect:
    ```
-   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+   mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    ```
-   Read `meta.timelineData.cells["<swimlaneRowId>-<columnId>"]` for the occupying node id, then:
+   Read `cells["<swimlaneRowId>-<columnId>"]` for the occupying node id, then:
    ```
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }
    ```
@@ -518,7 +519,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
      -d '{"source":"<commandNodeId>","target":"<eventNodeId>"}'
    ```
 
-   *Note:* `get_nodes` has no `cellId` filter (only `type`) — the `get_node`-on-CHAPTER + `meta.timelineData.cells` lookup above is the only way to check single-cell occupancy via MCP.
+   *Note:* `get_nodes` has no `cellId` filter (only `type`) — the `get_node`-on-CHAPTER (`projection: "cells"`) + `cells` lookup above is the only way to check single-cell occupancy via MCP.
 
 Skip a connection silently if the target cell is empty (the element may be placed in a later step). Log each created arrow: `→ connected SCREEN→COMMAND "PlaceOrder"` or `→ connected COMMAND→EVENT "PlaceOrder"→"OrderPlaced"`.
 

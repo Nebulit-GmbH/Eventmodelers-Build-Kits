@@ -74,11 +74,11 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 - If it looks like a name, find the CHAPTER node whose `meta.title` matches (case-insensitive) and use its `id` as `CHAPTER_ID`.
 - If no match is found, tell the user and stop.
 
-Fetch the chapter node to read its grid structure.
+Fetch the chapter node to read its grid structure — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node.
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -86,7 +86,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
-From `meta.timelineData`:
+From the result (`{rows, columns, cells}` via MCP's `projection: "cells"`, or `meta.timelineData` via the REST fallback):
 - `rows` — find the row with `type === "swimlane"` and save its `id` as `swimlaneRowId`
 - `columns` — ordered list of columns, each with an `id`
 - `cells` — each cell has `colId`, `rowId`, and optionally `nodeId`
@@ -184,11 +184,11 @@ Compare against the current `events` state:
 
 ### 3c — Inspect the timeline and maintain continuity
 
-Before placing any new events, fetch the chapter node to get the current grid state.
+Before placing any new events, fetch the chapter node to get the current grid state — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node.
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -196,7 +196,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
-From `meta.timelineData`:
+From the result (`rows`/`columns`/`cells` directly via MCP, or under `meta.timelineData` via the REST fallback):
 - Read `rows` to find and save `swimlaneRowId` (the row whose `type === "swimlane"`).
 - Identify **empty columns**: columns where no cell has a `nodeId` set.
 
@@ -406,7 +406,7 @@ mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHA
 curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns/<columnId>"
 ```
 
-If `columnId` is not in local state, fetch the chapter node (`mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }`, or the curl fallback above), scan `meta.timelineData.cells` for the cell where `nodeId === eventNodeId`, and use that cell's `colId`.
+If `columnId` is not in local state, fetch the chapter node (`mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }`, or the curl fallback above), scan `cells` for the cell where `nodeId === eventNodeId`, and use that cell's `colId`.
 
 Remove from local state and re-number remaining indexes.
 

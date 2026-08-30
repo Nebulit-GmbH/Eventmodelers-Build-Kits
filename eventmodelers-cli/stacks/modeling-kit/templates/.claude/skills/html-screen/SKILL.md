@@ -156,7 +156,8 @@ mcp__eventmodelers__create_screen {
   "nodeId": "<generated-uuid>",
   "chapterId": "<CHAPTER_ID>",
   "cellName": "<CELL_NAME>",
-  "pages": ["<div>...</div>"]
+  "pages": ["<div>...</div>"],
+  "fields": [ /* optional — set meta.fields here too (see Step 5) instead of a separate call */ ]
 }
 ```
 
@@ -177,6 +178,8 @@ Expect `204 No Content` on success from either curl call.
 ## Step 5 — Define field data lineage (mandatory)
 
 Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even if the mockup itself looks complete.
+
+**For a brand-new screen** (Step 4's `create_screen` call), pass `fields` directly on that call instead of a separate `node:changed` here — one round trip instead of two. This step's separate `submit_node_events` call is still how you set/update fields on an **existing** screen (`render_screen` doesn't take `fields` either).
 
 | Field type | `mapping` | Example |
 |---|---|---|

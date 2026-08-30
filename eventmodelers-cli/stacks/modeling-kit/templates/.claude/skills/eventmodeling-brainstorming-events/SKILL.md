@@ -163,9 +163,9 @@ For each group, create a chapter on the board **before placing any events**. Reu
 
 **Prefer MCP — create a chapter:**
 ```
-mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 1200 }
+mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 1200, "columns": <numberOfEventsInGroup> }
 ```
-(`x`/`y` are optional — see the vertical-stacking note below. Response includes the new `timelineId`.)
+(`x`/`y` are optional — see the vertical-stacking note below. `columns` is optional too — the group's event count is already known at this point, so pass it here to create the chapter with exactly the columns this group needs, instead of the default 3 plus a follow-up `add_column` batch. Response includes the new `timelineId` and `columnIds` — one id per column, left to right, ready to use directly in Step A below.)
 
 **Fallback (no MCP) — create a chapter:**
 ```bash
@@ -265,16 +265,16 @@ Brainstorming events has two modes. Choose based on whether the chapter (timelin
 
 When a chapter is available, place each event directly into it. **Include `cellId` in `node:created`** — without it the node has no cell reference and will appear stranded at position 0,0 on the canvas.
 
-For each event:
-
-**Step A — Create a column** (append at end of the chapter):
+**Step A — Ensure enough columns exist, in a single call** (append at end of the chapter). Skip this step entirely if the chapter was just created above with `columns` already set to this group's event count. Otherwise (an existing/reused chapter, or one created without `columns`) — the number of events to place is already known from the brainstormed list, so pass it as `count` instead of calling `add_column` once per event:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "count": <numberOfEvents> }
+# → { "columnId": "<firstColUuid>", "index": <n>, "totalColumns": <n>, "columnIds": ["<col1>", "<col2>", ...] }
 ```
+Use `columnIds[i]` for the i-th event in Step C below. (Omit `count`, or pass `1`, for a single event — `columnIds` is only present when `count > 1`.)
 
-**Fallback (no MCP):**
+**Fallback (no MCP)** — no batch form exists over REST; one call per event:
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/columns" \
   -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: brainstorming-events" \
@@ -284,9 +284,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 
 **Step B — Fetch the chapter to find the swimlane row ID** (only needed once per chapter):
 
-**Prefer MCP:**
+**Prefer MCP** — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -296,7 +296,7 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 # → node.meta.timelineData.rows — find the row where type === "swimlane"
 ```
 
-**Step C — Compute:** `cellId = swimlaneRow.id + "-" + columnId`
+**Step C — Compute, for the i-th event:** `cellId = swimlaneRow.id + "-" + columnIds[i]` (or the single `columnId` if only one column was created)
 
 **Step D — Create the event with `cellId`.**
 

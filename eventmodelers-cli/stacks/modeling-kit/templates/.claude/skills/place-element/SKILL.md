@@ -50,7 +50,7 @@ mcp__eventmodelers__place_element {
 }
 ```
 
-This tool finds or creates an empty cell in the correct lane and places the node in one call — it collapses the "resolve timeline → fetch columns → determine lane → check occupancy → create node" sequence (Steps 2–3, 4, 6, 7b below) into a single round trip. If `timelineId` is unknown, resolve it first via Step 2's MCP call. Go straight to Step 8 once it returns.
+This tool finds or creates an empty cell in the correct lane and places the node in one call — it collapses the "resolve timeline → fetch columns → determine lane → check occupancy → create node" sequence (Steps 2–3, 4, 6, 7b below) into a single round trip. A `columnIndex` past the timeline's current column count is handled automatically (columns are added to reach it) — no need to pre-check the column count or catch an out-of-range error yourself. If `timelineId` is unknown, resolve it first via Step 2's MCP call. Pass `compact: true` for a smaller `{nodeId, cellName, columnIndex}` response (plus `connectedCount` if auto-connect wired an edge) when you don't need the full `lane`/`elementType`/`title`/`autoConnected` detail back. Go straight to Step 8 once it returns.
 
 **This does not cover**: `SCREEN`/`AUTOMATION`/`SCENARIO` (see their dedicated steps below), the `"after <title>"` position form, or an explicit `cellName` fast path (Step 1) — `place_element` has no way to express either. For those cases, or when MCP isn't connected, fall through to the manual steps below.
 
@@ -80,12 +80,12 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 
 ## Step 3 — Fetch existing columns and resolve position
 
-Always fetch the chapter node first to get the current timeline state.
+Always fetch the chapter node first to get the current timeline state — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node.
 
 **Prefer MCP:**
 
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TIMELINE_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TIMELINE_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -94,7 +94,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TIMELINE_ID>
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TIMELINE_ID"
 ```
 
-From `meta.timelineData`, read `columns` (ordered array of column objects with `id` and `index`) and `cells`.
+Read `columns` (ordered array of column objects with `id` and `index`) and `cells` (from the result directly via MCP, or from `meta.timelineData` via the REST fallback).
 
 Then resolve `position`:
 
@@ -243,7 +243,7 @@ Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
 **Check if the cell is already occupied.**
 
-**No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `meta.timelineData.cells` you already fetched in Step 3 via `get_node` on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
+**No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `cells` array you already fetched in Step 3 via `get_node` (`projection: "cells"`) on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
 
 **Fallback (no MCP):**
 
@@ -261,15 +261,15 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
 | Any | Same element type | Stop and tell the user — true conflict, no safe default. |
 | Any | Different type but not a known pairing | Stop and tell the user. |
 
-**Insert immediately after** means: create the new column with `index = currentColumnIndex + 1`, not by appending to the end. This keeps the read model visually adjacent to the event that drives it.
+**Insert immediately after** means: create the new column right after the current one, not by appending to the end. This keeps the read model visually adjacent to the event that drives it.
 
-**Prefer MCP:**
+**Prefer MCP** — pass `afterNodeId` set to the occupying node's id (found in Step 6's cell-occupancy check) and let the tool resolve the index itself, instead of computing `currentColumnIndex + 1` by hand:
 
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "index": <currentColumnIndex + 1> }
+mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "afterNodeId": "<occupyingNodeId>" }
 ```
 
-**Fallback (no MCP):**
+**Fallback (no MCP)** — no relative-insertion equivalent over REST; compute the index by hand:
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_ID/columns" \

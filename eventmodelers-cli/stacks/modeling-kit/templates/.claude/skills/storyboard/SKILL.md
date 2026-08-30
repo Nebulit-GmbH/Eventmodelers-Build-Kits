@@ -131,10 +131,10 @@ Extract `id` from the response → `CHAPTER_ID`.
 
 ### Step 4 — Fetch chapter state and build empty-column queue
 
-**Prefer MCP:**
+**Prefer MCP** — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -143,7 +143,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
-Parse `meta.timelineData` from the response:
+Parse the result (`{rows, columns, cells}` directly via MCP, or `meta.timelineData` via the REST fallback):
 - `rows` — list of row objects, each with `id` and `type`
 - `columns` — list of column objects, each with `id`
 - `cells` — list of cell objects, each with `rowId`, `colId`, and optionally `nodeId` (used only to check occupancy)
@@ -159,6 +159,8 @@ Build an **empty-column queue**: for each column (in order), compute `actorCellI
 ## SCREEN LOOP — repeat Steps 5a–5c once per screen (N iterations total)
 
 Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered).
+
+**Before starting the loop**, if the empty-column queue (Step 4) has fewer entries than N screens, create the shortfall in one call — `mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "count": <N - queue.length> }` returns `columnIds: [...]` — and push each new column onto the queue, rather than calling `add_column` once per screen inside Step 5a whenever the queue runs dry.
 
 **You have ONE chapter (`CHAPTER_ID`). All screens go into this same chapter. Do NOT call the chapter creation endpoint again inside this loop.**
 

@@ -272,11 +272,11 @@ Save `CHAPTER_ID` against each flow.
 
 ## Step 6 — Fetch chapter grid and build column queue
 
-For each chapter, fetch its current grid state.
+For each chapter, fetch its current grid state — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node.
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -285,7 +285,7 @@ curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
-From `meta.timelineData`:
+From the result (`rows`/`columns`/`cells` directly via MCP, or `meta.timelineData` via the REST fallback):
 - `rows` — find the row with `type === "actor"` → save its `id` as `actorRowId` and its 0-based position in `rows` as `actorRowIndex`
 - `columns` — ordered list; build an empty-column queue, remembering each entry's 0-based position in `columns` as its `columnIndex`
 

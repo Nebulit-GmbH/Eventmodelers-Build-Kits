@@ -73,26 +73,26 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 
 ## Step 2: Enumerate Commands, Read Models, and Automations
 
-Use `spec-info` (or existing board knowledge) to list every COMMAND, READMODEL, and AUTOMATION node across the resolved timeline:
+Use `spec-info` (or existing board knowledge) to list every COMMAND and READMODEL node across the resolved timeline — `spec-info` only ever returns EVENT/COMMAND/READMODEL, never AUTOMATION, so pass `elementTypes` to skip the EVENT rows you don't need here:
 
 Prefer MCP:
 ```
-mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>" }
+mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "elementTypes": ["COMMAND", "READMODEL"] }
 ```
 
 **Fallback (no MCP):**
 ```bash
 curl "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" -H "x-token: $TOKEN"
-# → { timelineId, elements: [{ id, title, type }] }
+# → { timelineId, elements: [{ id, title, type }] } — filter client-side to type in COMMAND, READMODEL (no elementTypes param over REST)
 ```
 
-Filter to `type` in `COMMAND`, `READMODEL`, `AUTOMATION`.
+Separately, enumerate AUTOMATION nodes via `get_nodes { "boardId": "<BOARD_ID>", "type": "AUTOMATION", "chapterId": "<TL>" }` — `spec-info` cannot return them.
 
-`spec-info` doesn't include the column each element sits in, so fetch the chapter node to resolve it:
+`spec-info` doesn't include the column each element sits in, so fetch the chapter node to resolve it — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 
 Prefer MCP:
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TL>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TL>", "projection": "cells" }
 ```
 
 **Fallback (no MCP):**
@@ -121,12 +121,16 @@ A column already has a slice if its element's title matches an existing slice's 
 
 ## Step 3: Define slices
 
-For each column from Step 2 that doesn't already have a matching slice, mark that **existing** column as a slice via the **slice-definitions** endpoint:
+For every column from Step 2 that doesn't already have a matching slice, mark each **existing** column as a slice via the **slice-definitions** endpoint — batch all of them into one call rather than one call per column:
 
 Prefer MCP:
 ```
-mcp__eventmodelers__create_slice_definition { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "columnId": "<colId>", "title": "PlaceOrder" }
+mcp__eventmodelers__create_slice_definitions { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "slices": [
+  { "columnId": "<colId1>", "title": "PlaceOrder" },
+  { "columnId": "<colId2>", "title": "OrderStatusView" }
+] }
 ```
+(`create_slice_definition`, singular, still exists for a one-off single-column case, but prefer the batch form here since Step 3 is defining every remaining column's slice in one pass.)
 
 **Fallback (no MCP):**
 ```bash
@@ -135,12 +139,13 @@ curl -X POST $BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/slice-defi
   -d '{"columnId":"<colId>","title":"PlaceOrder"}'
 # → 200 { nodeId, timelineId, columnId, title }
 ```
+(one call per column — the REST fallback has no batch form)
 
 - COMMAND column → title = command name (state-change slice)
 - READMODEL column → title = read model name (state-view slice)
 - AUTOMATION column → title = automation name, or the command it issues (automation slice)
 
-Use **`create_slice_definition`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definition`/`slice-definitions` only adds a `SLICE_BORDER` node to the column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
+Use **`create_slice_definitions`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definitions`/`slice-definitions` only adds a `SLICE_BORDER` node to each column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
 
 **If Step 2 finds nothing to slice** (every COMMAND/READMODEL/AUTOMATION on the timeline already has a matching `SLICE_BORDER`), this skill's job is done — there is no existing element left to make explicit. Do not invent new model content here; that is out of scope for a skill whose whole design assumes the model is already complete. Invoke the `add-next-slice` skill instead — it owns deciding on and creating a genuinely new slice from scratch.
 
