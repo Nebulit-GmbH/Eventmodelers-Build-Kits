@@ -47,6 +47,8 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
+Also run `validate_model` (`{boardId, chapterId}`) once per chapter up front — several checklist items (Command With Multiple Issuers in Phase 1, backward-arrow / event-flow in Phase 6, read-model-source distinctions in Phase 3) have a purely structural half the tool answers directly, so start each of those from its `findings` and spend the manual effort on the semantic judgement the tool can't make.
+
 Use the board nodes as the model input. After the checklist, use `handle-comment` to post `TASK` comments on nodes that fail checks (that skill covers the MCP `add_comment`/curl choice for comment-posting itself).
 
 ## Validation Phases (Domain-Agnostic)

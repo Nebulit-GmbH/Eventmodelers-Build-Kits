@@ -85,6 +85,8 @@ mcp__eventmodelers__submit_node_events {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Placement — todo-list READMODEL, one column before its automation".
 
+**Place every node in a translation chain with `autoConnect: false`** (`place_element` / `create_screen` / `submit_node_events` all take the flag). A chain's columns are inserted into the middle of an existing timeline, so the default nearest-left auto-connect will wire the new todo-list READMODEL or internal EVENT to whatever unrelated event sits in the column before it — the recurring "spurious auto-connect edge near an automation chain" cleanup. Suppress it and build the chain's edges yourself in the `set_connections` batch below, then confirm with `validate_model`.
+
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first.
 
 For a **translation-chain automation**, place its three columns left to right in the same pass: `[external EVENT]`, `[todo-list READMODEL]`, `[AUTOMATION + COMMAND + internal EVENT]` — the external EVENT normally already exists (placed in Step 1/brainstorming, second swimlane); if it doesn't, place it there first.
@@ -105,11 +107,11 @@ For a **translation-chain automation**, place its three columns left to right in
 
 Skip a connection silently if the target cell is empty (the element may not exist yet). Log each created arrow, e.g. `→ connected READMODEL→AUTOMATION "NotificationsToSend"→"Send Welcome Notification"`.
 
-If this step is designing more than one automation's chain in the same pass, batch every connection from every automation into one `set_connections` call instead of one `set_connection` per edge — `set_connections` still applies its entries **in order**, so keep each automation's own three-edge sequence intact (READMODEL→AUTOMATION before its closing EVENT→READMODEL) within the combined array; different automations' triples can be interleaved or concatenated freely since they don't depend on each other.
+If this step is designing more than one automation's chain in the same pass, batch every connection from every automation into one `set_connections` call (with `compact: true`) instead of one `set_connection` per edge — `set_connections` still applies its entries **in order**, so keep each automation's own three-edge sequence intact (READMODEL→AUTOMATION before its closing EVENT→READMODEL) within the combined array; different automations' triples can be interleaved or concatenated freely since they don't depend on each other.
 
 ## Verification (run before moving to Step 5)
 
-Re-fetch every AUTOMATION on the board (`get_nodes`, `type: "AUTOMATION"`) and check each one:
+Run `validate_model` (`{boardId, chapterId}`) first — with the chain placed `autoConnect: false`, its `backward-arrows` finding confirms no stray nearest-left edge was created and every real edge points the right way, and `command-issuers` confirms each chain's COMMAND is issued only by its own AUTOMATION. Then re-fetch every AUTOMATION on the board (`get_nodes`, `type: "AUTOMATION"`) and check each one:
 
 1. Does it have an incoming `READMODEL → AUTOMATION` connection to a todo-list read model? An AUTOMATION is **never** exempt — if not, design and wire it now.
 2. Is its todo list opened by an internal event only, **unless it is itself a translation automation** (which is the one case a second-swimlane event may open a todo list)? If a worker automation's todo list is opened directly by another system's event, that automation is missing its translation chain — split it into translation + worker automations per the rule above.

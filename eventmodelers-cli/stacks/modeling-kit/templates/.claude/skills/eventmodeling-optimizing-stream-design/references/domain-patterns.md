@@ -1,10 +1,11 @@
-# Domain-Specific Stream Size Patterns
+# Domain-Specific Stream Boundary Patterns
 
 ## Contents
 - E-commerce patterns
 - Banking patterns
 - SaaS patterns
-- Implementation checklist
+
+Each entry shows a well-scoped boundary for that domain: what identity it's anchored on, and why that identity — not a category or a time window — is the right one.
 
 ---
 
@@ -12,32 +13,31 @@
 
 **Order Aggregate**:
 ```
-Events: 5-20
+Identity: orderId
 Lifetime: 1-3 years
-Frequency: 1 event per few days
-Stream Length: 8-60 events
-Snapshotting: NOT NEEDED 
-Reason: Short entity lifetime, low frequency, few state changes
+Boundary: Everything that happens to this one order
+Reason for this boundary: the order has a clear owner (one customer,
+one checkout) and a natural end (delivered, cancelled, refunded)
 ```
 
 **Shopping Cart Aggregate**:
 ```
-Events: 5-50+ (add/remove items many times)
-Lifetime: 30 minutes to 2 years (varies widely)
-Frequency: 1-10 events per hour (if active)
-Stream Length: 10-500+ events (depends on user behavior)
-Snapshotting: RARELY (only for frequent shoppers) 
-Strategy: Split abandoned vs. active carts if too long
+Identity: cartId (or customerId, if a customer has exactly one active cart)
+Lifetime: 30 minutes to 2 years (varies widely by product)
+Boundary: Items added/removed for this one cart
+Watch for: an "abandoned" cart and an "active" cart are different
+lifecycles — split into separate streams if their behavior diverges
+(e.g. abandoned-cart recovery vs. active checkout flow)
 ```
 
 **User Account Aggregate**:
 ```
-Events: 2-10 per year (profile updates, settings changes)
+Identity: userId
 Lifetime: 5-10+ years
-Frequency: Very low (events measured in months apart)
-Stream Length: 10-100 events
-Snapshotting: NOT NEEDED 
-Reason: Infrequent events, long lifetime, many separate streams
+Boundary: Profile and account-level state for this one user
+Watch for: account state, preferences, and session history are three
+different concerns with different change frequency — split them
+(UserProfile / UserPreferences / UserSessions) rather than bundling
 ```
 
 ---
@@ -46,34 +46,31 @@ Reason: Infrequent events, long lifetime, many separate streams
 
 **Account Aggregate**:
 ```
-Events: 50-500+ per year (deposits, withdrawals, fees)
+Identity: accountId
 Lifetime: 10-50+ years
-Frequency: 0.1-2 events per day
-Stream Length: 500-25,000+ events
-Snapshotting: MAYBE (at 5000+) 
-Strategy: Consider splitting by time period or account type
-Alternative: Snapshotting might be justified for regulatory access needs
+Boundary: Deposits, withdrawals, and fees for this one account
+Watch for: an account spanning decades is still one identity — the
+boundary is correct even though the stream is long-lived; don't
+split it just because it accumulates many events over a long life
 ```
 
 **Transaction Aggregate**:
 ```
-Events: 1-5 (Requested → Processing → Settled)
+Identity: transactionId
 Lifetime: 1-2 months (then archived)
-Frequency: Single transaction, short lifecycle
-Stream Length: 2-5 events
-Snapshotting: NEVER NEEDED 
-Reason: Tiny, immutable after completion
+Boundary: Requested → Processing → Settled, for this one transaction
+Reason for this boundary: a transaction is a short, self-contained
+lifecycle — treat it as its own stream, not folded into the account
 ```
 
 **Loan Aggregate**:
 ```
-Events: 100-500+ (payments, rate changes, modifications)
+Identity: loanId
 Lifetime: 5-30 years
-Frequency: 1-5 events per month
-Stream Length: 1000-10,000+ events
-Snapshotting: CONSIDER AT 5000 
-Strategy: Split by loan product, payment period, or status
-Example: ActiveLoan vs. CompletedLoan aggregates
+Boundary: Payments, rate changes, and modifications for this one loan
+Watch for: "active loan" and "completed loan" are different
+lifecycles with different access patterns — consider splitting into
+ActiveLoan vs. CompletedLoan if their consumers genuinely differ
 ```
 
 ---
@@ -82,69 +79,31 @@ Example: ActiveLoan vs. CompletedLoan aggregates
 
 **Subscription Aggregate**:
 ```
-Events: 2-20 (Created, Upgraded, Downgraded, Cancelled)
+Identity: subscriptionId
 Lifetime: 1-5+ years
-Frequency: 1-5 events per year
-Stream Length: 5-100 events
-Snapshotting: NOT NEEDED 
-Reason: Low frequency, well-defined lifecycle
+Boundary: Created, Upgraded, Downgraded, Cancelled — for this one subscription
+Reason for this boundary: a subscription has one clear owner and a
+well-defined lifecycle
 ```
 
 **User Workspace Aggregate**:
 ```
-Events: 10-100+ (members added, roles changed, settings updated)
+Identity: workspaceId
 Lifetime: 2-5+ years
-Frequency: 0.5-5 events per month
-Stream Length: 10-500 events
-Snapshotting: NOT NEEDED 
-Reason: Moderate frequency, small discrete events
+Boundary: Members added, roles changed, settings updated — for this one workspace
+Watch for: workspace-level settings and individual member activity
+are different concerns — keep member activity in its own stream if
+it needs independent access patterns
 ```
 
 **Data Collection Aggregate**:
 ```
-Events: 100-10,000+ (data points added, processed, analyzed)
-Lifetime: 1-5+ years
-Frequency: 1-1000+ events per day (varies wildly)
-Stream Length: 100-50,000+ events
-Snapshotting: PROBABLY 
-Strategy: Split by data type, time period, or processing stage
-Question: Are all these events about the same business entity?
-         → If NO, split the aggregate
-         → If YES, snapshotting might be needed
+Identity: depends on what's actually being tracked as one thing
+Watch for: this is the domain most likely to hide a Pattern 3
+("Collection") anti-pattern — ask explicitly: "are all these data
+points about the same business entity?"
+  → If NO, the boundary is wrong: split by whatever entity each
+    data point actually belongs to.
+  → If YES, the boundary is fine even if the stream accumulates a
+    lot of events — that's a volume question, not a boundary one.
 ```
-
----
-
-## Implementation Checklist
-
-Before implementing snapshotting, answer ALL of these:
-
-```
-Design Questions:
-[ ] Does this aggregate have a single business identity?
-[ ] Can I split this into smaller aggregates?
-[ ] Are there natural lifecycle phases (archived vs. active)?
-[ ] Is event granularity appropriate (not too fine)?
-
-Performance Questions:
-[ ] Have I measured replay latency?
-[ ] Does latency exceed acceptable threshold?
-[ ] Is the problem snaphotting will solve?
-[ ] Or is it a design problem?
-
-Cost-Benefit Questions:
-[ ] How many writes per second?
-[ ] How many reads per second?
-[ ] What's the read latency requirement (SLA)?
-[ ] Is snapshotting complexity worth the benefit?
-
-Operational Questions:
-[ ] How will I version snapshots?
-[ ] How will I test snapshot recovery?
-[ ] How will I monitor snapshot health?
-[ ] Can I implement this given current skills?
-```
-
-**If ANY question suggests redesign is better**: Redesign first, snapshot never.
-
-**If ALL questions support snapshotting**: Proceed with implementation.

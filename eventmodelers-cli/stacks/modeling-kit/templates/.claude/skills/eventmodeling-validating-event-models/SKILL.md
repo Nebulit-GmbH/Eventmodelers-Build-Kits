@@ -44,6 +44,16 @@ Ensures event-sourced models are complete, correct, and follow pure event sourci
 
 When given an event model, perform comprehensive validation:
 
+### 0. Automated structural pass — run `validate_model` first
+
+Before the manual checks below, run the server-side checklist once per chapter:
+
+```
+mcp__eventmodelers__validate_model { "boardId": "$BOARD_ID", "chapterId": "<chapterId>" }
+```
+
+It returns a compact `findings` list (no node dumps) covering: unplaced nodes, backward arrows among the forward-only pairs (with the todo-list `EVENT → READMODEL` exception already applied), COMMANDs with zero or multiple issuers, READMODELs with no inbound EVENT, columns with more than one screen, and COMMAND/READMODEL columns with no SCENARIO. This replaces the per-type `get_nodes` scans and the `get_node` `projection: "edges"` spot-checks those manual checks would otherwise need — start from its `findings`, then use the sections below for the semantic checks it can't make (naming, immutability, field-source traceability, scenario coverage depth). A `verdict` of `PASS` on `validate_model` is necessary but not sufficient — still do the semantic pass.
+
 ### 1. Swimlane Completeness Check
 
 Verify each swimlane has:

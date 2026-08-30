@@ -338,35 +338,7 @@ For each role/actor, document:
 - **Key actions**: What state changes can this role initiate?
 - **Permissions boundary**: What can this role NOT do?
 
-Present as a Role Catalog:
-
-```text
-## Role Catalog
-
-### Human Roles
-
-1. **Customer** - Description: End user who browses, purchases, and tracks orders
-   - Key actions: Create order, confirm order, cancel order, submit review
-   - Cannot: Manage inventory, process refunds, respond to reviews as seller
-
-2. **Seller** - Description: Merchant who lists products and fulfills orders
-   - Key actions: List product, confirm stock, respond to reviews, update pricing
-   - Cannot: Place orders, approve own reviews, process payments
-
-3. **Support Agent** - Description: Internal staff handling escalations and manual overrides
-   - Key actions: Override order status, issue refunds, flag reviews
-   - Cannot: Place orders on behalf of customers (unless impersonating)
-
-### System Actors
-
-1. **Payment Gateway** (external)
-   - Triggers: Payment authorization, payment failure, refund confirmation
-   - Communication: Webhooks
-
-2. **Inventory System** (internal)
-   - Triggers: Reserve inventory, release reservation
-   - Communication: Event-driven
-```
+Present as a Role Catalog: for each human role, its name (in domain language), a one-line description, its key actions, and what it explicitly cannot do; for each system actor, its name, whether it's internal or external, what triggers it, and how it communicates (webhooks, event-driven, API). A full worked example (E-commerce domain) is in `references/examples.md`.
 
 This catalog feeds directly into:
 - **Step 3 (Storyboarding)**: One actor lane per human role (not a swimlane — see Swimlane Rules above)

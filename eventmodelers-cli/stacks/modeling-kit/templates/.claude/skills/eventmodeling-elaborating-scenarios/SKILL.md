@@ -294,52 +294,25 @@ collapsing into one reused schema for every command and read model alike.
 
 For each command and view, write scenarios in Given-When-Then format:
 
+The full worked example set for every category below (command scenarios, state validation, view scenarios, list-type views, error paths, compensation) lives in `references/examples.md` — one compact example per category is shown here.
+
 ### 1. Command Scenarios (Given-When-Then)
 Specify command behavior:
 
 ```
-Feature: Order Creation
-
 Scenario: Create order successfully
 Given a customer with ID "cust-123"
 And products exist with IDs ["prod-1", "prod-2"]
-And customer has valid shipping address
 When the customer creates an order with items:
     | productId | quantity | unitPrice |
     | prod-1    | 2        | 50.00    |
-    | prod-2    | 1        | 30.00    |
 Then the order should be created with status "Draft"
-And the total should be calculated as 130.00
-And an "OrderCreated" event is produced with:
-    | field | value |
-    | orderId | {uuid} |
-    | customerId | cust-123 |
-    | items | [...] |
-    | total | 130.00 |
-    | status | Draft |
+And an "OrderCreated" event is produced with orderId, customerId, items, total, status
 
 Scenario: Reject order with invalid customer
-Given a customer ID "invalid-cust"
-And no customer exists with that ID
+Given a customer ID "invalid-cust" that doesn't exist
 When the customer tries to create an order
-Then the command should be rejected
-And the rejection reason is "Customer not found"
-And no event is produced
-
-Scenario: Reject order with empty items
-Given a customer with ID "cust-123"
-And an empty items list []
-When the customer tries to create an order
-Then the command should be rejected
-And the rejection reason is "Order must contain items"
-And no event is produced
-
-Scenario: Reject order with invalid address
-Given a customer with ID "cust-123"
-And an incomplete shipping address (missing city)
-When the customer tries to create an order
-Then the command should be rejected
-And the rejection reason is "Invalid shipping address"
+Then the command should be rejected, reason "Customer not found"
 And no event is produced
 ```
 
@@ -347,99 +320,40 @@ And no event is produced
 Specify how stream state affects command:
 
 ```
-Feature: Order Confirmation
-
 Scenario: Confirm order in Draft state
-Given an order "order-456" in Draft state
-And OrderCreated event exists
-And no OrderConfirmed event exists
+Given an order "order-456" in Draft state, OrderCreated event exists
 When the customer confirms the order with payment method "card"
-Then the order should be confirmed
-And an "OrderConfirmed" event is produced with:
-    | field | value |
-    | orderId | order-456 |
-    | paymentMethod | card |
-    | confirmedAt | {timestamp} |
+Then an "OrderConfirmed" event is produced with orderId, paymentMethod, confirmedAt
 
 Scenario: Reject confirming already-confirmed order
-Given an order "order-456" in Confirmed state
-And OrderConfirmed event already exists
+Given an order "order-456" in Confirmed state, OrderConfirmed event already exists
 When the customer tries to confirm the order again
-Then the command should be rejected
-And the rejection reason is "Order already confirmed"
-And no OrderConfirmed event is produced
-
-Scenario: Reject confirming cancelled order
-Given an order "order-456" in Cancelled state
-And OrderCancelled event exists
-When the customer tries to confirm the order
-Then the command should be rejected
-And the rejection reason is "Cannot confirm cancelled order"
-And no event is produced
+Then the command should be rejected, reason "Order already confirmed"
 ```
 
 ### 3. View Scenarios (Given-When-Then)
 Specify how read models display data:
 
 ```
-Feature: Order Status View
-
 Scenario: Display order after creation
-Given an OrderCreated event with:
-    | field | value |
-    | orderId | order-789 |
-    | customerId | cust-123 |
-    | items | [{...}] |
-    | total | 150.00 |
+Given an OrderCreated event with orderId, customerId, items, total
 When the OrderStatusView processes this event
-Then the view should display:
-    | field | value |
-    | Order ID | order-789 |
-    | Status | Draft |
-    | Total | $150.00 |
-    | Items | 3 products |
-    | Created | {date} |
-
-Scenario: Update status after confirmation
-Given an OrderCreated event already processed
-And OrderStatusView showing status "Draft"
-When an OrderConfirmed event is received with:
-    | field | value |
-    | orderId | order-789 |
-    | confirmedAt | 2024-12-31T10:00:00Z |
-Then the view should update to display:
-    | field | value |
-    | Status | Confirmed |
-    | Confirmed Date | 12/31/2024 10:00 AM |
+Then the view should display Order ID, Status "Draft", Total, Items, Created
 
 Scenario: Accumulate payment information
 Given OrderConfirmed event processed (status=Confirmed)
-When a PaymentAuthorized event arrives with:
-    | field | value |
-    | orderId | order-789 |
-    | paymentId | pay-123 |
-    | authCode | AUTH-456 |
-Then the view should accumulate:
-    | field | value |
-    | Payment ID | pay-123 |
-    | Auth Code | AUTH-456 |
-    | Payment Status | Authorized |
+When a PaymentAuthorized event arrives with paymentId, authCode
+Then the view should accumulate Payment ID, Auth Code, Payment Status "Authorized"
 ```
 
 ### 3b. List-type Read Model Scenarios
 Specify expected rows and empty-list intent when the THEN readmodel is a list (`listElement: true`):
 
 ```
-Feature: Product Catalog
-
 Scenario: Products list shows all created products
-Given a ProductCreated event with name "Shoes", index "0", family_id "22222..."
-And a ProductCreated event with name "Clothing", index "1", family_id "33333..."
-When the ProductList view processes these events
-Then the list should contain:
-    | name     | index | family_id |
-    | Shoes    | 0     | 22222...  |
-    | Clothing | 1     | 33333...  |
+Given a ProductCreated event with name "Shoes", index "0"
+When the ProductList view processes this event
+Then the list should contain: | name | index | ... | Shoes | 0 | ... |
 
 Scenario: Products list is empty after last item is deleted
 Given a ProductDeleted event for the last remaining item
@@ -451,61 +365,28 @@ Then the list should be empty
 Specify how system handles failures:
 
 ```
-Feature: Payment Authorization Failure
-
 Scenario: Handle declined payment
 Given an order "order-001" in Confirmed state
-And customer initiates payment
 When the payment gateway declines the card
-Then a PaymentFailed event is produced with:
-    | field | value |
-    | orderId | order-001 |
-    | reason | Card declined |
-    | timestamp | {now} |
-
-Scenario: Update order view on payment failure
-Given OrderStatusView shows status "Confirmed"
-When PaymentFailed event arrives for order-001
-Then the view should update:
-    | field | value |
-    | Payment Status | Failed |
-    | Failure Reason | Card declined |
-    | Retry Available | Yes |
+Then a PaymentFailed event is produced with orderId, reason, timestamp
 
 Scenario: Allow retry after payment failure
-Given a PaymentFailed event exists
-And order status is still "Confirmed"
+Given a PaymentFailed event exists, order status is still "Confirmed"
 When customer retries payment
 Then the new AuthorizePayment command is accepted
-And can produce new PaymentAuthorized event
 ```
 
 ### 5. Compensation Scenarios
 Specify rollback/cancellation flows:
 
 ```
-Feature: Order Cancellation
-
 Scenario: Cancel order in Draft state
-Given an order "order-555" in Draft state
-And only OrderCreated event exists
+Given an order "order-555" in Draft state, only OrderCreated event exists
 When customer cancels the order with reason "Changed mind"
-Then an OrderCancelled event is produced with:
-    | field | value |
-    | orderId | order-555 |
-    | reason | Changed mind |
-    | cancelledAt | {timestamp} |
-
-Scenario: Cannot cancel completed order
-Given an order "order-555" in Delivered state
-And DeliveryConfirmed event exists
-When customer tries to cancel
-Then the command should be rejected
-And the rejection reason is "Cannot cancel delivered order"
+Then an OrderCancelled event is produced with orderId, reason, cancelledAt
 
 Scenario: Trigger compensation on cancellation
-Given an order in Confirmed state
-And PaymentAuthorized event exists
+Given an order in Confirmed state, PaymentAuthorized event exists
 When OrderCancelled event is produced
 Then a RefundPayment command should be automatically triggered
 And RefundInitiated event should follow
@@ -513,135 +394,7 @@ And RefundInitiated event should follow
 
 ## Output Format
 
-Present as:
-
-````markdown
-# Scenarios: [Domain Name]
-
-## Commands
-
-### Command: CreateOrder
-
-**Description**: Customer creates a new order with items and shipping address.
-
-#### Scenario 1: Successful Order Creation
-```gherkin
-Given a customer with ID "cust-123"
-And products ["prod-1", "prod-2"] exist in catalog
-And the shipping address is valid
-When the customer creates an order:
-  | customerId | cust-123 |
-  | items | [{productId: prod-1, qty: 2}, {productId: prod-2, qty: 1}] |
-  | shippingAddress | {street, city, state, zip} |
-Then the command succeeds
-And an "OrderCreated" event is produced with all input data
-And the order status is "Draft"
-```
-
-#### Scenario 2: Reject with Invalid Customer
-```gherkin
-Given a customer ID "invalid" that doesn't exist
-When the customer tries to create an order
-Then the command is rejected
-And the error is "Customer not found"
-And no event is produced
-```
-
-[Continue for each scenario]
-
----
-
-### Command: ConfirmOrder
-
-**Description**: Customer confirms order and selects payment method.
-
-#### Scenario 1: Confirm Draft Order
-```gherkin
-Given an order in "Draft" state
-And OrderCreated event exists
-When the customer confirms with paymentMethod="card"
-Then an "OrderConfirmed" event is produced
-And the order status becomes "Confirmed"
-```
-
-#### Scenario 2: Prevent Duplicate Confirmation
-```gherkin
-Given an order already in "Confirmed" state
-And OrderConfirmed event already exists
-When the customer tries to confirm again
-Then the command is rejected
-And the error is "Order already confirmed"
-And no new event is produced
-```
-
----
-
-## Views
-
-### View: OrderStatusView
-
-**Description**: Real-time order status display showing accumulated event data.
-
-#### Scenario 1: Initial Display After Creation
-```gherkin
-Given an OrderCreated event with id, customer, items, total, address
-When the view processes this event
-Then the view displays:
-  - Order ID: order-123
-  - Status: Draft
-  - Total: $150.00
-  - Items: 3 products
-  - Customer: cust-456
-```
-
-#### Scenario 2: Update on Confirmation
-```gherkin
-Given the view displaying status="Draft"
-When an OrderConfirmed event arrives
-Then the view updates to:
-  - Status: Confirmed
-  - Confirmed At: {timestamp}
-  - Payment Method: (from event)
-```
-
-#### Scenario 3: Accumulate Payment Data
-```gherkin
-Given status="Confirmed"
-When PaymentAuthorized event arrives
-Then the view shows:
-  - Payment Status: Authorized
-  - Auth Code: (from event)
-  - Payment ID: (from event)
-```
-
----
-
-## Error Paths
-
-### Scenario: Payment Decline
-```gherkin
-Given an order in "Confirmed" state
-When payment gateway declines
-Then PaymentFailed event is produced
-And OrderStatusView updates to show:
-  - Payment Status: Failed
-  - Retry Available: true
-```
-
----
-
-## Compensation Flows
-
-### Scenario: Order Cancellation with Refund
-```gherkin
-Given an order in "Confirmed" state
-And PaymentAuthorized event exists
-When OrderCancelled event is produced
-Then a RefundPayment command is triggered
-And RefundInitiated event follows
-And inventory reservation is released
-```
-````
+There is no markdown-document output for this step — the deliverable is the scenarios posted directly to the board's spec cells (see "Post Scenarios to Board" below), using the same command/view/list/error/compensation scenario shapes already illustrated in the Workflow section above (§1–5). Group scenarios under their command or view exactly as shown there; there's no separate presentation format to produce first.
 
 ## Post Scenarios to Board
 
@@ -691,9 +444,11 @@ mcp__eventmodelers__add_scenario {
   "boardId": "<BOARD_ID>",
   "timelineId": "<TL>",
   "columnId": "<COL>",
-  "scenarios": [...scenario objects, same shape as below...]
+  "scenarios": [...scenario objects, same shape as below...],
+  "compact": true
 }
 ```
+Pass `compact: true` — you already hold every scenario object you sent, so the response only needs to confirm `{added, scenarioCount, isNewNode}`, not echo all of them back. Same for `add_storyline`. Across a full pass posting scenarios for every command and read model column, this is the bulk of the step's response tokens.
 `given`/`when`/`then` are arrays of `{id, title?, type?, ...}` objects — **not** bare nodeId strings (this differs from the raw REST body shown in the fallback below). The examples in Steps 4b/4c/§Rejection already use this object shape; pass them straight through as the `scenarios` array. For a state-view scenario whose `when` needs to represent a query rather than a COMMAND, `when` may hold a single inline object that is **not** a board node: `{"id": "<generated-uuid>", "type": "QUERY", "title": "...", "fields": [{"name": "...", "example": "..."}]}`. Same server-side rules apply either way (see below).
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 4: Post All Scenarios for a Column in One Call".

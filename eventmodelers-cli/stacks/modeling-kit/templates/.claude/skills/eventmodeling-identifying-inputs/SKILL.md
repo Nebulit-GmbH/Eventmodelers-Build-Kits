@@ -91,40 +91,10 @@ Given UI storyboards and event timeline, identify all inputs.
 > **Scope note**: This step only places the AUTOMATION actor and its COMMAND (per the Timeline Alignment Rules in `eventmodeling-orchestrating-event-modeling`). Do not attempt to design an automation's todo-list READMODEL here, and do not resolve an externally-triggered automation into a translation chain here — that is Step 4b (`eventmodeling-designing-automation-chains`), which runs immediately after this step completes, before Step 5. **Do not place anything at all** for a command whose only trigger is an EVENT node already sitting in another swimlane (see "Identify Processor Triggers" below) — leave that entire case, node placement included, to Step 4b.
 
 ### 1. Extract Commands from UI Actions
-For each user action in storyboard, create a command attributed to a specific role:
-
-```
-Storyboard: Order Creation Screen
-User action: Click "Create Order" button
-  ↓
-Command: CreateOrder
-Input data from form:
-    - customerId
-    - items[] (product selections + quantities)
-    - shippingAddress
-Validation:
-    - customerId must exist
-    - items must not be empty
-    - quantities must be > 0
-Produces event: OrderCreated
-```
+For each user action in storyboard, create a command attributed to a specific role: name the command, list the input fields the form captures, state the validation rules that apply, and record the event it produces. A full worked example (Order Creation → CreateOrder) is in `references/examples.md`.
 
 ### 2. Identify Processor Triggers
-Identify automation-triggered commands:
-
-```
-Processor trigger: Payment gateway webhook received
-  ↓
-Command: AuthorizePayment (from Processor, not UI)
-Input data from webhook:
-    - orderId
-    - paymentId
-    - authorizationCode
-Validation:
-    - orderId must exist and be in Confirmed state
-    - authorizationCode must be valid
-Produces event: PaymentAuthorized
-```
+Identify automation-triggered commands: for each processor-triggered action (a webhook, a scheduled job), create a command attributed to the source system, documenting its input data, validation rules, and the event it produces. A full worked example (a payment webhook → AuthorizePayment) is in `references/examples.md`.
 
 **Stop and check before placing any of these**: is the "processor trigger" already a placed EVENT node in a second (external) swimlane — e.g. a `CopyReserved (ext)` event from Step 1's brainstorming — rather than an unmodeled webhook with no board node? The two cases are handled completely differently:
 
@@ -132,183 +102,26 @@ Produces event: PaymentAuthorized
 - **A pre-existing EVENT node in another swimlane**: do **not** place the AUTOMATION/COMMAND in that event's column, and do **not** wire `COMMAND → EVENT` to it — that event already happened in another system; this chapter's command cannot be the thing that produces it. List the command in the Command Catalog as *deferred to Step 4b* and stop there. `eventmodeling-designing-automation-chains` places the correct multi-column translation-chain-plus-worker shape from scratch; anything placed here for this case would only have to be deleted and redone there.
 
 ### 2b. Understand the Processor "Todo List" Pattern
-Processors don't directly process events—they maintain a todo list driven by events:
-
-```
-Event Stream (Domain events):
-PaymentAuthorized → triggers Inventory system
-
-Processor: InventoryReserver
-
-Todo List:
-When PaymentAuthorized event arrives:
-    1. Add item to todo: "Reserve inventory for order-123"
-
-Processor Logic (continuously):
-FOR EACH todo item IN todo_list:
-    - Check if inventory available
-    - If yes: Reserve inventory, produce InventoryReserved event, mark done
-    - If no: Produce InventoryFailed event, mark failed
-    - If error: Keep in todo for retry
-
-Example:
-Event: PaymentAuthorized(orderId=order-123, items=[{prodId: P1, qty: 2}])
-    ↓
-Todo added: Reserve P1 qty 2
-    ↓
-Processor checks: P1 has 5 available, need 2 
-    ↓
-Action: Reserve 2 units
-    ↓
-Event produced: InventoryReserved(orderId=order-123, reserved=[...])
-    ↓
-Todo marked done
-```
+Processors don't directly process events—they maintain a todo list driven by events: a triggering event adds an item to the processor's todo list, and the processor continuously walks that list, checking a condition for each item and either succeeding (producing a success event, marking the item done) or failing (producing a failure event or leaving it for retry). A full worked example (PaymentAuthorized → InventoryReserver's todo list) is in `references/examples.md`.
 
 **Key insight**: Processors are reactive. They listen for events and create todo items, then execute those todos by issuing commands that produce new events.
 
 ### 2c. Document Processor Automation (Gears Symbol)
-Show which commands come from automation vs. user actions:
-
-```
-Command Catalog with Role Attribution (from Role Catalog):
-
-UI-Issued Commands (attributed to specific human roles):
-  1. CreateOrder (Order Entry screen) [ Customer]
-  2. ConfirmOrder (Confirmation screen) [ Customer]
-  3. CancelOrder (Status screen) [ Customer]
-  4. RequestReturn (Order page) [ Customer]
-  5. OverrideOrderStatus (Admin panel) [ Support Agent]
-
-Processor-Issued Commands (attributed to system actors):
-  6. AuthorizePayment (Payment gateway webhook) [ Payment Gateway]
-  7. ReserveInventory (Triggered by PaymentAuthorized) [ Inventory System]
-  8. CreateShipment (Triggered by InventoryReserved) [ Fulfillment System]
-  9. NotifyCustomer (Triggered by multiple events) [ Notification Service]
-```
+Show which commands come from automation vs. user actions: catalog every command with its role/actor attribution, separating UI-issued commands (attributed to specific human roles) from processor-issued commands (attributed to system actors/services). A full worked example is in `references/examples.md`.
 
 **Validation**: Every command MUST have a role/actor attribution. If a command says `[ User]` instead of a specific role name, it's incomplete — go back to the Role Catalog and assign the correct role.
 
 ### 3. Document Command Specifics
-For each command, define structure:
-
-```
-Command: ConfirmOrder
-Source: UI (user clicks button)
-Input:
-    orderId: string (from URL/context)
-    paymentMethod: enum ('card' | 'transfer')
-    [paymentDetails]: depends on method
-
-Validation rules:
-    - Order must exist
-    - Order must be in Draft state
-    - Payment method must be supported
-    - Funds must be available (pre-check)
-
-Preconditions (from stream state):
-    - OrderCreated event exists
-    - No ConfirmOrder previously processed
-
-Success result: OrderConfirmed event
-
-Failure results:
-    - "Order not found" → Command rejected, no event
-    - "Order already confirmed" → Command rejected, no event
-    - "Payment method not supported" → Command rejected, no event
-```
+For each command, define structure: its source, its typed input fields, the validation rules it enforces, the preconditions it checks against stream state, the success event it produces, and each distinct failure outcome. A full worked example (ConfirmOrder) is in `references/examples.md`.
 
 ### 4. Create Command Catalog
-List all commands the system accepts:
-
-```
-Command Catalog: Order System
-
-### UI-Issued Commands
-
-1. CreateOrder
-   Source: User (Order Entry screen)
-   Input: customerId, items[], shippingAddress
-   Produces: OrderCreated event
-
-2. ConfirmOrder
-   Source: User (Confirmation screen)
-   Input: orderId, paymentMethod
-   Produces: OrderConfirmed event
-
-3. CancelOrder
-   Source: User (Status screen)
-   Input: orderId, reason
-   Produces: OrderCancelled event
-
-### Processor-Issued Commands
-
-4. AuthorizePayment
-   Source: Payment Processor (webhook)
-   Input: orderId, paymentId, authCode
-   Produces: PaymentAuthorized event
-
-5. FailPayment
-   Source: Payment Processor (webhook)
-   Input: orderId, paymentId, reason
-   Produces: PaymentFailed event
-
-6. ReserveInventory
-   Source: Inventory Processor (triggered by PaymentAuthorized)
-   Input: orderId, items[]
-   Produces: InventoryReserved event
-
-7. CreateShipment
-   Source: Fulfillment Processor (triggered by InventoryReserved)
-   Input: orderId, items[]
-   Produces: OrderShipped event
-```
+List all commands the system accepts, grouped into UI-issued and processor-issued sections, each with its source, input fields, and the event it produces. A full worked example is in `references/examples.md`.
 
 ### 5. Map Data Sources
-Document where each command input comes from:
-
-```
-Command: ConfirmOrder
-
-Data origin matrix:
-  orderId
-    ↑ Source: UI context (from OrderCreated, displayed to user)
-    ↑ Captured: Hidden in URL or session
-    ↑ Validation: Must match Order from stream
-
-  paymentMethod
-    ↑ Source: UI form selection
-    ↑ Captured: User selects checkbox/radio
-    ↑ Validation: Must be in allowed list
-
-[paymentDetails] (conditional)
-    ↑ Source: Depends on paymentMethod
-    ↑ For 'card': Card number, CVV, expiry (from payment form)
-    ↑ For 'transfer': Bank account, routing number (from form)
-    ↑ Validation: Format and validity checks
-```
+Document where each command input comes from — UI context, a form selection, a conditional field that depends on another field's value — and how it's validated. A full worked example is in `references/examples.md`.
 
 ### 6. Identify Implicit Context
-Document what comes from stream state:
-
-```
-Command: ShipOrder
-Explicit input (from UI/Processor):
-    orderId
-    shipmentId (from fulfillment system)
-
-Implicit context (from stream state):
-    Order must exist
-    Order must be in InventoryReserved state
-    Payment must be authorized (from PaymentAuthorized event)
-    Inventory must be reserved (from InventoryReserved event)
-
-These implicit checks use stream state:
-    currentState.orderId === orderId 
-    currentState.status === 'InventoryReserved' 
-    currentState.paymentId exists 
-    currentState.shipmentId can be set 
-```
+Document what comes from stream state beyond the command's explicit input: the preconditions the command implicitly relies on (e.g. prior events that must already exist, a required prior status) that its validation logic checks against. A full worked example is in `references/examples.md`.
 
 ## Output Format
 
@@ -462,83 +275,15 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
 Skip a connection silently if the target cell is empty (the element may be placed in a later step). Log each created arrow: `→ connected SCREEN→COMMAND "PlaceOrder"` or `→ connected COMMAND→EVENT "PlaceOrder"→"OrderPlaced"`.
 
+If wiring more than one COMMAND in this pass, send all the SCREEN→COMMAND and COMMAND→EVENT edges in one `set_connections` call with `compact: true` — you author every edge here deliberately, so the `{connected, existed, removed, notFound, failed, errors}` tally is enough.
+
+**After wiring, run `validate_model` (`{boardId, chapterId}`).** Its `command-issuers` finding flags any COMMAND that ended up with two issuers — the classic symptom of the platform's auto-connect cross-wiring a previous-column SCREEN into a command that an AUTOMATION already drives (or vice versa). Fix each by removing the wrong edge. If you already know a placement sits next to an unrelated column whose SCREEN/AUTOMATION would be mis-wired, place that COMMAND with `autoConnect: false` and wire its single real issuer yourself.
+
 After all commands are placed and wired, present the Command Catalog summary as text to the user.
 
 ---
 
-For reference, the full markdown structure is:
-
-```markdown
-# Inputs: [Domain Name]
-
-## Commands Summary
-
-| Command | Role/Actor | Source | Trigger | Input | Event |
-|---------|------------|--------|---------|-------|-------|
-| CreateOrder | Customer | UI | User action | customerId, items, address | OrderCreated |
-| ConfirmOrder | Customer | UI | User action | orderId, paymentMethod | OrderConfirmed |
-| CancelOrder | Customer | UI | User action | orderId, reason | OrderCancelled |
-| AuthorizePayment | Payment Gateway | Processor | Webhook | orderId, paymentId | PaymentAuthorized |
-| ReserveInventory | Inventory System | Processor | PaymentAuthorized event | orderId, items | InventoryReserved |
-| ShipOrder | Fulfillment System | Processor | InventoryReserved event | orderId, shipmentId | OrderShipped |
-
----
-
-## Detailed Commands
-
-### Command: CreateOrder
-
-**Source**: User (Order Entry screen)
-
-**Input Data**:
-- customerId: string
-- items: Array<{productId: string, quantity: number}>
-- shippingAddress: {street, city, state, zip}
-
-**Validation**:
-- customerId must exist in system
-- items array must not be empty
-- quantities must be > 0
-- address fields must be non-empty
-
-**Preconditions** (from stream state):
-- Stream Order:X does not exist yet
-
-**Success**: Produces OrderCreated event
-
-**Failure**: Command rejected, no event
-- "Customer not found"
-- "Items invalid"
-- "Address incomplete"
-
---- [Repeat for each command]
-
----
-
-## Data Completeness Check
-
-### Data Input → Event
-
-Verify every command input becomes event data:
-
-| Command Input | Event Data | Status |
-|---------------|-----------|--------|
-| customerId | orderId |  Stored in OrderCreated |
-| items | items |  Stored in OrderCreated |
-| shippingAddress | shippingAddress |  Stored in OrderCreated |
-
-### Missing Data
-
-Document any input that doesn't make it to events:
-- None identified 
-
----
-
-## Processor Commands
-
-Document all processor-triggered commands:
-[List each with source system and trigger condition]
-```
+Older versions of this skill wrote the command catalog as a markdown document rather than placing nodes on the board — that legacy template is kept in `references/examples.md` for reference only; it is not the actual output mechanism.
 
 ## Quality Checklist
 

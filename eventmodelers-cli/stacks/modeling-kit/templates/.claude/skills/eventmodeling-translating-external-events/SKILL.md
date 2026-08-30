@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-translating-external-events
-description: "Translate external system events (webhooks, APIs, IoT) into domain events. Map technical data to business concepts. Use when integrating with external systems that emit events your domain needs to react to. Do not use for: modernizing legacy systems using the side-car pattern (use eventmodeling-integrating-legacy-systems) or designing command handlers for the translated events (use eventmodeling-designing-event-models)."
+description: "Translate external system events (webhooks, APIs, IoT) into domain events. Map technical data to business concepts. Use when integrating with external systems that emit events your domain needs to react to. Do not use for: designing command handlers for the translated events (use eventmodeling-designing-event-models)."
 allowed-tools:
   - AskUserQuestion
   - Write
@@ -89,215 +89,31 @@ Update Interview Trail:
 
 ### 1. Identify External Event Sources
 
-Document each external system and what it sends:
-
-```
-External System: Payment Gateway (Stripe)
-
-Events received:
-  - charge.succeeded
-  - charge.failed
-  - charge.refunded
-  - charge.dispute.created
-
-Example payload: charge.succeeded
-{
-  "id": "ch_1234567890",
-  "amount": 15000,
-  "currency": "usd",
-  "customer": "cus_9876543210",
-  "status": "succeeded",
-  "created": 1640995200
-}
-
-External System: GPS Location Service (Google Maps)
-
-Events received:
-  - location_update
-  - geofence_enter
-  - geofence_exit
-
-Example payload: geofence_exit
-{
-  "userId": "user-123",
-  "geoFenceId": "hotel-front-entrance",
-  "timestamp": 1640995200,
-  "latitude": 40.7128,
-  "longitude": -74.0060
-}
-```
+For each external system, document its name, the events it sends, and a sample payload for each event type. Do this for every system your domain integrates with before moving on. A full worked example (Stripe payment webhooks, GPS geofence events) is in `references/examples.md`.
 
 ### 2. Analyze Technical Representation
 
-Understand the raw data from external system:
-
-```
-External Event: charge.succeeded (Stripe)
-
-Technical fields:
-  - id: UUID of charge in Stripe (not meaningful to us)
-  - amount: Integer cents (15000 = $150.00)
-  - currency: ISO code ("usd")
-  - customer: Stripe customer ID (not our customer ID)
-  - status: String indicating success
-  - created: Unix timestamp
-
-Problems with using directly:
-   We don't use Stripe customer IDs (we have our own customer IDs)
-   Currency and amount require interpretation
-   Status is one field in their model, we care about the fact it succeeded
-   Stripe charge ID isn't the same as our order ID
-   We need to correlate back to our Order stream
-```
+For each external event, list its raw technical fields and call out what's wrong with using them directly: opaque IDs that mean nothing to your domain, values needing unit/format conversion, a single technical field standing in for a business fact, and — critically — IDs that don't match your own entity IDs and therefore need correlation. A full worked example (Stripe `charge.succeeded`) is in `references/examples.md`.
 
 ### 3. Define Domain Translation Rules
 
-Map technical data to domain concepts:
-
-```
-Translation: External charge.succeeded → Domain PaymentAuthorized
-
-Mapping rules:
-  charge.id (Stripe) → paymentGatewayRef (store for reconciliation, don't use as primary)
-  charge.customer (Stripe) → Look up: Which of OUR customers has this Stripe ID?
-  charge.amount → paymentAmount (convert from cents)
-  charge.currency → paymentCurrency
-  created → timestamp
-[NEED TO FIND] → orderId (Stripe doesn't tell us! This is critical—how do we know which order?)
-
-Problem identified:
-Stripe webhook comes with charge details but NOT our order ID.
-
-Solutions:
-A. Store Stripe charge ID in our Order when we initiate payment
-     When webhook arrives: charge.id → Look up in OrderPaymentReference
-     Find orderId → Create PaymentAuthorized event
-
-B. Store custom metadata in Stripe charge
-     When creating charge: Include our orderId in metadata
-     When webhook arrives: Extract orderId from metadata
-
-Choose A or B based on Stripe integration approach.
-```
+Map each technical field to the domain concept it should become, and flag any domain field the external payload doesn't supply at all. When a required field (like your own internal ID) is missing, decide how to obtain it — typically either by storing a reference to the external ID when you initiate the external action, or by embedding your own ID as metadata that the external system echoes back. A full worked example (Stripe charge → `PaymentAuthorized`) is in `references/examples.md`.
 
 ### 4. Handle Correlation
 
-External systems often don't include your IDs. Establish correlation:
-
-```
-Pattern: Correlation via Reference Tracking
-
-Our system flow:
-  1. Order created in our system: order-123
-  2. We initiate payment with Stripe:
-     - Send amount, customer info
-     - Receive charge ID: ch_1234567890
-     - Store reference: OrderPaymentReference { orderId: order-123, stripeChargeId: ch_1234567890 }
-
-When webhook arrives:
-  1. Webhook: charge.succeeded { id: ch_1234567890, amount: 15000, ... }
-  2. Look up: Find OrderPaymentReference where stripeChargeId = ch_1234567890
-  3. Get orderId from reference
-  4. Create PaymentAuthorized event: { orderId: order-123, amount: 150.00, ... }
-
-Key insight: You must create the correlation bridge when initiating external action.
-```
+External systems rarely include your own entity IDs, so the correlation bridge must be created on **your** side, at the moment you initiate the external action — store a reference record mapping your entity ID to the external ID you receive back. When the external event later arrives, look up that reference to recover your entity ID before creating the domain event. A full worked example (Order ↔ Stripe charge reference tracking) is in `references/examples.md`.
 
 ### 5. Define Translation Scenarios
 
-Specify translation logic for each external event:
-
-```
-External Event: charge.succeeded
-Trigger: Stripe webhook arrives with charge details
-Precondition: OrderPaymentReference exists for this charge ID
-Translation logic:
-  1. Extract charge.id from webhook
-  2. Look up OrderPaymentReference.orderId
-  3. Validate order exists and is in Confirmed state
-  4. Create domain event: PaymentAuthorized { orderId, amount, timestamp, ... }
-Success: Domain event produced
-Failure scenarios:
-  - Charge ID not found in references → Log error, don't produce event (manual review)
-  - Order not in Confirmed state → Log error, don't produce event
-  - Duplicate webhook → Idempotent handling (check if event already exists)
-
---- External Event: geofence_exit
-Trigger: Guest leaves hotel area (GPS geofence)
-Precondition: Guest has opted in to location tracking
-Translation logic:
-  1. Extract userId and geoFenceId from webhook
-  2. Validate guest is currently in hotel
-  3. Check geofence_exit is "hotel-front-entrance" (not just any geofence)
-  4. Create domain event: GuestLeftHotel { guestId: userId, timestamp, ... }
-Success: Domain event produced
-Failure scenarios:
-  - Guest hasn't opted in → Don't produce event (respect privacy)
-  - Guest not checked in → Don't produce event (shouldn't be in geofence)
-  - Unknown geofence → Log error, don't produce event
-```
+For each external event, specify: its trigger, any precondition that must hold, the translation logic as an ordered list of steps, what a success looks like, and every failure scenario (e.g. missing correlation, invalid state, duplicate delivery) with its handling. A full worked example (Stripe `charge.succeeded`, GPS `geofence_exit`) is in `references/examples.md`.
 
 ### 6. Handle Duplicates and Ordering
 
-External systems may send duplicate webhooks:
-
-```
-Problem: Stripe retries charge.succeeded webhook
-Webhook 1: charge.succeeded { id: ch_123 } → Arrives at 10:00 AM
-Webhook 2: charge.succeeded { id: ch_123 } → Arrives at 10:05 AM (retry)
-
-Solution: Idempotent translation
-
-Check before creating event:
-  1. Extract external ID: ch_123
-  2. Query: Does PaymentAuthorized event exist with paymentGatewayRef = ch_123?
-  3. If yes: Do nothing (already processed)
-  4. If no: Create event
-
-This requires storing the external ID in the event:
-PaymentAuthorized event {
-    orderId: order-123,
-    amount: 150.00,
-    paymentGatewayRef: ch_123,  ← Store external ID for deduplication
-    ...
-  }
-```
+External systems commonly redeliver the same event (e.g. webhook retries). Translation must be idempotent: before creating a domain event, check whether one already exists for that external ID, and only create it if not. This requires storing the external ID on the resulting domain event so the check has something to query against. A full worked example (duplicate Stripe webhook delivery) is in `references/examples.md`.
 
 ### 7. Handle Partial or Missing Information
 
-External systems may not provide complete data:
-
-```
-External Event: geofence_exit
-
-Available data:
-  - userId 
-  - geoFenceId 
-  - timestamp 
-  - latitude, longitude (raw GPS)
-
-Missing data:
-  - Guest name (not in webhook payload)
-  - Reason for leaving (not tracked)
-  - Expected return time (not available)
-
-Handling strategy:
-A. Translation enriches from our system:
-     Domain event: GuestLeftHotel {
-       guestId: userId,  ← From webhook
-       timestamp: ...,   ← From webhook
-       guestName: "John Smith",  ← Looked up from guest stream
-       roomNumber: "502",  ← Looked up from guest stream
-       geoFenceId: "front-entrance"  ← From webhook
-     }
-
-B. Some data we don't need:
-     We ignore: latitude, longitude (we just care that guest left)
-
-C. Some data we can infer:
-     We can assume: Guest is now outside hotel
-                    Cleaning crew can visit room
-```
+External payloads are often incomplete. For each field the domain event needs, classify it as: enrich (look it up from your own system), ignore (not needed for this domain), or infer (a safe assumption follows from the event itself). Document the classification explicitly rather than leaving a field's source implicit. A full worked example (GPS `geofence_exit` enrichment) is in `references/examples.md`.
 
 ## Output Format
 
@@ -314,108 +130,7 @@ Then present the full translation rules as text to the user.
 
 ---
 
-For reference, the full markdown structure is:
-
-````markdown
-# External Event Translation: [Domain Name]
-
-## External Systems & Events
-
-### System: [External System Name]
-
-**Connection Type**: [Webhook/API polling/WebSocket/Streaming]
-
-**Events Received**:
-- event1_name
-- event2_name
-- event3_name
-
----
-
-## Translation Rules
-
-### External Event: [Event Name]
-
-**Source System**: [System name]
-
-**Technical Representation**:
-```json
-{
-  "field1": "value",
-  "field2": "value"
-}
-```
-
-**Domain Translation**:
-| External Field | Our Field | Mapping | Notes |
-|---|---|---|---|
-| externalId | n/a | Stored for deduplication | Reference only |
-| customer | [lookup] | Look up our customer ID | Must correlate |
-
-**Correlation Method**:
-[How do we link back to our domain entities?]
-
-**Domain Event Produced**:
-- Event Name: [EventName]
-- Fields: [List with sources]
-
-**Translation Logic**:
-```
-1. Extract from webhook
-2. Validate preconditions
-3. Enrich from our system
-4. Create domain event
-```
-
-**Success Scenario**:
-[What success looks like]
-
-**Failure Scenarios**:
-- Scenario 1: Consequence
-- Scenario 2: Consequence
-
-**Duplicate Handling**: [Idempotent strategy]
-
---- [Repeat for each external event]
-
----
-
-## Correlation Reference
-
-Track how external IDs map to our domain:
-
-| Our Entity | External System | External ID Field | Storage | Lookup |
-|---|---|---|---|---|
-| Order | Stripe | charge.id | OrderPaymentReference | By charge ID |
-| Guest | GPS Service | userId | Guest stream | By userId |
-
----
-
-## Failure & Recovery
-
-### Webhook Arrives for Non-existent Order
-**Symptom**: Stripe sends charge.succeeded for unknown order
-**Cause**: Race condition or data inconsistency
-**Detection**: OrderPaymentReference lookup returns nothing
-**Recovery**: Log error, queue for manual review
-
-### Duplicate Webhooks
-**Symptom**: Same webhook received multiple times
-**Cause**: Stripe retry mechanism or network duplication
-**Detection**: Domain event already exists with same externalRef
-**Recovery**: Idempotent check prevents duplicate event creation
-
----
-
-## Testing Recommendations
-
-- [ ] Test happy path: External event → Correct domain event
-- [ ] Test missing correlation: External event arrives before our order created
-- [ ] Test duplicate: Same webhook processed twice
-- [ ] Test invalid data: Webhook with missing required fields
-- [ ] Test partial data: Webhook with some fields missing
-- [ ] Test ordering: Multiple webhooks arrive out of order
-````
+Older versions of this skill wrote the translation rules as a standalone markdown document rather than placing translated events on the board; that legacy format is kept in `references/examples.md` for reference only — it is not the actual output mechanism (see "Output Format" above).
 
 ## Quality Checklist
 

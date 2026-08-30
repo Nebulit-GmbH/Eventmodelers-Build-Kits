@@ -103,6 +103,8 @@ For each slice, check whether `specs` is non-empty. Calculate:
 
 ### 5d — Structural gaps per slice
 
+For a fast structural read per chapter, call `validate_model` (`{boardId, chapterId}`) — it returns unplaced nodes, backward arrows, zero/multi-issuer commands, sourceless read models, screen-per-column collisions and missing scenarios in one compact response, which covers most of the gaps this section looks for without walking every slice by hand. For a plain "what is where and how is it wired" dump (no field bodies or screen HTML), `get_board_outline` (`{boardId, chapterId}`) is the cheap fetch. Use the per-slice table below for anything those two don't answer.
+
 For every slice, determine its type from the elements present and check for common structural issues:
 
 | Slice type | Expect | Flag if missing |

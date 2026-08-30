@@ -92,161 +92,22 @@ Optional: Write to `.trogonai/interviews/[timestamp]-storyboarding-events.interv
 Given the event timeline, create UI storyboards:
 
 ### 1. Identify UI Screens/Views
-Create a mockup for each state of the system:
-
-```
-Screen 1: Order Creation Form
-
- Place Your Order                
-
-                                 
- Customer ID: [____________]     
-                                 
- Items:                          
-Product 1  Qty: [_]  Price: $_
-Product 2  Qty: [_]  Price: $_
-Product 3  Qty: [_]  Price: $_
-                                 
- Total: $___                     
-                                 
- Shipping Address:               
- [_____________________]         
- [_____________________]         
-                                 
- [ Create Order ]                
-
-
-Trigger: CreateOrder command
-Result Events: OrderCreated
-Data captured from UI:
-  - customerId
-  - items (products + quantities)
-  - total
-  - shippingAddress
-```
+Create a mockup for each state of the system: for each screen, note the trigger action, the command it produces, the resulting event, and the data fields the screen captures. A full worked example (Order Creation Form) is in `references/examples.md`.
 
 ### 2. Show State Transitions Between Screens
-Document what changes when events occur:
-
-```
-Screen 2: Order Confirmation
-(After OrderCreated event)
-
-
- Order Confirmation              
-
-                                 
- Order ID: #12345                
- Status: Draft                   
-                                 
- Items: 3 products               
- Total: $150.00                  
-                                 
- Shipping: 123 Main St           
-                                 
- Payment Options:                
-Credit Card                   
-Bank Transfer                 
-                                 
- [ Confirm Order ]               
-
-
-Trigger: ConfirmOrder command
-Result Events: OrderConfirmed
-Data from UI:
-  - orderId (from OrderCreated)
-  - paymentMethod
-```
+Document what changes when events occur: after each event, the next screen shows the fields that were just set by that event, alongside the next command the user can trigger. A full worked example (Order Confirmation, after OrderCreated) is in `references/examples.md`.
 
 ### 3. Document All Data Fields
-For each screen, list what data is displayed:
-
-```
-Screen: Order Status View
-
- Your Order Status               
-
- Order ID: #12345                 (from OrderCreated)
- Status: Confirmed               (from OrderConfirmed)
- Confirmed at: 2024-12-31 10:00   (from OrderConfirmed)
-                                 
- Payment: Authorized             (from PaymentAuthorized)
- Auth Code: AUTH-789              (from PaymentAuthorized)
-                                 
- Inventory: Reserved             (from InventoryReserved)
- Expected Ship: 2025-01-02        (from InventoryReserved)
-                                 
- Shipped: Pending                 (awaiting OrderShipped)
- Tracking: -- (waiting for shipment)
-
-
-Fields and their origins:
-  orderId → OrderCreated event
-  status → OrderConfirmed event
-  confirmedAt → OrderConfirmed event
-  paymentStatus → PaymentAuthorized event
-  authCode → PaymentAuthorized event
-  inventoryStatus → InventoryReserved event
-  expectedShip → InventoryReserved event
-  tracking → OrderShipped event (when available)
-```
+For each screen, list what data is displayed, and the specific event each field's value originated from. A full worked example (Order Status View) is in `references/examples.md`.
 
 ### 4. Show Data Flow Through Screens
-Map how data enters/exits UI:
-
-```
-Order Entry UI
-   (user inputs)
-   customerId
-   items[]
-   total
-   shippingAddress
-      ↓
-      Command: CreateOrder
-      ↓
-      Event: OrderCreated
-      ↓
-      Order Status UI (displays)
-       orderId (from event)
-       items (from event)
-       total (from event)
-       shippingAddress (from event)
-```
+Map how data enters/exits UI: user input flows into a command, the command produces an event, and the event's data flows back out into the next screen that displays it. A full worked example is in `references/examples.md`.
 
 ### 5. Organize Screens by Swimlane (Actor/System)
 
 **MANDATORY**: Use the **Role Catalog** from Step 1 (eventmodeling-brainstorming-events) as the source of swimlanes. Every human role in the catalog MUST have its own swimlane. Every system actor that has a UI or todo-list view gets a swimlane too — but this swimlane is narrative-only (see "Board Integration" below): system actors never get a physical actor lane of their own on the board, only human roles do.
 
-Group screens by who interacts with them:
-
-```
-Swimlane: Customer (Human Role)
-   Screen 1: Order Entry Form
-   Screen 2: Order Confirmation
-   Screen 3: Order Status View
-   Screen 4: Tracking View
-
-Swimlane: Seller (Human Role)
-   Screen 1: Order Fulfillment Dashboard
-   Screen 2: Review Response Form
-   Screen 3: Product Management
-
-Swimlane: Support Agent (Human Role)
-   Screen 1: Escalation Queue
-   Screen 2: Manual Override Panel
-
-Swimlane: Payment Processor (System Actor)
-   Screen 1: Payment Verification (automated)
-   Screen 2: Authorization Confirmation
-
-Swimlane: Inventory System (System Actor)
-   Screen 1: Reservation Todo List (internal)
-   Screen 2: Availability Check
-
-Swimlane: Fulfillment System (System Actor)
-   Screen 1: Shipment Creation Todo
-   Screen 2: Shipping Confirmation
-```
+Group screens by who interacts with them: one swimlane per human role (Customer, Seller, Support Agent, ...) listing that role's screens, plus one narrative swimlane per system actor (Payment Processor, Inventory System, ...) listing the screens/views it interacts with. A full worked example (Order domain swimlane grouping) is in `references/examples.md`.
 
 **Validation**: If a role from the catalog has zero screens, either:
 - The role is missing screens (add them), or
@@ -257,34 +118,7 @@ This shows which actors interact with which screens and helps visualize system b
 **This grouping is not just narrative for human roles** — "Board Integration" below turns each *human role's* swimlane in this catalog into its own physical actor lane on the board, so a screen's role determines which lane it is actually placed in, not just how it is described in the report. System actor swimlanes stay narrative-only: their automations are placed in the chapter's shared default actor lane, never a lane fabricated to mimic a human role's lane (see "Placing Automations" below).
 
 ### 6. Show Processor "Todo List" Pattern
-For automated processors, show the todo list metaphor:
-
-```
-Processor: InventoryReserver
-
-Internal "Todo List" (based on received events):
-
- Inventory Reservation Todos     
-
-                                 
-Order-123: Reserve 2x Prod-1  (triggered by PaymentAuthorized)
-Order-124: Reserve 3x Prod-2  (triggered by PaymentAuthorized)
-Order-125: Reserve 1x Prod-3  (triggered by PaymentAuthorized)
-                                 
- Processor checks todo items:    
- For each: Check availability    
-          If available:  Mark done
-          Reserve inventory      
-          Produce event          
-                                 
-
-
-This todo list is driven by:
-Events received → Items added to todo
-Processor logic → Items processed
-Success → InventoryReserved event produced + todo marked done
-Failure → InventoryFailed event produced + todo marked failed
-```
+For automated processors, show the todo list metaphor: each received triggering event adds a todo item, the processor checks each item's condition, and success or failure produces a corresponding event while marking the item done or failed. A full worked example (InventoryReserver's todo list) is in `references/examples.md`.
 
 **When it comes time to elaborate scenarios for this todo list (`eventmodeling-elaborating-scenarios`), reach for a storyline rather than plain GWT scenarios.** A todo list is exactly the shape a storyline is built for: the *same* read model (the todo list itself) walked through multiple states — empty → item added → item marked done/failed — which is one narrated walkthrough, not a set of isolated before/after pairs. See that skill's "Storylines" section for the data shape and posting mechanics.
 
@@ -453,6 +287,8 @@ mcp__eventmodelers__create_screen {
 
 The MCP `create_screen` call above already sets `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
 
+A storyboard screen is placed at a *provisional* position — Steps 4 and 5 wire it to its COMMAND / READMODEL once those exist, and may move it first. Pass `autoConnect: false` on `create_screen` / `create_screens` here so the placement doesn't pre-wire the screen to whatever happens to sit in the adjacent column; the real `SCREEN → COMMAND` and `READMODEL → SCREEN` edges are created deliberately in Steps 4 and 5. When creating several screens whose HTML is already authored, use `create_screens` (batch) with `autoConnect: false`.
+
 Design the page(s) as real HTML/CSS, following the `html-screen` skill's guidance: write full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper — the canvas adds those), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default. Every page MUST include real field labels matching the actual event/command fields this screen captures or displays, and at least one primary action (submit/confirm button) for command screens.
 
 > **CRITICAL: NEVER pass an empty `pages` array.** An empty pages array produces a blank placeholder and is always wrong. You MUST design and include actual page markup before calling the render API.
@@ -585,95 +421,7 @@ If a second role also needs a screen related to the same event, insert a new col
 
 ## Output Format
 
-Present as:
-
-```markdown
-# Storyboard: [Domain Name]
-
-## Swimlane Organization (from Role Catalog)
-
-### Human Role Swimlanes
-
-#### Customer Swimlane
-- Screen 1: Order Entry Form
-- Screen 2: Order Confirmation
-- Screen 3: Order Status View
-
-#### [Other Human Role Swimlanes — one per role in the catalog]
-
-### System Actor Swimlanes
-
-_(Narrative grouping only — these are not physical board lanes. Every automation below renders in the chapter's shared default actor lane; see "Placing Automations".)_
-
-#### Payment Processor Swimlane
-- Screen 1: Payment Verification (automated)
-- [Shows what UI/views the processor interacts with]
-
-#### [Other System Actor Swimlanes]
-
----
-
-## Screen 1: [Screen Name]
-
-### Mockup
-```
-[ASCII art mockup or description]
-```
-
-### Data Displayed
-- Field 1: Description, source event
-- Field 2: Description, source event
-
-### User Actions (Commands)
-- Action: [Action], produces: [Event]
-
-### Business Rules
-- Rule about what can/cannot be done on this screen
-
----
-
-## Screen 2: [Screen Name]
-
-[Repeat for each screen]
-
----
-
-## Processor Todo Lists
-
-### Processor: [Processor Name]
-
-Internal "Todo List" pattern:
-```
-Triggered by: [Event type]
-Todo action: [What needs to be done]
-Success produces: [Event]
-Failure produces: [Event]
-```
-
-[Repeat for each processor]
-
----
-
-## Data Flow Diagram
-
-[Show how data enters from UI and returns via events]
-
----
-
-## Field Traceability Matrix
-
-| Field | Screen | Source Event | Status |
-|-------|--------|-------------|--------|
-| orderId | Status View | OrderCreated |  |
-| shipmentId | Status View | OrderShipped |  |
-| customerId | All | OrderCreated |  |
-
----
-
-## Missing Data Analysis
-
-[Any fields without clear source or destination]
-```
+Older versions of this skill wrote the storyboard as a markdown document (swimlane organization, one section per screen, processor todo lists, a field traceability matrix) rather than rendering and placing screen nodes on the board — that legacy template is kept in `references/examples.md` for reference only; it is not the actual output mechanism. The actual output is the rendered HTML_SCREEN/AUTOMATION nodes placed per "Mandatory Screen Rendering" and "Timeline Placement Rules" above.
 
 ## Quality Checklist
 

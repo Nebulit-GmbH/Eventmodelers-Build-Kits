@@ -1,10 +1,10 @@
-# Aggregate Boundary Design Patterns
+# Stream Boundary Design Patterns
 
 ## Contents
 - Aggregate Boundary Design Patterns (5 patterns with examples)
-- Stream Size Decision Tree
-- Red Flags: Redesign Needed
-- Tips for Optimal Stream Design
+- Stream Boundary Decision Tree
+- Red Flags: Boundary Is Wrong
+- Tips for Finding the Right Boundary
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### Pattern 1: Single Entity (Most Common)
 
- CORRECT: One aggregate per entity
+CORRECT: One aggregate per entity
 ```
 Aggregate: Order
 Root Identity: orderId (e.g., 'order-123')
@@ -28,9 +28,6 @@ Events in stream:
   6. OrderShipped (2024-01-20)
   7. OrderDelivered (2024-01-25)
 
-Stream Length: 7 events
-Snapshotting: NOT NEEDED 
-
 Identity Principle: orderId is the natural business key
 Boundary: Everything about THIS specific order, nothing else
 Consistency: Only one order being modified at a time
@@ -40,7 +37,7 @@ Consistency: Only one order being modified at a time
 
 ### Pattern 2: Composite Entity (Proper Composition)
 
- CORRECT: Aggregate contains related child entities
+CORRECT: Aggregate contains related child entities
 ```
 Aggregate: Order
 Root Identity: orderId (e.g., 'order-456')
@@ -66,9 +63,6 @@ Events in stream:
   6. PaymentProcessed (authorization complete)
   7. OrderShipped (tracking 123456)
 
-Stream Length: 7 events
-Snapshotting: NOT NEEDED (well under 1000) 
-
 Pattern: Small, bounded number of children per parent
 Lifetime: Parent and all children created/destroyed together
 Consistency: All modified as a unit (can't ship without payment, etc.)
@@ -78,7 +72,7 @@ Consistency: All modified as a unit (can't ship without payment, etc.)
 
 ### Pattern 3: Collection (ANTI-PATTERN - DO NOT USE)
 
- WRONG: Treating a collection as aggregate
+WRONG: Treating a collection as an aggregate
 ```
 Bad Aggregate: AllOrders
 Root Identity: "all-orders-collection" (artificial, meaningless)
@@ -91,19 +85,11 @@ Events:
     4. OrderCreated (customer-003, order-004)
     ... (continues forever, unbounded)
 
-Month 1: 50,000 events
-Year 1: 600,000 events
-Year 5: 3,000,000 events 
-
-Stream Length: 1,000,000+ events
-Snapshotting: Doesn't help - design is fundamentally wrong 
-
 Problems with this approach:
   - No single business identity (it's a collection, not an entity)
-  - Stream grows unbounded (can never achieve performance SLA)
-  - Snapshotting won't fix it (snapshot is also 1M+ events)
+  - Stream grows unbounded — no natural end to its lifetime
   - Can't split or scale
-  - Every write goes to same stream (contention)
+  - Every write goes to the same stream (contention)
 
 Solution: Use a projection/read model query instead, not an aggregate
   - Query: "GetAllOrdersByCustomer(customer-id)"
@@ -115,7 +101,7 @@ Solution: Use a projection/read model query instead, not an aggregate
 
 ### Pattern 4: Event Log (ANTI-PATTERN - DO NOT USE)
 
- WRONG: Using aggregate as event log
+WRONG: Using an aggregate as an event log
 ```
 Bad Aggregate: SystemLog
 Root Identity: "system-log" (meaningless placeholder)
@@ -130,37 +116,30 @@ Events:
     6. UserLoggedIn (user-223)
     ... (grows indefinitely, no pattern)
 
-Per Day: 100,000+ events
-Per Year: 36,500,000+ events 
-
-Stream Length: 10,000,000+ events
-Snapshotting: Impossible - design is fundamentally broken 
-
 Problems with this approach:
   - No business identity (log of everything)
   - Events unrelated to each other (mixing user, order, payment, inventory)
   - No consistency boundary (user login != order creation)
   - Can't answer "what's the state of X?" (too mixed)
-  - Contention: every subsystem writing to same stream
+  - Contention: every subsystem writing to the same stream
   - Can't replay meaningfully (mixed concerns)
 
-Solution: Use separate event logs or time-series database
+Solution: Use separate event streams per business entity
   - Keep dedicated event streams: Order, Payment, Inventory, User
-  - Use time-series DB for metrics/logs: Prometheus, DataDog, ELK
-  - Query system logs separately from domain events
+  - Use a time-series database for metrics/logs, not a domain stream
 ```
 
 ---
 
 ### Pattern 5: Historical Aggregate (GOOD - When Needed)
 
- CORRECT: Keep historical data for audit/compliance
+CORRECT: Keep historical data for audit/compliance as its own boundary
 ```
 Aggregate: ArchivedOrder
 Root Identity: archivedOrderId (e.g., 'archived-order-001')
 Purpose: Regulatory compliance (7-year retention)
 
-Contains: Snapshot + audit trail of an order
+Contains: A record + audit trail of an order
 Events:
     1. OrderArchived (original order-123 on 2023-12-31)
        - reason: compliance_retention
@@ -177,153 +156,101 @@ Events:
   ... (additional audit entries over time)
 
 Lifetime: 7 years (regulatory requirement)
-Stream Length: 500-2000 events (audit entries added slowly)
-Snapshotting: Not needed (historical, not active) 
 
 Key architectural principles:
-  - Completely separate from active Order aggregate
+  - Completely separate from the active Order aggregate
   - Active Order is for current business operations
-  - Archived Order is immutable historical record
-  - Different access patterns, different SLAs
+  - Archived Order is an immutable historical record
+  - Different access patterns, different lifecycles
 ```
 
 ---
 
-## Stream Size Decision Tree
+## Stream Boundary Decision Tree
 
-Use this to decide if your streams are properly designed:
+Use this to decide whether a stream is bounded around the right business identity:
 
 ```
 Does your stream have a natural business identity?
  NO → This is not an aggregate, it's a log/report
-    SOLUTION: Use read model/projection, not aggregate
+    SOLUTION: Use a read model/projection, not an aggregate
 
- YES → How many events does it accumulate?
+ YES → Does every event in the stream belong to that one entity's lifecycle?
    
-    < 100 events
-       PERFECT: No optimization needed
+    YES → GOOD: Boundary is correctly scoped to one identity
    
-    100-1000 events
-      Is it growing because of high frequency?
-        NO →  GOOD: Probably well-designed
-        YES →  MONITOR: Watch for growth
-     
-      Does each event represent a meaningful state change?
-         YES →  GOOD: Healthy stream
-         NO →  REDESIGN: Too granular events
-   
-    1000-5000 events
-      Can you split this aggregate?
-        YES →  REDESIGN: Do it now
+    NO → The boundary is too wide — it's absorbing events that
+         belong to a different entity or a different concern
+        REDESIGN: Split by the entity each event actually concerns
           Examples: User → UserProfile + UserSessions
-                    Order → Order + OrderLineItems
-       
-        NO → Is read frequency high (> 10/sec)?
-           YES →  Consider snapshotting at 5000
-           NO →  ACCEPTABLE: Leave as-is
-     
-      Is latency critical (< 100ms)?
-         YES →  MONITOR: Measure replay time
-         NO →  ACCEPTABLE: No snapshotting needed
-   
-    5000-10000 events
-      This is a design problem →  REDESIGN
-      OR business justifies complexity → Snapshot at 5000
-     
-      Questions before snapshotting:
-         Can I split aggregate? (usually YES)
-         Can I reduce event granularity? (sometimes)
-         Am I using a read model for this aggregate? (maybe not)
-         If all NO → Then snapshot is justified
-   
-    > 10000 events
-        CRITICAL: Redesign required
-           This is NOT a properly designed aggregate
-           Snapshotting won't save you
-           Root cause: Aggregate boundary is wrong
+                    Order → Order + OrderLineItems (if line items
+                    have their own independent lifecycle)
 ```
 
 ---
 
-## Red Flags: Redesign Needed (Not Snapshotting)
+## Red Flags: Boundary Is Wrong
 
-If your stream exhibits ANY of these, snapshotting won't help—you need to redesign:
+If your stream exhibits ANY of these, the fix is a narrower or different identity — not a technical workaround:
 
 ```
- Red Flag 1: Stream growing > 1000 events/day
-   Cause: Events are too granular
-   Solution: Batch events or coarsen granularity
-   Example: "UserClickedButton" → "UserCompletedTask" (higher level)
+Red Flag 1: Stream growing continuously with no natural end
+   Cause: The stream identity spans an unbounded population, not one entity
+   Solution: Re-scope to a single business entity's lifecycle
+   Example: "AllOrders" stream → "Order" per customer order
 
- Red Flag 2: Thousands of events but no business meaning
-   Cause: Treating log as aggregate
-   Solution: Use read model/query instead of aggregate
-   Example: "SystemMetricRecorded"  → Use time-series database 
+Red Flag 2: Events with no shared business meaning
+   Cause: Treating a log as an aggregate
+   Solution: Use a read model/query instead of an aggregate
+   Example: "SystemMetricRecorded" → use a metrics/observability system
 
- Red Flag 3: Stream contains unrelated entities
+Red Flag 3: Stream contains unrelated entities
    Cause: Aggregate boundary is wrong
    Solution: Split into separate aggregates
-   Example: "AllOrders"  → "Order" per customer 
+   Example: "AllOrders" → "Order" per customer
 
- Red Flag 4: Snapshot is 80% of the stream size
-   Cause: Snapshot isn't helping
-   Solution: Re-examine aggregate boundary
-   Example: If snapshot is 800 events and deltas 100, redesign
-
- Red Flag 5: Can't explain what business question the stream answers
-   Cause: Not a real aggregate
-   Solution: Convert to read model/projection
-   Example: "SystemEvents"  → Query specific streams 
-
- Red Flag 6: Stream length doubles every 6 months
-   Cause: Exponential growth pattern
-   Solution: Likely aggregate boundary issue
-   Example: Split by time period: 2024-Orders vs. 2025-Orders
+Red Flag 4: Can't explain what single business question the stream answers
+   Cause: Not a real aggregate — probably a collection or log
+   Solution: Convert to a read model/projection
+   Example: "SystemEvents" → query specific per-entity streams instead
 ```
 
 ---
 
-## Tips for Optimal Stream Design
+## Tips for Finding the Right Boundary
 
-### 1. Favor Redesign Over Snapshotting
+### 1. Anchor on a Single Business Identity
 ```
-Cost:  Redesign effort < Snapshotting maintenance
-Quality: Better design > Better optimization
-Future: Smaller streams are easier to scale
+Every stream should answer: "the history of exactly which entity?"
+If the answer is "a category of things" or "everything," the
+boundary is wrong — it's describing a collection, not an entity.
 ```
 
 ### 2. Understand Event Granularity
 ```
- RIGHT: One event per meaningful state change
- WRONG: Multiple events per semantic operation
+RIGHT: One event per meaningful state change
+WRONG: Multiple events per semantic operation
 Example: "UserUpdatedProfile" (1 event)
 NOT: "FirstNameChanged", "LastNameChanged", ... (N events)
 ```
 
-### 3. Split When Possible
+### 3. Split When the Identity Is Actually Two Identities
 ```
- AllOrders (growing unbounded)
- Order (per order)
- OrderLine (per line item)
+AllOrders (growing unbounded, no single identity)
+→ Order (per order)
+→ OrderLine (per line item, if it has its own independent lifecycle)
 
- UserAccount (everything about user)
- UserProfile (personal info)
- UserPreferences (settings)
- UserSessions (login history)
+UserAccount (everything about a user, several unrelated concerns)
+→ UserProfile (personal info)
+→ UserPreferences (settings)
+→ UserSessions (login history)
 ```
 
-### 4. Archive Old Data
+### 4. Separate Active From Historical Concerns
 ```
- Keep everything in active aggregate
- Move completed/closed data to archive aggregate
+Keeping everything in one aggregate forever conflates two different
+lifecycles: the entity while it's active, and its record afterward.
 Example:
   - ActiveSubscription (current state)
   - ArchivedSubscription (after cancelled)
-```
-
-### 5. Measure Before Optimizing
-```
- Assume snapshotting is needed
- Measure replay latency first
- Only snapshot if measurement justifies it
 ```

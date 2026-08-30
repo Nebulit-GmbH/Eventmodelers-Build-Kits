@@ -174,175 +174,7 @@ InventoryLevelView
 
 ## Workflow
 
-Given commands and events, identify all outputs:
-
-### 1. Map Event Data to UI Screens
-For each screen, identify source events:
-
-```
-Screen: Order Status View
-Displays data from events:
-  orderId ← OrderCreated event
-  customerId ← OrderCreated event
-  items ← OrderCreated event
-  total ← OrderCreated event
-  status ← OrderConfirmed event (or OrderCancelled)
-  confirmedAt ← OrderConfirmed event
-  paymentId ← PaymentAuthorized event
-  shipmentId ← OrderShipped event
-  shippedAt ← OrderShipped event
-
-This screen is a projection of these events:
-  - OrderCreated
-  - OrderConfirmed
-  - PaymentAuthorized
-  - OrderShipped
-```
-
-### 2. Define Read Models
-Create optimized views from event data:
-
-```
-ReadModel: OrderStatusView
-Purpose: UI displays current order status
-Events subscribed: OrderCreated, OrderConfirmed, PaymentAuthorized, OrderShipped, OrderCancelled
-Data:
-{
-  orderId: string (from OrderCreated)
-  customerId: string (from OrderCreated)
-  status: enum (from events: Draft → Confirmed → Authorized → Shipped → Delivered)
-  createdAt: Date (from OrderCreated)
-  confirmedAt: Date (from OrderConfirmed)
-  paymentId: string (from PaymentAuthorized)
-  shipmentId: string (from OrderShipped)
-  shippedAt: Date (from OrderShipped)
-}
-```
-
-### 3. Document Event → Data Mapping
-Show exactly what data each event provides:
-
-```
-Event: OrderCreated
-Provides to UI/Processors:
-  orderId
-  customerId
-  items[]
-  total
-  shippingAddress
-  createdAt
-
-Event: OrderConfirmed
-Provides to UI/Processors:
-  orderId (link to stream)
-  paymentMethod (user selected method)
-  confirmedAt (timestamp)
-  paymentId (payment system reference)
-
-Event: PaymentAuthorized
-Provides to UI/Processors:
-  orderId (link to stream)
-  paymentId
-  authCode
-  authorizedAt (timestamp)
-  amount (verified amount)
-
-Event: OrderShipped
-Provides to UI/Processors:
-  orderId (link to stream)
-  shipmentId
-  shippedAt (timestamp)
-  carrier (shipping company)
-  trackingNumber (for delivery tracking)
-```
-
-### 4. Create Output Catalog
-List all read models:
-
-```
-ReadModel Catalog: Order System
-
-1. OrderStatusReadModel
-   Purpose: UI shows current order status
-   Events: OrderCreated, OrderConfirmed, PaymentAuthorized, OrderShipped, OrderCancelled
-   Data: orderId, status, createdAt, confirmedAt, paymentId, shipmentId
-   Consumed by:
-     - Order Status screen (UI)
-     - Customer Dashboard (UI)
-     - Order Processing Processor (decides if can ship)
-
-2. OrderListReadModel
-   Purpose: UI lists all orders for a customer
-   Events: OrderCreated, OrderConfirmed, OrderCancelled
-   Data: orderId, customerId, total, status, createdAt
-   Consumed by:
-     - Customer Order History (UI)
-     - Order Search/Filter (UI)
-
-3. PaymentStatusReadModel
-   Purpose: UI shows payment status
-   Events: OrderConfirmed, PaymentAuthorized, PaymentFailed
-   Data: orderId, paymentId, status, authCode, failureReason, timestamp
-   Consumed by:
-     - Payment Status screen (UI)
-     - Accounting Processor (reconciliation)
-
-4. ShipmentTrackingReadModel
-   Purpose: UI shows tracking information
-   Events: OrderShipped, DeliveryConfirmed
-   Data: orderId, shipmentId, trackingNumber, carrier, shippedAt, estimatedDelivery
-   Consumed by:
-     - Order Tracking screen (UI)
-     - Customer notifications (Processor)
-```
-
-### 5. Identify Missing Data
-Check if all UI needs are covered:
-
-```
-Question: What if UI needs "estimated delivery date"?
-Event: OrderShipped has carrier + trackingNumber
-Action needed: Add estimatedDelivery to OrderShipped event
-  (or compute from carrier info)
-
-Question: What if UI needs to show "payment method" on status?
-Event: OrderConfirmed has paymentMethod
-Action needed: Include paymentMethod in relevant read models
-
-Question: What if UI needs "item descriptions"?
-Event: OrderCreated has items[]
-But: items[] only has productId
-Action needed: Enrich with product descriptions from catalog
-  (via join with product service)
-```
-
-### 6. Processor Outputs
-Identify what processors consume:
-
-```
-Processor: Inventory System
-Consumes from read models:
-  - Orders in "PaymentAuthorized" status
-  - Items and quantities needed
-Produces commands:
-  - ReserveInventory
-
-Processor: Fulfillment System
-Consumes from read models:
-  - Orders in "InventoryReserved" status
-  - Items and quantities
-  - Shipping address
-Produces commands:
-  - CreateShipment
-
-Processor: Notification System
-Consumes from read models:
-  - OrderCreated (sends confirmation)
-  - OrderConfirmed (sends receipt)
-  - OrderShipped (sends tracking)
-  - DeliveryConfirmed (sends thank you)
-Does not produce commands (info-only)
-```
+Given commands and events, identify all outputs: for each screen, trace which events its data comes from; define a read model per component; document the event→data mapping; catalog the resulting read models; check for UI needs with no event source; and identify what processors consume. A full worked example of this reasoning (Order/Payment domain) is in `references/examples.md`.
 
 ## Output Format
 
@@ -497,6 +329,8 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5f — Placing a READMODEL node (full manual sequence)".
 
+**Pass `autoConnect: false` on every `place_element` / `node:created` call in this step.** Output read-model columns are inserted right next to automation-chain and command columns whose events are *not* the read model's sources — the default auto-connect would wire the new READMODEL to the nearest event on its left, which is exactly the stray-edge cleanup this step has repeatedly generated. Suppress it here and wire every `EVENT → READMODEL` / `READMODEL → SCREEN` / `READMODEL → AUTOMATION` edge explicitly in Step 5h's `set_connections` batch. After the batch, run `validate_model` (`{boardId, chapterId}`) — its `backward-arrows` and `readmodel-sources` findings confirm the wiring is what you intended and no stray edge slipped in.
+
 **For an AUTOMATION** (actor lane) — its READMODEL always goes **one column to its left**, never the same column: the automation's own column already holds the COMMAND it issues (interaction row), so the read model can't also live there.
 
 **Prefer MCP** — same `place_element` call with `"elementType": "AUTOMATION"`, then `submit_node_events` for fields, as above.
@@ -568,7 +402,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 
-If this step is processing more than one read model in the same pass, collect every connection resolved above (across all of them) into one `set_connections` call instead of one `set_connection` per pair — this was the single largest source of individual tool calls in this step.
+If this step is processing more than one read model in the same pass, collect every connection resolved above (across all of them) into one `set_connections` call instead of one `set_connection` per pair — this was the single largest source of individual tool calls in this step. Pass `compact: true` on that call: with `autoConnect: false` set at placement, every edge here is one you're deliberately creating, so a `{connected, existed, removed, notFound, failed, errors}` tally is all you need back — not a row per edge.
 
 4. **Document the reasoning for each connected event** — for every EVENT → READMODEL edge wired in step 1 (including any added later, e.g. via Step 5g's backward-connection exemption or a Step 5c/copy pattern), record why that event feeds this read model: which field(s) it sets or updates, and why. Use one MARKDOWN note per read model, in that read model's own column (same feedback-lane + MARKDOWN mechanics as `eventmodeling-orchestrating-event-modeling`'s "Documenting decisions inline, at any step" / Step 11 — add the chapter's feedback lane first if it doesn't already exist, then place the note at `cellId = "<feedbackLaneId>-<readModelColumnId>"`). Extend the existing note (don't create a second one) when the read model later gains another connected event.
 
@@ -593,115 +427,15 @@ Do not declare Step 5 complete on the strength of the read models you happened t
 6. **Re-fetch every READMODEL too** and run the >3-events heuristic (`eventmodeling-orchestrating-event-modeling`) on each one field by field — including read models a MARKDOWN note already justified as a roll-up. A prior note documents one field's irreducible fan-in; it does not exempt the rest of that node's fields from this check. The failure mode this catches: a wide-fan-in field (e.g. live per-copy availability) bundled together with a cheap, low-fan-in identity/fact field (e.g. a title set by 1-2 events) that has nothing to do with the roll-up — that pairing is always two read models, never one, no matter how the note reads.
 7. **Every READMODEL has its event-reasoning MARKDOWN note (Step 5h.4)**, and that note accounts for *every* inbound `EVENT → READMODEL` edge on the node — not just the one from when it was first placed. If a read model gained a connected event later and the note wasn't extended, fix it now rather than carrying the gap forward.
 
+Run `validate_model` (`{boardId, chapterId}`) once as the mechanical half of this pass — its `readmodel-sources` findings list every READMODEL with no inbound EVENT, `screen-collisions` flags any column that ended up with two screens, and `backward-arrows` catches a `READMODEL → SCREEN` that points left. Then do the judgement checks above (blank-form exemptions, the >3-events heuristic, note completeness) that the tool can't make.
+
 List the result of this pass (connected / exempt / fixed) for every screen and automation checked — this list is the evidence the orchestrator's Step 5 gate ("every screen data need is satisfied by a read model") actually holds, not just an assumption.
 
 After all read models, screens, automations, and connections are in place, present the Read Model Catalog summary as text to the user.
 
 ---
 
-For reference, the full markdown structure is:
-
-```markdown
-# Outputs: [Domain Name]
-
-## Read Models Summary
-
-| ReadModel | Purpose | Events | Consumed By |
-|-----------|---------|--------|-------------|
-| OrderStatus | Show order state | OrderCreated, OrderConfirmed | UI, Processor |
-| OrderList | List orders | OrderCreated, OrderCancelled | UI |
-| PaymentStatus | Payment info | OrderConfirmed, PaymentAuthorized | UI, Accounting |
-| Shipment Tracking | Track delivery | OrderShipped, DeliveryConfirmed | UI, Notifications |
-
----
-
-## Detailed Read Models
-
-### ReadModel: OrderStatusView
-
-**Purpose**: Order Status screen displays current order state
-
-**Events subscribed**:
-- OrderCreated
-- OrderConfirmed
-- PaymentAuthorized
-- OrderShipped
-- OrderCancelled
-- DeliveryConfirmed
-
-**Data**:
-```
-{
-  orderId: string
-  customerId: string
-  status: 'Draft' | 'Confirmed' | 'Authorized' | 'Shipped' | 'Delivered' | 'Cancelled'
-  items: Array<{productId, quantity, unitPrice}>
-  total: number
-  shippingAddress: Address
-
-  createdAt: Date
-  confirmedAt: Date
-  paymentId: string
-  paymentMethod: 'card' | 'transfer'
-  authorizedAt: Date
-
-  shipmentId: string
-  carrier: string
-  trackingNumber: string
-  shippedAt: Date
-  estimatedDelivery: Date
-}
-```
-
-**Update Logic**:
-- OrderCreated: Insert with status='Draft'
-- OrderConfirmed: Update status='Confirmed'
-- PaymentAuthorized: Update status='Authorized', set paymentId
-- OrderShipped: Update status='Shipped', set shipmentId, carrier, trackingNumber
-- DeliveryConfirmed: Update status='Delivered'
-- OrderCancelled: Update status='Cancelled'
-
-**Consumed By**:
-- Order Status Screen (displays)
-- Order Processing Processor (checks status)
-- Notification System (sends updates)
-
---- [Repeat for each read model]
-
----
-
-## Data Completeness Check
-
-### Events → UI Needs
-
-Verify all UI needs have event sources:
-
-| UI Need | Event Source | Status |
-|---------|-------------|--------|
-| Order status | OrderConfirmed, OrderShipped |  |
-| Tracking number | OrderShipped |  |
-| Order items | OrderCreated |  |
-| Estimated delivery | OrderShipped |  |
-| Cancellation reason | OrderCancelled |  |
-
-### Missing Data
-
-Identify UI needs without event sources:
-- None identified 
-
----
-
-## Processor Consumption
-
-### Processors and their reads:
-
-| Processor | Reads From | Writes Commands |
-|-----------|-----------|-----------------|
-| Inventory | OrderStatusView (Authorized) | ReserveInventory |
-| Fulfillment | OrderStatusView (InventoryReserved) | CreateShipment |
-| Notification | OrderStatusView (all) | None (info-only) |
-| Accounting | PaymentStatusView | None (reporting) |
-```
+Older versions of this skill wrote the read model catalog as a markdown document rather than placing nodes on the board — that legacy template is kept in `references/examples.md` for reference only; it is not the actual output mechanism.
 
 ## Quality Checklist
 

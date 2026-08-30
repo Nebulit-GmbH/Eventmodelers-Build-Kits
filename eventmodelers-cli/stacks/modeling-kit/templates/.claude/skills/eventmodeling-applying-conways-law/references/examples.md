@@ -1,0 +1,329 @@
+# Applying Conway's Law — Worked Examples
+
+These are conceptual worked examples of the team/system-boundary reasoning this skill applies — useful for understanding the reasoning, but the actual analysis steps are the numbered Workflow steps in the main SKILL.md.
+
+## 1. Identify System Boundaries
+
+```
+System Boundaries:
+
+
+ Order Management System                             
+  - Owns: Order entity and its lifecycle             
+  - Events: OrderCreated, OrderConfirmed, Cancelled  
+  - Owns: Order state machine                        
+
+
+
+ Payment Processing System                           
+  - Owns: Payment authorization and processing       
+  - Events: PaymentAuthorized, PaymentFailed         
+  - Owns: Payment state machine                      
+
+
+
+ Inventory System                                    
+  - Owns: Stock levels and reservations              
+  - Events: InventoryReserved, InventoryAllocated    
+  - Owns: Inventory state machine                    
+
+
+
+ Fulfillment System                                  
+  - Owns: Shipments and delivery                     
+  - Events: OrderShipped, DeliveryConfirmed          
+  - Owns: Shipment state machine                     
+
+```
+
+## 2. Create Swimlane Diagram
+
+```
+                Event Stream Timeline
+                →
+
+Order Team      OrderCreated   OrderConfirmed   OrderCancelled
+                                                   
+Payment Team                 PaymentAuthorized    PaymentFailed
+                                    
+Inventory Team                InventoryReserved
+                                    
+Fulfillment Team              OrderShipped    DeliveryConfirmed
+
+Each team owns their swimlane events
+Coordination via events crossing swimlanes
+```
+
+## 3. Map Team Responsibilities
+
+```
+Order Management Team
+ Commands they handle:
+   - CreateOrder
+   - ConfirmOrder
+   - CancelOrder
+ Events they produce:
+   - OrderCreated
+   - OrderConfirmed
+   - OrderCancelled
+ Read Models they maintain:
+   - OrderStatusView
+   - OrderListView
+ Systems they call:
+    - Payment System (to confirm payment)
+    - Inventory System (to check stock)
+
+Payment Processing Team
+ Commands they handle:
+   - AuthorizePayment
+   - ProcessPayment
+   - RefundPayment
+ Events they produce:
+   - PaymentAuthorized
+   - PaymentFailed
+   - PaymentRefunded
+ Read Models they maintain:
+   - PaymentStatusView
+   - TransactionHistory
+ Systems they depend on:
+    - Payment Gateway (external)
+    - Order System (for context)
+
+Inventory Team
+ Commands they handle:
+   - ReserveInventory
+   - ReleaseReservation
+   - AllocateStock
+ Events they produce:
+   - InventoryReserved
+   - ReservationReleased
+   - StockAllocated
+ Read Models they maintain:
+   - InventoryLevelView
+   - ReservationView
+ Systems they depend on:
+    - Order System (triggers)
+    - Warehouse System (stock source)
+
+Fulfillment Team
+ Commands they handle:
+   - CreateShipment
+   - MarkShipped
+   - ConfirmDelivery
+ Events they produce:
+   - ShipmentCreated
+   - OrderShipped
+   - DeliveryConfirmed
+ Read Models they maintain:
+   - ShipmentTrackingView
+   - DeliveryScheduleView
+ Systems they depend on:
+    - Inventory System (items to ship)
+    - Carrier APIs (tracking)
+```
+
+## 4. Identify Inter-System Communication
+
+```
+Communication Patterns:
+
+Order System  →  Payment System
+ Order System produces: OrderConfirmed event
+ Payment System consumes: OrderConfirmed
+ Payment System reacts: Issues AuthorizePayment command
+ Payment System produces: PaymentAuthorized event
+
+Order System  →  Inventory System
+ Order System produces: PaymentAuthorized event (indirectly)
+ Inventory System consumes: PaymentAuthorized
+ Inventory System reacts: Issues ReserveInventory command
+ Inventory System produces: InventoryReserved event
+
+Inventory System  →  Fulfillment System
+ Inventory System produces: InventoryReserved event
+ Fulfillment System consumes: InventoryReserved
+ Fulfillment System reacts: Issues CreateShipment command
+ Fulfillment System produces: OrderShipped event
+```
+
+## 5. Define System Interfaces
+
+```
+Order System Interface
+ Commands it accepts:
+   - CreateOrder (from UI)
+   - ConfirmOrder (from UI)
+   - CancelOrder (from UI or Processors)
+ Events it produces:
+   - OrderCreated
+   - OrderConfirmed
+   - OrderCancelled
+ Read Models it provides:
+    - OrderStatusView
+    - OrderListView
+
+Payment System Interface
+ Commands it accepts:
+   - AuthorizePayment (from Payment Processor/Order System)
+   - ProcessPayment (from Order System)
+ Events it produces:
+    - PaymentAuthorized
+    - PaymentFailed
+    - PaymentProcessed
+
+Inventory System Interface
+ Commands it accepts:
+   - ReserveInventory (triggered by PaymentAuthorized event)
+ Events it produces:
+    - InventoryReserved
+    - InventoryFailed
+```
+
+## 6. Identify Processors vs Systems
+
+```
+Processors (autonomous automation):
+
+1. PaymentProcessor
+   Triggered by: OrderConfirmed event
+   Logic: Calls external payment gateway
+   Produces: AuthorizePayment command
+   Lives in: Payment System
+
+2. InventoryProcessor
+   Triggered by: PaymentAuthorized event
+   Logic: Checks stock, reserves inventory
+   Produces: ReserveInventory command
+   Lives in: Inventory System
+
+3. FulfillmentProcessor
+   Triggered by: InventoryReserved event
+   Logic: Creates shipment records
+   Produces: CreateShipment command
+   Lives in: Fulfillment System
+
+4. NotificationProcessor
+   Triggered by: OrderCreated, OrderConfirmed, OrderShipped events
+   Logic: Sends emails/SMS
+   Produces: No commands (info-only)
+   Lives in: Notification System (cross-cutting)
+```
+
+## Output Format — full worked example (Order/Payment/Inventory/Fulfillment domain)
+
+```markdown
+# System Organization: [Domain Name]
+
+## System Boundaries
+
+### System: Order Management
+- **Team**: Order Team
+- **Responsibilities**: Create, confirm, cancel orders
+- **Commands**: CreateOrder, ConfirmOrder, CancelOrder
+- **Events Produced**: OrderCreated, OrderConfirmed, OrderCancelled
+- **Events Consumed**: PaymentAuthorized, InventoryReserved (for state updates)
+- **Read Models**: OrderStatusView, OrderListView
+- **Scope**: One stream type (Order)
+
+### System: Payment Processing
+- **Team**: Payment Team
+- **Responsibilities**: Authorize and process payments
+- **Commands**: AuthorizePayment, ProcessPayment, RefundPayment
+- **Events Produced**: PaymentAuthorized, PaymentFailed, PaymentRefunded
+- **Events Consumed**: OrderConfirmed (from Order System)
+- **Read Models**: PaymentStatusView, TransactionHistory
+- **Dependencies**: External payment gateway
+- **Scope**: One stream type (Payment)
+
+### System: Inventory Management
+- **Team**: Inventory Team
+- **Responsibilities**: Stock management and reservations
+- **Commands**: ReserveInventory, ReleaseReservation, AllocateStock
+- **Events Produced**: InventoryReserved, ReservationReleased, StockAllocated
+- **Events Consumed**: PaymentAuthorized (from Payment System)
+- **Read Models**: InventoryLevelView, ReservationView
+- **Dependencies**: Warehouse system
+- **Scope**: One stream type (InventoryReservation)
+
+[Continue for each system]
+
+---
+
+## Event Flow Across System Boundaries
+
+### Flow: Order → Payment → Inventory → Fulfillment
+
+```
+Time →
+
+Order System
+OrderCreated →
+OrderConfirmed →
+                              (triggers)
+Payment System
+PaymentAuthorized →
+                       (triggers)
+Inventory System
+InventoryReserved →
+                       (triggers)
+Fulfillment System
+OrderShipped
+DeliveryConfirmed
+```
+
+---
+
+## Team Responsibilities Matrix
+
+| Team | Creates Commands | Produces Events | Owns Read Models |
+|------|-----------------|-----------------|------------------|
+| Order | CreateOrder, ConfirmOrder | OrderCreated, OrderConfirmed | OrderStatusView |
+| Payment | AuthorizePayment | PaymentAuthorized | PaymentStatusView |
+| Inventory | ReserveInventory | InventoryReserved | InventoryLevelView |
+| Fulfillment | CreateShipment | OrderShipped | ShipmentTrackingView |
+
+---
+
+## Inter-System Communication
+
+### Order → Payment
+- Trigger: OrderConfirmed event
+- Action: Payment System listens via Processor
+- Result: AuthorizePayment command issued
+
+### Payment → Inventory
+- Trigger: PaymentAuthorized event
+- Action: Inventory System listens via Processor
+- Result: ReserveInventory command issued
+
+[Document all communication patterns]
+
+---
+
+## Dependencies
+
+### External Systems
+
+| System | Owns | Called By | Purpose |
+|--------|------|-----------|---------|
+| Payment Gateway | Payment provider | Payment System | Authorization |
+| Warehouse | Inventory source | Inventory System | Stock info |
+| Carrier API | Shipping | Fulfillment System | Tracking |
+
+---
+
+## Independent Development
+
+Each system can:
+- Develop independently
+- Use different tech stacks
+- Scale independently
+- Deploy independently
+- Own their events
+- Maintain their read models
+
+Coordination via:
+- Events (async messaging)
+- Processors (listen and react)
+- Read models (shared views)
+```

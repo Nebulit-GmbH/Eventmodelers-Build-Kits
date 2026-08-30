@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-orchestrating-event-modeling
-description: "Orchestrates complete event modeling workflow from requirements to code generation. Models architecture as UI/Processor → Command → Event → Read Model. Use when modeling a domain end-to-end from requirements. Do not use for: executing a single step in isolation (invoke the named step skill directly, e.g., eventmodeling-brainstorming-events for Step 1 or eventmodeling-elaborating-scenarios for Step 7), validating an already-completed model (use eventmodeling-validating-event-models), or modernizing legacy systems (use eventmodeling-integrating-legacy-systems)."
+description: "Orchestrates complete event modeling workflow from requirements to code generation. Models architecture as UI/Processor → Command → Event → Read Model. Use when modeling a domain end-to-end from requirements. Do not use for: executing a single step in isolation (invoke the named step skill directly, e.g., eventmodeling-brainstorming-events for Step 1 or eventmodeling-elaborating-scenarios for Step 7), or validating an already-completed model (use eventmodeling-validating-event-models)."
 allowed-tools:
   - AskUserQuestion
   - Write
@@ -85,11 +85,11 @@ After each step that creates elements (Steps 1–5), scan for any nodes that hav
 
 For each timeline in scope, check all node types that should be in cells.
 
-**Prefer MCP:** call `get_nodes` once per type, scoped to the timeline in question via `chapterId` (each call returns the full node objects, including cell placement, so no separate cell-occupancy lookup is needed):
+**Prefer MCP:** run `validate_model` once per chapter — the `unplaced` findings it returns are exactly this scan, plus five other structural checks, in one call and with a compact response (no full node objects):
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "chapterId": "$TIMELINE_ID" }
+mcp__eventmodelers__validate_model { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }
 ```
-Repeat with `"type": "COMMAND"`, `"READMODEL"`, `"SCREEN"`, `"AUTOMATION"`. On a multi-chapter board, `chapterId` keeps each check to the timeline actually in scope instead of pulling in every other chapter's nodes too.
+Only fall back to per-type `get_nodes` (`chapterId`-scoped, once each for `EVENT`, `COMMAND`, `READMODEL`, `SCREEN`, `AUTOMATION`) when you also need the node bodies for another reason in the same pass.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Scan for unplaced nodes".
 
@@ -133,6 +133,8 @@ Screens placed during Step 3 (Storyboarding) are provisional positions. Steps 4 
 ### Column insertion
 Use `add_column` with `{"index": N}` to insert a column at a specific position (shifts existing columns right) — or, when the insertion point is "immediately before/after a node already on the board" rather than a numeric position you'd otherwise have to compute, pass `beforeNodeId`/`afterNodeId` instead and let the tool resolve the index itself. Do not use no position at all (append) when placing read models or view screens — always target the correct position.
 
+**Suppress auto-connect when inserting into an existing chain.** When you insert columns next to nodes that are *not* meant to connect to what you're about to place — e.g. slotting an output read model's column in beside an automation-chain column — the node placement's default auto-connect will wire the new node to whatever type-compatible node happens to sit in its own or the previous column (the "nearest event to the left"). That is the source of the recurring stray-edge cleanup. When the placement you're about to make should be wired only by your own explicit `set_connections` batch, pass `autoConnect: false` on the placing call (`submit_node_events`, `place_element`, `create_screen`/`create_screens`) and then wire every edge yourself. Keep the default (auto-connect on) for Steps 1/3/4 where same-column neighbors are exactly the intended wiring.
+
 ### Prefer batch MCP tools over one-call-per-item loops
 
 Several MCP tools have a batch form that does the exact same thing as calling their singular form once per item, with the same validation rules and (where order matters, e.g. wiring a READMODEL→AUTOMATION edge before the backward EVENT→READMODEL edge that depends on it) the same in-order guarantee — just fewer round trips. Whenever a step's own instructions below show a single-item call and more than one item is being processed in the same pass, use the batch form instead:
@@ -147,6 +149,12 @@ Several MCP tools have a batch form that does the exact same thing as calling th
 - `create_chapter`'s `columns` param — when the chapter's initial column count is already known, instead of creating the default 3 and appending more after
 
 Also prefer `get_nodes`' `chapterId` param over an unscoped board-wide fetch whenever the step is working within one timeline (the common case), and `get_node`'s `projection: "cells"` over a full chapter fetch whenever only `{rows, columns, cells}` is needed (most cell/column bookkeeping lookups).
+
+For a "what is on the board and how is it wired right now" check between steps — the common orientation read, and the input to choosing an insertion anchor — use `get_board_outline` (`{boardId, chapterId}`). It returns one compact object: per-column node lists (`{id, type, title, lane}`) plus a flat edge list, with no rendered screen HTML or field bodies. Reserve full `get_nodes` (no projection) for when you actually need a node's `meta.fields` or page content.
+
+**Structural validation is one call, not a scan.** `validate_model` (`{boardId, chapterId}`) runs the whole structural checklist server-side — unplaced nodes, backward arrows (todo-list exception applied), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios — and returns only `findings`. Use it for the mandatory post-step unplaced check and as the first move in Step 9, instead of per-type `get_nodes` loops and `get_node` `projection: "edges"` spot-checks.
+
+**Ask echo-heavy write tools for less.** `add_scenario`, `add_storyline`, `set_connections` and `submit_node_events` each accept `compact: true`, which drops the full-object echo from the response (returning `{specNodeId, added, count, isNewNode}`, a `{connected, existed, removed, notFound, failed, errors}` tally, or `{persisted: <count>}` respectively). Pass it whenever you're not going to read individual fields back off the response — which is almost always for a large `set_connections` batch or a bulk scenario post.
 
 ### Documenting decisions inline, at any step
 
@@ -472,7 +480,8 @@ specific needs:
   be applied at any step where those decisions arise, most commonly during or
   after Step 1.
 - **`eventmodeling-optimizing-stream-design`** — Use after the model is
-  complete to validate stream growth estimates and snapshotting decisions.
+  complete to validate that every stream is anchored on a single business
+  identity, not a disguised collection or event log.
 - **`eventmodeling-translating-external-events`** — Use when external systems
   (webhooks, IoT, third-party APIs) need to feed into the domain model.
 

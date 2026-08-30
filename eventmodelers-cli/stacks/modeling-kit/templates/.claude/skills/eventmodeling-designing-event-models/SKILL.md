@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-designing-event-models
-description: "Designs event-sourced domain models. Maps business processes to immutable events and state projections. Events are the source of truth; state is derived from events for command validation. Use when designing event streaming architectures from domain analysis. Do not use for: brainstorming events from scratch (use eventmodeling-brainstorming-events), optimizing stream sizing or snapshotting (use eventmodeling-optimizing-stream-design), or translating external system events (use eventmodeling-translating-external-events)."
+description: "Designs event-sourced domain models. Maps business processes to immutable events and state projections. Events are the source of truth; state is derived from events for command validation. Use when designing event streaming architectures from domain analysis. Do not use for: brainstorming events from scratch (use eventmodeling-brainstorming-events), validating stream boundaries (use eventmodeling-optimizing-stream-design), or translating external system events (use eventmodeling-translating-external-events)."
 allowed-tools:
   - AskUserQuestion
   - Write
@@ -86,31 +86,7 @@ Update Interview Trail:
 
  **NEVER use a "DDD Aggregate Root" (bundled state) for command validation** Every command handler has its own minimal state projection. What DDD calls an "aggregate root" is actually a **read model**, not command-validation state.
 
-```text
- WRONG: Using DDD Aggregate as command state
-OrderAggregate { orderId, customerId, items[], total, status, paymentId, address, shippedAt, cancelledAt, ... }
-    ↑ This is a READ MODEL, not command state
-    ↓ NEVER use for command validation
-  handleConfirmOrder(OrderAggregate)
-  handleShipOrder(OrderAggregate)
-  handleCancelOrder(OrderAggregate)
-
- CORRECT: Minimal state per command
-ConfirmOrderState { status, orderId }
-    ↓
-  handleConfirmOrder(ConfirmOrderState)
-
-ShipOrderState { status, orderId, paymentId }
-    ↓
-  handleShipOrder(ShipOrderState)
-
-CancelOrderState { status, orderId, createdAt }
-    ↓
-  handleCancelOrder(CancelOrderState)
-
-OrderSummaryView { orderId, customerId, items[], total, status, paymentId, ... }
-    ↑ This is for UI queries, NOT command validation
-```
+The anti-pattern is a single bundled "aggregate" state object reused across every command handler; the correct approach is one minimal, command-specific state shape per command (e.g. `ConfirmOrderState` carries only `status`/`orderId`, while `ShipOrderState` also needs `paymentId`), with any rich, all-fields view kept entirely separate as a read model rather than fed into command validation. A full worked WRONG/CORRECT comparison (Order domain) is in `references/examples.md`.
 
 ## Purpose
 Converts domain analysis into the event sourcing architecture pattern:
@@ -133,29 +109,7 @@ Events are the immutable source of truth. Each stream holds facts about one enti
 - **Event Data**: Combines command input + implicit stream state facts
 - **Causality**: Triggered by which command?
 
-Format:
-```text
-Stream: Order:order-123
-
-Events (chronological):
-1. OrderCreated
-   Triggered by: CreateOrder command
-   Data: customerId, items[], total, shippingAddress, createdAt
-   (from command: customerId, items[], shippingAddress)
-   (implicit: total calculated from items)
-
-2. OrderConfirmed
-   Triggered by: ConfirmOrder command
-   Data: paymentId, confirmedAt
-   (from command: paymentId)
-   (implicit: orderId from stream, previous status verified)
-
-3. OrderShipped
-   Triggered by: ShipOrder command
-   Data: shipmentId, shippedAt
-   (from command: shipmentId)
-   (implicit: orderId, confirmed status verified)
-```
+Document each event stream as a chronological list of events, giving each event's triggering command and its data — noting which fields came directly from the command versus which are implicit stream-state facts (e.g. a calculated total, or context carried forward from the stream's identity). A full worked example (an Order stream) is in `references/examples.md`.
 
 **Key Rules**:
 - Events are **immutable facts** from successful commands
@@ -185,34 +139,7 @@ Command state read models are **derived** from events and **minimal**:
 - Each command handler defines what state projection it needs (and ONLY what it needs)
 - Projection can be regenerated from events at any time
 
-Example for Order stream with separate command state read model for EACH command:
-
-```text
-## ConfirmOrder Command (IMPLEMENTED)
-State interface: ConfirmOrderState { status, orderId }
-Builder: buildConfirmOrderState(events)
-Naming: [CommandName]State = implemented
-- OrderCreated event → Set status='Draft'
-- OrderConfirmed event → Set status='Confirmed'
-(SKIP: items, total, shipping - not needed for this command)
-
-## ShipOrder Command (IMPLEMENTED)
-State interface: ShipOrderState { status, orderId, paymentId }
-Builder: buildShipOrderState(events)
-Naming: [CommandName]State = implemented
-(DIFFERENT from ConfirmOrderState)
-- OrderCreated event → (skip)
-- OrderConfirmed event → Set status='Confirmed', set paymentId
-- OrderShipped event → Set status='Shipped'
-
-## CancelOrder Command (PLANNED - NOT IMPLEMENTED)
-State interface: CancelOrderStateToDo { status, orderId, createdAt }
-Builder: buildCancelOrderStateToDo(events) [STUB - TODO]
-Naming: [CommandName]StateToDo = planned, needs implementation
-(DIFFERENT from both above)
-- OrderCreated event → Set status='Draft', createdAt
-- OrderCancelled event → Set status='Cancelled'
-```
+Design a separate, minimal state interface for each command on the same stream — e.g. `ConfirmOrderState` reads only `status`/`orderId`, while `ShipOrderState` also needs `paymentId` — each built by its own state builder that replays only the events it needs and skips the rest; a not-yet-implemented command's state gets the `ToDo` suffix. A full worked example spanning several commands on the same Order stream is in `references/examples.md`.
 
 **Enforcement Rule**:
 - ConfirmOrderState used ONLY by handleConfirmOrder
@@ -230,28 +157,7 @@ Commands are **intent data from UI or Processor**:
 - Load current stream state for validation
 - Produce events if valid, or reject if invalid
 
-Format:
-```text
-Command: ConfirmOrder
-Source: UI or Processor (only these can issue)
-Input: orderId, paymentId
-
-Processing:
-    1. Load current state from Order:orderId stream
-    2. Validate preconditions:
-       - state.status === 'Draft' (reject: already confirmed)
-       - paymentId is valid (reject: invalid payment)
-    3. If all valid:
-       - Produce: OrderConfirmed event
-         - Data: paymentId, confirmedAt
-         - Implicit: orderId (from stream), previous status (from state)
-    4. If any validation fails:
-       - Reject: return error (no event created)
-
-Outcomes:
-     Success: OrderConfirmed event appended to stream
-     Rejection: Error returned, no event created
-```
+Document each command's source, its input fields, the preconditions it validates against the loaded state, the event(s) it produces on success (noting which data comes from the command versus implicit context), and its rejection outcomes. A full worked example (ConfirmOrder) is in `references/examples.md`.
 
 **Key Rules**:
 - Only UI or Processor can issue commands (entry points)
@@ -268,154 +174,21 @@ Read models are **projections of events for UI/Processor queries**:
 - Consumed by UI or Processor (for display/decision)
 - Can be regenerated from events anytime
 
-Format:
-```text
-ReadModel: OrderSummaryView
-Purpose: UI displays customer order list, Processor checks order status
-
-Subscribed to events:
-  - OrderCreated
-  - OrderConfirmed
-  - OrderShipped
-  - OrderCancelled
-
-Data (optimized for queries):
-  {
-    orderId: string
-    customerId: string
-    total: number
-    status: string
-    createdAt: Date
-    confirmedAt?: Date
-    shippedAt?: Date
-  }
-
-Update from events:
-  - OrderCreated → Insert row (id, customer, total, status='Draft')
-  - OrderConfirmed → Update status='Confirmed', set confirmedAt
-  - OrderShipped → Update status='Shipped', set shippedAt
-  - OrderCancelled → Update status='Cancelled'
-
-Consumed by:
-  - UI: displays list of orders
-  - Processor: checks if order can be shipped
-```
+Document each read model's purpose, which events it subscribes to, its query-optimized data shape, how each subscribed event updates that data, and who consumes it (UI display vs. processor decision-making). A full worked example (OrderSummaryView) is in `references/examples.md`.
 
 ### 5. Document Event Causality
 Show how events relate to each other:
 
-```text
-Command Flow:
-CreateOrder command
-    → OrderCreated event
-       ↓ (may trigger external process)
-ConfirmOrder command (reads OrderCreated state)
-    → OrderConfirmed event
-       ↓ (may trigger)
-ShipOrder command (reads OrderCreated + OrderConfirmed state)
-    → OrderShipped event
-```
+Trace the causal chain from the first command through the events and downstream commands it can trigger, showing how the state a later command reads depends on events produced by earlier ones. A full worked example (an Order create→confirm→ship chain) is in `references/examples.md`.
 
 ### 6. Document State Transitions
 Show valid state transitions:
 
-```text
-Order Stream State Transitions:
-
-Initial state: (empty stream)
-  ↓
-CreateOrder → OrderCreated
-  ↓
-State: Draft
-
-Draft state:
-  → ConfirmOrder → OrderConfirmed → State: Confirmed
-  → CancelOrder → OrderCancelled → State: Cancelled
-
-Confirmed state:
-  → ShipOrder → OrderShipped → State: Shipped
-  → CancelOrder (rejected - already confirmed)
-
-Shipped state:
-  → No more transitions allowed
-```
+Map every valid state transition for the stream — the initial (empty) state, each transition a command can cause, and which transitions are rejected from a given state (e.g. cancelling an already-shipped order) — ending at any terminal states. A full worked example (Order stream transitions) is in `references/examples.md`.
 
 ### Output Format
 
-Present complete model as:
-
-```markdown
-# Event Model: [Domain]
-
-## Event Streams
-
-### Stream: Order
-
-**Identity**: orderId
-
-**Events**:
-- OrderCreated: Initial event creating the order
-Data: customerId, items[], total, shippingAddress
-
-- OrderConfirmed: Payment confirmed
-Data: paymentId, confirmedAt
-
-- OrderShipped: Order shipped
-Data: shipmentId, shippedAt
-
-- OrderCancelled: Order cancelled
-Data: cancelledAt, reason
-
-**State Projection (Human Example)**:
-For the ConfirmOrder command, we need minimal state:
-```text
-ConfirmOrderState:
-  - orderId: 'order-123'
-  - status: 'Draft'
-```
-
-For the ShipOrder command, we need different data:
-```text
-ShipOrderState:
-  - orderId: 'order-123'
-  - status: 'Confirmed'
-  - paymentId: 'payment-456'
-```
-
----
-
-## Commands
-
-### Command: CreateOrder
-- Input: customerId, items[], shippingAddress
-- Validation: Items valid, customerId exists
-- Events produced: OrderCreated
-- Possible outcomes: Success (OrderCreated) or Validation error
-
-### Command: ConfirmOrder
-- Input: orderId, paymentId
-- Validation: Order in Draft status, payment validated
-- Events produced: OrderConfirmed
-- Possible outcomes: Success or "Already confirmed" error
-
----
-
-## Read Models (Optional)
-
-### ReadModel: OrderSummaryView
-- Purpose: Quick lookup of order status
-- Events: OrderCreated, OrderConfirmed, OrderShipped, OrderCancelled
-- Queries served: GetOrder(orderId), ListOrdersByCustomer(customerId)
-
----
-
-## Implementation Notes
-- All state is derived from events
-- Commands validate against derived state
-- No transaction across streams
-- Events are source of truth
-- Read models can be rebuilt from events
-```
+Present the complete model as a markdown document with sections for Event Streams (each stream's identity, its events, and a human-readable state-projection example per command), Commands (input, validation, events produced, outcomes), Read Models (purpose, subscribed events, queries served), and Implementation Notes. A full worked example of this document structure (Order domain) is in `references/examples.md`.
 
 ## Key Event Sourcing Principles
 
