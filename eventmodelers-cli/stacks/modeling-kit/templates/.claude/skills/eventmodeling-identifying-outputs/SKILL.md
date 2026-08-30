@@ -466,8 +466,8 @@ Read models go in the `interaction` lane. For a **SCREEN**, the primary read mod
 
 **For a READMODEL** (interaction lane):
 
-**Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell (including inserting a new column when the target column is already occupied by a COMMAND) and creating the node into one call. **Target column depends on the consumer type**:
-- **SCREEN**: target the screen's own column index — `place_element` inserts a new column before it automatically if that column's interaction row is already occupied (e.g. a command/input screen).
+**Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell and creating the node into one call, but it does **not** resolve an occupied target column for you: passing an already-occupied `columnIndex` fails outright rather than auto-inserting a column before it (it only auto-extends when `columnIndex` is *past* the current column count — a different situation). **Target column depends on the consumer type**:
+- **SCREEN**: target the screen's own column index. First check whether that column's interaction row is already occupied (e.g. a command/input screen) — `get_node` with `projection: "cells"` on the chapter. If it is, insert a new column immediately before the screen first (`add_column` with `beforeNodeId` set to the screen's own node id), then pass *that* new column's index to `place_element` instead of the screen's original one.
 - **AUTOMATION**: target `consumerColumnIndex - 1` (one column to the *left* of the automation) — never the automation's own column index, since it already holds the COMMAND the automation issues.
 ```
 mcp__eventmodelers__place_element {
@@ -557,7 +557,7 @@ For each view screen S that queries this read model as its primary read model:
     → Gap between read model and screen. Close it: move the read model into column(S) (if free) or column(S) - 1.
 ```
 
-**View screens normally share the column of the (primary) read model they display** — either because they were placed there in Step 3, or because you move them here now. They only sit one column to the right of it when that shared column wasn't available.
+**View screens normally share the column of the (primary) read model they display** — either because they were placed there in Step 3, or because the read model was placed into the screen's own column just now (per the check above). A screen's own position is never moved to resolve a read model placement conflict — when the shared column isn't available, the **read model** gets a new column immediately before the screen's, not the other way around (this preserves the screen's narrative order from Step 3).
 
 **The same rule applies to `EVENT → READMODEL`.** If a later event needs to update data a read model already feeds to a SCREEN, do not connect that later event back into the existing read model — the platform only accepts an `EVENT → READMODEL` backward connection when the read model already has a `READMODEL → AUTOMATION` edge (the todo-list pattern from Step 4b, `eventmodeling-designing-automation-chains`). For any read model feeding a SCREEN, resolve the update the same way Step 5c resolves multi-component screens: place a **new copy of the read model** in (or immediately after) the later event's column, connect the later event forward into that copy, and place a matching copy of the same screen there — same title, updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature. Never link the new copy back to the earlier read model instance.
 

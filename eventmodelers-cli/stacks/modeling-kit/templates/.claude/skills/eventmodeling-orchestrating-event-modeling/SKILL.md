@@ -41,7 +41,7 @@ These rules govern how every element is placed on the board. Enforce them throug
 
 ### State-view slice (EVENT → READ MODEL → SCREEN)
 - READ MODEL goes in the **interaction row** of a column that is **immediately after the primary source event's column** — never at the end of the timeline.
-- SCREEN (view/output screen) goes in the **actor row of the same column as the READ MODEL**.
+- SCREEN (view/output screen) goes in the **actor row of the same column as the READ MODEL**. When that column's interaction row is unavailable to the read model (e.g. already holds a COMMAND), the **read model** gets a new column immediately **before** the screen's — the screen's own position is never moved to resolve this (`eventmodeling-identifying-outputs`'s Step 5g has the full mechanics).
 - If the primary source event's column already has a COMMAND in the interaction row, insert a **new column immediately after** (using `index = currentColumnIndex + 1`) and place the READ MODEL there.
 
 ### Never stack read models at the end

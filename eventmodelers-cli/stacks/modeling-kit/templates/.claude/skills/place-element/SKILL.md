@@ -255,8 +255,8 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
 
 | Element type | Occupant type in same cell | Action |
 |---|---|---|
-| `READMODEL` | `COMMAND` (state-change slice already owns this column) | Insert a **new column immediately after** the current column (not at the end) and use that new column as the target. |
-| `SCREEN` (view/output screen) | any | Same as READMODEL — insert immediately after. |
+| `READMODEL` | `COMMAND` (state-change slice already owns this column) | Insert a **new column immediately after** the current column (not at the end) and use that new column as the target. This row covers positioning the read model relative to its **source EVENT's** column. If instead you're placing the read model to share a column with an **already-placed view SCREEN** it feeds (`eventmodeling-identifying-outputs`'s Step 5g scenario) and that column is unavailable, do the opposite: insert the new column immediately **before** the screen — the screen's own position must never move to resolve this. |
+| `SCREEN` (view/output screen) | any | Insert immediately after (this is placing a brand-new screen, not repositioning one relative to an existing read model). |
 | `EVENT` | `EVENT` in **any other swimlane row of the same column** | Insert a new column immediately after — an EVENT never shares a column with another EVENT, even across different swimlanes. |
 | Any | Same element type | Stop and tell the user — true conflict, no safe default. |
 | Any | Different type but not a known pairing | Stop and tell the user. |
