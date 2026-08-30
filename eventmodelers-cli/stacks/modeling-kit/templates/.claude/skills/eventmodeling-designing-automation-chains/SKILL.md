@@ -41,13 +41,13 @@ Even an automation that looks like a "pure signal relay" still has a todo list �
 
 **An automation can only ever be directly triggered by an internal event — never by another system's event.** A "trigger" arriving from a second swimlane is not itself the thing that drives your domain's work; it first has to be *translated* into an internal event. Do not model this as one automation whose todo list is opened by the external EVENT and that also does the real work (e.g. an automation reading a todo list opened by `ReservationRequested` from another system's swimlane and directly issuing `ReserveCopy`) — that lets an external system trigger domain work with no translation step, which this model doesn't allow. **Apply this now, in Step 4b** — Conway's Law (Step 6) only confirms the boundary, it doesn't introduce the chain. When an integration trigger comes from another team's system, model it as **two chained automations**, never one:
 
-1. **Translation automation** — converts the external fact into an internal one; the other system's own decision logic is out of scope. Its todo list is opened by the external EVENT and closed by the internal EVENT its own command produces — the one and only place an external EVENT may open a todo list.
+1. **Translation automation** — converts the external fact into an internal one; the other system's own decision logic is out of scope. Its todo list is opened by the external EVENT — the one and only place an external EVENT may open a todo list. **It is not closed by the internal EVENT its own command produces, and gets no backward arrow.** A translation automation's job is an instantaneous, always-succeeding relay: there is no real work-in-progress window between "signal arrived" and "internal fact recorded" worth modeling as an open/close lifecycle, unlike a worker automation that can genuinely have pending items. This read model exists only to satisfy "every automation reads from a todo list," not to accumulate and drain a queue — so it stays open-ended: fed by the external EVENT, read by the automation, never closed.
    - **Three separate columns**, left to right: `[external EVENT] → [todo-list READMODEL] → [AUTOMATION + COMMAND + internal EVENT]`. Never crammed into one or two — the "one EVENT per column" rule applies here too.
    - **Name the internal EVENT for its business meaning, not the transport** — usually the same name as the external EVENT (e.g. external `CopyReserved` → internal `CopyReserved`; the swimlane already shows which is which), never a mechanical `<X>SignalReceived`/`<X>RequestReceived` suffix. Same for the automation/command: `Record Reservation`/`RecordReservation`, not `Record Reservation Signal`/`RecordReservationSignal`.
    - Its command and event carry no business decision — they only exist to produce the internal fact the next automation needs.
-2. **Worker automation** — the one that does the actual work (the domain reaction the process is really about, e.g. `ReserveCopy`). Its todo list is opened **only** by the internal EVENT the translation automation produced (this chapter's own swimlane) — never by the external EVENT directly — and closed by whatever event marks that work done.
+2. **Worker automation** — the one that does the actual work (the domain reaction the process is really about, e.g. `ReserveCopy`). Its todo list is opened **only** by the internal EVENT the translation automation produced (this chapter's own swimlane) — never by the external EVENT directly — and closed by whatever event marks that work done. Unlike the translation stage, the worker's todo list keeps its normal open/close accumulator shape, because real pending work can sit there (it's the point where actual domain decisions happen).
 
-Wire the todo lists the standard way for each automation separately: for the translation automation, the external EVENT (second swimlane) **opens** the row and its own resulting internal EVENT **closes** it; for the worker automation, that same internal EVENT **opens** its row and its own resulting EVENT **closes** it. `EVENT → READMODEL` connections from both swimlanes are unaffected by which swimlane the event sits in.
+Wire the todo lists differently for each automation in the chain: for the translation automation, the external EVENT (second swimlane) **opens** the row and nothing closes it; for the worker automation, the internal EVENT **opens** its row and its own resulting EVENT **closes** it (backward arrow, per the exemption below). `EVENT → READMODEL` connections from both swimlanes are unaffected by which swimlane the event sits in.
 
 ## Fields on a todo-list read model
 
@@ -114,7 +114,7 @@ For a **translation-chain automation**, place its three columns left to right in
    ```
    mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<openingEventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
    ```
-3. **Every closing EVENT → READMODEL** — including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already has a `READMODEL → AUTOMATION` edge (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the edge from step 1 above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient.
+3. **Every closing EVENT → READMODEL — worker-stage todo lists only.** Including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already has a `READMODEL → AUTOMATION` edge (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the edge from step 1 above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient. **Do not add this edge for a translation automation's todo list** — it has no closing event at all (see the translation-chain rule above); wiring one back is a modeling error, not a convenience.
 
 **Fallback (no MCP)** — same three edges via `POST /connections` with `{"source":"...","target":"..."}`, in the same order.
 
@@ -127,8 +127,10 @@ If this step is designing more than one automation's chain in the same pass, bat
 Re-fetch every AUTOMATION on the board (`get_nodes`, `type: "AUTOMATION"`) and check each one:
 
 1. Does it have an incoming `READMODEL → AUTOMATION` connection to a todo-list read model? An AUTOMATION is **never** exempt — if not, design and wire it now.
-2. Is its todo list opened by an internal event only? If it's opened directly by another system's (second-swimlane) event, that automation is missing its translation chain — split it into translation + worker automations per the rule above.
-3. Does the todo-list read model's field set avoid a `status` flag (membership in the list is the state)?
+2. Is its todo list opened by an internal event only, **unless it is itself a translation automation** (which is the one case a second-swimlane event may open a todo list)? If a worker automation's todo list is opened directly by another system's event, that automation is missing its translation chain — split it into translation + worker automations per the rule above.
+3. If it's a **translation** automation, does its todo list have no closing edge — i.e. no connection from its own resulting internal EVENT back to its own todo-list read model? If one exists, remove it: a translation automation's todo list is never closed.
+4. If it's a **worker** automation, does its todo list have a proper closing edge from its own resulting event? If not, add it.
+5. Does the todo-list read model's field set avoid a `status` flag (membership in the list is the state)?
 
 List the result (connected / chain-resolved) for every automation checked — this is the evidence that `eventmodeling-identifying-outputs`'s later per-node verification pass (which re-checks automations defensively) finds nothing left to do here.
 
@@ -137,6 +139,7 @@ List the result (connected / chain-resolved) for every automation checked — th
 - [ ] Every AUTOMATION has an incoming `READMODEL → AUTOMATION` connection to a todo-list read model — no exemption, even for a simple relay
 - [ ] No automation's todo list is opened directly by another system's (second-swimlane) EVENT unless that automation is itself the translation automation
 - [ ] Every externally-triggered automation is modeled as two chained automations (translation + worker), never one
-- [ ] Every todo-list read model's opening and closing events are identified, including the automation's own resulting event as a closing event where applicable
+- [ ] Every **worker**-stage todo-list read model's opening and closing events are identified, including the automation's own resulting event as a closing event
+- [ ] Every **translation**-stage todo-list read model has an opening event (the external EVENT) and **no closing event at all** — no backward arrow from its own internal EVENT back to its own todo list
 - [ ] No todo-list read model uses a `status` field instead of list membership
 - [ ] Every todo-list read model sits one column before its automation, never sharing its column
