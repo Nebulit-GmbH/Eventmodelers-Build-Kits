@@ -386,7 +386,7 @@ Pass `compact: true` — you already hold every scenario object you sent, so the
 
 ### Step 4b — List-type readmodel scenario fields
 
-When `then` contains a READMODEL whose `listElement` property is `true`, add two fields **at the scenario level** (not inside `then`):
+When `then` contains a READMODEL whose `listElement` property is `true` — set on the node when it was created, per `eventmodeling-core-rules`'s READMODEL section and `eventmodeling-identifying-outputs`/`eventmodeling-designing-automation-chains` — add two fields **at the scenario level** (not inside `then`):
 
 **`examples`** — one object per expected row, keyed by the readmodel's snake_case field names. Without this the spec node renders with no expected output and the scenario is unverifiable.
 

@@ -69,6 +69,7 @@ Slices are not placed directly — they're **derived** from a completed model. E
   - Invalid: `OrderSummaryProjector`, `InvoiceListRepository` — implementation detail leaking into the model
 - Optional — nothing requires a READMODEL to exist for a COMMAND or a downstream consumer.
 - Never drives COMMAND validation directly — a COMMAND is checked against its own documented preconditions, not a read model.
+- **List-shaped read models**: when the whole READMODEL represents multiple rows (each row shaped by its defined fields), not a single projected record, set `meta.listElement: true` on the node itself — this is a node-level flag, distinct from a field's own `cardinality: "List"` (a single field holding multiple values). Every todo-list read model (see `eventmodeling-designing-automation-chains`) is list-shaped and always gets `listElement: true`; the same applies to any other READMODEL whose query naturally returns a set of rows (e.g. `ProductList`, `InvoiceList`). `eventmodeling-elaborating-scenarios` reads this flag to decide whether a scenario needs row-level `examples`/`expectEmptyList` instead of a single accumulated result.
 
 ### SCREEN
 - Represents what a user sees and can act on.

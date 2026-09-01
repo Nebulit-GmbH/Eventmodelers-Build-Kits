@@ -222,6 +222,8 @@ Set the field's `generated` property according to this table. Fields projected d
 
 Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely holds a list of values (e.g. line items, a collection projected from multiple events), in which case use `"List"`. Default to `"Single"` when unsure. Include only the fields the consuming SCREEN or AUTOMATION actually displays or needs — do not add speculative fields; enrich later via `/attributes`.
 
+If the READMODEL itself represents a set of rows rather than a single record — e.g. `InvoiceList`, `ProductList` — also set `meta.listElement: true` on the node (see `eventmodeling-core-rules`'s READMODEL section). This is separate from a field's `cardinality`: `listElement` says the whole read model is a list of elements shaped by its defined fields, `cardinality: "List"` says one field on an otherwise-single-record read model holds multiple values.
+
 ```json
 {
   "type": "READMODEL",
@@ -259,7 +261,7 @@ mcp__eventmodelers__place_element {
   "columnIndex": <consumerScreenColumnIndex>  // or <automationColumnIndex - 1> for an AUTOMATION consumer
 }
 ```
-Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) on the returned node id:
+Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) — and `meta.listElement: true` if this read model is list-shaped — on the returned node id:
 ```
 mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",

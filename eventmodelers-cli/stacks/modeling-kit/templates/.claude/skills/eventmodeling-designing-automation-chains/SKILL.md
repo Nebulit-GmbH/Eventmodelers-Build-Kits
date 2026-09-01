@@ -69,6 +69,8 @@ A todo-list read model's fields describe the pending item — the identity it's 
 
 Every field must set a `mapping` per `eventmodeling-identifying-outputs`'s field data lineage rules (`"<EventTitle>.<fieldName>"`, `"latest:..."`, `"aggregate:..."`, `"derived:..."`), and `"cardinality"` (`"Single"` unless the field genuinely holds a list).
 
+A todo-list read model is always list-shaped — it's a queue of pending items, never a single record — so it always gets **`meta.listElement: true`** on the node itself (see `eventmodeling-core-rules`'s READMODEL section). This is a node-level flag separate from any field's own `cardinality`.
+
 ## Placement — todo-list READMODEL, one column before its automation
 
 The todo-list read model goes in the interaction lane, **one column before** its automation (actor lane) — the automation's own column already holds the COMMAND it issues, so the read model can never share that column.
@@ -85,14 +87,14 @@ mcp__eventmodelers__place_element {
   "columnIndex": <automationColumnIndex - 1>
 }
 ```
-Then set `meta.fields` on the returned node id:
+Then set `meta.fields` and `meta.listElement: true` on the returned node id:
 ```
 mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<returned-node-id>",
     "boardId": "<BOARD_ID>", "timestamp": 1234567890,
-    "meta": {"type": "READMODEL", "title": "NotificationsToSend", "fields": [...]}
+    "meta": {"type": "READMODEL", "title": "NotificationsToSend", "fields": [...], "listElement": true}
   }]
 }
 ```
@@ -145,4 +147,5 @@ List the result (connected / chain-resolved) for every automation checked — th
 - [ ] Every **worker**-stage todo-list read model's opening and closing events are identified, including the automation's own resulting event as a closing event
 - [ ] Every **translation**-stage todo-list read model has an opening event (the external EVENT) and **no closing event at all** — no backward arrow from its own internal EVENT back to its own todo list
 - [ ] No todo-list read model uses a `status` field instead of list membership
+- [ ] Every todo-list read model has `meta.listElement: true` set on the node
 - [ ] Every todo-list read model sits one column before its automation, never sharing its column
