@@ -114,7 +114,7 @@ When an element's natural column is already occupied by something else, insert a
 
 ## Linked Copies
 
-A **linked copy** is a COMMAND/EVENT/READMODEL node that mirrors another node elsewhere on the board — most often needed because `set_connection`/auto-connect only ever pairs nodes on the same timeline, so a node on a different timeline can't be wired to directly.
+A **linked copy** is a COMMAND/EVENT/READMODEL node that mirrors another node elsewhere on the board — most often needed because `set_connection`/auto-connect only ever pairs nodes on the same timeline, so a node on a different timeline can't be wired to directly. The same marking obligation applies whenever a node is reused rather than newly wired anywhere on the board, same timeline included: never place a node that repeats another swimlane's already-recorded fact under its own unlinked identity — either connect forward to the original, or mark it a linked copy. The one exception is a translation chain's own internal EVENT (`eventmodeling-designing-automation-chains`): it is a genuine new domain fact recorded in this side's own language, not a copy, even when it shares the external EVENT's name.
 
 To make one: place a normal new node of the same type (COMMAND/EVENT/READMODEL only) at the target spot, then link it to the origin (`link_element`, or the REST `.../nodes/:nodeId/link` fallback). This replaces the new node's `meta` with a full copy of the origin's and sets `meta.linkedTo` to the origin's node id — the authoritative pointer (a `data.linkedTo` also exists but is a rendering mirror only, not the source of truth). Wire the resulting copy to its own neighbors normally afterward.
 

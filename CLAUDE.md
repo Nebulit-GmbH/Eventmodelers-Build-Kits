@@ -30,8 +30,12 @@ You are an autonomous agent processing tasks queued for an eventmodelers board.
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
 | Update the status of a slice (e.g. done, in-progress) | `/update-slice-status` |
+| Translate an external/other-system event into a domain event, design its correlation/idempotency rules | `eventmodeling-translating-external-events` |
+| Design an automation's todo-list read model, or the translation-chain for an externally/second-swimlane-triggered automation | `eventmodeling-designing-automation-chains` |
+| Design the read model(s) a command/event's data should feed | `eventmodeling-identifying-outputs` |
+| Write GWT scenarios or a storyline for a command or read model (incl. an automation's todo list) | `eventmodeling-elaborating-scenarios` |
 
-Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions.
+Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions. The four rows above are `eventmodeling-*` methodology skills (not `/`-prefixed): they carry the actual modeling rules (translation-chain shape, redundant-stage checks, linked-copy marking, storyline-vs-GWT judgment) that `/place-element`/`/timeline` alone don't apply — placing the nodes for a translation or automation chain without also invoking the matching row above is how a chain ends up missing its storyline, its read model, or its copy-marking.
 
 ## Progress Entry Format
 
@@ -56,3 +60,4 @@ Outcome: [what changed on the board]
 - `/update-slice-status` rejects moving a slice into a status it's already in — this is a concurrency guard so two agents can't both claim the same slice. Treat this as `ALREADY_IN_STATUS`, not a task failure: drop the prompt, move on to the next task, and do not retry the same update.
 - macOS/BSD `date` silently ignores GNU-only format specifiers like `%N`/`%3N` (sub-second precision) instead of erroring — it prints the literal characters, producing a malformed timestamp that only fails downstream. Don't shell out to `date` for sub-second precision; use `$(( $(date +%s) * 1000 ))` for whole-second-in-ms, or a runtime call (`Date.now()`, `process.hrtime()`) instead.
 - Before retrying a failed shell command a second time, diagnose why it failed (e.g. a GNU/BSD flag mismatch) rather than re-running it unchanged — repeating the same command produces the same failure and just burns retries.
+- A translation/automation-chain task done only via `/place-element` calls (no `eventmodeling-designing-automation-chains`/`eventmodeling-translating-external-events`) tends to reuse another swimlane's event without marking it a linked copy, chain a redundant second translation onto an already-decided fact, and skip the todo list's storyline — invoke the matching `eventmodeling-*` skill row above instead of placing chain nodes freehand.
