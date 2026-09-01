@@ -50,7 +50,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 | `get_board_outline` | `boardId`, `chapterId` | One chapter's structure, compact: per-column node lists (`{id, type, title, lane}`) + a flat edge list, no HTML pages / field bodies / meta. The cheap "what is where and how is it wired" read — prefer over `get_nodes` (no projection) for orientation checks | — (MCP-only convenience) |
 | `validate_model` | `boardId`, `chapterId`, `checks?[]` | Server-side Event Modeling structural checklist over one chapter — compact `findings` only. Checks: unplaced nodes, backward arrows (with the todo-list `EVENT→READMODEL` exception), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios. Replaces the manual per-type `get_nodes` + `get_node projection=edges` validation pass | — (MCP-only convenience) |
 | `add_scenario` | `boardId`, `timelineId`, `columnId`, `scenarios[]`, `compact?` | Append GWT scenario(s) to a column's spec node. `compact: true` returns `{specNodeId, added, scenarioCount, isNewNode}` instead of echoing every scenario back | §6 `POST .../scenarios` |
-| `add_storyline` | `boardId`, `timelineId`, `columnId`, `storylines[]`, `compact?` | **Experimental — only use when explicitly asked for a storyline/walkthrough.** Append storyline(s) (ordered, branchable beats over existing elements) to a column's spec node. `compact: true` suppresses the full storyline echo | §6 `POST .../storylines` |
+| `add_storyline` | `boardId`, `timelineId`, `columnId`, `storylines[]`, `compact?` | Append storyline(s) (ordered, branchable beats over existing elements) to a column's spec node. Use whenever `eventmodeling-elaborating-scenarios`'s GWT-vs-storyline decision rule calls for one (e.g. a todo list's open→close lifecycle) — not only when a user explicitly names "storyline"; that skill's own per-read-model judgment is the trigger, this catalog entry isn't a stricter gate on top of it. `compact: true` suppresses the full storyline echo | §6 `POST .../storylines` |
 | `set_connection` | `boardId`, `source`, `target`, `action` (`'connect'\|'remove'`) | Add or remove a type-checked directed edge. Batch form `set_connections` takes `connections[]` (applied in order) plus `compact?` — `compact: true` returns a `{connected, existed, removed, notFound, failed, errors}` tally instead of one row per edge | — (via `edges` on §3 events) |
 | `auto_connect_node` | `boardId`, `nodeId` | Re-run auto-connect for a node | §3 `POST .../nodes/:nodeId/auto-connect` |
 | `link_element` | `boardId`, `nodeId`, `targetNodeId` | Link two existing same-type nodes: `targetNodeId` is replaced with a full copy of `nodeId`'s meta plus `meta.linkedTo`. Linking means first create, then link | §3 `POST .../nodes/:nodeId/link` |
@@ -595,11 +595,12 @@ Get valid elements for a specific slice.
 
 ---
 
-### Storylines (experimental)
+### Storylines
 
-> **Only create a storyline when the user's request explicitly asks for one** — the word
-> "storyline", "walkthrough", or "narrative" (or equivalent) must appear in what they asked for.
-> Otherwise keep creating normal GWT scenarios via `add_scenario`/`POST .../scenarios` as before.
+> **Create a storyline whenever `eventmodeling-elaborating-scenarios`'s GWT-vs-storyline decision
+> rule calls for one** (e.g. a todo list's open→close lifecycle) — that skill's own per-read-model
+> judgment is the trigger, not a specific word in the user's request. GWT scenarios via
+> `add_scenario`/`POST .../scenarios` still cover everything the decision rule doesn't.
 
 An ordered, branchable walkthrough of existing board elements ("beats"), stored alongside GWT
 scenarios on the same SCENARIO spec node, in a sibling `meta.storylines` collection.
