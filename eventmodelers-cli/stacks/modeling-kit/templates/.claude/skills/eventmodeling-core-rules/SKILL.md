@@ -112,6 +112,16 @@ A connection either goes **downward within the same column** (actor → interact
 
 When an element's natural column is already occupied by something else, insert a new column immediately before or after (whichever keeps every connection forward) rather than wiring across the gap. See `place-element` for the mechanical insertion rules and each step's own placement section for where "before" vs. "after" applies.
 
+## Linked Copies
+
+A **linked copy** is a COMMAND/EVENT/READMODEL node that mirrors another node elsewhere on the board — most often needed because `set_connection`/auto-connect only ever pairs nodes on the same timeline, so a node on a different timeline can't be wired to directly.
+
+To make one: place a normal new node of the same type (COMMAND/EVENT/READMODEL only) at the target spot, then link it to the origin (`link_element`, or the REST `.../nodes/:nodeId/link` fallback). This replaces the new node's `meta` with a full copy of the origin's and sets `meta.linkedTo` to the origin's node id — the authoritative pointer (a `data.linkedTo` also exists but is a rendering mirror only, not the source of truth). Wire the resulting copy to its own neighbors normally afterward.
+
+Never delete the original (the node with no `linkedTo`) once copies of it exist — copies reference it, and removing it breaks every copy. `eventmodeling-checking-completeness` already treats any `linkedTo`-marked node as an intentional copy, never a duplicate or missing-slice gap to flag.
+
+See `place-element` Step 6a for the mechanical linking steps.
+
 ## Translation Chain
 
 An AUTOMATION reacting to an event from another system — external (a webhook/API) or second-swimlane (another team's own timeline) — needs a two-stage shape, never a direct reaction:
