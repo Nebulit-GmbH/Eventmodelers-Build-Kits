@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-validating-event-models-checklist
-description: "Validate an event model against 12 structural checks across 6 phases. Identifies notation anti-patterns and confirms the model is internally consistent. Use when reviewing an event model for readiness or after completing event modeling steps. Do not use for: reviewing incomplete or in-progress models (use eventmodeling-validating-event-models), or for elaborating new scenarios (use eventmodeling-elaborating-scenarios)."
+description: "Validate an event model against 13 structural checks across 7 phases. Identifies notation anti-patterns and confirms the model is internally consistent. Use when reviewing an event model for readiness or after completing event modeling steps. Do not use for: reviewing incomplete or in-progress models (use eventmodeling-validating-event-models), or for elaborating new scenarios (use eventmodeling-elaborating-scenarios)."
 allowed-tools:
   - Write
   - Bash
@@ -14,7 +14,7 @@ This step applies the shared element rules in **`eventmodeling-core-rules`** —
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-**Purpose**: Validate any event model against 12 structural checks across 6 phases. Identifies notation anti-patterns and confirms the model is internally consistent.
+**Purpose**: Validate any event model against 13 structural checks across 7 phases. Identifies notation anti-patterns and confirms the model is internally consistent.
 
 **Applies To**: Any domain - e-commerce, banking, SaaS, marketplace, healthcare, etc.
 
@@ -26,7 +26,7 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 **What It Does**:
 1. Reads current board state (EVENT, COMMAND, READMODEL nodes) as input
-2. Systematically applies 12 validation checks across 6 phases
+2. Systematically applies 13 validation checks across 7 phases
 3. Identifies notation anti-patterns (calculations modeled as events, events mixed into the wrong entity's timeline, etc.)
 4. Verifies read model/event distinction
 5. Confirms every event and command traces cleanly
@@ -89,6 +89,14 @@ Use the board nodes as the model input. After the checklist, use `handle-comment
 - Check 6.2: No event belongs to more than one entity's timeline — an event that seems to span two entities usually means a naming or boundary mistake, not a shared fact
 
 **Anti-pattern to catch**: events that can occur in invalid combinations; a "shared" event quietly coupling two entities together
+
+### Phase 7: Structural Shape Validation (2 checks)
+- Check 7.1: No SCREEN is wired to more than one COMMAND
+- Check 7.2: Fan-out/fan-in outliers (a command with 2+ resulting events, a read model built from 3+ events, a slice with markedly more scenarios than its neighbors) have been reasoned about against the business context, not flagged on count alone
+
+See `eventmodeling-core-rules`'s **Structural Shapes** section for the full definitions ("the bed", "left chair", "right chair", "shelf") and their thresholds — this phase doesn't restate them.
+
+**Anti-pattern to catch**: Check 7.1 catches "the bed" — a screen fanning into multiple commands hides where the user's actual decision is made; this is a real anti-pattern, always fail it. Check 7.2 catches "the left chair" / "the right chair" / "the shelf" — these are candidates, not automatic fails: only report an outlier if the specific events/fields/scenarios involved still look like they're doing more than one job once you've checked them against the domain.
 
 ### Final Questions (2 checks)
 - Question 1: Could a modeler unfamiliar with this domain understand the model in 15 minutes?
@@ -158,6 +166,19 @@ EntityB reacts to EventA via a read model/automation, it doesn't own it
 
 **Why**: An event belongs to the story of exactly one entity. If a second entity needs to react to it, that's a read model or automation reading it — not the same event living on two timelines.
 
+### 4. A Screen Fanning Into Multiple Commands ("the bed")
+```
+ ANTI-PATTERN:
+Screen → Command A
+       → Command B
+       → Command C
+
+ CORRECT:
+Screen → Command A only (one screen, one decision)
+```
+
+**Why**: A screen represents the moment a user has already committed to one decision. Wiring it to several commands hides where that choice actually gets made — see `eventmodeling-core-rules`'s **Structural Shapes** section for this and the three related fan-out/fan-in candidates ("left chair", "right chair", "shelf").
+
 ---
 
 ## Questions to Ask During Validation
@@ -181,7 +202,7 @@ EntityB reacts to EventA via a read model/automation, it doesn't own it
 ## Success Criteria
 
  **Model is validated when**:
-- All 12 checks pass (or have documented workarounds)
+- All 13 checks pass (or have documented workarounds)
 - No critical anti-patterns identified
 - Both final questions answer YES
 - Event modeling principles are clearly upheld
@@ -243,7 +264,7 @@ Running the checklist after Step 2 prevents wasting time on later steps if the c
 
 ## Checklist Questions by Domain
 
-The skill applies the same 12 checks regardless of domain. Here's how to think about it in different contexts:
+The skill applies the same 13 checks regardless of domain. Here's how to think about it in different contexts:
 
 **E-commerce domain**:
 - Events: OrderCreated, OrderConfirmed, PaymentAuthorized, OrderShipped
@@ -275,7 +296,7 @@ The principle is the same across all domains: **immutable facts as events, calcu
 
 ## Quality Checklist
 
-- [ ] All 12 checks evaluated — no check skipped without documented justification
+- [ ] All 13 checks evaluated — no check skipped without documented justification
 - [ ] Every FAIL result includes the specific event, command, or entity that violated the check
 - [ ] Anti-patterns identified by name with the exact model element that triggered the flag
 - [ ] Final verdict is one of: PASS / PASS WITH WARNINGS / FAIL — no ambiguous outcomes
@@ -296,5 +317,5 @@ The principle is the same across all domains: **immutable facts as events, calcu
 
 ## Validation Checklist Reference
 
-The 12-point checklist is defined in the **Validation Phases** section above.
+The 13-point checklist is defined in the **Validation Phases** section above.
 Each check includes the anti-pattern to catch and questions to ask when evaluating your model.

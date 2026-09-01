@@ -151,6 +151,15 @@ Question any step that exists only because of the system — a loading spinner, 
 - **Technical events**: `ApiCalled`/`ResponseReceived` describe machinery, not an outcome — find the business fact underneath.
 - **Calculated events**: an event whose value is recomputed as source data changes (a running total, an average) is a READMODEL, not an EVENT.
 
+## Structural Shapes
+
+Beyond the local anti-patterns above, four recurring **connection shapes** are worth checking whenever the model's wiring is visible — a fan-out or fan-in count crossing a rough threshold. Only one is a real anti-pattern regardless of context; the other three are **candidates** — worth checking against the business context, not automatically wrong. Reason about the actual events/fields/scenarios involved before flagging a candidate; if the domain justifies the count, it's not a violation. These are internal shorthand names for spotting the shape — never surface "bed", "left chair", "right chair", or "shelf" in anything shown to a business stakeholder (a board comment, a report); describe the concern in plain terms instead.
+
+- **The bed (real anti-pattern — always flag)** — one SCREEN wired to more than one COMMAND. A screen is where the user has already committed to one decision, so it should trigger exactly one command; wiring several to it means the choice is being made somewhere invisible to the model.
+- **The left chair (candidate)** — one COMMAND resulting in more than two EVENTs. May mean the command is doing more than one job, or it may be a single business outcome that legitimately fans out. Check whether the outcomes always happen together or could happen independently before treating it as a concern.
+- **The right chair (candidate)** — one READMODEL built from more than three EVENTs. May mean the view is answering more than one question at once, or it may be one coherent picture that genuinely needs that many sources. Check whether the fields shown belong to a single thing the user is checking before treating it as a concern.
+- **The shelf (candidate)** — one slice with noticeably more SCENARIOs than the others on the same timeline (a rough outlier, not a fixed threshold — compare against the typical count for that timeline). May mean the step is quietly covering ground that belongs to a separate step, or it may just be genuinely more complex. Check what the extra scenarios actually cover before treating it as a concern.
+
 ## Flow & Causality
 
 Model causality, not strict sequence:
@@ -178,5 +187,6 @@ Before treating a model as done, verify:
 - [ ] Every COMMAND traces back to a SCREEN (user decision) or AUTOMATION (system reaction)
 - [ ] The timeline starts with a state-view or an automation reacting to an event — not a bare COMMAND
 - [ ] No two `state-change`/`state-change` slices are chained without a new trigger between them
+- [ ] No SCREEN is wired to more than one COMMAND (the bed — see Structural Shapes)
 
 This is the fast pass — the full, deeper check is `eventmodeling-validating-event-models-checklist`.

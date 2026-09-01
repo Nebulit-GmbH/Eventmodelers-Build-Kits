@@ -119,6 +119,15 @@ Do not flag gaps that are clearly intentional (e.g. a slice named "Internal" wit
 
 Check whether any EVENT, COMMAND, or READMODEL appears in zero slices (present on the board but not wired into any slice boundary). If the slicedata API does not expose this directly, skip this check and note it.
 
+### 5f — Structural shapes
+
+Check the element graph gathered in Step 4 against the four shapes defined in `eventmodeling-core-rules`'s **Structural Shapes** section (the bed, left chair, right chair, shelf) — read that section for the full definitions and thresholds; this step only covers how to report them here.
+
+- **The bed** is a real anti-pattern — always report every instance found (a SCREEN wired to more than one COMMAND), by slice/screen name.
+- **The left chair, right chair, and shelf** are candidates — only report an instance if, after reasoning about the actual events/fields/scenarios involved, the count still looks like it's doing more than one job in this domain. Don't report a raw count crossing the threshold on its own.
+
+This is a read-only structural read like the rest of Step 5 — report findings, never fix them here.
+
 ---
 
 ## Step 6 — Report to the user
@@ -169,6 +178,13 @@ Total: <n> slices
 ### Structural Gaps
 <list only genuine gaps — slice title + what's missing>
 (none) if everything looks complete
+
+---
+
+### Structural Shapes
+<always list every "the bed" instance found — screen name + the commands it fans into>
+<list a left chair/right chair/shelf instance only if it held up after reasoning about the domain>
+(none) if nothing found
 
 ---
 
