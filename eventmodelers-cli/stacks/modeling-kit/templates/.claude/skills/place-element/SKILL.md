@@ -196,9 +196,23 @@ Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
 **Same swimlane for events emitted by the same command.** When one command emits more than one event, each event still gets its own column (per the hard rule above), but all of them belong in the *same* swimlane row, placed in adjacent columns immediately after the command. Do not scatter a command's sibling events across different swimlane rows — one command producing multiple events is one system doing multiple things in sequence, not several systems reacting independently.
 
+**One COMMAND / READMODEL / SCREEN / AUTOMATION per column — server-enforced, not just a heuristic.** Unlike the EVENT rule above (which this skill has to check for itself), the server itself rejects a second `COMMAND`, `READMODEL`, `SCREEN`/`HTML_SCREEN`, or `AUTOMATION` landing in a column that already has one of that type — across *every* row of the relevant lane (`interaction` for COMMAND/READMODEL, `actor` for SCREEN/AUTOMATION), not only the exact target cell. A board can have several separate `interaction` or `actor` rows, so the target cell itself can be empty and the placement will still fail with a `ValidationError` ("Column already has a … node … — only one … is allowed per column"). Treat that rejection exactly like a same-cell conflict in the table below — insert a new column rather than retrying the same one.
+
 **Check if the cell is already occupied.**
 
-**No direct MCP equivalent**: `get_nodes` only filters by `type`, not `cellId` — there is no MCP tool that filters nodes by cell. Instead, use the `cells` array you already fetched in Step 3 via `get_node` (`projection: "cells"`) on the chapter/timeline node: `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Only fall back to the curl call below if you haven't already loaded `timelineData` (e.g. MCP wasn't used in Step 3 either):
+**Fastest path**: use the `cells` array you already fetched in Step 3 via `get_node` (`projection: "cells"`) on the chapter/timeline node — `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Also scan it for the column-wide conflict from the rule above: any entry with `colId === columnId` and `nodeType === elementType` (for COMMAND/READMODEL/SCREEN/AUTOMATION) means the column is occupied even though `CELL_ID` itself is free. This avoids an extra round-trip, but can be stale if a column was just created in Step 5 — re-fetch first in that case.
+
+**No direct MCP equivalent** for querying by cell/column: `get_nodes` only filters by `type`. The REST API does support it directly though — `GET /nodes` takes `cellId` **or** `colId`, both requiring `timelineId`:
+
+```bash
+# Same-cell occupancy — returns [] if empty, or [nodeRecord] if occupied
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID&timelineId=$TIMELINE_ID"
+
+# Column-wide occupancy (any row) — optionally add &type=READMODEL to narrow to one element type
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?colId=$COLUMN_ID&timelineId=$TIMELINE_ID"
+```
+
+Use this REST call (see the curl fallback below) when you don't already have fresh `timelineData` loaded, instead of re-fetching the whole chapter node just to check occupancy.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Check cell occupancy".
 

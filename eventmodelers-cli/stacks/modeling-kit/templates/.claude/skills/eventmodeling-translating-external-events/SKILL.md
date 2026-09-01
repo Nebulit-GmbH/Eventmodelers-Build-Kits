@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-translating-external-events
-description: "Translate external system events (webhooks, APIs, IoT) into domain events. Map technical data to business concepts. Use when integrating with external systems that emit events your domain needs to react to. Do not use for: designing command handlers for the translated events (use eventmodeling-designing-event-models)."
+description: "Translate external system events (webhooks, APIs, IoT) into domain events. Map technical data to business concepts. Use when integrating with external systems that emit events your domain needs to react to. Do not use for: designing the commands/read models for the translated events (use eventmodeling-designing-event-models)."
 allowed-tools:
   - AskUserQuestion
   - Write
@@ -11,11 +11,11 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has specified: external systems involved, webhook/API formats, and domain mapping. Interview when external systems haven't been fully cataloged or translation rules are unclear.
-
-**Interview Strategy**: Catalog all external systems and understand their event formats before defining translation rules. Missing correlation strategies — how external IDs map back to domain entities — are the most common source of integration failures, so surface them early.
 
 ### Critical Questions
 
@@ -29,59 +29,7 @@ allowed-tools:
    - Why it matters: Simple 1-to-1 mappings vs. complex multi-source translations affect design
    - Follow-up triggers: If (B) or (C) → ask "What data must you look up from your own system to complete the translation? How do you handle arrival before that data exists?"
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - Full list of external systems with event types
-  - AND sample payload formats for each event type
-  - AND correlation strategy (how to link external IDs to domain entity IDs)
-
-Then: Skip interview, proceed directly to translation rule design
-
-Else: Conduct interview
-```
-
-**Phase 1: External System Catalog** (Question 1)
-- Enumerate all systems that send events into the domain
-- Document event types and payload formats for each
-- Identify authentication and delivery mechanisms (webhook, polling, streaming)
-
-**Phase 2: Mapping Complexity Assessment** (Question 2)
-- Identify which integrations require enrichment from domain data
-- Surface correlation gaps (external ID ≠ domain ID)
-- Flag multi-source aggregations for deeper design attention
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## Translating External Events (eventmodeling-translating-external-events)
-
-### External Systems Catalog
-[From Q1: System names, event types, formats, auth mechanisms]
-
-### Mapping Complexity
-[From Q2: Direct mappings vs. complex enrichment needs, correlation gaps]
-
-### Correlation Strategies
-- [System A]: correlates via [reference field / lookup table]
-- [System B]: correlates via [metadata in external payload]
-
-### High-Risk Integrations
-- [System needing multi-source data]: [risk description]
-```
-
-Update Interview Trail:
-```markdown
-| Ext. Events | eventmodeling-translating-external-events | Done | External systems cataloged, correlation strategies defined |
-```
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**Translating External Events** (`eventmodeling-translating-external-events`)". Findings should cover: the external systems catalog (names, event types, formats, auth), mapping complexity, correlation strategies (how external IDs map to domain entity IDs), and any high-risk integrations needing multi-source data.
 
 ---
 

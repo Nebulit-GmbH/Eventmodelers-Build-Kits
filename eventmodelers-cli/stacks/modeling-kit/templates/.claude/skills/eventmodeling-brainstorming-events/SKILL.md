@@ -11,17 +11,15 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 ## Interview Phase (Optional)
 
-**When to Interview**: Skip if the user has provided detailed, well-documented requirements (written user stories, feature specs, business rules). Interview when requirements are vague, incomplete, or when domain expertise is uncertain.
-
-**Interview Strategy**: Ensure requirements are complete and team understands domain well enough to brainstorm comprehensively. Identify hidden complexity areas upfront.
+**When to Interview**: Skip if the user has provided detailed, well-documented requirements (written user stories, feature specs, business rules) and named who understands the domain. Interview when requirements are vague, incomplete, or domain expertise is uncertain.
 
 ### Critical Questions
-
-When requirements need clarification:
 
 1. **Requirements Completeness** (Impact: Determines if brainstorm is likely to be exhaustive)
    - Question: "How complete are your requirements? Do you have: (A) Written user stories/specs, (B) Documented business rules, (C) Rough list, (D) Just verbal descriptions?"
@@ -43,76 +41,7 @@ When requirements need clarification:
    - Why it matters: Business rules often generate specific events; documenting them prevents overlooking state changes
    - Follow-up triggers: For each rule → ask "When this rule is violated, what event signals that?"
 
-### Interview Flow
-
-**Conditional Entry**:
-```text
-If user has provided:
-  - Written requirements or user stories (not just verbal)
-  - AND documented business rules or constraints
-  - AND named domain experts who will participate
-
-Then: Skip interview, proceed directly to brainstorming
-
-Else: Conduct interview
-```
-
-**Phase 1: Requirements Assessment** (Questions 1-2)
-- Gauge requirements completeness
-- Confirm domain expertise available
-- Adjust brainstorm scope accordingly
-
-**Phase 2: Complexity Mapping** (Questions 3-4)
-- Identify areas needing deep exploration
-- Document rules that may generate events
-- Plan brainstorm focus areas
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## 2. Brainstormed Events (eventmodeling-brainstorming-events)
-
-### Requirements Assessment
-[From Q1: Written requirements? Documented rules?]
-
-### Domain Expertise
-[From Q2: Who understands domain? Available for participation?]
-
-### Role Catalog
-#### Human Roles
-- [Role 1]: [Description] → Actions: [list]
-- [Role 2]: [Description] → Actions: [list]
-#### System Actors
-- [Actor 1]: [Description] → Triggers: [list]
-
-### Event Streams (Stream Roots)
-- Stream: [Name] (Identity: [id field])
-  - Events: [Event1, Event2, Event3]
-  - State changes: [State transitions]
-
-### Business Rules & Constraints
-[From Q3 & Q4]
-- Rule 1: [Statement] → [Events it generates]
-- Rule 2: [Statement] → [Events it generates]
-- Constraint 1: [Limitation]
-
-### Brainstorming Focus Areas
-- [Focus area 1]
-- [Focus area 2]
-```
-
-Update Interview Trail:
-```markdown
-| 2 | eventmodeling-brainstorming-events |  [today] | Event streams, business rules, constraints |
-```
-
-This section feeds into subsequent steps (plotting, storyboarding, etc.)
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**2. Brainstormed Events** (`eventmodeling-brainstorming-events`)". Findings should cover: requirements completeness, domain expertise available, the Role Catalog, entities/event timelines identified, business rules & constraints, and brainstorming focus areas — this feeds directly into plotting and storyboarding.
 
 ---
 
@@ -148,6 +77,13 @@ After completing the analysis, partition the full event list into groups where e
 - Would be naturally owned by one team or one domain expert
 
 If all events belong to a single flow, one timeline is correct — do not split artificially.
+
+**Divergent journey vs. a decision point — do not confuse the two.** A group of events sometimes contains a branch, and the branch's nature decides whether it gets its own chapter or stays inside this one:
+
+- **Divergent journey → its own chapter.** The actor makes a different choice *before* the process even starts, and everything downstream differs as a result (e.g. "Checkout with saved card" vs. "Checkout as guest" — different screens, different commands, arguably a different Role Catalog entry). Group these as separate workflows in Step 1, not as one group with a fork in it.
+- **Decision point → stays in this one chapter.** A single trigger — one command's outcome, or one automation's rule — resolves to one of several mutually exclusive results, and the rest of the process is otherwise the same story (e.g. `PaymentAuthorized` succeeds or fails, `OrderConfirmed` vs. `OrderCancelled` after the same confirm action). Keep this as one group; `eventmodeling-plotting-events`'s "Identify Alternative Paths" step is exactly where this branch gets shown, as sibling paths within the same timeline — it never means a second chapter.
+
+If unsure which one you're looking at, ask: "does this branch start a genuinely different story, or does it just decide how *this* story ends?" A different story is a new chapter; a different ending is a branch inside this one.
 
 ### 2. Create one chapter per group
 
@@ -304,7 +240,7 @@ An event left without a chapter and cell reference will never appear in any time
 
 **Use swimlanes sparingly — a swimlane exists for exactly one purpose: marking where integration with another system happens. Nothing else justifies one.** Not a different actor, not a different role, not visual grouping, not "an explicit business rule" in the abstract. Every chapter starts with, and in the common case keeps, a single default swimlane holding all of this bounded context's own domain events. Before adding a lane, check whether an existing lane already covers the element's type. If yes, place the element in that lane.
 
-**The only valid reason to create a second `swimlane`-type lane: another system's own events cross into this chapter as integration triggers for a translation automation** (see `eventmodeling-designing-automation-chains`, Step 4b). Label it for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all. An external EVENT may only ever open the *translation* automation's todo list — never the todo list of the automation that does the actual domain work; that automation is triggered solely by the internal event the translation automation produces (Step 4b covers the full two-automation chain).
+**The only valid reason to create a second `swimlane`-type lane: another system's own events cross into this chapter as integration triggers for a translation automation** (see `eventmodeling-designing-automation-chains`, Step 4b). Label it for that system and place its trigger events there — never fold them into this chapter's own event swimlane (they are not this bounded context's domain facts) and never treat them as an informal "signal" with no EVENT node at all. An external EVENT may only ever open the *translation* automation's todo list — never the todo list of the automation that does the actual domain work; that automation is triggered solely by the internal event the translation automation produces, and only exists at all when reacting to that internal event genuinely requires a new decision (Step 4b covers the full translation chain, and when a worker automation belongs after it).
 
 **Never** add a swimlane for any other reason — not a new actor, not a new role, not visual grouping. Human roles get their own **actor** lane during Step 3 (Storyboarding) — a different row type entirely — never a new swimlane here.
 
@@ -346,18 +282,18 @@ This catalog feeds directly into:
 - **Step 7 (Scenarios)**: Scenarios reference roles by name
 - **Step 8 (Completeness)**: Verify every role has at least one command path
 
-### 2. Identify Event Streams (Stream Roots)
-Identify the main entities that will have event streams. These are NOT DDD aggregates—they're simply the logical roots of events:
+### 2. Identify Entities (Event Timelines)
+Identify the main entities whose story will be told as a timeline of events:
 - User/Account
 - Order
 - Payment
 - Shipment
 - etc.
 
-For each stream root, note:
+For each entity, note:
 - Name (use domain language, not technical terms)
 - Identity key (what uniquely identifies instances: orderId, paymentId, customerId, etc.)
-- What commands will affect it (we'll define state needs per command, not upfront)
+- What commands will affect it
 
 ### 3. Identify Business Processes
 Map out critical workflows:
@@ -410,13 +346,13 @@ Present findings in this structure (include facilitation notes for future worksh
    - Triggers: [What events/commands it initiates]
    - Communication: [Webhooks / Event-driven / API]
 
-## Event Streams (Stream Roots)
-List each stream root and its identity:
-- **Stream**: Review (Identity: reviewId)
-- **Stream**: SellerResponse (Identity: responseId)
-- **Stream**: Seller (Identity: sellerId)
+## Entities (Event Timelines)
+List each entity and its identity:
+- **Entity**: Review (Identity: reviewId)
+- **Entity**: SellerResponse (Identity: responseId)
+- **Entity**: Seller (Identity: sellerId)
 
-Note: These are just the logical groupings of events. The STATE needed for each command will be determined later—not all stream attributes are needed for all commands.
+Note: These are just the logical groupings of events — the story each entity's timeline tells.
 
 ## Business Processes
 1. **Process Name**: Description
@@ -439,10 +375,6 @@ Note: These are just the logical groupings of events. The STATE needed for each 
 ## Output Format
 Present analysis in a clear markdown structure that can be directly used by the eventmodeling-designing-event-models skill.
 
-## Core Architectural Rule
-
-**NEVER use a DDD Aggregate pattern for state design** — every command handler must have its own minimal state projection derived from events. This is non-negotiable. See `eventmodeling-designing-event-models`'s "Core Architectural Rule" for the full anti-pattern/correct-pattern worked example (`OrderAggregate` vs. per-command state) — the rule applies from this very first step, not just once design begins.
-
 ## Key Principles
 - Use **domain language**, not technical terms
 - Focus on **what** happens, not **how** it's implemented
@@ -452,9 +384,8 @@ Present analysis in a clear markdown structure that can be directly used by the 
 - **Collaborative Process**: This is a group brainstorm, not a solo analysis
 - **Rapid Iteration**: Capture quickly, refine later
 - **Gentle Filtering**: Introduce "state-changing events" concept conversationally, not as rigid rule
-- **Event Sourcing Mindset**: Think in terms of immutable events and stream roots, NOT DDD aggregates. The stream root is just a logical grouping of events; state is minimal and command-specific.
-- **Defer State Design**: Don't list all entity attributes upfront. In the model designer step, we'll define minimal state projections needed for each specific command.
-- **Command State Isolation**: Each command handler has its own state shape. Different commands = different state interfaces.
+- **Event Sourcing Mindset**: Think in terms of immutable events grouped by entity, not upfront attribute lists
+- **Defer Detail**: Don't list all entity attributes upfront — commands, preconditions, and read models get worked out in the design step
 
 ## Best Practices for Requirements Analysis
 

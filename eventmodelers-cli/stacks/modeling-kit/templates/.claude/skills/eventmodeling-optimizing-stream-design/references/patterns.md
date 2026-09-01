@@ -1,25 +1,24 @@
-# Stream Boundary Design Patterns
+# Timeline Boundary Design Patterns
 
 ## Contents
-- Aggregate Boundary Design Patterns (5 patterns with examples)
-- Stream Boundary Decision Tree
+- Entity Boundary Design Patterns (5 patterns with examples)
+- Timeline Boundary Decision Tree
 - Red Flags: Boundary Is Wrong
 - Tips for Finding the Right Boundary
 
 ---
 
-## Aggregate Boundary Design Patterns
+## Entity Boundary Design Patterns
 
 ### Pattern 1: Single Entity (Most Common)
 
-CORRECT: One aggregate per entity
+CORRECT: One timeline boundary per business entity
 ```
-Aggregate: Order
+Entity: Order
 Root Identity: orderId (e.g., 'order-123')
-Entity: The specific order
 Lifetime: 1-2 years
 
-Events in stream:
+Events in timeline:
   1. OrderCreated (2024-01-15)
   2. OrderLineAdded (2024-01-15)
   3. OrderLineAdded (2024-01-15)
@@ -30,16 +29,15 @@ Events in stream:
 
 Identity Principle: orderId is the natural business key
 Boundary: Everything about THIS specific order, nothing else
-Consistency: Only one order being modified at a time
 ```
 
 ---
 
 ### Pattern 2: Composite Entity (Proper Composition)
 
-CORRECT: Aggregate contains related child entities
+CORRECT: Entity contains related child entities
 ```
-Aggregate: Order
+Entity: Order
 Root Identity: orderId (e.g., 'order-456')
 
 Contains related children (same lifetime):
@@ -54,7 +52,7 @@ Contains related children (same lifetime):
   - PaymentInfo:
     method: credit_card, amount: $400
 
-Events in stream:
+Events in timeline:
   1. OrderCreated (customer-789, 3 items)
   2. OrderLineAdded (item 1)
   3. OrderLineAdded (item 2)
@@ -65,16 +63,16 @@ Events in stream:
 
 Pattern: Small, bounded number of children per parent
 Lifetime: Parent and all children created/destroyed together
-Consistency: All modified as a unit (can't ship without payment, etc.)
+Together: they change as a unit (can't ship without payment, etc.)
 ```
 
 ---
 
 ### Pattern 3: Collection (ANTI-PATTERN - DO NOT USE)
 
-WRONG: Treating a collection as an aggregate
+WRONG: Treating a collection as an entity
 ```
-Bad Aggregate: AllOrders
+Bad Entity: AllOrders
 Root Identity: "all-orders-collection" (artificial, meaningless)
 
 Contains: Every order ever created
@@ -87,23 +85,21 @@ Events:
 
 Problems with this approach:
   - No single business identity (it's a collection, not an entity)
-  - Stream grows unbounded — no natural end to its lifetime
-  - Can't split or scale
-  - Every write goes to the same stream (contention)
+  - Timeline grows unbounded — no natural end to its lifetime
 
-Solution: Use a projection/read model query instead, not an aggregate
+Solution: Use a projection/read model query instead, not an entity
   - Query: "GetAllOrdersByCustomer(customer-id)"
   - Query: "GetOrdersByStatus(status)"
-  - Rebuild from individual Order streams on-demand
+  - Rebuild from individual Order timelines on-demand
 ```
 
 ---
 
 ### Pattern 4: Event Log (ANTI-PATTERN - DO NOT USE)
 
-WRONG: Using an aggregate as an event log
+WRONG: Using an entity as an event log
 ```
-Bad Aggregate: SystemLog
+Bad Entity: SystemLog
 Root Identity: "system-log" (meaningless placeholder)
 
 Contains: Every system event imaginable
@@ -119,23 +115,19 @@ Events:
 Problems with this approach:
   - No business identity (log of everything)
   - Events unrelated to each other (mixing user, order, payment, inventory)
-  - No consistency boundary (user login != order creation)
   - Can't answer "what's the state of X?" (too mixed)
-  - Contention: every subsystem writing to the same stream
-  - Can't replay meaningfully (mixed concerns)
 
-Solution: Use separate event streams per business entity
-  - Keep dedicated event streams: Order, Payment, Inventory, User
-  - Use a time-series database for metrics/logs, not a domain stream
+Solution: Use separate event timelines per business entity
+  - Keep dedicated event timelines: Order, Payment, Inventory, User
 ```
 
 ---
 
-### Pattern 5: Historical Aggregate (GOOD - When Needed)
+### Pattern 5: Historical Entity (GOOD - When Needed)
 
 CORRECT: Keep historical data for audit/compliance as its own boundary
 ```
-Aggregate: ArchivedOrder
+Entity: ArchivedOrder
 Root Identity: archivedOrderId (e.g., 'archived-order-001')
 Purpose: Regulatory compliance (7-year retention)
 
@@ -157,8 +149,8 @@ Events:
 
 Lifetime: 7 years (regulatory requirement)
 
-Key architectural principles:
-  - Completely separate from the active Order aggregate
+Key principles:
+  - Completely separate from the active Order entity
   - Active Order is for current business operations
   - Archived Order is an immutable historical record
   - Different access patterns, different lifecycles
@@ -166,16 +158,16 @@ Key architectural principles:
 
 ---
 
-## Stream Boundary Decision Tree
+## Timeline Boundary Decision Tree
 
-Use this to decide whether a stream is bounded around the right business identity:
+Use this to decide whether a timeline is bounded around the right business identity:
 
 ```
-Does your stream have a natural business identity?
- NO → This is not an aggregate, it's a log/report
-    SOLUTION: Use a read model/projection, not an aggregate
+Does your timeline have a natural business identity?
+ NO → This is not an entity, it's a log/report
+    SOLUTION: Use a read model/projection, not an entity
 
- YES → Does every event in the stream belong to that one entity's lifecycle?
+ YES → Does every event in the timeline belong to that one entity's lifecycle?
    
     YES → GOOD: Boundary is correctly scoped to one identity
    
@@ -191,28 +183,28 @@ Does your stream have a natural business identity?
 
 ## Red Flags: Boundary Is Wrong
 
-If your stream exhibits ANY of these, the fix is a narrower or different identity — not a technical workaround:
+If your timeline exhibits ANY of these, the fix is a narrower or different identity — not a technical workaround:
 
 ```
-Red Flag 1: Stream growing continuously with no natural end
-   Cause: The stream identity spans an unbounded population, not one entity
+Red Flag 1: Timeline growing continuously with no natural end
+   Cause: The timeline identity spans an unbounded population, not one entity
    Solution: Re-scope to a single business entity's lifecycle
-   Example: "AllOrders" stream → "Order" per customer order
+   Example: "AllOrders" timeline → "Order" per customer order
 
 Red Flag 2: Events with no shared business meaning
-   Cause: Treating a log as an aggregate
-   Solution: Use a read model/query instead of an aggregate
+   Cause: Treating a log as an entity
+   Solution: Use a read model/query instead of an entity
    Example: "SystemMetricRecorded" → use a metrics/observability system
 
-Red Flag 3: Stream contains unrelated entities
-   Cause: Aggregate boundary is wrong
-   Solution: Split into separate aggregates
+Red Flag 3: Timeline contains unrelated entities
+   Cause: Entity boundary is wrong
+   Solution: Split into separate entities
    Example: "AllOrders" → "Order" per customer
 
-Red Flag 4: Can't explain what single business question the stream answers
-   Cause: Not a real aggregate — probably a collection or log
+Red Flag 4: Can't explain what single business question the timeline answers
+   Cause: Not a real entity — probably a collection or log
    Solution: Convert to a read model/projection
-   Example: "SystemEvents" → query specific per-entity streams instead
+   Example: "SystemEvents" → query specific per-entity timelines instead
 ```
 
 ---
@@ -221,7 +213,7 @@ Red Flag 4: Can't explain what single business question the stream answers
 
 ### 1. Anchor on a Single Business Identity
 ```
-Every stream should answer: "the history of exactly which entity?"
+Every timeline should answer: "the history of exactly which entity?"
 If the answer is "a category of things" or "everything," the
 boundary is wrong — it's describing a collection, not an entity.
 ```
@@ -248,7 +240,7 @@ UserAccount (everything about a user, several unrelated concerns)
 
 ### 4. Separate Active From Historical Concerns
 ```
-Keeping everything in one aggregate forever conflates two different
+Keeping everything in one entity forever conflates two different
 lifecycles: the entity while it's active, and its record afterward.
 Example:
   - ActiveSubscription (current state)

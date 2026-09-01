@@ -11,17 +11,15 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already specified: existing UI patterns or mockups to reference, critical data fields, and UI/UX preferences. Interview when these details haven't been discussed or when the user wants guidance on storyboarding depth.
 
-**Interview Strategy**: Clarify UI needs, data priorities, and existing patterns to guide storyboard design. This ensures mockups capture all necessary fields without over-designing.
-
 ### Critical Questions
-
-When UI design guidance is needed:
 
 1. **Current UI State** (Impact: Determines if you're designing from scratch or enhancing existing)
    - Question: "Do you have: (A) Existing UI/wireframes to reference, (B) Rough sketches, (C) Starting from scratch?"
@@ -38,52 +36,7 @@ When UI design guidance is needed:
    - Why it matters: Platform and fidelity affect storyboard detail; mobile has different constraints than web
    - Follow-up triggers: If (C) → ask about prototype tool; if minimal → discuss what level of detail is enough
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - Existing UI patterns or references
-  - AND identified critical data fields
-  - AND specified storyboard detail level
-
-Then: Skip interview, proceed directly to storyboarding
-
-Else: Conduct interview
-```
-
-**Phase 1: Context Assessment** (Questions 1-2)
-- Understand existing UI context
-- Identify data priorities
-- Establish storyboard scope
-
-**Phase 2: Design Guidance** (Question 3)
-- Determine platform and fidelity
-- Adjust storyboard detail accordingly
-
-### Capturing Interview Findings
-
-Document findings to guide storyboard creation:
-
-```markdown
-## Interview Findings: [Domain Name] UI
-
-**Existing UI Context**: [Starting from scratch / Enhancing / Matching pattern]
-**Most Critical Data**: [List fields in priority order]
-**Platform**: [Web / Mobile / Both]
-**Storyboard Detail**: [Minimal wireframes / Detailed mockups]
-
-**Key UI Interactions**:
-- [Action 1]: [What data triggers it]
-- [Action 2]: [What data triggers it]
-
-**Storyboard Focus**:
-- Prioritize showing [most critical fields]
-- Ensure [specific interactions] are clear
-- Reference [existing patterns] for consistency
-```
-
-Optional: Write to `.trogonai/interviews/[timestamp]-storyboarding-events.interview.internal.trogonai.md`.
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**3. Storyboarding** (`eventmodeling-storyboarding-events`)". Findings should cover: existing UI context, most critical data fields (priority order), platform and detail-level preferences, key UI interactions, and storyboard focus.
 
 ---
 

@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` (in particular the **Slices** section) only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element and slice rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; its "Slices" section defines the state-change/state-view/automation slice types this step derives, so this step doesn't restate them.
+
 > Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 **Purpose**: Turn a completed event model's timeline into explicit slice definitions on the board, and note the event dependencies between them.
@@ -24,21 +26,7 @@ allowed-tools:
 
 ## Core Concept: A Slice Is One Command, One Read Model, or One Automation — Never Combined
 
-A **Feature Slice** is the thinnest possible vertical cut through the model — exactly one decision or one query:
-
-```
-state-change slice = SCREEN/Processor → COMMAND → EVENT(s)
-state-view slice   = EVENT(s) → READMODEL → SCREEN/Processor
-automation slice   = EVENT(s) → AUTOMATION → COMMAND → EVENT(s)
-```
-
-A slice never mixes a COMMAND and a READMODEL — the platform models these as two distinct slice types (`state-change` and `state-view`). If a "feature" needs both a command and a read model (e.g. "place an order" needs the `PlaceOrder` command *and* an `OrderDetailView` read model), that's **two slices**, not one.
-
-**Key characteristics**:
-- Exactly one COMMAND (state-change), exactly one READMODEL (state-view), or one AUTOMATION's command — never combined
-- Named after that command, read model, or automation
-- Independently deployable
-- Communicates with other slices via events only
+See `eventmodeling-core-rules`'s "Slices" section for the definition (state-change / state-view / automation, never combined) and why a feature needing both a command and a read model is two slices, not one.
 
 ---
 

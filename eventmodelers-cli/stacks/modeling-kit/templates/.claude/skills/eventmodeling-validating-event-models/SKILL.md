@@ -1,6 +1,6 @@
 ---
 name: eventmodeling-validating-event-models
-description: "Step 9 of Event Modeling - Validate event-sourced models for completeness, consistency, and event sourcing principles. Ensures events are immutable facts, state projections are deterministic, and commands are pure. Identifies gaps and suggests improvements before code generation. Use when reviewing models before code generation. Do not use for: the structured 17-check production checklist (use eventmodeling-validating-event-models-checklist) or field-level completeness verification (use eventmodeling-checking-completeness)."
+description: "Step 9 of Event Modeling - Validate the model for completeness and consistency. Ensures events are immutable facts, read models are deterministic projections, and commands are traceable decisions. Identifies gaps before the model is declared done. Use when reviewing a model before it's considered final. Do not use for: the structured 12-check checklist (use eventmodeling-validating-event-models-checklist) or field-level completeness verification (use eventmodeling-checking-completeness)."
 allowed-tools:
   - Write
   - Bash
@@ -9,6 +9,8 @@ allowed-tools:
 # Validating Event Models
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
+
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
@@ -38,7 +40,8 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL" }
 After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `QUESTION` for warnings and recommendations. (That skill already handles the `add_comment` MCP-vs-curl choice internally — no separate rewrite needed here.)
 
 ## Purpose
-Ensures event-sourced models are complete, correct, and follow pure event sourcing principles (minimal per-command state).
+
+Ensures the event model is complete, correct, and internally consistent.
 
 ## Workflow
 
@@ -54,12 +57,12 @@ mcp__eventmodelers__validate_model { "boardId": "$BOARD_ID", "chapterId": "<chap
 
 It returns a compact `findings` list (no node dumps) covering: unplaced nodes, backward arrows among the forward-only pairs (with the todo-list `EVENT → READMODEL` exception already applied), COMMANDs with zero or multiple issuers, READMODELs with no inbound EVENT, columns with more than one screen, and COMMAND/READMODEL columns with no SCENARIO. This replaces the per-type `get_nodes` scans and the `get_node` `projection: "edges"` spot-checks those manual checks would otherwise need — start from its `findings`, then use the sections below for the semantic checks it can't make (naming, immutability, field-source traceability, scenario coverage depth). A `verdict` of `PASS` on `validate_model` is necessary but not sufficient — still do the semantic pass.
 
-### 1. Swimlane Completeness Check
+### 1. Entity/Timeline Completeness Check
 
-Verify each swimlane has:
+Verify each entity's timeline has:
 - Clear name (identity)
 - At least one event type
-- Initial event (what creates the stream)
+- An initial event (what starts the entity's story)
 - State transitions documented
 
 **For each event:**
@@ -68,142 +71,115 @@ Verify each swimlane has:
 - All data is **immutable**
 - Unique semantics (no duplicates)
 
-**For each state projection:**
-- Can be deterministically rebuilt from events
-- Replay logic is pure (no side effects)
+**For each read model:**
+- Can be deterministically derived from events
+- No side effects in how it's built
 
 **For each command:**
 - Clear input parameters
-- Validation rules defined in scenarios (against state)
+- Preconditions defined in scenarios
 - Resulting events specified (or rejection reason)
-- Pure logic (no side effects except event appending)
 
 ### 2. Consistency Checks
 
-- [ ] **Event-Stream Mapping**: Every event belongs to exactly one lane
+- [ ] **Event-Entity Mapping**: Every event belongs to exactly one lane/entity
 - [ ] **Single Command Issuer**: Every command is issued by exactly one SCREEN or AUTOMATION — never two. Check each COMMAND node's inbound edges; more than one SCREEN/AUTOMATION wired into the same command is a CRITICAL violation (commonly an auto-connect artifact — see `place-element` Step 7c)
-- [ ] **Command Outcomes**: Every command produces events OR documents rejection
-- [ ] **Deterministic Projections**: State can only be derived one way from events
-- [ ] **No Side Effects in Projections**: Pure state reconstruction logic
+- [ ] **Command Outcomes**: Every command produces events OR documents a rejection
+- [ ] **Deterministic Read Models**: A read model can only be derived one way from its events
 - [ ] **Event Immutability**: No event data is ever modified
 - [ ] **Naming Consistency**: Are naming patterns consistent?
-  - Commands: Verb present (CreateOrder, ConfirmPayment)
-  - Events: Verb past tense (OrderCreated, PaymentConfirmed)
+  - Commands: present-tense verb (CreateOrder, ConfirmPayment)
+  - Events: past-tense verb (OrderCreated, PaymentConfirmed)
 
-### 3. Event Sourcing Principles Compliance
+### 3. Event Modeling Principles Compliance
 
-Check against event sourcing fundamentals:
-
-- [ ] **Events are Facts**: Events describe what happened, not potential futures
+- [ ] **Events are Facts**: describe what happened, not potential futures
   - "OrderMayBeConfirmed" →  "OrderConfirmed"
-  - "PaymentPending" (in events) →  "PaymentInitiated", "PaymentAuthorized"
+  - "PaymentPending" (as an event) →  "PaymentInitiated", "PaymentAuthorized"
 
-- [ ] **Events are Immutable**: No modification of event data
+- [ ] **Events are Immutable**: no modification of event data
   - "Update OrderCreated event with new total" →  "Append OrderTotalCorrected event"
 
-- [ ] **Complete Event Data**: Events contain all facts needed for state rebuild
-  - Event: "OrderConfirmed" (missing paymentId) →  Event includes paymentId
+- [ ] **Complete Event Data**: events contain all facts a read model needs to project them
+  - Event "OrderConfirmed" missing paymentId →  Event includes paymentId
 
-- [ ] **No Computed Fields in Events**: Only raw captured facts
-  - OrderCreated includes "totalTax" (computed) →  Includes items + amounts, tax computed in projection
+- [ ] **No Computed Fields in Events**: only raw captured facts
+  - OrderCreated includes "totalTax" (computed) →  Includes items + amounts; tax computed in the read model
 
-- [ ] **Deterministic Projections**: Replaying events always produces same state
-  - Projection uses: for each event, do X
-  - Projection uses: external API call during replay
-
-- [ ] **State is Derived**: Current state always comes from replaying events
-  - "Load state: replay all events for Order:123"
-  - "Load state: query database Orders table"
+- [ ] **Deterministic Read Models**: replaying the same events always produces the same read model
 
 ### 4. Event Flow Validation
 
-- [ ] **Command → Event Mapping**: Clear what each command produces
-- [ ] **No Zombie Commands**: Commands that never produce events (read-only OK)
+- [ ] **Command → Event Mapping**: clear what each command produces
+- [ ] **No Zombie Commands**: commands that never produce events (read-only commands are fine if documented as such)
 
 ### 5. Role & Actor Attribution Validation
 
 Verify that every command has explicit actor attribution from the Role Catalog:
 
-- [ ] **Role Catalog exists**: A Role Catalog was defined in Step 1 (eventmodeling-brainstorming-events)
-  - CRITICAL: No Role Catalog found — commands have no actor attribution
+- [ ] **Role Catalog exists**: a Role Catalog was defined in Step 1 (eventmodeling-brainstorming-events)
+  - CRITICAL: no Role Catalog found — commands have no actor attribution
   - PASS: Role Catalog with human roles and system actors defined
 
-- [ ] **Every command has actor attribution**: No command uses generic "User"
+- [ ] **Every command has actor attribution**: no command uses generic "User"
   - CRITICAL: `CreateOrder` attributed to "User" (which user? Customer? Admin? Seller?)
   - PASS: `CreateOrder` attributed to "Customer" (specific role from catalog)
 
-### 6. Command State Read Models Validation (CRITICAL)
+### 6. Command Validation
 
- **This is the PRIMARY validation gate. Violations are CRITICAL and must be fixed before approval.** Validate that **command state read models** are **minimal and command-specific**, not bundled like DDD aggregates.
-
-### 7. Command & State Validation
-
-- [ ] **State-Based Decisions**: Commands decide based on current state only
-- [ ] **Valid State Transitions**: Document what state changes are allowed
+- [ ] **Preconditions Clear**: when can each command execute?
+  - "Can only confirm if state is Draft"
+  - "Can sometimes confirm"
+- [ ] **Rejection Handling**: what happens if a precondition fails?
+  - "Reject, no events appended"
+  - "Append a rejection/failure event and continue" (if that's the modeled outcome)
+- [ ] **Valid State Transitions**: document what state changes are allowed
 ```text
 Draft → Confirmed (ConfirmOrder)
 Draft → Cancelled (CancelOrder)
 Confirmed → Shipped (ShipOrder)
 Confirmed ↛ Draft (invalid)
 ```
-- [ ] **Preconditions Clear**: When can each command execute?
-  - "Can only confirm if state is Draft"
-  - "Can sometimes confirm"
-- [ ] **Error Handling**: What happens if validation fails?
-  - "Reject with ValidationError, no events appended"
-  - "Append ErrorEvent and continue"
 
-### 8. Projection Validation
+### 7. Read Model Validation
 
-- [ ] **Read Models**: Read models are rich projections
-- [ ] **Read Models Optional**: Are they needed or just convenience?
-- [ ] **Regenerable**: Can be rebuilt from events at any time
+- [ ] **Read Models**: are rich projections shaped for their query
+- [ ] **Read Models Optional**: are they needed, or just convenience?
+- [ ] **Regenerable**: could be rebuilt from events at any time
 
-### 9. Issues & Recommendations Report
+### 8. Issues & Recommendations Report
 
 Format findings as comments:
 
 ```markdown
-
 ## Validation Summary
 
 **Overall Status**:  Ready with recommendations
 
-**Blockers for Implementation**: 0 critical issues
+**Blockers**: 0 critical issues
 
 **Recommended Fixes**:
 1. Add missing OrderCancelled event
-2. Move PaymentMethod to its own minimal state projection
-3. Document all implicit invariants explicitly
-
-**Ready for Code Generation**: Yes, after implementing recommendations
+2. Document all implicit preconditions explicitly
 
 ## Next Steps
 1. Review recommendations with domain expert
 2. Update model with critical fixes
-3. Proceed to code generation
 ```
 
 ## Common Issues to Flag
 
 | Issue | Pattern | Fix |
 |-------|---------|-----|
-| Missing cancellation flows | No "Cancelled" events | Add compensation paths |
-| Implicit invariants | "Obviously can't do X" | Make invariants explicit |
-| Command state too broad | Shared state used by 2+ commands | Split into per-command minimal state projections |
-| Orphaned events | Events no one listens to | Link to projections or commands |
-| No read models | Commands reading query/read models for validation | Add separate query read models; keep command state minimal |
-| Circular dependencies | Projection A depends on B, B on A | Redesign stream boundaries |
+| Missing cancellation flows | No "Cancelled" events | Add the missing outcome slices |
+| Implicit preconditions | "Obviously can't do X" | Make preconditions explicit |
+| Orphaned events | Events no one reads | Link to a read model or command |
+| No read models | Commands validated against raw event replay with no documented read model | Add a read model documenting what the command actually reads |
 | Command issued by multiple things | COMMAND node has 2+ inbound SCREEN/AUTOMATION edges | Keep the deliberate same-column issuer, remove the rest via `set_connection` (`action: "remove"`) — see `place-element` Step 7c |
 
-## Key Principles for Event Sourcing
+## Key Principles
 
-1. **Events are the source of truth**: Everything else is derived from them
-2. **Immutable event log**: Events never change, only appended
-3. **State is a projection**: Current state is built by replaying events
-4. **Commands are pure decisions**: Validate against state, produce events or reject
-5. **Projections are optional**: Can be rebuilt at any time
-6. **Stream per entity**: Each entity has one append-only event stream
+See `eventmodeling-core-rules` for the element definitions this validation checks against (events as immutable facts, read models as optional projections, commands as decisions against documented preconditions).
 
 ## Success Criteria
 
@@ -211,39 +187,24 @@ Your event model validation is successful when:
 
 - All requirements are captured in events
 - Commands clearly trigger events
-- Stream roots have clear, minimal boundaries
-- Business rules are explicit invariants (not hidden assumptions)
-- Read models serve actual query needs (not used by commands)
-- Command state is minimal and command-specific (not shared across multiple commands)
+- Business rules are explicit preconditions (not hidden assumptions)
+- Read models serve actual query needs
 - Events are immutable facts (past tense, no computed fields)
-- State can be deterministically rebuilt from events
 - All command-to-event mappings are documented
 - Critical issues are resolved or documented as known limitations
-
-A model is **ready for code generation** if:
-- No critical issues remain
-- All command state follows naming convention (e.g., `[CommandName]State`)
-- No state is shared between different commands
-- All events are immutable facts
-- All business rules are explicit
-- A Role Catalog exists with all human roles and system actors
-- Every command has explicit actor attribution from the Role Catalog
+- A Role Catalog exists with all human roles and system actors, and every command has explicit actor attribution
 
 ## Quality Checklist
 
 - [ ] All events are immutable facts (past tense)
 - [ ] No computed fields stored in events
-- [ ] State projection is deterministic from events
-- [ ] Commands validate against current state only
+- [ ] Read models are derived deterministically from events
+- [ ] Commands are checked against documented preconditions
 - [ ] Each command either produces events or rejects (no silent failures)
 - [ ] **No command has more than one inbound SCREEN/AUTOMATION edge (a command is never issued by more than one thing)**
 - [ ] Event causality/command-event mapping is clear
 - [ ] State transitions are documented
-- [ ] No direct references between lanes
-- [ ] Projections serve specific query needs (or are removed)
-- [ ] Everything can be rebuilt from the event stream
-- [ ] No state is shared between different commands
-- [ ] All command state is minimal (only fields needed for validation)
+- [ ] Read models serve specific query needs (or are removed)
 - [ ] **Role Catalog exists with human roles and system actors**
 - [ ] **Every command attributed to a specific role/actor (no generic "User")**
 - [ ] **Every human role has at least one command and one read model**

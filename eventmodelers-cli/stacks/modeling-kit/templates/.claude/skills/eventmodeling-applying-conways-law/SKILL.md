@@ -11,15 +11,13 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already specified: existing team structure, team responsibilities, and autonomous boundary preferences. Interview when team structure is unclear or organizational alignment hasn't been discussed.
 
-**Interview Strategy**: Understand team organization and decision-making to design system boundaries that teams can own independently. Misalignment here creates bottlenecks and tight coupling later.
-
 ### Critical Questions
-
-When team structure or boundaries are unclear:
 
 1. **Team Structure & Ownership** (Impact: Determines how many swimlanes/systems to create)
    - Question: "How is your organization structured? (A) Single team owns everything, (B) Separate teams by domain (payments, inventory, etc.), (C) Separate teams by function (backend, frontend, etc.)"
@@ -36,63 +34,7 @@ When team structure or boundaries are unclear:
    - Why it matters: External systems often become separate swimlanes; knowing which ones matters for boundary design
    - Follow-up triggers: For each integration → ask "Who owns the integration—existing team or new team?"
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - Clear team structure (who owns what)
-  - AND specified desired level of autonomy
-  - AND identified external integrations
-
-Then: Skip interview, proceed directly to swimlanes
-
-Else: Conduct interview
-```
-
-**Phase 1: Organization Assessment** (Questions 1-2)
-- Understand team structure
-- Determine autonomy expectations
-- Establish boundary philosophy
-
-**Phase 2: Integration Mapping** (Question 3)
-- Identify external systems
-- Plan integration boundaries
-- Finalize swimlane count
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## 6. Conway's Law (eventmodeling-applying-conways-law)
-
-### Team Structure
-- Team 1: [Name] - Owns [domain]
-- Team 2: [Name] - Owns [domain]
-- Team 3: [Name] - Owns [domain]
-
-### Autonomy Goals
-[High / Moderate / Low]
-
-### Swimlanes
-- [Swimlane 1]: [Team] owns [events]
-- [Swimlane 2]: [Team] owns [events]
-- [Swimlane 3]: [Team] owns [events]
-
-### Cross-Team Communication
-- [Team A] → [Team B] via [event]
-- [Team B] → [Team C] via [event]
-```
-
-Update Interview Trail:
-```markdown
-| 6 | eventmodeling-applying-conways-law | [today] | Swimlanes defined, team boundaries confirmed |
-```
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**6. Conway's Law** (`eventmodeling-applying-conways-law`)". Findings should cover: team structure and ownership, autonomy goals, the resulting swimlanes (which team owns which events), and cross-team communication paths.
 
 ---
 

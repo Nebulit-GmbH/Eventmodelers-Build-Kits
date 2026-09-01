@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 ## GWT vs. Storyline — Decision Rule
@@ -83,11 +85,7 @@ in a sibling `meta.storylines` collection.
 
 **When to Interview**: Skip if the user has already specified: scenario coverage depth (happy path + validation + state violations), known edge cases to include, and stakeholders available for review. Interview when coverage goals are unclear or edge cases haven't been identified.
 
-**Interview Strategy**: Align on scenario depth and coverage strategy to avoid under-specification or excessive documentation. Identify stakeholders who can validate business rules.
-
 ### Critical Questions
-
-When scenario coverage is uncertain:
 
 1. **Scenario Depth & Coverage Goals** (Impact: Determines scope—happy path only vs. comprehensive coverage)
    - Question: "How comprehensive should scenario coverage be? (A) Happy path + basic validation, (B) All command variations, (C) Comprehensive including edge cases and error paths"
@@ -109,80 +107,7 @@ When scenario coverage is uncertain:
    - Why it matters: Multi-role review catches business logic errors; single role may miss perspective
    - Follow-up triggers: If (A) only → ask "Will PO have time for detailed review?"; if (C) → plan review workshop
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - Clear scenario coverage goals (happy path + validation + state violations)
-  - AND identified edge cases or known business rules to test
-  - AND specified who will review/validate scenarios
-
-Then: Skip interview, proceed directly to scenario elaboration
-
-Else: Conduct interview
-```
-
-**Phase 1: Coverage Planning** (Questions 1-2)
-- Determine depth (happy path vs. comprehensive)
-- Identify critical edge cases to cover
-- Establish coverage priorities
-
-**Phase 2: Implementation & Review** (Questions 3-4)
-- Decide on automation vs. documentation
-- Confirm stakeholder availability
-- Plan review workflow
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## 7. Scenarios (eventmodeling-elaborating-scenarios)
-
-### Coverage Goals
-[From Q1: Happy path / Comprehensive / Deep]
-
-### Critical Edge Cases
-[From Q2]
-- Edge case 1: [Case] → [Why important]
-- Edge case 2: [Case] → [Why important]
-
-### Business Rules Requiring Scenarios
-[From Q2]
-- Rule 1: [Statement] → Success + Failure scenarios
-- Rule 2: [Statement] → Success + Failure scenarios
-
-### Testing Strategy
-[From Q3: Automated / Manual / Documentation]
-
-### Review & Validation
-[From Q4: Who reviews, when, workflow]
-
-### Key Scenario Specifications
-[GWT format scenarios for critical commands and views]
-
----
-
-## Validation & Completeness
-
-### Validated
-- [ ] All fields traced (completeness check)
-- [ ] Events are immutable
-- [ ] State projections deterministic
-- [ ] Model ready for code generation
-
-**Validation Date**: [Date]
-```
-
-Update Interview Trail:
-```markdown
-| 7 | eventmodeling-elaborating-scenarios |  [today] | Scenario coverage, testing strategy, edge cases |
-```
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**7. Scenarios** (`eventmodeling-elaborating-scenarios`)". Findings should cover: coverage goals, critical edge cases, business rules requiring scenarios, testing strategy, review/validation plan, and the key scenario specifications themselves (GWT format for critical commands and views).
 
 Scenarios are done, but the model is not yet ready for implementation — Steps 8–11
 (Completeness, Validation, Slicing, Documentation) still follow. Proceed to Step 8

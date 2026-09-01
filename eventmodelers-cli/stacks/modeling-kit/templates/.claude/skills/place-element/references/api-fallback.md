@@ -55,9 +55,19 @@ Response: `{ "columnId": "<uuid>", "index": <n>, "totalColumns": <n> }`
 
 ## Step 6 — Check cell occupancy
 
+`GET /nodes` takes `cellId` **or** `colId`, both requiring `timelineId` — no need to re-fetch and parse the whole chapter node just for this:
+
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID"
+# Same-cell occupancy — [] if empty, [nodeRecord] if occupied
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID&timelineId=$TIMELINE_ID"
+
+# Same-column occupancy, across every row of the timeline — add &type=<elementType> to narrow
+# (the server enforces one COMMAND/READMODEL/SCREEN/HTML_SCREEN/AUTOMATION per column even when
+# the target cell itself is empty — see SKILL.md)
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?colId=$COLUMN_ID&timelineId=$TIMELINE_ID"
 ```
+
+If you already have fresh `timelineData` loaded from Step 3, reading its `cells` array directly (sparse — an entry only exists once something has been placed there) avoids the extra round-trip; use the calls above otherwise, or when `timelineData` might be stale (e.g. a column was just created).
 
 ## Step 6 — Insert a column at a specific index (conflict resolution)
 

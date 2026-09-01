@@ -11,13 +11,13 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has clearly identified: read model queries needed by UI, processor needs, and refresh patterns. Interview when unclear which data queries are critical or how frequently they're accessed.
-
-**Interview Strategy**: Establish query patterns and identify any calculations before designing read models. The most common architecture error at this step is modeling recalculated state as an event — identifying calculated fields upfront prevents that anti-pattern.
 
 ### Critical Questions
 
@@ -31,58 +31,7 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
    - Why it matters: Common mistake to model calculations as events; identifying them upfront prevents architecture errors
    - Follow-up triggers: For each calculated field mentioned → confirm "This recalculates as source data changes, so it belongs in a read model projection — does that match your expectation?"
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - UI screens with data needs mapped to event sources
-  - AND processor query needs documented
-  - AND calculated/aggregated fields identified as read models (not events)
-
-Then: Skip interview, proceed directly to read model design
-
-Else: Conduct interview
-```
-
-**Phase 1: Query Pattern Mapping** (Question 1)
-- Identify which UI screens and processors need which data
-- Typically every screen needs some kind of data, same for automations.
-- Establish freshness requirements per consumer
-- Determine if any queries require real-time consistency
-
-**Phase 2: Calculation Detection** (Question 2)
-- Surface any aggregated or computed values
-- Confirm they are projections, not events
-- Prevent the calculation-as-event anti-pattern before design begins
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## 5. Identifying Outputs (eventmodeling-identifying-outputs)
-
-### Query Patterns
-[From Q1: Which consumers need what freshness? Real-time vs. periodic?]
-
-### Calculated Fields Identified
-[From Q2: Which fields are aggregated/calculated? Confirmed as read models?]
-
-### Read Model Summary
-- Real-time read models: [list]
-- Near-real-time read models: [list]
-- Calculation-as-event anti-patterns caught: [list or "None"]
-```
-
-Update Interview Trail:
-```markdown
-| 5 | eventmodeling-identifying-outputs | Done | Read model catalog, query patterns, calculation classification |
-```
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**5. Identifying Outputs** (`eventmodeling-identifying-outputs`)". Findings should cover: query patterns (which consumers need what freshness), calculated/aggregated fields identified (and confirmed as read models, not events), and a read model summary by freshness tier.
 
 ---
 

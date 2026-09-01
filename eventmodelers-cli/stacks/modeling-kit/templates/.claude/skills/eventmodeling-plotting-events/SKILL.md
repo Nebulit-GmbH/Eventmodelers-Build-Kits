@@ -10,6 +10,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 Arrange all brainstormed events chronologically to create a logical sequence that makes sense as a narrative timeline. Show how events flow and depend on each other.
@@ -77,6 +79,8 @@ After PaymentAuthorized:
 Path A: Payment succeeds → PaymentProcessed
 Path B: Payment fails → PaymentFailed → OrderCancelled
 ```
+
+**Every path here is a decision point, not a divergent journey** — by the time plotting runs, chapter structure is already fixed (Step 1), so a path in this step is always one trigger resolving to one of several outcomes within *this* timeline's story, shown as branching columns. If a "path" you're documenting actually starts a different story with its own screens/commands rather than just deciding how this one ends, it was mis-grouped in Step 1 — stop and send it back to `eventmodeling-brainstorming-events`'s chapter grouping (see its "Divergent journey vs. a decision point" note) rather than modeling it as a branch here.
 
 ### 4. Create Timeline Diagram
 Visual representation of event flow:

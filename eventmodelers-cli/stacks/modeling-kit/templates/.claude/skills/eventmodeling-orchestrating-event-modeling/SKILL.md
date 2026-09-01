@@ -11,6 +11,8 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 Coordinates the 11-step Event Modeling workflow. Each step delegates to a
@@ -183,7 +185,7 @@ scope, and stated output goal (code, design, learning, docs).
 Confirm understanding before proceeding: "So we're modeling [domain], goal is
 [goal], constraints are [constraints]. Starting from [step]. Does that match?"
 
-**Capture findings** — write to `.trogonai/interviews/[project-name]/EVENTMODELING.md`:
+**Capture findings** — create `.trogonai/interviews/[project-name]/EVENTMODELING.md` with this header (this step is what creates the file; every later step appends to it per `eventmodeling-interview-protocol`):
 
 ```markdown
 # Event Modeling: [Project Name]
@@ -197,10 +199,9 @@ Confirm understanding before proceeding: "So we're modeling [domain], goal is
 
 | Step | Skill | Status | Key Output |
 |------|-------|--------|------------|
-| Orchestration | eventmodeling-orchestrating-event-modeling | Done | Domain scoped, starting point confirmed |
 ```
 
-Update this file as each step completes.
+Then follow **`eventmodeling-interview-protocol`** to record this step's own findings and add its Interview Trail row ("Orchestration" / `eventmodeling-orchestrating-event-modeling` / domain scoped, starting point confirmed). Every later step updates the same file as it completes.
 
 ---
 
@@ -377,12 +378,11 @@ Invoke `eventmodeling-validating-event-models`.
 
 If FAIL: address findings and re-invoke `eventmodeling-validating-event-models`.
 
-**Optional — Production Readiness Checklist**: Invoke
-`eventmodeling-validating-event-models-checklist` when the model is destined
-for production. It runs 17 architectural checks across 7 phases and returns a
+**Optional — Structural Checklist**: Invoke
+`eventmodeling-validating-event-models-checklist` for a second, mechanical
+pass. It runs 12 structural checks across 6 phases and returns a
 PASS / PASS WITH WARNINGS / FAIL verdict independently of Step 9. A PASS on
-Step 9 does not substitute for this checklist when production readiness is
-required.
+Step 9 does not substitute for this checklist.
 
 ---
 
@@ -443,7 +443,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
    The note's body lives in **`meta.description`** as plain markdown source — headings, lists, bold, code fences, tables all render. **Not `meta.content`** — that field is accepted and stored without error but never rendered by the board UI, producing a visibly empty note; this was caught by comparing against a note authored directly in the UI, so treat it as confirmed, not a guess. There is no separate render/sketch call (unlike SCREEN/HTML_SCREEN) and no `fields[]` array on this element type.
 
 **What the note should actually contain** — write for the next person (or next session) who opens this board cold, not for whoever just built it:
-- **Scope**: what business process this chapter covers, and its stream roots (identity keys).
+- **Scope**: what business process this chapter covers, and its entities (identity keys).
 - **Assumptions added beyond the literal brief** — anything invented to fill a gap the requirements left open, and why (e.g. adding a resolution event so a state isn't a one-way trap door).
 - **Business rules deliberately encoded as scenarios, not new events** — so a reader doesn't mistake a missing event for an oversight.
 - **Sequencing or design corrections made mid-workflow** — e.g. a column reorder because an event's original placement implied the wrong causality.
@@ -475,13 +475,12 @@ A complete, sliced event model consisting of:
 These skills are not part of the 11-step main path but extend the model for
 specific needs:
 
-- **`eventmodeling-designing-event-models`** — Use when stream identity,
-  per-command state shapes, or event causality need detailed design work. Can
-  be applied at any step where those decisions arise, most commonly during or
-  after Step 1.
+- **`eventmodeling-designing-event-models`** — Use when the Command/Event/Read-Model
+  structure or event causality need detailed design work. Can be applied at
+  any step where those decisions arise, most commonly during or after Step 1.
 - **`eventmodeling-optimizing-stream-design`** — Use after the model is
-  complete to validate that every stream is anchored on a single business
-  identity, not a disguised collection or event log.
+  complete to validate that every entity's event timeline is anchored on a
+  single business identity, not a disguised collection or event log.
 - **`eventmodeling-translating-external-events`** — Use when external systems
   (webhooks, IoT, third-party APIs) need to feed into the domain model.
 

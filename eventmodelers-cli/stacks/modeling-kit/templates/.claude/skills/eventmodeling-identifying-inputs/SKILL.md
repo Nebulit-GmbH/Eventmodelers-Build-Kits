@@ -11,13 +11,13 @@ allowed-tools:
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Consult `learn-eventmodelers-api` only if you need to look up a specific endpoint or field this file doesn't cover — don't load it eagerly.
 
+This step applies the shared element rules in **`eventmodeling-core-rules`** — read it once per session if you haven't already; it defines what a COMMAND/EVENT/READMODEL/SCREEN/AUTOMATION is, how each is named, and the anti-patterns to reject, so this step doesn't restate them.
+
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
 ## Interview Phase (Optional)
 
 **When to Interview**: Skip if the user has already identified UI actions/commands and processor triggers. Interview when it's unclear which actions are user-initiated vs. processor-automated.
-
-**Interview Strategy**: Separate UI-driven commands from processor-driven commands before cataloging inputs. Mixing them leads to incorrect role attribution, which breaks the Role Catalog traceability that downstream steps depend on.
 
 ### Critical Questions
 
@@ -31,54 +31,7 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
    - Why it matters: External triggers are processor commands, not UI commands
    - Follow-up triggers: If (B) or (D) → ask which external systems send webhooks and what data they include
 
-### Interview Flow
-
-**Conditional Entry**:
-```
-If user has provided:
-  - UI actions already listed per storyboard screen
-  - AND processor triggers identified with source systems named
-  - AND it's clear which role/actor initiates each action
-
-Then: Skip interview, proceed directly to command identification
-
-Else: Conduct interview
-```
-
-**Phase 1: Trigger Classification** (Question 1)
-- Establish which commands come from human actors vs. automated processors
-- Confirm Role Catalog from Step 1 is available for attribution
-
-**Phase 2: External Triggers** (Question 2)
-- Identify all external system integrations that issue commands
-- Confirm whether scheduled jobs or event-driven processors exist
-
-### Capturing Interview Findings
-
-Append findings to the project's event modeling file:
-
-**File**: `.trogonai/interviews/[project-name]/EVENTMODELING.md`
-
-Use Write tool to add/update this section:
-
-```markdown
-## 4. Identifying Inputs (eventmodeling-identifying-inputs)
-
-### Automation Classification
-[From Q1: Which actions are user-initiated vs. processor-automated?]
-
-### External System Triggers
-[From Q2: Which external systems trigger commands? Webhook formats?]
-
-### Command Attribution Summary
-- UI-issued commands: [list with role from Role Catalog]
-- Processor-issued commands: [list with source system]
-```
-
-Update Interview Trail:
-```markdown
-| 4 | eventmodeling-identifying-inputs | Done | UI commands, processor commands, role attribution |
-```
+Follow **`eventmodeling-interview-protocol`** to run this interview and record its findings — label this step "**4. Identifying Inputs** (`eventmodeling-identifying-inputs`)". Findings should cover: automation classification (user-initiated vs. processor-automated), external system triggers, and a command attribution summary (UI-issued vs. processor-issued, each with its role/source).
 
 ---
 

@@ -68,7 +68,7 @@ Server name: `eventmodelers`. Every tool takes `boardId` explicitly; none need `
 
 **Not exposed via MCP at all** — always use REST/curl for these: §7 Config Import, §10 Snapshots, §11–12 User Management, §13 Utility (`/api/user`, swagger), and the rest of §14 Prompts (submission, claiming, deletion, realtime-token) — only the status-update endpoint has an MCP tool (`update_prompt_status`, used by the `update-prompt-status` skill); everything else in Prompts is an intentionally separate lifecycle the board-content MCP server doesn't otherwise own.
 
-**Capabilities with no direct MCP filter** — e.g. REST's `GET .../nodes?cellId=<id>` (§3) has no `cellId` param on `get_nodes`. Get the same answer by calling `get_node` on the CHAPTER and reading `meta.timelineData.cells` (sparse array; a cell absent from it is empty) instead of asking the server to filter by cell.
+**Capabilities with no direct MCP filter** — e.g. REST's `GET .../nodes?cellId=<id>&timelineId=<id>` and `?colId=<id>&timelineId=<id>` (§3) have no equivalent params on `get_nodes`. Either call the REST endpoint directly, or get the same answer by calling `get_node` on the CHAPTER and reading `meta.timelineData.cells` (sparse array; a cell absent from it is empty) instead of asking the server to filter by cell/column.
 
 ---
 
@@ -379,8 +379,15 @@ interface NodeChangeEvent {
 ### GET `/api/org/:orgId/boards/:boardId/nodes`
 List all nodes on a board.
 
-**Query params**: `type?: ElementType`  
-**Response**: `200` — node record array
+**Query params**:
+- `type?: ElementType` — exact match.
+- `cellId?: string` — return only the node occupying this timeline cell (format `<rowId>-<colId>`). Requires `timelineId`. Empty array if the cell is unoccupied.
+- `colId?: string` — return every node occupying this column, across *all* rows of the timeline (e.g. to check for an existing COMMAND/READMODEL/SCREEN/AUTOMATION before placing one, since the server caps those at one per column even across separate lane rows). Requires `timelineId`. Combine with `type` to narrow to one element type.
+- `timelineId?: string` — the CHAPTER node `cellId`/`colId` are resolved against. Required together with either of those two; `400` if omitted.
+
+Cell/column occupancy lives only in the CHAPTER node's `meta.timelineData.cells`, never on the node rows themselves — this endpoint resolves `cellId`/`colId` against that timeline internally so callers don't have to fetch and parse the whole chapter node just to check occupancy.
+
+**Response**: `200` — node record array. `400` — `cellId`/`colId` given without `timelineId`. `404` — `timelineId` doesn't reference an existing CHAPTER node with grid data.
 
 ---
 
