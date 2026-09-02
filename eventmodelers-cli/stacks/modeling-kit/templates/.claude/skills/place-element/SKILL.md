@@ -226,7 +226,7 @@ Use this REST call (see the curl fallback below) when you don't already have fre
 | Any | Same element type | Stop and tell the user — true conflict, no safe default. |
 | Any | Different type but not a known pairing | Stop and tell the user. |
 
-**A later EVENT that needs to update a READMODEL already feeding a SCREEN is not a Step 6 occupancy case — it's a backward-connection trap.** Do not `set_connection` that EVENT into the existing READMODEL, even if the existing READMODEL's column is reachable. See `eventmodeling-core-rules`'s "Updating a Read Model That Already Feeds a Screen": place a **new** READMODEL (and a matching SCREEN) in a new column immediately after the event's column instead, and connect the event forward into that new pair.
+**A later EVENT that needs to update a READMODEL already feeding a SCREEN is not a Step 6 occupancy case — it's a backward-connection trap.** Do not `set_connection` that EVENT into the existing READMODEL, even if the existing READMODEL's column is reachable. See `eventmodeling-core-rules`'s "Updating a Read Model That Already Feeds a Screen": place a **new** READMODEL in a new column immediately after the event's column instead, link it to the existing READMODEL as a `linkedTo` copy (Step 6a below — it's the same read model, not an unrelated new one), connect the event forward into the linked copy, and give it a matching SCREEN in the same column (a plain node, not linked — SCREEN isn't a linkable type).
 
 **Insert immediately after** means: create the new column right after the current one, not by appending to the end. This keeps the read model visually adjacent to the event that drives it.
 

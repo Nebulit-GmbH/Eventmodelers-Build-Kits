@@ -39,6 +39,8 @@ Walk the timeline column by column:
 - Every **READMODEL** → one `state-view` slice, named after the read model
 - Every **AUTOMATION** → one `automation` slice, named after the automation (or the command it issues)
 
+**Skip any column whose only COMMAND/READMODEL node has `meta.linkedTo` set** — it's a linked copy of a node elsewhere on the board (see `eventmodeling-core-rules`'s Linked Copies and Slices sections), not a second independently-deployable thing. Only the origin node's own column gets a slice.
+
 ---
 
 ## Step 1: Resolve the Timeline
