@@ -226,6 +226,8 @@ Use this REST call (see the curl fallback below) when you don't already have fre
 | Any | Same element type | Stop and tell the user — true conflict, no safe default. |
 | Any | Different type but not a known pairing | Stop and tell the user. |
 
+**A later EVENT that needs to update a READMODEL already feeding a SCREEN is not a Step 6 occupancy case — it's a backward-connection trap.** Do not `set_connection` that EVENT into the existing READMODEL, even if the existing READMODEL's column is reachable. See `eventmodeling-core-rules`'s "Updating a Read Model That Already Feeds a Screen": place a **new** READMODEL (and a matching SCREEN) in a new column immediately after the event's column instead, and connect the event forward into that new pair.
+
 **Insert immediately after** means: create the new column right after the current one, not by appending to the end. This keeps the read model visually adjacent to the event that drives it.
 
 **Prefer MCP** — pass `afterNodeId` set to the occupying node's id (found in Step 6's cell-occupancy check) and let the tool resolve the index itself, instead of computing `currentColumnIndex + 1` by hand:

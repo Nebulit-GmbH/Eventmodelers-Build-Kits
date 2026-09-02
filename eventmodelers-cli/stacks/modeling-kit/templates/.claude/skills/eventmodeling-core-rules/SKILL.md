@@ -112,6 +112,14 @@ A connection either goes **downward within the same column** (actor → interact
 
 When an element's natural column is already occupied by something else, insert a new column immediately before or after (whichever keeps every connection forward) rather than wiring across the gap. See `place-element` for the mechanical insertion rules and each step's own placement section for where "before" vs. "after" applies.
 
+## Updating a Read Model That Already Feeds a Screen
+
+A later EVENT sometimes needs to change data an earlier READMODEL already shows on a SCREEN — e.g. a cancellation affecting an "active items" view placed several columns earlier. Wiring that later EVENT straight back into the existing READMODEL is never the fix: it's a backward connection, and the platform only accepts a backward `EVENT → READMODEL` edge when the READMODEL already has a `READMODEL → AUTOMATION` edge (the todo-list pattern — see Translation Chain below). A READMODEL that only feeds a SCREEN never qualifies for that exemption.
+
+Instead, place a **new READMODEL node** in a new column **immediately after** the later event's column, connect that event forward into it, and give it a matching SCREEN in that same new column — same screen name/title as the earlier one, showing the updated data, optionally re-marked/highlighted via `html-screen`'s Marks feature to call out what changed. Leave the earlier READMODEL/SCREEN instance exactly as it is — it's still what that earlier point in the timeline correctly showed. Never delete it, and never wire the new instance back to it: this isn't the `linkedTo` copy mechanism below (that's for reusing one fact across timelines) — it's a genuinely new node representing a genuinely later state.
+
+See `eventmodeling-identifying-outputs` Step 5g for the full placement/wiring mechanics, and `place-element` Step 6 for the column-insertion mechanics.
+
 ## Linked Copies
 
 A **linked copy** is a COMMAND/EVENT/READMODEL node that mirrors another node elsewhere on the board — most often needed because `set_connection`/auto-connect only ever pairs nodes on the same timeline, so a node on a different timeline can't be wired to directly. The same marking obligation applies whenever a node is reused rather than newly wired anywhere on the board, same timeline included: never place a node that repeats another swimlane's already-recorded fact under its own unlinked identity — either connect forward to the original, or mark it a linked copy. The one exception is a translation chain's own internal EVENT (`eventmodeling-designing-automation-chains`): it is a genuine new domain fact recorded in this side's own language, not a copy, even when it shares the external EVENT's name.
