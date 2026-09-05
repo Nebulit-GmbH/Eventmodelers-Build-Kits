@@ -14,6 +14,7 @@ npx @eventmodelers/cli init --stack node
 | `supabase` | Supabase |
 | `axon` | Axon Framework (Java/Kotlin) |
 | `cratis-csharp` | Cratis (.NET/C#) |
+| `umadb` | UmaDB (Java) |
 
 Not a stack, but also built in: `npx @eventmodelers/cli init-modeling` installs skills + the agent loop only, with no backend scaffold.
 

@@ -19,6 +19,8 @@ npx @eventmodelers/cli init --stack node            # Node.js / TypeScript
 npx @eventmodelers/cli init --stack supabase         # Supabase
 npx @eventmodelers/cli init --stack axon             # Axon Framework (Java/Kotlin)
 npx @eventmodelers/cli init --stack cratis-csharp    # Cratis (.NET/C#)
+npx @eventmodelers/cli init --stack opencqrs         # OpenCQRS (Java, EventSourcingDB)
+npx @eventmodelers/cli init --stack umadb            # UmaDB (Java)
 ```
 
 The installer prompts for your API token, Organization ID, and Board ID from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account), scaffolds the stack into your project, and writes `.eventmodelers/config.json` with your credentials.
@@ -73,7 +75,7 @@ your-project/
 └── CLAUDE.md                      ← agent instructions
 ```
 
-The four backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
+The six backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`, `opencqrs`, `umadb`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
 
 ## Skills
 

@@ -1,0 +1,6 @@
+target/
+.idea
+*.iml
+
+# Eventmodelers credentials
+.eventmodelers/

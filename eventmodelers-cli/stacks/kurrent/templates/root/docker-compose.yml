@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:17
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=quickstart
+      - POSTGRES_USER=quickstart
+      - POSTGRES_PASSWORD=quickstart
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quickstart"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kurrentdb:
+    image: docker.kurrent.io/kurrent-latest/kurrentdb:latest
+    environment:
+      - KURRENTDB_CLUSTER_SIZE=1
+      - KURRENTDB_RUN_PROJECTIONS=All
+      - KURRENTDB_START_STANDARD_PROJECTIONS=true
+      - KURRENTDB_NODE_PORT=2113
+      - KURRENTDB_INSECURE=true
+      - KURRENTDB_ENABLE_ATOM_PUB_OVER_HTTP=true
+    ports:
+      - "2113:2113"
+    volumes:
+      - kurrentdb-data:/var/lib/kurrentdb
+      - kurrentdb-logs:/var/log/kurrentdb
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:2113/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+volumes:
+  postgres-data:
+    driver: local
+  kurrentdb-data:
+    driver: local
+  kurrentdb-logs:
+    driver: local
