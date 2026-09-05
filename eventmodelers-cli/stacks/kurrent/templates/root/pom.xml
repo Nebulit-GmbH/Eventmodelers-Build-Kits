@@ -11,6 +11,10 @@
         <java.version>21</java.version>
         <kurrentdb.version>1.2.1</kurrentdb.version>
         <spring-boot.version>4.1.0</spring-boot.version>
+        <!-- Must track whatever version kurrentdb-client itself pulls in transitively (grpc-api is
+             runtime-scope only there) — check `mvn dependency:tree | grep grpc` after bumping
+             kurrentdb.version, and bump this to match. -->
+        <grpc.version>1.80.0</grpc.version>
     </properties>
 
     <dependencies>
@@ -52,6 +56,16 @@
             <groupId>io.kurrent</groupId>
             <artifactId>kurrentdb-client</artifactId>
             <version>${kurrentdb.version}</version>
+        </dependency>
+
+        <!-- io.grpc.Status/StatusRuntimeException — needed at compile scope to detect an
+             ALREADY_EXISTS conflict when idempotently creating a persistent-subscription group
+             (see build-state-view/build-automation). Only pulled in transitively by
+             kurrentdb-client at *runtime* scope otherwise. -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-api</artifactId>
+            <version>${grpc.version}</version>
         </dependency>
 
         <!-- Auto-starts docker-compose.yml services (KurrentDB, Postgres) on app run -->

@@ -201,14 +201,28 @@ async function fetchAndPersistSlices(cfg, kitDir) {
     writeFileSync(ctxPath, JSON.stringify({ name: activeCtx }, null, 2), 'utf-8');
   }
 
-  // Write per-context index.json and per-slice slice.json
+  // Write per-context index.json and per-slice slice.json.
+  //
+  // This endpoint (`/slicedata/slices`) is the CHEAP summary one — `{ id, title, status }`
+  // only, no commands/events/specifications/codeGen prompts. Its whole job here is to keep
+  // `status` fresh so hasPendingTasks/getFirstPlannedSliceTitle see live transitions; it must
+  // NEVER clobber the richer slice.json a full fetch (`/load-slice`, `eventmodelers fetch`,
+  // `eventmodelers listen`) already wrote for the same slice. So every write below merges
+  // onto whatever's already on disk — spreading the existing object first, the fresh summary
+  // fields second — instead of replacing it wholesale.
   for (const [contextSlug, { slices: ctxSlices }] of Object.entries(contexts)) {
     const contextDir = join(slicesDir, contextSlug);
     mkdirSync(contextDir, { recursive: true });
 
+    const indexPath = join(contextDir, 'index.json');
+    const existingIndex = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf-8')) : { slices: [] };
+    const existingById = new Map((existingIndex.slices ?? []).map((e) => [e.id, e]));
+
     const indexSlices = ctxSlices.map((s, i) => {
       const folder = (s.title ?? s.id).replaceAll(' ', '').toLowerCase();
+      const existing = existingById.get(s.id);
       return {
+        ...existing,
         id: s.id,
         slice: s.title,
         index: i,
@@ -216,16 +230,18 @@ async function fetchAndPersistSlices(cfg, kitDir) {
         contextSlug,
         folder,
         status: s.status,
-        definition: { id: s.id, title: s.title, status: s.status },
+        definition: { ...existing?.definition, id: s.id, title: s.title, status: s.status },
       };
     });
-    writeFileSync(join(contextDir, 'index.json'), JSON.stringify({ slices: indexSlices }, null, 2), 'utf-8');
+    writeFileSync(indexPath, JSON.stringify({ slices: indexSlices }, null, 2), 'utf-8');
 
     for (const slice of ctxSlices) {
       const folder = (slice.title ?? slice.id).replaceAll(' ', '').toLowerCase();
       const sliceDir = join(contextDir, folder);
       mkdirSync(sliceDir, { recursive: true });
-      writeFileSync(join(sliceDir, 'slice.json'), JSON.stringify(slice, null, 2), 'utf-8');
+      const sliceJsonPath = join(sliceDir, 'slice.json');
+      const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice }, null, 2), 'utf-8');
     }
   }
 
@@ -265,30 +281,83 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
 
   const channelName = `board:${cfg.boardId}-slicechanged`;
   const realtime = await createRealtimeAdapter(cfg, realtimeToken);
-  realtime.subscribe(
-    channelName,
-    {
-      message: (payload) => {
-        if (payload === 'Exit') {
-          console.log('[agent] Received "Exit" — shutting down');
-          process.exit(0);
+
+  // Shared by the scheduled timer, a CHANNEL_ERROR/TIMED_OUT subscribe status, and a
+  // 401 from the alive-ping — whichever notices the token is bad first wins; the rest
+  // just await the same in-flight refresh instead of firing duplicate mint requests.
+  const ts = () => new Date().toISOString();
+  let refreshing = null;
+  const refreshToken = (reason) => {
+    if (!refreshing) {
+      const startedAt = Date.now();
+      console.log(`[agent] ${ts()} Refreshing realtime token (reason: ${reason})...`);
+      refreshing = (async () => {
+        try {
+          realtimeToken = await retryOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
+          await realtime.setAuth(realtimeToken);
+          console.log(`[agent] ${ts()} Token refreshed (reason: ${reason}, took ${Date.now() - startedAt}ms)`);
+        } catch (err) {
+          console.error(`[agent] ${ts()} Token refresh FAILED (reason: ${reason}):`, err);
+          throw err;
+        } finally {
+          refreshing = null;
+        }
+      })();
+    }
+    return refreshing;
+  };
+
+  // A subscribe that errors on a stale token needs a fresh token AND a new join
+  // attempt — setAuth alone doesn't re-join a channel that already errored out.
+  // Capped so a non-expiry auth failure (e.g. genuinely revoked access) can't turn
+  // into a tight resubscribe loop hammering the platform forever.
+  let channelErrorStreak = 0;
+  const subscribeChannel = () => {
+    realtime.subscribe(
+      channelName,
+      {
+        message: (payload) => {
+          if (payload === 'Exit') {
+            console.log(`[agent] ${ts()} Received "Exit" — shutting down`);
+            process.exit(0);
+          }
+        },
+        'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
+      },
+      async (status) => {
+        if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') {
+          if (channelErrorStreak > 0) {
+            console.log(`[agent] ${ts()} Channel "${channelName}": ${status} — recovered after ${channelErrorStreak} failed attempt(s)`);
+          } else {
+            console.log(`[agent] ${ts()} Channel "${channelName}": ${status}`);
+          }
+          channelErrorStreak = 0;
+          return;
+        }
+        channelErrorStreak += 1;
+        console.warn(`[agent] ${ts()} Channel "${channelName}": ${status} (attempt ${channelErrorStreak}/5)`);
+        if (channelErrorStreak > 5) {
+          console.error(`[agent] ${ts()} Channel "${channelName}" failed ${channelErrorStreak} times in a row — giving up until the next scheduled token refresh (every 10min)`);
+          return;
+        }
+        try {
+          await refreshToken(`channel ${status}`);
+          await new Promise((r) => setTimeout(r, 2_000));
+          console.log(`[agent] ${ts()} Resubscribing to channel "${channelName}" (attempt ${channelErrorStreak}/5)...`);
+          subscribeChannel();
+        } catch (err) {
+          console.error(`[agent] ${ts()} Token refresh after channel error failed, will not resubscribe this round:`, err);
         }
       },
-      'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
-    },
-    (status) => console.log(`[agent] Channel "${channelName}": ${status}`),
-  );
+    );
+  };
+  subscribeChannel();
 
-  setInterval(async () => {
-    try {
-      realtimeToken = await retryOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
-      await realtime.setAuth(realtimeToken);
-      console.log('[agent] Token refreshed');
-    } catch (err) {
-      console.error('[agent] Token refresh failed:', err);
-    }
+  setInterval(() => {
+    refreshToken('scheduled 10min refresh').catch((err) => console.error(`[agent] ${ts()} Scheduled token refresh failed:`, err));
   }, 10 * 60 * 1000);
 
+  let lastPingFailed = false;
   const ping = async () => {
     try {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
@@ -297,9 +366,19 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId }),
         signal: AbortSignal.timeout(10_000),
       });
-      if (!res.ok) console.error(`[agent] Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
+      if (!res.ok) {
+        console.error(`[agent] ${ts()} Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
+        lastPingFailed = true;
+        if (res.status === 401) {
+          await refreshToken('ping-401').catch((err) => console.error(`[agent] ${ts()} Token refresh after 401 ping failed:`, err));
+        }
+        return;
+      }
+      if (lastPingFailed) console.log(`[agent] ${ts()} Ping recovered`);
+      lastPingFailed = false;
     } catch (err) {
-      console.error('[agent] Ping error:', err);
+      console.error(`[agent] ${ts()} Ping error:`, err);
+      lastPingFailed = true;
     }
   };
   await ping();

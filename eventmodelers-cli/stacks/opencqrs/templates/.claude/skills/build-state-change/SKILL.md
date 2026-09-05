@@ -168,6 +168,18 @@ so each transition is a cheap `with(...)`-style copy, not a full manual reconstr
 
 ## Step 4: Command handler + state rebuilding
 
+**State for a command handler always comes from `@StateRebuilding` methods reconstructing the write
+model from sourced events — never from an external database, JPA repository, or any other read
+model.** See [OpenCQRS's `StateRebuildingHandler` extension
+point](https://docs.opencqrs.com/reference/extension_points/state_rebuilding_handler/): the command
+router executes all matching `@StateRebuilding` methods against the sourced events (in-memory, no
+external query) before the `@CommandHandling` method runs — that reconstructed instance is the *only*
+source of prior state a business rule may check. An `@Autowired` collaborator in a handler method is for
+side effects or lookups unrelated to *this subject's own state* (e.g. an external ID generator); it must
+never stand in for a `@StateRebuilding` method to answer "what has already happened to this subject." If
+a rule needs data from another subject's events, add a `@StateRebuilding` method for that event type and
+use `sourcingMode = SourcingMode.RECURSIVE` (see below) — do not reach for a database read model instead.
+
 Both live in one `@CommandHandlerConfiguration` class per context (or per slice, if the project already
 splits it that way — check existing slices first):
 

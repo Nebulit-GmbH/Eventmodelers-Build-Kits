@@ -84,6 +84,13 @@ const STACKS = {
     useShared: true,
     needsBoardId: true,
   },
+  kurrent: {
+    label: 'Kurrent (Java, KurrentDB)',
+    kitSubdir: 'build-kit',
+    kitDirName: '.build-kit',
+    useShared: true,
+    needsBoardId: true,
+  },
 };
 
 // Not a stack — no backend scaffold, just skills + the agent loop. Installed via

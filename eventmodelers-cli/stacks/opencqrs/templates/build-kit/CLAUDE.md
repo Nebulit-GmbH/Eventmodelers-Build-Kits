@@ -26,6 +26,12 @@ package.
   `/book/{isbn}/page/{page}`. A child slice's subject nested under a parent's is how OpenCQRS models
   parent/child aggregate relationships — see `build-state-change`'s Step 1 for how this replaces
   compound-identifier/tagging schemes other frameworks need.
+- **Command handlers always derive their state from [`@StateRebuilding`
+  methods](https://docs.opencqrs.com/reference/extension_points/state_rebuilding_handler/) reconstructing
+  the write model from sourced events — never from an external database, JPA repository, or any other
+  read model.** If a rule needs data from another subject, add a `@StateRebuilding` method for that
+  event type and use `sourcingMode = SourcingMode.RECURSIVE`; do not query a database instead. See
+  `build-state-change`'s Step 4.
 
 ## Code Standards
 
