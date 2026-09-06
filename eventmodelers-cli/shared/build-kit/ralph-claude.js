@@ -11,7 +11,11 @@ const kitDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, '..');
 
 const cfg = loadLocalConfig(kitDir);
-const inlineHeader = cfg.boardId
+const localOnly = process.env.RALPH_LOCAL === '1';
+// --local must mean zero board contact — never hand Claude live board
+// credentials via the inline header, even if config.json has them, or it'll
+// treat them as already-connected and skip straight to board sync.
+const inlineHeader = !localOnly && cfg.boardId
   ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
   : '';
 
@@ -96,7 +100,7 @@ startRalph({
   projectDir,
   onTask: runClaude,
   onPlannedSlice: runClaude,
-  localOnly: process.env.RALPH_LOCAL === '1',
+  localOnly,
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);
   process.exit(1);

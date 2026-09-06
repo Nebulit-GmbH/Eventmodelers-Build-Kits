@@ -433,10 +433,13 @@ async function runWithRetry(label, fn) {
   }
 }
 
-async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
+async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
-  const credentialed = hasCredentials(cfg);
+  // --local must mean zero board contact even when .eventmodelers/config.json
+  // happens to hold valid credentials — never let a locally-present token flip
+  // this back on.
+  const credentialed = !localOnly && hasCredentials(cfg);
   let lastIdleCtx;
 
   while (true) {
@@ -489,7 +492,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
   // reaches out to the platform at all.
   if (localOnly || !hasCredentials(local)) {
     console.log(`         mode: local-only (no platform sync)${localOnly ? ' — forced by --local' : ''}\n`);
-    await ralphLoop(kitDir, local, onTask, onPlannedSlice);
+    await ralphLoop(kitDir, local, onTask, onPlannedSlice, localOnly);
     return;
   }
 
