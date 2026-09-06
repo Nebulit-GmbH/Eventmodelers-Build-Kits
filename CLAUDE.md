@@ -12,9 +12,10 @@ You are an autonomous agent processing tasks queued for an eventmodelers board.
 6. **Resolve `BOARD_ID`**: use the prompt's `board_id` if present; otherwise fall back to `boardId` in `.eventmodelers/config.json`. Pass it as `board=<uuid>` to `/connect`.
 7. Run `/connect` to load credentials, then execute each surviving prompt using the skill matched below.
    **Questioning rule**: You are running autonomously — no human is available to answer questions. If at any point you need clarification to proceed, do **not** pause or ask interactively. Instead, post your question as a `QUESTION`-type comment (using `/handle-comment` with `action=place` and `type=QUESTION`) on the most relevant slice node or column node on the board, then continue with your best interpretation of the prompt. Never block on missing input.
-8. If the completed task has a `comment_id` field, invoke `/handle-comment` with `action=resolve`, `nodeId` from the task's `node_id`, and `commentId` from `comment_id`. Then remove the completed task from `.agent-modeling-kit/tasks.json` and write it back (write `[]` if empty).
-9. Append a progress entry to `progress.txt` (create if missing) — see format below.
-10. Add any reusable learnings to the **Learnings** section at the bottom of this file.
+8. **Check the result** — if executing the prompts produced a code commit (e.g. via a `build-*` skill), verify the last commit passes its check (build/tests). If the check fails: discard that commit and any working-tree changes it made, revert the slice's status back to `planned` via `/update-slice-status` (undoing whatever status change this attempt made), record what failed as a new bullet in the **Learnings** section and commit that update to this file, then abandon the task entirely and restart the entire Loop from step 1 — do not retry the same task in place.
+9. If the completed task has a `comment_id` field, invoke `/handle-comment` with `action=resolve`, `nodeId` from the task's `node_id`, and `commentId` from `comment_id`. Then remove the completed task from `.agent-modeling-kit/tasks.json` and write it back (write `[]` if empty).
+10. Append a progress entry to `progress.txt` (create if missing) — see format below.
+11. Add any reusable learnings to the **Learnings** section at the bottom of this file.
 
 ## Skill Selection
 
