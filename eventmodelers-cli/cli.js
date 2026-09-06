@@ -795,7 +795,10 @@ async function installStack(stackKey, stackCfg, options = {}) {
       // first-installed kit added (e.g. node_modules/.idea from a build-kit install).
       const gitignoreDest = join(targetDir, '.gitignore');
       const priorGitignore = existsSync(gitignoreDest) ? readFileSync(gitignoreDest, 'utf-8') : null;
-      copyDirContents(rootSrc, targetDir, { skip: ['CLAUDE.md'] });
+      // .githooks/ (the slice commit-scope guard) is opt-in via `init --hooks` — skipped
+      // here and handled explicitly below so a plain `init` never silently changes the
+      // project's git hook wiring.
+      copyDirContents(rootSrc, targetDir, { skip: ['CLAUDE.md', '.githooks'] });
       if (priorGitignore !== null && existsSync(gitignoreDest)) {
         const incoming = readFileSync(gitignoreDest, 'utf-8');
         const merged = mergeGitignoreLines(priorGitignore, incoming);
@@ -906,6 +909,31 @@ async function installStack(stackKey, stackCfg, options = {}) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
+      }
+    }
+
+    // --- 3b. Opt-in slice commit-scope guard (`init --hooks`) ---
+    // Skipped from the generic root copy above so a plain `init` never touches git's
+    // hook wiring; installed explicitly here only when requested.
+    if (options.hooks) {
+      const hooksSrc = join(rootSrc, '.githooks');
+      if (existsSync(hooksSrc)) {
+        copyDirContents(hooksSrc, join(targetDir, '.githooks'));
+        const preCommitHook = join(targetDir, '.githooks', 'pre-commit');
+        if (existsSync(preCommitHook)) {
+          // cpSync doesn't reliably carry over the executable bit across platforms,
+          // and git silently skips a non-executable hook.
+          try { execSync(`chmod +x "${preCommitHook}"`); } catch {}
+        }
+        try {
+          execSync('git rev-parse --git-dir', { cwd: targetDir, stdio: 'ignore' });
+          execSync('git config core.hooksPath .githooks', { cwd: targetDir });
+          console.log('  ✓ Installed .githooks/ and set core.hooksPath — commits touching src/slices/ are now scope-guarded');
+        } catch {
+          console.log('  ✓ Installed .githooks/ — run `git config core.hooksPath .githooks` once this directory is a git repo to activate it');
+        }
+      } else {
+        console.log('  ℹ️  --hooks was given but this stack ships no .githooks/ template — nothing to install');
       }
     }
 
@@ -1560,6 +1588,7 @@ credentialFlags(program
   .option('--target <name>', `Bridge target framework (${Object.keys(BRIDGE_TARGETS).join(', ')}) — only meaningful with --bridge`)
   .option('--hook <command>', 'Persist a default shell command hook for `bridge` to run per batch of slice changes instead of Claude/Ollama (e.g. commit + push .slices/ for a CI pipeline to pick up) — only meaningful with --bridge. Can also be set per-run with `bridge --hook`.')
   .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling/--bridge.')
+  .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
   .action(async (opts, command) => {
@@ -1649,6 +1678,7 @@ credentialFlags(program
         force: opts.force,
         credentialOverrides: credentialOverridesFromOpts(opts),
         templatesSource: join(clonedDir, 'templates'),
+        hooks: opts.hooks,
       });
       return;
     }
@@ -1660,6 +1690,7 @@ credentialFlags(program
       global: opts.global,
       force: opts.force,
       credentialOverrides: credentialOverridesFromOpts(opts),
+      hooks: opts.hooks,
     });
   });
 

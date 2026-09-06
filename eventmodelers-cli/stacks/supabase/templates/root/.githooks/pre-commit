@@ -1,0 +1,11 @@
+#!/bin/sh
+# Installed via setup-env.sh (`git config core.hooksPath .githooks`), so this file
+# is versioned and shared by every clone instead of living only in .git/hooks/.
+set -e
+
+repo_root=$(git rev-parse --show-toplevel)
+script="$repo_root/.build-kit/lib/check-commit-scope.cjs"
+
+if [ -f "$script" ]; then
+  node "$script"
+fi

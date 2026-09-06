@@ -51,3 +51,9 @@ EOF
 
 echo ""
 echo ".env created successfully."
+
+if [ -f .githooks/pre-commit ] && git rev-parse --git-dir >/dev/null 2>&1; then
+  chmod +x .githooks/pre-commit 2>/dev/null || true
+  git config core.hooksPath .githooks
+  echo "Configured git to use .githooks/ (slice commit-scope guard)."
+fi

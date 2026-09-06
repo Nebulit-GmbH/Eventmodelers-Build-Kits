@@ -57,6 +57,28 @@ When asked to build a slice, always follow this flow:
 
 After you are done, automatically run the tests for the slice that was edited.
 
+## Commit Scope Guard
+
+A pre-commit hook (`.githooks/pre-commit`, installed via `init --hooks` — see its own project's setup)
+runs `.build-kit/lib/check-commit-scope.cjs` on every commit that touches `src/slices/{context}/{slice}/`.
+It loads every check under `.build-kit/lib/checks/` and rejects the commit if any of them find a problem:
+
+- **blocked-paths** — `package.json`/lockfiles and `server.ts` are never touched by slice work
+- **slice-scope** — everything staged must be inside the slice folder or a documented exception:
+  `src/slices/{context}/{Context}Events.ts` or `src/common/loadPostgresEventstore.ts`
+- **append-only-migrations** — `migrations/V{n}__*.sql` may only be **added**, never edited
+- **test-file-present** — a changed Command/Projection/processor file needs a sibling `*.test.ts`
+- **no-invented-fields** — heuristic: flags a field used in code that isn't declared anywhere in
+  `.build-kit/.slices/{context}/{slice}/slice.json`
+- **spec-coverage** — heuristic: the test file needs at least as many `it(...)` blocks as slice.json
+  has `specifications[]` entries
+- **tsc-build** — `npx tsc --noEmit` must still pass
+
+If a commit is rejected, split it — commit the out-of-scope file separately from the slice work, or add
+the missing test/fix the field — rather than passing `--no-verify`. Run `npm run check:scope` any time
+you want to check staged files before committing. To add a new check, read
+`.build-kit/lib/checks/README.md` and drop in a file following its interface — no other wiring needed.
+
 ## Example Slice Structure
 
 ```
