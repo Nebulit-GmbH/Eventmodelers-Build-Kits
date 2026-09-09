@@ -100,7 +100,7 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN" }
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Integration — Check existing screen nodes".
 
-After completing the screen analysis, use the `handle-comment` skill to post a QUESTION comment on any screen node where data fields are unclear or missing sources are identified.
+After completing the screen analysis, use the `handle-comment` skill to post a comment on any screen node where data fields are unclear or missing sources are identified.
 
 ## Resolve One Actor Lane Per Human Role (do this once, before placing any screens)
 

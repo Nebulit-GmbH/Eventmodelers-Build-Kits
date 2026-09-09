@@ -16,6 +16,15 @@ then stop work on this slice for this run. This is an escalation path, not a rou
 `slice.json` and the matching build skill's own instructions fully first; most slices are fully
 specified and need none of this.
 
+## No such thing as harmless drift
+
+`slice.json` is always the desired state — the code follows what it defines, never the other way
+around. If code for a slice already exists — most often because it was previously `Done` and got moved
+back to `Planned` — never conclude "already implemented" and move on. A slice does not return to
+`Planned` without a reason: diff the current `slice.json` against the existing implementation field by
+field (events, commands, params, specifications, routes) and update the code to match every difference
+you find. Only mark it `Done` once there is no gap left.
+
 ## Structure (learn from `SomeModule/SomeFeature/`)
 
 ```

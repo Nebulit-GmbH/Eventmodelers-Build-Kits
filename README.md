@@ -27,3 +27,4 @@ These are not maintained in this repo and follow no guaranteed structure — lin
 | Stack | Repo | Notes |
 |-------|------|-------|
 | .NET | [Powerworks/K9DatingApp](https://github.com/Powerworks/K9DatingApp/) | Community reference for event modeling in .NET; not adapted to the build-kit skill/installer pattern used by the official kits above. |
+| Rust | [gklijs/skilj-build-kit](https://github.com/gklijs/skilj-build-kit) | Built on [skilj](https://github.com/gklijs/skilj), the author's own Postgres-backed event-sourcing library using DCB (Dynamic Consistency Boundary) instead of classic aggregates. Follows the build-kit skill/installer pattern (four Claude Code skills for the usual slice shapes) — same approach as the official kits. Install: `npx @eventmodelers/cli init --stack skilj --git https://github.com/gklijs/skilj-build-kit`. |

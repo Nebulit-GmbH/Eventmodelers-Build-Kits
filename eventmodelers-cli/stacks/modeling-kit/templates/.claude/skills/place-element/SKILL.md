@@ -376,9 +376,9 @@ Count inbound edges where `target === COMMAND_NODE_ID` and the source node is ty
 mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }
 ```
 
-If it's not clear which edge is the deliberate one (e.g. neither source sits in the COMMAND's own column), do not guess — leave both edges and post a `QUESTION` comment on the COMMAND node via `handle-comment` instead, describing the ambiguity.
+If it's not clear which edge is the deliberate one (e.g. neither source sits in the COMMAND's own column), do not guess — leave both edges and post a comment on the COMMAND node via `handle-comment` instead, describing the ambiguity.
 
-**Fallback (no MCP)**: there is no documented single-purpose REST endpoint for edge removal outside `/nodes/events`. Connect MCP via the `connect` skill first; if that's genuinely not possible, skip the auto-fix and post a `QUESTION` comment on the COMMAND node flagging the double issuer for manual resolution instead of fabricating a payload.
+**Fallback (no MCP)**: there is no documented single-purpose REST endpoint for edge removal outside `/nodes/events`. Connect MCP via the `connect` skill first; if that's genuinely not possible, skip the auto-fix and post a comment on the COMMAND node flagging the double issuer for manual resolution instead of fabricating a payload.
 
 ---
 

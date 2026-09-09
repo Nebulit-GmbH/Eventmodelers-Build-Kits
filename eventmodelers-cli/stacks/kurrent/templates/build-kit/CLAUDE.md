@@ -95,7 +95,9 @@ When asked to build a slice, always follow this flow:
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
 4. **Verify against slice.json**: After the skill completes, check that every command field, event field,
    and specification in slice.json appears in the implementation. No invented fields — if it is not in
-   slice.json, it must not be in the code.
+   slice.json, it must not be in the code. This applies even when the slice was previously `Done` and
+   reappears as `Planned` — never dismiss a mismatch as "already implemented" or harmless drift; diff
+   slice.json against the code field by field and update the code to match every change.
 5. Run quality checks (`./mvnw compile -q`, then the slice tests only).
 6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
 

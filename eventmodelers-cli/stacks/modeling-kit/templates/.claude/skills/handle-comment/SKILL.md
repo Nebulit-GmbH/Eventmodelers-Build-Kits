@@ -21,9 +21,18 @@ From `$ARGUMENTS` or the calling skill's context, extract:
 | `nodeId` | UUID of the target node | **required** |
 | `text` | Comment text (place) or substring to match (resolve/delete) | required for `place`; used to look up comment when `commentId` is absent |
 | `commentId` | UUID of the comment to resolve/delete | preferred over `text` for resolve/delete |
-| `type` | `COMMENT`, `TASK`, or `QUESTION` | `QUESTION` (place only) |
-| `author` | Author identifier string | `agent` (place only) |
+| `type` | `COMMENT` or `TASK` | `COMMENT` (place only) |
+| `author` | Author identifier string | `agent-$CLAUDE_CODE_SESSION_ID` (place only) |
 | `boardId` | Board UUID | from `connect` skill (`BOARD_ID`) |
+
+Use the session env var, not the literal string `agent` — `CLAUDE_CODE_SESSION_ID` is set by the
+host for every session, so two agents working the same board at once post under distinguishable
+authors instead of an identical one. If the env var is unset (non-Claude-Code host), fall back to
+the literal `agent`.
+
+There is no `QUESTION` type at the API level — a question is just a `COMMENT` whose text happens
+to be phrased as a question. Callers that want to flag something as a question should word the
+`text` accordingly, not pass a special `type`.
 
 Route to the matching section below based on `action`.
 
@@ -31,10 +40,10 @@ Route to the matching section below based on `action`.
 
 ## Action: place
 
-**Prefer MCP** — one call, `type` (`COMMENT`/`TASK`/`QUESTION`) passed straight through:
+**Prefer MCP** — one call, `type` (`COMMENT`/`TASK`) passed straight through:
 
 ```
-mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK|QUESTION>", "author": "<author>" }
+mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK>", "author": "<author>" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Action: place".

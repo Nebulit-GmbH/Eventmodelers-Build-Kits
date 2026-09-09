@@ -97,7 +97,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/update-slice-status` | Update slice status on the board |
 | `/load-slice` | Persist board slices to disk (backend stacks) |
 | `/build-state-change`, `/build-state-view`, `/build-automation`, `/build-webhook` | Implement a slice's command/view/automation/webhook (backend stacks) |
-| `/request-feedback` | Post a QUESTION comment and mark a slice `Blocked` when it's genuinely ambiguous (backend stacks) |
+| `/request-feedback` | Post a comment and mark a slice `Blocked` when it's genuinely ambiguous (backend stacks) |
 
 Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, `/update-slice-status`, and `/request-feedback` have no stack-specific content and install into every stack from `shared/skills/` instead.
 

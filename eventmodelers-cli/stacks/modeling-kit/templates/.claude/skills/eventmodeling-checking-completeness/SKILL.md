@@ -34,7 +34,7 @@ Use these results as the source of truth for the completeness check.
 - Never propose deleting, suppressing, or "cleaning up" either node in a linked pair. Specifically, never target the node that has *no* `linkedTo` (the original) for removal — copies reference it via `moveToWidget=<originNodeId>`, so deleting it breaks every copy.
 - Only flag same-titled nodes as an actual duplicate gap when **none** of them has `linkedTo` — i.e., they are genuinely two independent, unlinked nodes describing the same concept.
 
-After the analysis, use the `handle-comment` skill to post findings on relevant nodes — `TASK` for required fixes, `QUESTION` for gaps that need clarification.
+After the analysis, use the `handle-comment` skill to post findings on relevant nodes — `TASK` for required fixes, `COMMENT` for gaps that need clarification.
 
 ## Workflow
 

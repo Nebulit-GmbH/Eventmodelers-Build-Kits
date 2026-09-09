@@ -37,7 +37,7 @@ mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL" }
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
-After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `QUESTION` for warnings and recommendations. (That skill already handles the `add_comment` MCP-vs-curl choice internally — no separate rewrite needed here.)
+After validation, use the `handle-comment` skill to post findings on the relevant nodes — `TASK` for critical violations that must be fixed, `COMMENT` for warnings and recommendations. (That skill already handles the `add_comment` MCP-vs-curl choice internally — no separate rewrite needed here.)
 
 ## Purpose
 

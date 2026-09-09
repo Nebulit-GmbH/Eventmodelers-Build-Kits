@@ -448,7 +448,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
 - **Business rules deliberately encoded as scenarios, not new events** — so a reader doesn't mistake a missing event for an oversight.
 - **Sequencing or design corrections made mid-workflow** — e.g. a column reorder because an event's original placement implied the wrong causality.
 - **Read model design rationale** — especially where one read model deliberately serves several screens/automations, so it doesn't read as a missing 1:1 mapping.
-- **Any cross-context or integration gaps found** (Step 6 Conway's Law, or discovered incidentally, e.g. a same-timeline connection constraint blocking a needed cross-chapter data dependency) — state the finding and the viable resolutions, matching whatever TASK/QUESTION comment was also posted on the affected node.
+- **Any cross-context or integration gaps found** (Step 6 Conway's Law, or discovered incidentally, e.g. a same-timeline connection constraint blocking a needed cross-chapter data dependency) — state the finding and the viable resolutions, matching whatever TASK/COMMENT comment was also posted on the affected node.
 - **Closing summary**: element counts and the validation verdict for this chapter's slice of the model.
 
 If a chapter's story is genuinely simple, say so briefly rather than padding — but for any chapter with real design decisions behind it, this note is the place those decisions survive past the session that made them.

@@ -1,6 +1,6 @@
 ---
 name: wdyt
-description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as QUESTION-type comments on relevant nodes. Findings about a relationship between elements or a cluster of elements are always additionally drawn on the canvas (arrows, group loops) — comments carry every textual question, drawings carry every visual/structural hint.
+description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as comments on relevant nodes. Findings about a relationship between elements or a cluster of elements are always additionally drawn on the canvas (arrows, group loops) — comments carry every textual question, drawings carry every visual/structural hint.
 ---
 
 # WDYT — What Do You Think?
@@ -113,17 +113,17 @@ Each of these four is inherently about a relationship or cluster of elements, so
 
 The two channels have a strict division of labor, always applied the same way — never swap them:
 
-- **Every textual question is a comment.** If the finding is "what happens / who does this / what do we expect" about a single element, it is worded and lives only in a `QUESTION` comment. Never draw a text callout on the canvas to carry a question — that content belongs in 4.1, full stop.
+- **Every textual question is a comment.** If the finding is "what happens / who does this / what do we expect" about a single element, it is worded and lives only in a comment. Never draw a text callout on the canvas to carry a question — that content belongs in 4.1, full stop.
 - **Every visual/structural hint is a drawing.** If the finding is inherently about *where things are relative to each other* — a relationship between two elements, or a cluster of elements sharing one concern — it is always additionally drawn on the canvas (4.2), not left as text alone. This isn't a selective "top 3" step; it's determined by the shape of the finding itself: relational or clustered → draw it, every time.
 
 ### 4.1 Comments (every textual question, always)
 
-For each question you want to ask, post it as a `QUESTION`-type comment on the most relevant node (the COMMAND, EVENT, SCREEN, or READMODEL the question is about). If a question is about the whole slice rather than a specific element, post it on the first/primary EVENT of the slice.
+For each question you want to ask, post it as a comment on the most relevant node (the COMMAND, EVENT, SCREEN, or READMODEL the question is about). If a question is about the whole slice rather than a specific element, post it on the first/primary EVENT of the slice.
 
 Use the `handle-comment` skill with `action=place` to post each comment. Pass:
 - `nodeId` — the UUID of the element the question is about
 - `text` — your question (one sentence, plain business language)
-- `type` — `QUESTION`
+- `type` — `COMMENT` (there is no separate question type — the text itself carries the question)
 - `author` — `wdyt`
 
 The comment API has no batch endpoint — `handle-comment` sends one request per comment. Fire them sequentially.
@@ -137,7 +137,7 @@ Use `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as 
 - **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions). Get element positions from the slice data already loaded in Step 2 (or `GET .../nodes/{nodeId}` if not present).
 - **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box via `.../drawing/draw`. This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
 
-Every arrow/group loop is paired with a `QUESTION` comment on the relevant node(s) from 4.1 — the drawing makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
+Every arrow/group loop is paired with a comment on the relevant node(s) from 4.1 — the drawing makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
 
 A finding about a single element with no relational or cluster dimension gets a comment only — don't manufacture an arrow or loop for it just to add a drawing.
 

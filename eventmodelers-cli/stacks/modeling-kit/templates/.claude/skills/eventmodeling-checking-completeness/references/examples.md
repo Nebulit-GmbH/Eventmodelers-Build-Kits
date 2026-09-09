@@ -1,6 +1,6 @@
 # Checking Completeness — Worked Examples
 
-These are conceptual worked examples (Order/Payment domain) illustrating the completeness-check reasoning this skill applies — useful for understanding the reasoning, but the actual mechanics live in the numbered Workflow sections of the main SKILL.md (reading board state and posting `TASK`/`QUESTION` comments via `handle-comment`), not in writing a document like this.
+These are conceptual worked examples (Order/Payment domain) illustrating the completeness-check reasoning this skill applies — useful for understanding the reasoning, but the actual mechanics live in the numbered Workflow sections of the main SKILL.md (reading board state and posting `TASK`/`COMMENT` comments via `handle-comment`), not in writing a document like this.
 
 ## 1. Field Origin & Destination Matrix
 
@@ -265,7 +265,7 @@ Actions taken:
 
 ## Legacy markdown-document format (superseded — kept for reference only)
 
-Older versions of this skill wrote the completeness check as a markdown report. The actual mechanism today is reading board state and posting `TASK`/`QUESTION` comments via `handle-comment` (see "Board Context" in the main SKILL.md) — this template is kept only so the shape of the information (what a complete completeness report covers) stays documented somewhere.
+Older versions of this skill wrote the completeness check as a markdown report. The actual mechanism today is reading board state and posting `TASK`/`COMMENT` comments via `handle-comment` (see "Board Context" in the main SKILL.md) — this template is kept only so the shape of the information (what a complete completeness report covers) stays documented somewhere.
 
 ```markdown
 # Completeness Check: [Domain Name]

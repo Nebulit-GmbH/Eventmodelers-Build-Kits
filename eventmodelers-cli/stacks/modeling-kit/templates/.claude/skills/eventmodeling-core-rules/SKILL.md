@@ -150,10 +150,10 @@ Every AUTOMATION, translation or worker, needs its own todo-list READMODEL (open
 
 Two different things are easy to conflate, and conflating them corrupts completeness checking:
 
-- **Open question** — something genuinely undecided. Post it as a `QUESTION`-type comment (`handle-comment`) on the relevant node. It stays open until someone actually answers it — resolving means answering, not deleting the comment.
+- **Open question** — something genuinely undecided. Post it as a `COMMENT` (`handle-comment`) on the relevant node, worded as a question. There is no separate question type at the API level — it stays open (unresolved) until someone actually answers it, resolving means answering, not deleting the comment.
 - **Decided failure** — a rejection or error case whose behavior is already decided (e.g. "payment fails → reject, no event"). Model it as a SCENARIO with `expectError: true` and an `errorDescription` (see `eventmodeling-elaborating-scenarios`), never as a comment. It's permanent, specified behavior, not something waiting on an answer.
 
-A decided failure left as a lingering `QUESTION` comment looks unresolved when it isn't. When counting completeness (`eventmodeling-checking-completeness`), only a genuinely unanswered `QUESTION` counts as a gap — a decided failure path needs its `expectError` scenario, not a comment standing in for one.
+A decided failure left as a lingering, unresolved question comment looks unresolved when it isn't. When counting completeness (`eventmodeling-checking-completeness`), only a genuinely unanswered question comment counts as a gap — a decided failure path needs its `expectError` scenario, not a comment standing in for one.
 
 ## Offline-First Thinking
 

@@ -1,6 +1,6 @@
 ---
 name: request-feedback
-description: Post a QUESTION comment on a slice and mark it Blocked when the slice's requirements are genuinely ambiguous, contradictory, or missing something a decision depends on. This is an escalation path, not a routine step — reach for it only when you cannot proceed without guessing.
+description: Post a comment on a slice and mark it Blocked when the slice's requirements are genuinely ambiguous, contradictory, or missing something a decision depends on. This is an escalation path, not a routine step — reach for it only when you cannot proceed without guessing.
 ---
 
 # Request Feedback
@@ -57,7 +57,7 @@ From `$ARGUMENTS` or the calling skill's context, extract:
 |-------|---------------|---------|
 | `sliceName` or `sliceId` | the slice being worked on | **required** — one of the two |
 | `question` | the specific ambiguity or missing piece, phrased as a question | **required** |
-| `author` | author identifier string | `agent` |
+| `author` | author identifier string | `agent-$CLAUDE_CODE_SESSION_ID` (falls back to `agent` if that env var is unset) |
 
 ## Step 2 — Resolve the slice's node id
 
@@ -81,12 +81,14 @@ Find the slice whose `title` matches `sliceName` (case-insensitive), or whose `i
 If no match is found, stop and list the available slice titles so the caller can pick one. Save the
 matched slice's `id` as `SLICE_NODE_ID` and its current `status` as `CURRENT_STATUS`.
 
-## Step 3 — Post the QUESTION comment
+## Step 3 — Post the comment
+
+There is no separate `QUESTION` type at the API level — post a normal `COMMENT` worded as a question.
 
 Prefer MCP:
 
 ```
-mcp__eventmodelers__add_comment { "boardId": "<BOARD_ID>", "nodeId": "<SLICE_NODE_ID>", "text": "<question>", "type": "QUESTION", "author": "<author>" }
+mcp__eventmodelers__add_comment { "boardId": "<BOARD_ID>", "nodeId": "<SLICE_NODE_ID>", "text": "<question>", "type": "COMMENT", "author": "<author>" }
 ```
 
 **Fallback (no MCP):**
@@ -95,7 +97,7 @@ mcp__eventmodelers__add_comment { "boardId": "<BOARD_ID>", "nodeId": "<SLICE_NOD
 curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<SLICE_NODE_ID>/comments" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"text":"<question>","type":"QUESTION","author":"<author>"}'
+  -d '{"text":"<question>","type":"COMMENT","author":"<author>"}'
 ```
 
 Response: `201 {"id":"<commentId>"}`. Save it as `COMMENT_ID` — the calling skill may want to reference

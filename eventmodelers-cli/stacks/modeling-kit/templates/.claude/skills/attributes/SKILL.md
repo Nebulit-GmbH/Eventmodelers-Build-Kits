@@ -100,7 +100,6 @@ For each node:
   "name": "<attributeName>",
   "type": "String",
   "query": false,
-  "edited": false,
   "optional": false,
   "generated": false,
   "subfields": [],

@@ -23,7 +23,7 @@ Same rules as `eventmodeling-slicing-event-models`'s own "Core Concept" section 
 
 "I don't know what the next capability is" is not the same as "any guess risks doing the wrong thing." A plausible next slice — the next lifecycle stage, an unaddressed affordance on an existing screen, a natural CRUD/notification gap — always exists for a working domain, and a wrong guess here costs nothing: it's just another slice on the board, easy to rename or discard later.
 
-**Posting a comment and closing the prompt with no board mutation is not an acceptable outcome of this skill.** That only defers the same empty decision to the next identical prompt, forever. If you already posted a `QUESTION`/`TASK` comment about this exact ambiguity on a previous turn, that does not make it acceptable to do so again instead of creating something — the comment already served its purpose (flagging the assumption for a human to correct later); this turn should still create the slice.
+**Posting a comment and closing the prompt with no board mutation is not an acceptable outcome of this skill.** That only defers the same empty decision to the next identical prompt, forever. If you already posted a `COMMENT`/`TASK` comment about this exact ambiguity on a previous turn, that does not make it acceptable to do so again instead of creating something — the comment already served its purpose (flagging the assumption for a human to correct later); this turn should still create the slice.
 
 ---
 
@@ -37,7 +37,7 @@ Same rules as `eventmodeling-slicing-event-models`'s own "Core Concept" section 
 
 If a specific instruction *is* given (the prompt names a capability, or references a comment/discussion that does), use that instead of inferring one.
 
-If, after looking at the existing slices, it's genuinely unclear which of several equally-reasonable next steps to pick, post a `QUESTION` comment (via `handle-comment`) noting the assumption you're about to make — then make it and create the slice in the same turn, every time. Never stop at just the comment.
+If, after looking at the existing slices, it's genuinely unclear which of several equally-reasonable next steps to pick, post a comment (via `handle-comment`) noting the assumption you're about to make — then make it and create the slice in the same turn, every time. Never stop at just the comment.
 
 ## Step 2: Create the slice
 

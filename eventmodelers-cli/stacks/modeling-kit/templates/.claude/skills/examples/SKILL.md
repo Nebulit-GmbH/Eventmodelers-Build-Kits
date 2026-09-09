@@ -79,7 +79,7 @@ Rules for generating examples:
 - Make examples **domain-specific**: if the element is called "Order Placed", use order-domain values; if it's "User Registered", use registration-domain values.
 - Keep examples **short** — one value per field, no paragraphs.
 
-Build the updated `fields` array: same structure as the original, only the `example` property changed where needed. Set `edited: true` on any field you modify.
+Build the updated `fields` array: same structure as the original, only the `example` property changed where needed.
 
 ---
 
