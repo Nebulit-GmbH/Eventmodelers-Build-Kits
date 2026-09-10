@@ -23,7 +23,7 @@
 //   SLICE_PATTERN   RegExp matching a path inside a slice's own folder
 //
 // Zero dependencies — plain Node, so it works from git's pre-commit hook
-// (see ../../.githooks/pre-commit), from `npm run check:scope`, or from CI.
+// (see ../../.githooks/pre-commit), from `npm run run:checks`, or from CI.
 // Invoked as: node .build-kit/lib/check-commit-scope.cjs
 
 const { execSync } = require('child_process');

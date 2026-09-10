@@ -75,7 +75,7 @@ It loads every check under `.build-kit/lib/checks/` and rejects the commit if an
 - **tsc-build** — `npx tsc --noEmit` must still pass
 
 If a commit is rejected, split it — commit the out-of-scope file separately from the slice work, or add
-the missing test/fix the field — rather than passing `--no-verify`. Run `npm run check:scope` any time
+the missing test/fix the field — rather than passing `--no-verify`. Run `npm run run:checks` any time
 you want to check staged files before committing. To add a new check, read
 `.build-kit/lib/checks/README.md` and drop in a file following its interface — no other wiring needed.
 

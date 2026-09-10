@@ -918,24 +918,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     if (options.hooks) {
       const hooksSrc = join(rootSrc, '.githooks');
       if (existsSync(hooksSrc)) {
-        copyDirContents(hooksSrc, join(targetDir, '.githooks'));
-        const preCommitHook = join(targetDir, '.githooks', 'pre-commit');
-        if (existsSync(preCommitHook)) {
-          // cpSync doesn't reliably carry over the executable bit across platforms,
-          // and git silently skips a non-executable hook.
-          try { execSync(`chmod +x "${preCommitHook}"`); } catch {}
-        }
-        try {
-          execSync('git rev-parse --git-dir', { cwd: targetDir, stdio: 'ignore' });
-          // core.hooksPath is resolved against the repo's actual top level, not `cwd` —
-          // a relative `.githooks` breaks silently (no error, hooks just don't run) when
-          // targetDir is a subfolder of a larger repo rather than the repo root itself.
-          // Use an absolute path so it's correct regardless of where the git root is.
-          execSync(`git config core.hooksPath "${join(targetDir, '.githooks')}"`, { cwd: targetDir });
-          console.log('  ✓ Installed .githooks/ and set core.hooksPath — commits touching src/slices/ are now scope-guarded');
-        } catch {
-          console.log(`  ✓ Installed .githooks/ — run \`git config core.hooksPath ${join(targetDir, '.githooks')}\` once this directory is a git repo to activate it`);
-        }
+        configureHooks({ hooksSrc, targetDir });
       } else {
         console.log('  ℹ️  --hooks was given but this stack ships no .githooks/ template — nothing to install');
       }
@@ -1189,6 +1172,33 @@ async function configureMcp(options = {}) {
       console.log('\nOther harnesses without a scriptable installer:');
       MCP_MANUAL_CLIENTS.forEach((c) => console.log(`  ${c.label.padEnd(12)} ${c.hint(mcpUrl)}`));
     }
+  }
+}
+
+// Installs/refreshes the slice commit-scope guard (.githooks/pre-commit, running
+// .build-kit/lib/check-commit-scope.cjs) and wires it up via `git config
+// core.hooksPath .githooks`. Shared by `init --hooks`, `re-init --hooks`, and the
+// standalone `init-hooks` command so all three copy/chmod/git-config identically
+// instead of drifting apart — callers are responsible for checking `hooksSrc`
+// exists first, since what "no template for this stack" means differs per caller.
+function configureHooks({ hooksSrc, targetDir }) {
+  copyDirContents(hooksSrc, join(targetDir, '.githooks'));
+  const preCommitHook = join(targetDir, '.githooks', 'pre-commit');
+  if (existsSync(preCommitHook)) {
+    // cpSync doesn't reliably carry over the executable bit across platforms,
+    // and git silently skips a non-executable hook.
+    try { execSync(`chmod +x "${preCommitHook}"`); } catch {}
+  }
+  try {
+    execSync('git rev-parse --git-dir', { cwd: targetDir, stdio: 'ignore' });
+    // core.hooksPath is resolved against the repo's actual top level, not `cwd` —
+    // a relative `.githooks` breaks silently (no error, hooks just don't run) when
+    // targetDir is a subfolder of a larger repo rather than the repo root itself.
+    // Use an absolute path so it's correct regardless of where the git root is.
+    execSync(`git config core.hooksPath "${join(targetDir, '.githooks')}"`, { cwd: targetDir });
+    console.log('  ✓ Installed .githooks/ and set core.hooksPath — commits touching src/slices/ are now scope-guarded');
+  } catch {
+    console.log(`  ✓ Installed .githooks/ — run \`git config core.hooksPath ${join(targetDir, '.githooks')}\` once this directory is a git repo to activate it`);
   }
 }
 
@@ -1775,6 +1785,71 @@ program
         ? opts.hosts.split(',').map((s) => s.trim()).filter(Boolean)
         : null;
     await configureAgentHosts({ hosts, global: opts.global });
+  });
+
+program
+  .command('init-hooks')
+  .description('Install/refresh the slice commit-scope guard (.githooks/pre-commit) and set `git config core.hooksPath .githooks` — same as `init --hooks`/`re-init --hooks`, for installing the latest hooks or re-pointing git config at them without a full re-scaffold')
+  .option('--stack <name>', `Which stack's .githooks/ template to install (${Object.keys(STACKS).join(', ')}) — defaults to whichever stack is recorded in install-manifest.json`)
+  .action(async (opts) => {
+    const targetDir = process.cwd();
+
+    let stackKey = opts.stack;
+    if (stackKey && !STACKS[stackKey]) {
+      console.error(`❌ Unknown stack "${stackKey}". Available: ${Object.keys(STACKS).join(', ')}`);
+      process.exit(1);
+    }
+    if (!stackKey) {
+      for (const name of KIT_DIR_NAMES) {
+        const manifest = readJsonSafe(join(targetDir, name, '.eventmodelers', 'install-manifest.json'));
+        if (manifest.stack && STACKS[manifest.stack]) {
+          stackKey = manifest.stack;
+          break;
+        }
+      }
+    }
+    if (!stackKey) {
+      console.error(`❌ Can't tell which stack's .githooks/ template to install — pass --stack <name> (${Object.keys(STACKS).join(', ')}), or run \`init\`/\`re-init\` for one of those stacks first.`);
+      process.exit(1);
+    }
+
+    const hooksSrc = join(__dirname, 'stacks', stackKey, 'templates', 'root', '.githooks');
+    if (!existsSync(hooksSrc)) {
+      console.error(`❌ "${stackKey}" ships no .githooks/ template — nothing to install.`);
+      process.exit(1);
+    }
+
+    console.log('🪝 Configuring git hooks...');
+    configureHooks({ hooksSrc, targetDir });
+  });
+
+program
+  .command('disable-hooks')
+  .description('Turn off the slice commit-scope guard by unsetting `git config core.hooksPath` — leaves .githooks/ on disk untouched; run `init-hooks` again any time to re-enable')
+  .action(() => {
+    const targetDir = process.cwd();
+
+    try {
+      execSync('git rev-parse --git-dir', { cwd: targetDir, stdio: 'ignore' });
+    } catch {
+      console.error(`❌ ${targetDir} is not a git repository — nothing to unset.`);
+      process.exit(1);
+    }
+
+    let currentHooksPath = null;
+    try {
+      currentHooksPath = execSync('git config --get core.hooksPath', { cwd: targetDir, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    } catch {
+      // core.hooksPath isn't set — nothing to do
+    }
+
+    if (!currentHooksPath) {
+      console.log('  ℹ️  core.hooksPath is not set — the guard is already off, nothing to do.');
+      return;
+    }
+
+    execSync('git config --unset core.hooksPath', { cwd: targetDir });
+    console.log(`  ✓ Unset core.hooksPath (was "${currentHooksPath}") — the commit-scope guard is now off. Run \`init-hooks\` again to turn it back on.`);
   });
 
 credentialFlags(program

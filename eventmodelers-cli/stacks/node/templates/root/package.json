@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "NODE_ENV=production node --env-file=.env --require ts-node/register server.ts",
     "test": "tsx --test 'src/**/*.test.ts'",
-    "check:scope": "node .build-kit/lib/check-commit-scope.cjs"
+    "run:checks": "node .build-kit/lib/check-commit-scope.cjs"
   },
   "dependencies": {
     "@event-driven-io/emmett": "^0.42.1-alpha.1",
