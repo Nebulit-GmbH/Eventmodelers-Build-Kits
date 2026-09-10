@@ -3,9 +3,16 @@
 # is versioned and shared by every clone instead of living only in .git/hooks/.
 set -e
 
-repo_root=$(git rev-parse --show-toplevel)
-script="$repo_root/.build-kit/lib/check-commit-scope.cjs"
+# Deliberately NOT `git rev-parse --show-toplevel` — when this project is a
+# subdirectory of a larger repo (a monorepo with `.githooks` installed inside
+# e.g. `backend/`), show-toplevel returns the outer repo's root, `.build-kit`
+# doesn't exist there, and the hook would silently no-op on every commit.
+# This script's own location is always `<project_root>/.githooks/pre-commit`,
+# so use that instead — and cd into it so check-commit-scope.cjs's own
+# process.cwd()/--relative git-diff logic sees the right root too.
+project_root=$(cd "$(dirname "$0")/.." && pwd)
+script="$project_root/.build-kit/lib/check-commit-scope.cjs"
 
 if [ -f "$script" ]; then
-  node "$script" --staged
+  (cd "$project_root" && node "$script" --staged)
 fi

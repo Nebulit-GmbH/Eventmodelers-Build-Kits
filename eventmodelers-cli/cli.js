@@ -1874,7 +1874,11 @@ program
 
     console.log(`🔎 Running checks from ${relative(cwd, checkScript)}...`);
     try {
-      execSync(`node "${checkScript}"`, { cwd: kitDir, stdio: 'inherit' });
+      // cwd must be the project root (not kitDir/.build-kit) — the script's
+      // `git diff --relative` scopes its output to cwd's subtree, so running
+      // it from inside .build-kit/ makes every changed file outside .build-kit/
+      // (i.e. everything under src/) invisible, and the check silently no-ops.
+      execSync(`node "${checkScript}"`, { cwd, stdio: 'inherit' });
     } catch (err) {
       process.exit(err.status || 1);
     }
