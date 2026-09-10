@@ -24,7 +24,7 @@ If not tasked explicitely to change routes, ignore routes*.ts
 
 Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems"
 
-Do not change files with tests unless explicitely instructed: *.test.ts
+Do not change files with tests unless explicitely instructed, or the change brings the test in line with slice.json (e.g. step 4's field/spec diff): *.test.ts
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
@@ -80,8 +80,10 @@ and rejects the commit if any of them find a problem:
 
 If a commit is rejected, split it — commit the out-of-scope file separately from the slice work, or add
 the missing test/fix the field — rather than passing `--no-verify`. Run `npm run run:checks` any time
-you want to check staged files before committing. To add a new check, read
-`.build-kit/lib/checks/README.md` and drop in a file following its interface — no other wiring needed.
+you want to check your current work (by default this checks every uncommitted change — staged,
+unstaged, and untracked; pass `-- --staged` to check only what's staged, matching what the pre-commit
+hook itself checks). To add a new check, read `.build-kit/lib/checks/README.md` and drop in a file
+following its interface — no other wiring needed.
 
 ## Example Slice Structure
 

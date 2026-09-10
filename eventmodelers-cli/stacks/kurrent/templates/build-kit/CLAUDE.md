@@ -62,7 +62,7 @@ specific package.
 
 Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems".
 
-Do not change test files unless explicitly instructed: `src/test/java/**/*Test.java`.
+Do not change test files unless explicitly instructed, or the change brings the test in line with slice.json (e.g. step 4's field/spec diff): `src/test/java/**/*Test.java`.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project
 learnings.

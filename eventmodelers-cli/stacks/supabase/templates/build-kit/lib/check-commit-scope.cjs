@@ -2,7 +2,9 @@
 'use strict';
 
 // Runner for the slice commit-scope guard. Loads every check module from
-// ./checks/*.cjs and runs it against the currently staged changeset.
+// ./checks/*.cjs and runs it against the currently changed files — every
+// uncommitted change (staged + unstaged + untracked) by default, or just
+// the staged changeset with --staged.
 //
 // Check interface (see ./checks/README.md for the full contract + a template):
 //   module.exports = {
@@ -16,7 +18,8 @@
 // `run()` returns an array of violations (empty array/undefined/null = pass).
 //
 // `ctx` passed to every check:
-//   changes        [{status, path}] — staged files (git status letter + path)
+//   changes        [{status, path}] — changed files (git status letter + path);
+//                  all uncommitted changes by default, staged-only with --staged
 //   touchesSlice    true — this commit touches src/slices/{context}/{slice}/**
 //                   (the runner already gates on this before loading checks)
 //   repoRoot        absolute path to the repo root
@@ -24,7 +27,7 @@
 //
 // Zero dependencies — plain Node, so it works from git's pre-commit hook
 // (see ../../.githooks/pre-commit), from `npm run run:checks`, or from CI.
-// Invoked as: node .build-kit/lib/check-commit-scope.cjs
+// Invoked as: node .build-kit/lib/check-commit-scope.cjs [--staged]
 
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -35,8 +38,7 @@ const SLICE_PATTERN = /^src\/slices\/[^/]+\/[^/]+\//;
 // of its own — still counts as "this is a slice commit" for the gate below.
 const WEBHOOK_FUNCTION_PATTERN = /^supabase\/functions\/[^/]+\/index\.ts$/;
 
-function stagedChanges() {
-  const out = execSync('git diff --cached --name-status --no-renames', { encoding: 'utf8' });
+function parseNameStatus(out) {
   return out
     .split('\n')
     .filter(Boolean)
@@ -44,6 +46,21 @@ function stagedChanges() {
       const [status, ...rest] = line.split('\t');
       return { status: status[0], path: rest.join('\t') };
     });
+}
+
+function stagedChanges() {
+  return parseNameStatus(execSync('git diff --cached --name-status --no-renames', { encoding: 'utf8' }));
+}
+
+function allChanges() {
+  // Working tree vs HEAD already covers both staged and unstaged edits to
+  // tracked files; untracked (never-`git add`ed) files need a separate call.
+  const tracked = parseNameStatus(execSync('git diff HEAD --name-status --no-renames', { encoding: 'utf8' }));
+  const untracked = execSync('git ls-files --others --exclude-standard', { encoding: 'utf8' })
+    .split('\n')
+    .filter(Boolean)
+    .map((p) => ({ status: 'A', path: p }));
+  return [...tracked, ...untracked];
 }
 
 function loadChecks() {
@@ -71,11 +88,12 @@ function loadChecks() {
 }
 
 function main() {
+  const staged = process.argv.includes('--staged');
   let changes;
   try {
-    changes = stagedChanges();
+    changes = staged ? stagedChanges() : allChanges();
   } catch (err) {
-    console.error('check-commit-scope: could not read staged changes —', err.message);
+    console.error(`check-commit-scope: could not read ${staged ? 'staged' : 'uncommitted'} changes —`, err.message);
     process.exit(1);
   }
 

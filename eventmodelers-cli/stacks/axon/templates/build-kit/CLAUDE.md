@@ -31,7 +31,7 @@ If not tasked explicitely to change routes, ignore routes*.ts
 
 Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems"
 
-Do not change files with tests unless explicitely instructed: *.test.ts
+Do not change files with tests unless explicitely instructed, or the change brings the test in line with slice.json (e.g. step 4's field/spec diff): *.test.ts
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 

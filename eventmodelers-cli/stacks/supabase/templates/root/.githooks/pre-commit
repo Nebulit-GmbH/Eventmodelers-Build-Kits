@@ -7,5 +7,5 @@ repo_root=$(git rev-parse --show-toplevel)
 script="$repo_root/.build-kit/lib/check-commit-scope.cjs"
 
 if [ -f "$script" ]; then
-  node "$script"
+  node "$script" --staged
 fi
