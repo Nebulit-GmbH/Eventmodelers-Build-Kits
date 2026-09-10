@@ -927,10 +927,14 @@ async function installStack(stackKey, stackCfg, options = {}) {
         }
         try {
           execSync('git rev-parse --git-dir', { cwd: targetDir, stdio: 'ignore' });
-          execSync('git config core.hooksPath .githooks', { cwd: targetDir });
+          // core.hooksPath is resolved against the repo's actual top level, not `cwd` —
+          // a relative `.githooks` breaks silently (no error, hooks just don't run) when
+          // targetDir is a subfolder of a larger repo rather than the repo root itself.
+          // Use an absolute path so it's correct regardless of where the git root is.
+          execSync(`git config core.hooksPath "${join(targetDir, '.githooks')}"`, { cwd: targetDir });
           console.log('  ✓ Installed .githooks/ and set core.hooksPath — commits touching src/slices/ are now scope-guarded');
         } catch {
-          console.log('  ✓ Installed .githooks/ — run `git config core.hooksPath .githooks` once this directory is a git repo to activate it');
+          console.log(`  ✓ Installed .githooks/ — run \`git config core.hooksPath ${join(targetDir, '.githooks')}\` once this directory is a git repo to activate it`);
         }
       } else {
         console.log('  ℹ️  --hooks was given but this stack ships no .githooks/ template — nothing to install');

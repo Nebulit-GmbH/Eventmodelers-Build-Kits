@@ -54,6 +54,9 @@ echo ".env created successfully."
 
 if [ -f .githooks/pre-commit ] && git rev-parse --git-dir >/dev/null 2>&1; then
   chmod +x .githooks/pre-commit 2>/dev/null || true
-  git config core.hooksPath .githooks
+  # core.hooksPath resolves against the repo's actual top level, not this directory —
+  # a relative ".githooks" silently breaks (no error, hooks just don't run) when this
+  # project sits in a subfolder of a larger repo instead of being the repo root itself.
+  git config core.hooksPath "$(pwd)/.githooks"
   echo "Configured git to use .githooks/ (slice commit-scope guard)."
 fi
