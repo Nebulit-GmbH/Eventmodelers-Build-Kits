@@ -1704,6 +1704,7 @@ credentialFlags(program
   .description('Refresh an already-installed kit from the current CLI version — re-copies skills and the kit dir (.build-kit or .agent-modeling-kit) so you pick up script/skill updates after upgrading. Unlike `init`, never touches the project root scaffold or the root CLAUDE.md router, and leaves existing credentials alone unless --force is passed.')
   .option('--modeling', 'Refresh the modeling kit (.agent-modeling-kit) instead of a build kit')
   .option('--stack <name>', `Override which stack to refresh from (${Object.keys(REINITIABLE_STACKS).join(', ')}) instead of the one recorded in install-manifest.json — use this when the manifest is missing/stale, or to switch a .build-kit install to a different stack`)
+  .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit) and wire it up via `git config core.hooksPath .githooks` — same as `init --hooks`, for turning it on after the fact without a full re-scaffold. Off by default.')
   .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json'))
   .action(async (opts, command) => {
@@ -1745,6 +1746,7 @@ credentialFlags(program
       force: opts.force,
       credentialOverrides: credentialOverridesFromOpts(opts),
       skipRootScaffold: true,
+      hooks: opts.hooks,
     });
   });
 
