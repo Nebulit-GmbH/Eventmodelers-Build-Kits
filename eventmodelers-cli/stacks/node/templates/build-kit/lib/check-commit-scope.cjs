@@ -22,7 +22,9 @@
 //                  all uncommitted changes by default, staged-only with --staged
 //   touchesSlice    true — this commit touches src/slices/{context}/{slice}/**
 //                   (the runner already gates on this before loading checks)
-//   repoRoot        absolute path to the repo root
+//   repoRoot        absolute path to this project's own root (process.cwd()) —
+//                   not the outer git repo's top-level when this project is a
+//                   subdirectory of a larger repo
 //   SLICE_PATTERN   RegExp matching a path inside a slice's own folder
 //
 // Zero dependencies — plain Node, so it works from git's pre-commit hook
@@ -45,14 +47,20 @@ function parseNameStatus(out) {
     });
 }
 
+// --relative scopes and rewrites paths relative to cwd instead of the git
+// top-level — required when this runs from a subdirectory of a larger repo
+// (e.g. a `backend/` folder inside a monorepo): without it, every path comes
+// back prefixed (`backend/src/slices/...`), SLICE_PATTERN never matches, and
+// the whole guard silently no-ops on every commit. `git ls-files` is already
+// cwd-relative by default, so it needs no such flag.
 function stagedChanges() {
-  return parseNameStatus(execSync('git diff --cached --name-status --no-renames', { encoding: 'utf8' }));
+  return parseNameStatus(execSync('git diff --cached --name-status --no-renames --relative', { encoding: 'utf8' }));
 }
 
 function allChanges() {
   // Working tree vs HEAD already covers both staged and unstaged edits to
   // tracked files; untracked (never-`git add`ed) files need a separate call.
-  const tracked = parseNameStatus(execSync('git diff HEAD --name-status --no-renames', { encoding: 'utf8' }));
+  const tracked = parseNameStatus(execSync('git diff HEAD --name-status --no-renames --relative', { encoding: 'utf8' }));
   const untracked = execSync('git ls-files --others --exclude-standard', { encoding: 'utf8' })
     .split('\n')
     .filter(Boolean)
@@ -102,7 +110,12 @@ function main() {
   const ctx = {
     changes,
     touchesSlice,
-    repoRoot: execSync('git rev-parse --show-toplevel', { encoding: 'utf8' }).trim(),
+    // Deliberately process.cwd(), not `git rev-parse --show-toplevel` — this
+    // project can be a subdirectory of a larger repo (see the --relative note
+    // on allChanges/stagedChanges above), and every path here (and every path
+    // checks join onto repoRoot, e.g. `.build-kit/.slices/`) is relative to
+    // this project's own root, not the outer git repo's.
+    repoRoot: process.cwd(),
     SLICE_PATTERN,
   };
 

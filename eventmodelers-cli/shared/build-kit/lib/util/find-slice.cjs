@@ -21,6 +21,7 @@ function findSliceJson(repoRoot, context, sliceName) {
   const root = path.join(repoRoot, '.build-kit', '.slices');
   if (!fs.existsSync(root)) return null;
 
+  const wantContext = normalize(context);
   const wantSlice = normalize(sliceName);
   const candidates = [];
 
@@ -33,6 +34,7 @@ function findSliceJson(repoRoot, context, sliceName) {
 
   for (const contextDir of contextDirs) {
     if (!contextDir.isDirectory()) continue;
+    if (normalize(contextDir.name) !== wantContext) continue;
     const contextPath = path.join(root, contextDir.name);
     let sliceDirs;
     try {
