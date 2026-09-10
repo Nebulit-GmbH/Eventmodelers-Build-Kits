@@ -1852,6 +1852,34 @@ program
     console.log(`  ✓ Unset core.hooksPath (was "${currentHooksPath}") — the commit-scope guard is now off. Run \`init-hooks\` again to turn it back on.`);
   });
 
+program
+  .command('run-checks')
+  .alias('run:checks')
+  .description("Run this project's commit-scope checks (.build-kit/lib/check-commit-scope.cjs, the same runner .githooks/pre-commit calls) against the currently staged changeset. Works for any build-kit stack — stacks/installs that ship no checks yet report that and exit 0, so this is safe to call unconditionally (e.g. from an agent loop) without checking the stack first.")
+  .action(() => {
+    const cwd = process.cwd();
+    // Mirrors `run`'s buildKitDir resolution: modeling-kit/bridge-kit installs share
+    // KIT_DIR_NAMES but never ship check-commit-scope.cjs, so prefer whichever
+    // installed dir isn't one of those over blindly taking the first match.
+    const installedKitDirs = findAllInstalledKitDirs(cwd);
+    const modelingKitDir = installedKitDirs.find((d) => d.endsWith(MODELING_KIT.kitDirName)) ?? null;
+    const bridgeKitDir = installedKitDirs.find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
+    const kitDir = installedKitDirs.find((d) => d !== modelingKitDir && d !== bridgeKitDir) ?? installedKitDirs[0];
+
+    const checkScript = join(kitDir, 'lib', 'check-commit-scope.cjs');
+    if (!existsSync(checkScript)) {
+      console.log(`ℹ️  ${relative(cwd, kitDir)} ships no checks yet — nothing to run.`);
+      return;
+    }
+
+    console.log(`🔎 Running checks from ${relative(cwd, checkScript)}...`);
+    try {
+      execSync(`node "${checkScript}"`, { cwd: kitDir, stdio: 'inherit' });
+    } catch (err) {
+      process.exit(err.status || 1);
+    }
+  });
+
 credentialFlags(program
   .command('init-config')
   .description('Configure credentials only — writes .eventmodelers/config.json in the current directory, or ~/.eventmodelers/config.json with --global')
