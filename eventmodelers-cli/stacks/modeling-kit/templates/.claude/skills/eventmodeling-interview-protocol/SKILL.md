@@ -17,7 +17,7 @@ Already have everything the step needs? Skip straight to the step's own workflow
 
 ## Recording the outcome
 
-Append to the project's event modeling file: `.trogonai/interviews/[project-name]/EVENTMODELING.md`, under a section for this step:
+Append to the project's event modeling file: `.eventmodelers/interviews/[project-name]/EVENTMODELING.md`, under a section for this step:
 
 ```markdown
 ## <Step Number>. <Step Name> (<skill-name>)

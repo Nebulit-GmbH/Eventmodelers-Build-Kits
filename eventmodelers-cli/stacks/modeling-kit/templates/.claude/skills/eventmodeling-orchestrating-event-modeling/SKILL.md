@@ -185,7 +185,7 @@ scope, and stated output goal (code, design, learning, docs).
 Confirm understanding before proceeding: "So we're modeling [domain], goal is
 [goal], constraints are [constraints]. Starting from [step]. Does that match?"
 
-**Capture findings** — create `.trogonai/interviews/[project-name]/EVENTMODELING.md` with this header (this step is what creates the file; every later step appends to it per `eventmodeling-interview-protocol`):
+**Capture findings** — create `.eventmodelers/interviews/[project-name]/EVENTMODELING.md` with this header (this step is what creates the file; every later step appends to it per `eventmodeling-interview-protocol`):
 
 ```markdown
 # Event Modeling: [Project Name]
@@ -209,7 +209,7 @@ Then follow **`eventmodeling-interview-protocol`** to record this step's own fin
 
 After each step completes, before invoking the next skill, write a phase summary to memory.
 
-Append a summary block to `.trogonai/interviews/[project-name]/EVENTMODELING.md`:
+Append a summary block to `.eventmodelers/interviews/[project-name]/EVENTMODELING.md`:
 
 ```markdown
 ### Step N complete — [Skill Name]
@@ -505,5 +505,5 @@ specific needs:
 - [ ] At least one view scenario (GWT or storyline) exists per READMODEL — not just per command
 - [ ] Completeness check shows no unresolved field traceability gaps
 - [ ] Validation returns PASS or PASS WITH WARNINGS with all critical issues resolved
-- [ ] Interview trail in `.trogonai/` updated with status of each completed step
+- [ ] Interview trail in `.eventmodelers/` updated with status of each completed step
 - [ ] Phase summary written to memory after every completed step before loading the next skill

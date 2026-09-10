@@ -193,7 +193,7 @@ Before finalizing any read model, ask: "does this screen contain more than one c
 
 ### Step 5d — Pull field mappings from Step 3 — they are the spec, not a guess
 
-**Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.trogonai/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
+**Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.eventmodelers/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
 
 For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields`. Step 3 already required every field to carry a `mapping`, and for view fields that mapping is already in the exact form `"<ReadModelTitle>.<fieldName>"` — recorded specifically so this step doesn't have to re-guess it.
 

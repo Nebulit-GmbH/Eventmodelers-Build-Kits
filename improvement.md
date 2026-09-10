@@ -1,6 +1,6 @@
 # Eventmodelers Improvement Plan — Baseline Stats + Action Plan
 
-Single reference document: baseline numbers from the Library Catalogue System modeling round, and the ranked improvement plan to work through one item at a time, re-measuring after each. Detailed step-by-step findings live in `report.md`; per-step modeling narrative lives in `.trogonai/interviews/library-catalogue-system/EVENTMODELING.md`.
+Single reference document: baseline numbers from the Library Catalogue System modeling round, and the ranked improvement plan to work through one item at a time, re-measuring after each. Detailed step-by-step findings live in `report.md`; per-step modeling narrative lives in `.eventmodelers/interviews/library-catalogue-system/EVENTMODELING.md`.
 
 ---
 
