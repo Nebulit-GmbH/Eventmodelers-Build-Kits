@@ -1,0 +1,28 @@
+node_modules
+.idea
+.eventmodelers
+
+.eventmodelers/
+.claude/settings.local.json
+
+# Vite / build output
+dist
+dist-ssr
+*.local
+
+# Env — .env.example stays tracked
+.env
+
+# Logs
+logs
+*.log
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

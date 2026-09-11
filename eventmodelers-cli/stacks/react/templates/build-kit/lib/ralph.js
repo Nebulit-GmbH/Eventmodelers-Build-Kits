@@ -1,5 +1,11 @@
-// Common runtime for the ralph loop + realtime agent.
+// Common runtime for the ralph loop + board poller.
 // Not meant to be run directly — use ralph-claude.js or ralph-ollama.js.
+//
+// This kit has no Supabase/PocketBase realtime integration and never touches a
+// database table directly — board changes are picked up purely through the plain
+// REST slicedata endpoint on api.eventmodelers.ai, polled on an interval (see
+// "Board polling" below). If you need instant push notifications instead of
+// polling, use the supabase-react stack.
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called when tasks.json has entries
@@ -9,7 +15,6 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
-import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -155,15 +160,7 @@ async function fetchPlatformConfig(local) {
   return { ...local, ...remote };
 }
 
-// ── Realtime agent ────────────────────────────────────────────────────────────
-
-async function getRealtimeToken(cfg) {
-  const { token } = await fetchJSON(
-    `${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`,
-    { headers: { 'x-token': cfg.token } },
-  );
-  return token;
-}
+// ── Board polling ─────────────────────────────────────────────────────────────
 
 function slugify(str) {
   return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -201,28 +198,14 @@ async function fetchAndPersistSlices(cfg, kitDir) {
     writeFileSync(ctxPath, JSON.stringify({ name: activeCtx }, null, 2), 'utf-8');
   }
 
-  // Write per-context index.json and per-slice slice.json.
-  //
-  // This endpoint (`/slicedata/slices`) is the CHEAP summary one — `{ id, title, status }`
-  // only, no commands/events/specifications/codeGen prompts. Its whole job here is to keep
-  // `status` fresh so hasPendingTasks/getFirstPlannedSliceTitle see live transitions; it must
-  // NEVER clobber the richer slice.json a full fetch (`/load-slice`, `eventmodelers fetch`,
-  // `eventmodelers listen`) already wrote for the same slice. So every write below merges
-  // onto whatever's already on disk — spreading the existing object first, the fresh summary
-  // fields second — instead of replacing it wholesale.
+  // Write per-context index.json and per-slice slice.json
   for (const [contextSlug, { slices: ctxSlices }] of Object.entries(contexts)) {
     const contextDir = join(slicesDir, contextSlug);
     mkdirSync(contextDir, { recursive: true });
 
-    const indexPath = join(contextDir, 'index.json');
-    const existingIndex = existsSync(indexPath) ? JSON.parse(readFileSync(indexPath, 'utf-8')) : { slices: [] };
-    const existingById = new Map((existingIndex.slices ?? []).map((e) => [e.id, e]));
-
     const indexSlices = ctxSlices.map((s, i) => {
       const folder = (s.title ?? s.id).replaceAll(' ', '').toLowerCase();
-      const existing = existingById.get(s.id);
       return {
-        ...existing,
         id: s.id,
         slice: s.title,
         index: i,
@@ -230,22 +213,21 @@ async function fetchAndPersistSlices(cfg, kitDir) {
         contextSlug,
         folder,
         status: s.status,
-        definition: { ...existing?.definition, id: s.id, title: s.title, status: s.status },
+        definition: { id: s.id, title: s.title, status: s.status },
       };
     });
-    writeFileSync(indexPath, JSON.stringify({ slices: indexSlices }, null, 2), 'utf-8');
+    writeFileSync(join(contextDir, 'index.json'), JSON.stringify({ slices: indexSlices }, null, 2), 'utf-8');
 
     for (const slice of ctxSlices) {
       const folder = (slice.title ?? slice.id).replaceAll(' ', '').toLowerCase();
       const sliceDir = join(contextDir, folder);
       mkdirSync(sliceDir, { recursive: true });
-      const sliceJsonPath = join(sliceDir, 'slice.json');
-      const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice }, null, 2), 'utf-8');
+      writeFileSync(join(sliceDir, 'slice.json'), JSON.stringify(slice, null, 2), 'utf-8');
     }
   }
 
   console.log(`[agent] Persisted ${slices.length} slice(s)`);
+  return slices;
 }
 
 async function writeTask(payload, kitDir) {
@@ -258,131 +240,55 @@ async function writeTask(payload, kitDir) {
   console.log(`[agent] Task written — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
 }
 
-async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
-  console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-  await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
-    console.error('[agent] Slice persist error:', err),
-  );
-  // Planned slices are handled by onPlannedSlice directly — no task needed.
-  // queueAllStatuses opts out of that split entirely (e.g. bridge has no
-  // onPlannedSlice consumer, so a lingering Planned slice would otherwise
-  // never naturally clear its own trigger — see lib/ralph.js callers).
-  if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== 'planned') {
-    await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
+// How often to re-fetch the board's slices when idle, in ms. A slice that goes
+// straight to "Planned" is picked up by onPlannedSlice's own index.json scan the
+// moment fetchAndPersistSlices writes it; this diff only exists to turn any OTHER
+// status change into a tasks.json entry for onTask (mirrors what a push channel's
+// slice:changed event used to do, one poll tick later instead of instantly).
+const POLL_INTERVAL_MS = Number(process.env.RALPH_POLL_INTERVAL_MS) || 10_000;
+
+async function pollForChanges(cfg, kitDir, seen, queueAllStatuses) {
+  const slices = await fetchAndPersistSlices(cfg, kitDir);
+  for (const slice of slices) {
+    const status = (slice.status || '').toLowerCase();
+    const previous = seen.get(slice.id);
+    seen.set(slice.id, status);
+    if (previous === undefined || previous === status) continue;
+
+    console.log(`[agent] slice changed — slice="${slice.title}" status="${slice.status}"`);
+    // Planned slices are handled by onPlannedSlice directly — no task needed.
+    // queueAllStatuses opts out of that split entirely (e.g. bridge has no
+    // onPlannedSlice consumer, so a lingering Planned slice would otherwise
+    // never naturally clear its own trigger — see lib/ralph.js callers).
+    if (queueAllStatuses || status !== 'planned') {
+      const payload = {
+        event: 'slice:changed',
+        organizationId: cfg.organizationId,
+        boardId: cfg.boardId,
+        sliceId: slice.id,
+        sliceTitle: slice.title,
+        sliceStatus: slice.status,
+        timestamp: Date.now(),
+      };
+      await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
+    }
   }
 }
 
-async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false } = {}) {
-  let realtimeToken = await retryOn401('getRealtimeToken', () => getRealtimeToken(cfg));
+async function startPolling(cfg, kitDir, { queueAllStatuses = false } = {}) {
+  const seen = new Map();
+  const initial = await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) => {
+    console.error('[agent] Initial slice fetch error:', err);
+    return [];
+  });
+  for (const slice of initial) seen.set(slice.id, (slice.status || '').toLowerCase());
 
-  await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
-    console.error('[agent] Initial slice fetch error:', err),
-  );
-
-  const channelName = `board:${cfg.boardId}-slicechanged`;
-  const realtime = await createRealtimeAdapter(cfg, realtimeToken);
-
-  // Shared by the scheduled timer, a CHANNEL_ERROR/TIMED_OUT subscribe status, and a
-  // 401 from the alive-ping — whichever notices the token is bad first wins; the rest
-  // just await the same in-flight refresh instead of firing duplicate mint requests.
-  const ts = () => new Date().toISOString();
-  let refreshing = null;
-  const refreshToken = (reason) => {
-    if (!refreshing) {
-      const startedAt = Date.now();
-      console.log(`[agent] ${ts()} Refreshing realtime token (reason: ${reason})...`);
-      refreshing = (async () => {
-        try {
-          realtimeToken = await retryOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
-          await realtime.setAuth(realtimeToken);
-          console.log(`[agent] ${ts()} Token refreshed (reason: ${reason}, took ${Date.now() - startedAt}ms)`);
-        } catch (err) {
-          console.error(`[agent] ${ts()} Token refresh FAILED (reason: ${reason}):`, err);
-          throw err;
-        } finally {
-          refreshing = null;
-        }
-      })();
-    }
-    return refreshing;
-  };
-
-  // A subscribe that errors on a stale token needs a fresh token AND a new join
-  // attempt — setAuth alone doesn't re-join a channel that already errored out.
-  // Capped so a non-expiry auth failure (e.g. genuinely revoked access) can't turn
-  // into a tight resubscribe loop hammering the platform forever.
-  let channelErrorStreak = 0;
-  const subscribeChannel = () => {
-    realtime.subscribe(
-      channelName,
-      {
-        message: (payload) => {
-          if (payload === 'Exit') {
-            console.log(`[agent] ${ts()} Received "Exit" — shutting down`);
-            process.exit(0);
-          }
-        },
-        'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
-      },
-      async (status) => {
-        if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') {
-          if (channelErrorStreak > 0) {
-            console.log(`[agent] ${ts()} Channel "${channelName}": ${status} — recovered after ${channelErrorStreak} failed attempt(s)`);
-          } else {
-            console.log(`[agent] ${ts()} Channel "${channelName}": ${status}`);
-          }
-          channelErrorStreak = 0;
-          return;
-        }
-        channelErrorStreak += 1;
-        console.warn(`[agent] ${ts()} Channel "${channelName}": ${status} (attempt ${channelErrorStreak}/5)`);
-        if (channelErrorStreak > 5) {
-          console.error(`[agent] ${ts()} Channel "${channelName}" failed ${channelErrorStreak} times in a row — giving up until the next scheduled token refresh (every 10min)`);
-          return;
-        }
-        try {
-          await refreshToken(`channel ${status}`);
-          await new Promise((r) => setTimeout(r, 2_000));
-          console.log(`[agent] ${ts()} Resubscribing to channel "${channelName}" (attempt ${channelErrorStreak}/5)...`);
-          subscribeChannel();
-        } catch (err) {
-          console.error(`[agent] ${ts()} Token refresh after channel error failed, will not resubscribe this round:`, err);
-        }
-      },
+  while (true) {
+    await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    await retryOn401('pollForChanges', () => pollForChanges(cfg, kitDir, seen, queueAllStatuses)).catch((err) =>
+      console.error('[agent] Poll error:', err),
     );
-  };
-  subscribeChannel();
-
-  setInterval(() => {
-    refreshToken('scheduled 10min refresh').catch((err) => console.error(`[agent] ${ts()} Scheduled token refresh failed:`, err));
-  }, 10 * 60 * 1000);
-
-  let lastPingFailed = false;
-  const ping = async () => {
-    try {
-      const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) {
-        console.error(`[agent] ${ts()} Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
-        lastPingFailed = true;
-        if (res.status === 401) {
-          await refreshToken('ping-401').catch((err) => console.error(`[agent] ${ts()} Token refresh after 401 ping failed:`, err));
-        }
-        return;
-      }
-      if (lastPingFailed) console.log(`[agent] ${ts()} Ping recovered`);
-      lastPingFailed = false;
-    } catch (err) {
-      console.error(`[agent] ${ts()} Ping error:`, err);
-      lastPingFailed = true;
-    }
-  };
-  await ping();
-  setInterval(ping, 15_000);
+  }
 }
 
 // ── Ralph loop ────────────────────────────────────────────────────────────────
@@ -517,13 +423,10 @@ async function runWithRetry(label, fn) {
   }
 }
 
-async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
+async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
-  // --local must mean zero board contact even when .eventmodelers/config.json
-  // happens to hold valid credentials — never let a locally-present token flip
-  // this back on.
-  const credentialed = !localOnly && hasCredentials(cfg);
+  const credentialed = hasCredentials(cfg);
   let lastIdleCtx;
   // Tracks consecutive sightings of the same Planned slice id — see
   // MAX_PLANNED_ATTEMPTS above.
@@ -575,7 +478,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
+export { loadLocalConfig, fetchPlatformConfig, retryOn401, startPolling };
 
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
@@ -586,19 +489,20 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
 
   // localOnly (set via `eventmodelers run --local`) forces this branch even when
   // credentials are present — it skips fetchPlatformConfig's network call to
-  // ${baseUrl}/api/config and startRealtimeAgent entirely, so the loop never
-  // reaches out to the platform at all.
+  // ${baseUrl}/api/config and startPolling entirely, so the loop never reaches
+  // out to the platform at all.
   if (localOnly || !hasCredentials(local)) {
     console.log(`         mode: local-only (no platform sync)${localOnly ? ' — forced by --local' : ''}\n`);
-    await ralphLoop(kitDir, local, onTask, onPlannedSlice, localOnly);
+    await ralphLoop(kitDir, local, onTask, onPlannedSlice);
     return;
   }
 
   const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
+  console.log(`         board sync: polling every ${POLL_INTERVAL_MS}ms (REST only — no realtime/table subscription)\n`);
 
   await Promise.all([
-    startRealtimeAgent(cfg, kitDir, { agentType, queueAllStatuses }),
+    startPolling(cfg, kitDir, { queueAllStatuses }),
     ralphLoop(kitDir, cfg, onTask, onPlannedSlice),
   ]);
 }

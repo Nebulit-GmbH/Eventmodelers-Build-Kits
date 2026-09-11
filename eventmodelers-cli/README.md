@@ -22,6 +22,8 @@ npx @eventmodelers/cli init --stack cratis-csharp    # Cratis (.NET/C#)
 npx @eventmodelers/cli init --stack opencqrs         # OpenCQRS (Java, EventSourcingDB)
 npx @eventmodelers/cli init --stack umadb            # UmaDB (Java)
 npx @eventmodelers/cli init --stack kurrent          # Kurrent (Java, KurrentDB)
+npx @eventmodelers/cli init --stack react            # React (frontend, board-polling sync) — TODO-marked, not yet filled in
+npx @eventmodelers/cli init --stack supabase-react   # React + Supabase (frontend, UI-only, realtime sync)
 ```
 
 The installer prompts for your API token, Organization ID, and Board ID from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account), scaffolds the stack into your project, and writes `.eventmodelers/config.json` with your credentials.
@@ -77,6 +79,10 @@ your-project/
 ```
 
 The seven backend stacks (`node`, `supabase`, `axon`, `cratis-csharp`, `opencqrs`, `umadb`, `kurrent`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
+
+`react` and `supabase-react` are two more registered stacks (installable the same way). `supabase-react` is real, filled-in content — a Vite + React 19 + TypeScript scaffold that authenticates and issues command POSTs via a Supabase session (`src/lib/api.ts`/`src/lib/supabase.ts`), plus `init-style-guide`/`learn-styleguide` skills so generated UI stays on-brand. It's UI-only: `.build-kit/CLAUDE.md` only routes `STATE_CHANGE`/`STATE_VIEW` slices to `build-state-change`/`build-state-view` — an `AUTOMATION` slice has no UI counterpart and gets flagged via `request-feedback` instead, since it belongs to whichever backend stack is installed alongside this one. It needs no overrides at all and uses `shared/build-kit`'s realtime agent as-is.
+
+`react` (the plain-REST/board-polling variant, no Supabase) is still in the same state as a fresh `init --build-kit` scaffold — CLAUDE.md, the `build-*` skills, and `templates/root/` are all TODO-marked placeholders, not real content, pending an equivalent reference implementation. It overrides `lib/ralph.js` (+ `ralph-claude.js`/`ralph-ollama.js`/`package.json`/`README.md`) for board-polling sync. Fill in the TODOs (and add a real `templates/root/` scaffold) against an actual project before relying on it.
 
 ## Skills
 

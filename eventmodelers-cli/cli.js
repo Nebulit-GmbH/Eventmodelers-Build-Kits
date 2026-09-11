@@ -91,6 +91,30 @@ const STACKS = {
     useShared: true,
     needsBoardId: true,
   },
+  // Frontend-only kits (UI-only: build STATE_CHANGE/STATE_VIEW slices, not
+  // AUTOMATION — those belong to whichever backend stack is installed alongside).
+  // react overrides lib/ralph.js (+ralph-claude.js/ralph-ollama.js/package.json/
+  // README.md) for board-polling instead of the realtime channel every other
+  // stack uses; supabase-react needs no overrides at all — it uses
+  // shared/build-kit's realtime agent as-is. react's CLAUDE.md/build-*
+  // skills/templates/root are still TODO-marked, same as a fresh `init
+  // --build-kit` scaffold — supabase-react's are real, filled-in content
+  // (Vite + React 19 + TypeScript + Supabase, plus init-style-guide/
+  // learn-styleguide for on-brand generated UI).
+  react: {
+    label: 'React (frontend, board-polling sync) — TODO-marked, not yet filled in',
+    kitSubdir: 'build-kit',
+    kitDirName: '.build-kit',
+    useShared: true,
+    needsBoardId: true,
+  },
+  'supabase-react': {
+    label: 'React + Supabase (frontend, UI-only, realtime sync)',
+    kitSubdir: 'build-kit',
+    kitDirName: '.build-kit',
+    useShared: true,
+    needsBoardId: true,
+  },
 };
 
 // Not a stack — no backend scaffold, just skills + the agent loop. Installed via
