@@ -30,7 +30,7 @@ From the slice definition, extract:
 
 ## Step 2 — Create the migration
 
-File: `supabase/migrations/V{N}__{tablename}.sql`
+File: `migrations/V{N}__{tablename}.sql`
 
 Choose the next available version number by checking existing migration files.
 
@@ -352,30 +352,25 @@ Skip a beat pair when a COMMAND beat sits in between (that half belongs to build
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
 
-> **Concrete example**: `src/slices/example/routes.ts` — shows the full pattern with `requireUser`, `assertNotEmpty`, error mapping, and OpenAPI annotations. Read it before implementing.
+> **Concrete example**: `src/common/routes.ts` — shows the stack's plain-Express query pattern (`assertNotEmpty`, error mapping). This stack has no auth layer, so routes don't gate on a logged-in user.
 
 ```typescript
 import {Request, Response, Router} from 'express';
 import {WebApiSetup} from '@event-driven-io/emmett-expressjs';
-import {requireUser} from '../../../supabase/requireUser';
+import {getKnexInstance} from '../../../common/db';
 import {{SliceName}ReadModel, tableName} from './{SliceName}Projection';
-import {readmodel} from '../../../core/readmodel';
-import createClient from '../../../supabase/api';
 
 export const api = (): WebApiSetup => (router: Router): void => {
 
     router.get('/api/query/{slicename}-collection', async (req: Request, res: Response) => {
         try {
-            const principal = await requireUser(req, res, true);
-            if (principal.error) return;
-
             const id = req.query._id?.toString();
-            const supabase = createClient();
+            const db = getKnexInstance();
 
             const data: {SliceName}ReadModel | {SliceName}ReadModel[] | null =
                 id
-                    ? await readmodel(tableName, supabase).findById<{SliceName}ReadModel>('id', id)
-                    : await readmodel(tableName, supabase).findAll<{SliceName}ReadModel>({});
+                    ? (await db(tableName).withSchema('public').where({id}).first<{SliceName}ReadModel>()) ?? null
+                    : await db(tableName).withSchema('public').select<{SliceName}ReadModel[]>();
 
             const sanitized = JSON.parse(
                 JSON.stringify(data ?? [], (_, value) =>
@@ -414,7 +409,7 @@ src/slices/{context}/{SliceName}/
 ├── {SliceName}.test.ts          ← PostgreSQLProjectionSpec tests
 └── routes.ts                    ← GET query endpoint
 
-supabase/migrations/
+migrations/
 └── V{N}__{tablename}.sql        ← table DDL
 
 src/common/
