@@ -244,20 +244,16 @@ Put these in their own `describe` block named after the storyline (same pattern 
 
 File: `src/slices/{context}/{SliceName}/routes.ts`
 
-> **Concrete example**: `src/slices/example/routes.ts` — shows the full pattern with `requireUser`, `assertNotEmpty`, error mapping, and OpenAPI annotations. Read it before implementing.
+> **Concrete example**: `src/common/routes.ts` — shows the stack's plain-Express pattern (`assertNotEmpty`, error mapping). This stack has no auth layer, so routes don't gate on a logged-in user.
 
 ```typescript
 import {Request, Response, Router} from 'express';
 import {WebApiSetup} from '@event-driven-io/emmett-expressjs';
-import {requireUser} from '../../../supabase/requireUser';
 import {{SliceName}Command, handle{SliceName}} from './{SliceName}Command';
 
 export const api = (): WebApiSetup => (router: Router): void => {
 
     router.post('/api/{slicename}/:id', async (req: Request, res: Response) => {
-        const auth = await requireUser(req, res);
-        if (auth.error) return;
-
         const id = req.params.id;
         const correlationId = req.header('correlation_id') ?? id;
 
