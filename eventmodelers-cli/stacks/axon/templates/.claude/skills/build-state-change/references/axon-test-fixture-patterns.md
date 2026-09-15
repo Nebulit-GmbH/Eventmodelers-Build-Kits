@@ -1,8 +1,10 @@
 # AxonTestFixture Patterns (Verified against Axon Framework 5.1.1)
 
-Everything on this page was compiled and run with `mvn test` against
+Everything on this page was compiled and run with `mvn test` (Maven) / `./gradlew test` (Gradle) against
 `io.axoniq.framework:axoniq-framework-bom:5.1.1` (which pulls in
-`org.axonframework:axon-framework-bom:5.1.1`). It supersedes any conflicting claim elsewhere in this
+`org.axonframework:axon-framework-bom:5.1.1`). This project's build tool can be either Maven (`pom.xml`)
+or Gradle (`build.gradle`/`build.gradle.kts`) — detect which is present and use the matching command;
+never assume Maven. It supersedes any conflicting claim elsewhere in this
 skill about `@SpringBootTest` / `AxonTestFixture.configSlice(...)` — that method does not exist in
 5.1.1. Ground-truth worked example: `RegisterCustomer` slice in this repo
 s(`src/main/java/.../foo/register/`, test in `src/test/java/.../foo/register/RegisterCustomerDecisionModelTest.java`).
@@ -12,7 +14,11 @@ Slice folders sit directly under their context — `slices/{context}/{slicename}
 ## 0. Add the dependency
 
 `axon-test` is **not** pulled in by `axoniq-spring-boot-starter`. Add it explicitly (no version needed —
-it's managed by the `axoniq-framework-bom` → `axon-framework-bom` import already in the project's `pom.xml`):
+it's managed by the `axoniq-framework-bom` → `axon-framework-bom` import already in the project's build
+file). Add it to whichever build file the project actually uses — Maven's `pom.xml` or Gradle's
+`build.gradle`/`build.gradle.kts` — never assume Maven:
+
+**Maven** (`pom.xml`):
 
 ```xml
 <dependency>
@@ -20,6 +26,18 @@ it's managed by the `axoniq-framework-bom` → `axon-framework-bom` import alrea
     <artifactId>axon-test</artifactId>
     <scope>test</scope>
 </dependency>
+```
+
+**Gradle** (`build.gradle`):
+
+```groovy
+testImplementation "org.axonframework:axon-test"
+```
+
+**Gradle** (`build.gradle.kts`):
+
+```kotlin
+testImplementation("org.axonframework:axon-test")
 ```
 
 ## 0b. `@EventSourced` (Spring stereotype) works directly with `EventSourcedEntityModule.autodetected(...)`
@@ -143,20 +161,6 @@ Rules (verified from `AnnotationBasedEventCriteriaResolver`, package `org.axonfr
   `MessageTypeResolver` is easily injectable (which it always is, inside an `@EventCriteriaBuilder` method).
 - Only one `@EventCriteriaBuilder` method may exist per distinct identifier parameter type on a given entity.
 
-## 4. Minimal working `pom.xml` diff
-
-```xml
-<dependency>
-    <groupId>org.junit.jupiter</groupId>
-    <artifactId>junit-jupiter</artifactId>
-    <scope>test</scope>
-</dependency>
-<dependency>                                 <!-- add this -->
-    <groupId>org.axonframework</groupId>
-    <artifactId>axon-test</artifactId>
-    <scope>test</scope>
-</dependency>
-```
-
-No other pom changes are required — version resolution comes from the BOM already imported for the
-main `org.axonframework`/`io.axoniq.framework` dependencies.
+No other build-file changes beyond §0's `axon-test` addition are required — version resolution comes
+from the BOM already imported for the main `org.axonframework`/`io.axoniq.framework` dependencies, on
+either build tool.
