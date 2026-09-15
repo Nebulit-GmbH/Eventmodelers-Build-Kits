@@ -127,8 +127,10 @@ Return a `CompletableFuture` from the `@EventHandler` method so AF5 awaits comma
 If a command fails, the event handler fails and the event processor retries.
 
 - `commandDispatcher.send(command, metadata)` returns a `CommandResult`
-- `CommandResult.resultMessage()` returns a `CompletableFuture`
+- `CommandResult.getResultMessage()` returns a `CompletableFuture`
 - For multiple commands: `CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))`
+- `metadata` is built via `org.axonframework.messaging.core.Metadata.with(...)` — **not** `AxonMetadata`, which
+  does not exist as a type in this version.
 
 ---
 
@@ -187,7 +189,7 @@ public class {AutomationName}Processor {
             return;
         }
         var command  = new {TargetCommand}Command(event.{tagProperty}() /*, mapped fields */);
-        var metadata = AxonMetadata.with("{correlationKey}", correlationId);
+        var metadata = Metadata.with("{correlationKey}", correlationId);
         commandDispatcher.send(command, metadata);
     }
 
@@ -249,8 +251,8 @@ public class {AutomationName}Processor {
             .filter(entry -> entry.filterField().equals(event.filterValue()))
             .map(entry -> {
                 var command  = new {TargetCommand}Command(entry.entityId() /*, other fields */);
-                var metadata = AxonMetadata.with("{correlationKey}", correlationId);
-                return commandDispatcher.send(command, metadata).resultMessage();
+                var metadata = Metadata.with("{correlationKey}", correlationId);
+                return commandDispatcher.send(command, metadata).getResultMessage();
             })
             .toList();
         return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]));
