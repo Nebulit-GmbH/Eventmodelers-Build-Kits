@@ -37,7 +37,10 @@ Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workf
 `{basePackage}.slices.{context}.automation.{slicename}`. Resolve `{basePackage}` as documented in
 `.build-kit/CLAUDE.md`'s Structure section.
 
-- The `WorkflowModule` dependency in `pom.xml`:
+- The `WorkflowModule` dependency in the project's build file — Maven's `pom.xml` or Gradle's
+  `build.gradle`/`build.gradle.kts` (detect which the project uses; never assume Maven):
+
+**Maven** (`pom.xml`):
 
 ```xml
 <dependency>
@@ -47,7 +50,19 @@ Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workf
 </dependency>
 ```
 
-If the module is missing from the pom, add it before implementing any workflow.
+**Gradle** (`build.gradle`):
+
+```groovy
+implementation "io.axoniq.framework:axoniq-workflows"   // version managed by the BOM
+```
+
+**Gradle** (`build.gradle.kts`):
+
+```kotlin
+implementation("io.axoniq.framework:axoniq-workflows")   // version managed by the BOM
+```
+
+If the module is missing from the build file, add it before implementing any workflow.
 
 ---
 

@@ -37,10 +37,13 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 11. slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in  JSON are implemented in code and it
     fulfills the slice.json. There must be no specification in json, that has no equivalent in code.
 12. make sure to write the ui-prompt.md as defined if defined in the skill
-13. Run quality checks — it is enough to run the tests for the slice only, not all tests:
-    - Compile: `./mvnw compile -q`
-    - Test:    `./mvnw test -Dtest="<SliceName>*" -q`
-    If the tests for the slice are not yet named predictably, run `./mvnw test -q` and check for failures.
+13. Run quality checks — it is enough to run the tests for the slice only, not all tests. This project
+    uses either Maven or Gradle: detect which by checking for `pom.xml` (Maven) vs
+    `build.gradle`/`build.gradle.kts` (Gradle) at the project root — never assume Maven.
+    - Compile: `./mvnw compile -q` (Maven) · `./gradlew compileJava -q` (Gradle)
+    - Test:    `./mvnw test -Dtest="<SliceName>*" -q` (Maven) · `./gradlew test --tests "*<SliceName>*" -q` (Gradle)
+    If the tests for the slice are not yet named predictably, run the full test task instead —
+    `./mvnw test -q` (Maven) or `./gradlew test -q` (Gradle) — and check for failures.
 15. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge ( update
     first )
 16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
@@ -124,9 +127,8 @@ Only update AGENTS.md if you have **genuinely reusable knowledge** that would he
 
 ## Quality Requirements
 
-- ALL commits must pass your project's quality checks
-- Compile: `./mvnw compile -q`
-- Test: `./mvnw test -Dtest="<SliceName>*" -q`
+- ALL commits must pass your project's quality checks — see step 13 above for the Maven/Gradle compile
+  and test commands
 - Do NOT commit broken code
 - Keep changes focused and minimal
 - Follow existing code patterns
