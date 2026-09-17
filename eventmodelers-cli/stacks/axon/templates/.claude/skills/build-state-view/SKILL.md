@@ -255,15 +255,26 @@ test — leave it undocumented in code rather than fabricating an assertion.
 Pure unit tests — instantiate the projector directly, no Spring context needed.
 Fast, no container startup.
 
+The projector is JPA-backed (Step 2) — its constructor takes the `{SliceName}Repository`, not a no-arg
+constructor. Stand it up with a Mockito mock of the repository, backed by a plain in-memory list, so
+`on(event)`/`handle(query)` behave like the real save-then-query flow without a database:
+
 ```java
 // File: src/test/java/.../slices/{context}/{slicename}/{SliceName}ProjectorTest.java
 class {SliceName}ProjectorTest {
 
     private {SliceName}Projector projector;
+    private final List<{SliceName}Entity> saved = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
-        projector = new {SliceName}Projector();
+        {SliceName}Repository repository = mock({SliceName}Repository.class);
+        doAnswer(invocation -> { saved.add(invocation.getArgument(0)); return null; })
+            .when(repository).save(any());
+        when(repository.findAll()).thenAnswer(invocation -> new ArrayList<>(saved));
+        // If the @QueryHandler filters via a derived method (e.g. findAllBy{FilterField}(...))
+        // instead of findAll(), stub that method the same way — filtering from `saved` in-memory.
+        projector = new {SliceName}Projector(repository);
     }
 
     @Test
