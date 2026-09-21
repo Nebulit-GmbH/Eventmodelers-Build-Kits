@@ -43,7 +43,6 @@ mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<n
 ```bash
 curl -s \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: load-slice-skill" \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slicedata/slices"
 ```

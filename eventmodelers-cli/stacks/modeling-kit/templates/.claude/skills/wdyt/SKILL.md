@@ -146,7 +146,7 @@ Only post questions that are **genuinely unclear or missing** — don't post obs
 
 **Prefer MCP:** `mcp__eventmodelers__create_drawing` — one call per drawing, no auth headers needed.
 
-**Fallback (no MCP):** `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-board-id`, `x-user-id: wdyt`). Same fields as the tool args below.
+**Fallback (no MCP):** `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-user-id: wdyt`). Same fields as the tool args below.
 
 There are two kinds — no text-callout kind; a drawing never carries the question itself, only the shape of the concern:
 

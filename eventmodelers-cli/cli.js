@@ -3535,7 +3535,6 @@ program
         headers: {
           'Content-Type': 'application/json',
           'x-token': cfg.token,
-          'x-board-id': cfg.boardId,
           'x-user-id': 'cli-set-slice-status',
           ...agentHeaders(cfg),
         },

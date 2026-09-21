@@ -5,6 +5,6 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Chapters and Timelines — Resolve the Target Timeline
 
 ```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
 ```

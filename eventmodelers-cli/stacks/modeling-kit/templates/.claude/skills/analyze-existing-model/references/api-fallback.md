@@ -7,7 +7,6 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices"
 ```
@@ -19,7 +18,6 @@ Response: `{ "slices": [{ "id": "<uuid>", "title": "<name>", "status": "<status>
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
 ```
@@ -29,7 +27,6 @@ curl -s \
 ```bash
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=<CONTEXT_NAME>"
 ```
@@ -46,21 +43,18 @@ Each response contains a `slices` array. Each slice entry includes:
 # 1. List slices
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices"
 
 # 2. Fetch MODEL_CONTEXT nodes
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
 
 # 3. Fetch full slice data for a context
 curl -s \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=Ordering"
 ```

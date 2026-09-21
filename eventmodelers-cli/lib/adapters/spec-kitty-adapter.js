@@ -51,7 +51,7 @@ async function fetchFullSliceData(cfg, contextName) {
   const agentId = cfg.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
   const res = await fetch(url, {
     headers: {
-      'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'spec-kitty-adapter',
+      'x-token': cfg.token, 'x-user-id': 'spec-kitty-adapter',
       ...(agentId ? { 'x-agent-id': agentId } : {}),
     },
   });

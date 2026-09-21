@@ -33,7 +33,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$SCREEN_NODE_ID" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{
@@ -49,7 +48,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$S
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_NODE_ID/sketch" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{
@@ -65,7 +63,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/$SCREEN_
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
+  -H "x-token: $TOKEN" -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",

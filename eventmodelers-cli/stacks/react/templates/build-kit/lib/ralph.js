@@ -178,7 +178,7 @@ function slugify(str) {
 async function fetchAndPersistSlices(cfg, kitDir) {
   const url = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata/slices`;
   const { slices } = await fetchJSON(url, {
-    headers: { 'x-token': cfg.token, 'x-board-id': cfg.boardId, ...agentHeaders(cfg) },
+    headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
   });
   const slicesDir = join(kitDir, '.slices');
   mkdirSync(slicesDir, { recursive: true });
@@ -400,7 +400,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
     try {
       await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/events`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
         body: JSON.stringify([{
           id: randomUUID(),
           eventType: 'node:changed',

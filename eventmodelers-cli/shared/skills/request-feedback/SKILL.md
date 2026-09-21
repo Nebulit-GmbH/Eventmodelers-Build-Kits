@@ -72,7 +72,6 @@ mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
 ```bash
 curl -s \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: request-feedback-skill" \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slicedata/slices"
 ```
@@ -124,7 +123,6 @@ SLICE_BORDER node's meta directly:
 curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
   -H "Content-Type: application/json" \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: request-feedback-skill" \
   -d '[{
     "id": "<new-random-uuid>",

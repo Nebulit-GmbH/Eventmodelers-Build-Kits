@@ -45,7 +45,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/column
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_ID/columns" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -75,7 +74,7 @@ No relative-insertion equivalent over REST (unlike MCP's `afterNodeId`) — comp
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_ID/columns" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
+  -H "x-token: $TOKEN" -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{"index": <currentColumnIndex + 1>}'
 ```
@@ -89,7 +88,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TIMELINE_
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{
@@ -105,7 +103,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<n
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/<node-uuid>/sketch" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{
@@ -119,12 +116,11 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/image-nodes/<node-uu
 
 ## Step 7b — Create any other node type (normal path, `cellId`)
 
-Include `x-token`, `x-board-id`, and `x-user-id: agent` on every call to `/nodes/events`.
+Include `x-token` and `x-user-id: agent` on every call to `/nodes/events`.
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{
@@ -149,7 +145,6 @@ Same as above, but `cellName` replaces `cellId` — nothing else in the payload 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{

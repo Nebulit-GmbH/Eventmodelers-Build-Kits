@@ -112,7 +112,6 @@ EOF
 curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "Content-Type: application/json" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: examples-skill" \
   --data-binary @/tmp/examples_payload.json
 ```

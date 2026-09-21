@@ -5,16 +5,16 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Board Integration — Check existing screen nodes
 
 ```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN"
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN"
 ```
 
 ## Resolve One Actor Lane Per Human Role — Step 1: Fetch the chapter's actor rows
 
 ```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 ```
 
@@ -22,7 +22,7 @@ curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "x-token: $TOKEN" -H "x-user-id: storyboarding-events" \
   -H "Content-Type: application/json" \
   -d '{"type": "actor", "label": "<Role Name>"}'
 ```
@@ -31,7 +31,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/<node-uuid>" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "x-token: $TOKEN" -H "x-user-id: storyboarding-events" \
   -H "Content-Type: application/json" \
   -d '{
     "chapterId": "<CHAPTER_ID>",
@@ -46,7 +46,7 @@ Then, over REST only (no `fields` param on the HTML-screen endpoint), still set 
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "x-token: $TOKEN" -H "x-user-id: storyboarding-events" \
   -H "Content-Type: application/json" \
   -d '[{
     "id": "<event-uuid>",
@@ -64,7 +64,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/images/$NODE_ID/sketch" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: storyboarding-events" \
+  -H "x-token: $TOKEN" -H "x-user-id: storyboarding-events" \
   -H "Content-Type: application/json" \
   -d '{
     "description": "<concise description of what this screen shows>",

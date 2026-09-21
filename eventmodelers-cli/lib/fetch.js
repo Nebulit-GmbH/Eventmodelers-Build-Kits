@@ -76,7 +76,7 @@ export async function runFetch({ cwd, kitDir, cfg, opts = {} }) {
   // sending it everywhere keeps one rule instead of a per-call judgment about which calls count.
   const agentId = cfg.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
   const headers = {
-    'x-token': cfg.token, 'x-board-id': cfg.boardId, 'x-user-id': 'cli-fetch',
+    'x-token': cfg.token, 'x-user-id': 'cli-fetch',
     ...(agentId ? { 'x-agent-id': agentId } : {}),
   };
 

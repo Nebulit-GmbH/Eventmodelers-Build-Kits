@@ -6,14 +6,14 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 **Step A — Find the event's column ID.** Query the event node to read its current cell:
 ```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EVENT_NODE_ID"
 # → node.meta.cellId is "<someRowId>-<columnId>" — extract the columnId part
 ```
 
 **Step B — Fetch the chapter to find the interaction row ID:**
 ```bash
-curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+curl -s -H "x-token: $TOKEN" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
 # → timelineData.rows — find the row where type === "interaction"
 ```
@@ -28,7 +28,7 @@ cellId = interactionRow.id + "-" + columnId
 
 ```bash
 curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: identifying-inputs" \
+  -H "x-token: $TOKEN" -H "x-user-id: identifying-inputs" \
   -H "Content-Type: application/json" \
   -d '[{
     "id": "<event-uuid>",
@@ -54,12 +54,12 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<actorRowId>-<columnId>" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
+  -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs"
 ```
 If a SCREEN node exists, connect it:
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs" \
+  -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs" \
   -H "Content-Type: application/json" \
   -d '{"source":"<screenNodeId>","target":"<commandNodeId>"}'
 ```
@@ -68,12 +68,12 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
 
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs"
+  -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs"
 ```
 Connect command to its resulting event:
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: eventmodeling-identifying-inputs" \
+  -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs" \
   -H "Content-Type: application/json" \
   -d '{"source":"<commandNodeId>","target":"<eventNodeId>"}'
 ```

@@ -7,7 +7,6 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ```bash
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent"
 ```
 
@@ -16,7 +15,6 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$NODE_ID" \
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_ID" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{"pages": ["<div>...</div>", "<div>...</div>"]}'
@@ -28,7 +26,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screens/$NODE_I
 NODE_ID=$(uuidgen)
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$NODE_ID" \
   -H "x-token: $TOKEN" \
-  -H "x-board-id: $BOARD_ID" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '{"chapterId": "'"$CHAPTER_ID"'", "cellName": "'"$CELL_NAME"'", "title": "<Screen Title>", "pages": ["<div>...</div>"]}'
@@ -38,7 +35,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$N
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: agent" \
+  -H "x-token: $TOKEN" -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",

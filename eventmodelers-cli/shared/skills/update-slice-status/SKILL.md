@@ -48,7 +48,6 @@ mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
 ```bash
 curl -s \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: update-slice-status-skill" \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slicedata/slices"
 ```
@@ -85,7 +84,6 @@ A slice that is being *created* takes its status straight from `create_slice`/`c
 curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
   -H "Content-Type: application/json" \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: update-slice-status-skill" \
   -d '[{
     "id": "<new-random-uuid>",

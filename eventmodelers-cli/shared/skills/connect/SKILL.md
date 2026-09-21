@@ -22,7 +22,7 @@ After running, the following variables are available for the rest of the session
 | Variable | Header sent to API | Description |
 |----------|--------------------|-------------|
 | `TOKEN` | `x-token` | API token UUID |
-| `BOARD_ID` | `x-board-id` | Target board UUID |
+| `BOARD_ID` | — | Target board UUID (used in all board-scoped URLs) |
 | `ORG_ID` | — | Organization UUID (used in all board-scoped URLs) |
 | `BASE_URL` | — | Base URL, e.g. `http://localhost:3000` |
 | `AGENT_ID` | `x-agent-id` | This agent process's own id, when running as one (Step 0.5). Optional — skip the header when there is no value. |
@@ -30,7 +30,6 @@ After running, the following variables are available for the rest of the session
 Every curl-fallback call in every skill must include these headers:
 ```
 x-token: <TOKEN>
-x-board-id: <BOARD_ID>
 x-user-id: <skill-name>   ← set by each skill individually
 x-agent-id: <AGENT_ID>    ← only when AGENT_ID resolved; omit the line entirely otherwise
 ```
@@ -243,7 +242,6 @@ Otherwise (no MCP tools visible yet this session), fall back to the equivalent c
 ```bash
 curl -s -o /dev/null -w "%{http_code}" \
   -H "x-token: <TOKEN>" \
-  -H "x-board-id: <BOARD_ID>" \
   -H "x-user-id: connect-skill" \
   "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes?type=CHAPTER"
 ```

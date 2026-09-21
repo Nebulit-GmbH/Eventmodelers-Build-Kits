@@ -309,7 +309,7 @@ Pass whichever cell reference you already resolved — `CELL_ID` from Step 6, or
 
 ### Step 7b — All other element types
 
-Include `x-token`, `x-board-id`, and `x-user-id: agent` on every call to `/nodes/events`.
+Include `x-token` and `x-user-id: agent` on every call to `/nodes/events`.
 
 This step applies to `SCREEN` (view/output conflict case), `AUTOMATION`, `SCENARIO`-adjacent cleanup, and to `COMMAND`/`READMODEL`/`EVENT` whenever the "Prefer MCP — `place_element`" fast path above doesn't apply (explicit `cellName`, `"after <title>"` positioning, or conflict-insertion cases resolved manually in Step 6).
 

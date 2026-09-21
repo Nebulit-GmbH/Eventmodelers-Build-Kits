@@ -9,7 +9,7 @@ You now have complete knowledge of the eventmodelers platform API. This is a ref
 
 **Load this once per session, on demand — not as a mandatory preamble.** Every other skill already documents the exact API calls it needs inline; none of them require this full reference to be loaded before they can run. Reach for this skill only when you hit a specific endpoint, field, or element type that a skill's own instructions don't cover, and don't reload it again later in the same session once you have.
 
-**Two transports exist for board operations: MCP tools (preferred) and raw REST/curl (fallback).** The `connect` skill registers the MCP server in `.mcp.json`. Once `mcp__eventmodelers__*` tools are visible in your tool list, use them — they need no `x-token`/`x-board-id`/`x-user-id` headers (auth and org resolution happen server-side from the registered token) and return the same data as the REST endpoints below. Fall back to the numbered REST sections only when MCP tools aren't connected yet, or for the handful of endpoints (prompts lifecycle, snapshots, user management, board/extension CRUD) the MCP server intentionally doesn't expose — it only covers board-content operations (nodes, timelines, slices, comments, screens). This preference is about *which transport a skill's own instructions should use*, never about whether to invoke the skill in the first place.
+**Two transports exist for board operations: MCP tools (preferred) and raw REST/curl (fallback).** The `connect` skill registers the MCP server in `.mcp.json`. Once `mcp__eventmodelers__*` tools are visible in your tool list, use them — they need no `x-token`/`x-user-id` headers (auth and org resolution happen server-side from the registered token) and return the same data as the REST endpoints below. Fall back to the numbered REST sections only when MCP tools aren't connected yet, or for the handful of endpoints (prompts lifecycle, snapshots, user management, board/extension CRUD) the MCP server intentionally doesn't expose — it only covers board-content operations (nodes, timelines, slices, comments, screens). This preference is about *which transport a skill's own instructions should use*, never about whether to invoke the skill in the first place.
 
 ---
 
@@ -996,7 +996,7 @@ The same `agent_id` belongs in the `x-agent-id` header of every board call this 
 ---
 
 ### GET `/api/org/:orgId/boards/:boardId/agent-alive`
-Check whether an agent has pinged for a board within the last 45s. Auth: `x-token` (bot) or a Supabase JWT (`Authorization: Bearer`) — either works.
+Check whether an agent has pinged for a board within the last 45s. Auth: Supabase JWT (`Authorization: Bearer`) — same as the heartbeat above; a raw `x-token` alone is not accepted here either.
 
 **Response**: `200` — `{ alive: boolean, agentTypes: string[], agents: { agentId: string, agentType: string, agentName: string | null }[] }` — one `agents` entry per live agent process, `agentTypes` the de-duplicated set of their types
 

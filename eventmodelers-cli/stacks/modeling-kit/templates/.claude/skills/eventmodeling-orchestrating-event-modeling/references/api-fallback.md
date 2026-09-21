@@ -6,7 +6,7 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ```bash
 for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
-  curl -s -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" \
+  curl -s -H "x-token: $TOKEN" \
     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE"
 done
 ```
@@ -15,7 +15,7 @@ done
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+  -H "x-token: $TOKEN" -H "x-user-id: orchestrator" \
   -H "Content-Type: application/json" \
   -d '[{"id":"<uuid>","eventType":"node:changed","nodeId":"<nodeId>","boardId":"<BOARD_ID>",
         "timestamp":1234567890,"chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
@@ -26,14 +26,14 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 ```bash
 curl -s -X DELETE "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<nodeId>" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID"
+  -H "x-token: $TOKEN"
 ```
 
 ## Step 11 — Document Reasoning — Add a feedback lane
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_ID/lanes" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+  -H "x-token: $TOKEN" -H "x-user-id: orchestrator" \
   -H "Content-Type: application/json" \
   -d '{"type":"feedback","label":"Notes"}'
 # → { laneId, type, label, index, totalLanes }
@@ -43,7 +43,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 
 ```bash
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-  -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: orchestrator" \
+  -H "x-token: $TOKEN" -H "x-user-id: orchestrator" \
   -H "Content-Type: application/json" \
   -d '[{"id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>","boardId":"<BOARD_ID>",
         "timestamp":1234567890,"chapterId":"<CHAPTER_ID>","cellId":"<feedbackLaneId>-<firstColumnId>",

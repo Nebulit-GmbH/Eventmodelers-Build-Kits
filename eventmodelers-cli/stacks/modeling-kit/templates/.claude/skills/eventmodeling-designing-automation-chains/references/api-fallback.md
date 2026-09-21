@@ -10,7 +10,7 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 4. Create the node:
    ```bash
    curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
-     -H "x-token: $TOKEN" -H "x-board-id: $BOARD_ID" -H "x-user-id: designing-automation-chains" \
+     -H "x-token: $TOKEN" -H "x-user-id: designing-automation-chains" \
      -H "Content-Type: application/json" \
      -d '[{
        "id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>",
