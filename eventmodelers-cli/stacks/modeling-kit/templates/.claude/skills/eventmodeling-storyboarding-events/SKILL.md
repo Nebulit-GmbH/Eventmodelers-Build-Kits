@@ -228,6 +228,7 @@ mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
   "contentType": "html",
   "nodeId": "<node-uuid>",
+  "title": "<Screen Title>",
   "chapterId": "<CHAPTER_ID>",
   "cellId": "<actorRowId>-<columnId>",
   "pages": ["<div>...</div>"],
@@ -238,7 +239,7 @@ mcp__eventmodelers__create_screen {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Mandatory Screen Rendering — Step B: Create the HTML_SCREEN node".
 
-The MCP `create_screen` call above already sets `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
+The MCP `create_screen` call above already sets the node's `title` and `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
 
 A storyboard screen is placed at a *provisional* position — Steps 4 and 5 wire it to its COMMAND / READMODEL once those exist, and may move it first. Pass `autoConnect: false` on `create_screen` / `create_screens` here so the placement doesn't pre-wire the screen to whatever happens to sit in the adjacent column; the real `SCREEN → COMMAND` and `READMODEL → SCREEN` edges are created deliberately in Steps 4 and 5. When creating several screens whose HTML is already authored, use `create_screens` (batch) with `autoConnect: false`.
 

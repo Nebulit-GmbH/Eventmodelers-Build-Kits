@@ -25,6 +25,11 @@ import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js
 // copyDirContents in installStack) for ralph.js to import standalone — see
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter } from './shared/build-kit/lib/adapters/realtime-adapter.js';
+// Same arrangement as the adapter above: one canonical copy that is also copied into every
+// installed kit, so cli.js and a project's ralph runners agree on the header names and on how
+// each host's usage numbers are read. See that file's header for why usage cannot ride on the
+// call it describes.
+import { createTracer, newId, tracingHeaders, usageFromClaudeResult, PROMPT_TOKENS_SPENT } from './shared/build-kit/lib/tracing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -640,9 +645,19 @@ function readJsonSafe(path) {
 // this" rather than one anonymous robot), and matches it when claiming a prompt the user
 // addressed to one preferred agent. Optional everywhere: an id-less caller behaves exactly as
 // callers did before it existed.
-function agentHeaders(cfg) {
-  const agentId = cfg?.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
-  return agentId ? { 'x-agent-id': agentId } : {};
+// Since tracing, this also carries the session (and the agent's name/type when known), so the
+// platform can group a run's calls into one traceable unit and report what it cost. `usage` is
+// passed by the few call sites that know it — see shared/build-kit/lib/tracing.js for why most
+// cannot. Every header stays optional: a caller that knows none of this behaves exactly as
+// callers did before any of it existed.
+function agentHeaders(cfg, extra = {}) {
+  return tracingHeaders({
+    agentId: cfg?.agentId || process.env.EVENTMODELERS_AGENT_ID || '',
+    agentName: cfg?.agentName || process.env.EVENTMODELERS_AGENT_NAME || '',
+    agentType: cfg?.agentType || '',
+    sessionId: cfg?.sessionId || process.env.EVENTMODELERS_SESSION_ID || '',
+    ...extra,
+  });
 }
 
 // Distinguishes this agent process from any other agent pinging the same
@@ -1421,7 +1436,16 @@ function ensureMcpRegistered(projectDir, baseUrl) {
   mcpConfig.mcpServers.eventmodelers = {
     type: 'http',
     url: `${baseUrl}/mcp`,
-    headers: { 'x-token': '${EVENTMODELERS_TOKEN}', 'x-agent-id': '${EVENTMODELERS_AGENT_ID}' },
+    headers: {
+      'x-token': '${EVENTMODELERS_TOKEN}',
+      'x-agent-id': '${EVENTMODELERS_AGENT_ID}',
+      // The one piece of tracing that survives this file's expand-once semantics. Claude Code
+      // resolves these placeholders at ITS startup and then sends the result unchanged on every
+      // MCP call, so a live token count can never go here — but a session id is fixed per
+      // process, which is exactly what makes it the join key between the action trail the
+      // platform records for each tool call and the cost events the runner uploads separately.
+      'x-agent-session-id': '${EVENTMODELERS_SESSION_ID}',
+    },
   };
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 }
@@ -1872,6 +1896,40 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     return withSessionHeader(`${fields}${context}\n\n${p.prompt}`);
   }
 
+  // One session per warm process. A respawn (see spawnProcess) is deliberately still the same
+  // tracing session: the agent, the board and the run are unchanged, and splitting a session in
+  // two because a subprocess died would fragment exactly the report someone reaches for when
+  // asking why a run cost what it did. `cfg.sessionId` is what agentHeaders() then puts on every
+  // platform call this process makes.
+  const sessionId = newId();
+  cfg.sessionId = sessionId;
+  cfg.agentType = 'MODELING';
+
+  const tracer = createTracer({
+    baseUrl: cfg.baseUrl,
+    token: cfg.token,
+    organizationId: cfg.organizationId,
+    boardId: cfg.boardId,
+    agentId: cfg.agentId,
+    agentName: cfg.agentName,
+    agentType: 'MODELING',
+    sessionId,
+    // Written whether or not the upload works, and the reason a failed upload is retryable:
+    // every event carries an id the platform de-duplicates on, so the file is both the local
+    // trace and the outbox.
+    traceFile: join(projectDir, '.eventmodelers', 'trace', `${sessionId}.jsonl`),
+    log,
+  });
+
+  // A warm modeling process runs until it is stopped, so the session rollup has to be taken on
+  // the way out or it is never taken at all. One await, then exit — no handler existed here
+  // before, so the default "terminate immediately" would otherwise abandon the request.
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      tracer.end({ action: 'session-end' }).catch(() => {}).finally(() => process.exit(0));
+    });
+  }
+
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
   const claudeEnv = {
@@ -1881,11 +1939,18 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     // What the connect skill puts in `.mcp.json`'s x-agent-id header and every curl-fallback
     // call, so the board work this agent does on the platform is attributed to this agent.
     ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
+    // Expanded by `claude` into .mcp.json's x-agent-session-id header at ITS startup, which is
+    // what lets the platform group this process's MCP tool calls into one session. It is the
+    // only tracing value that can reach an MCP call at all — see ensureMcpRegistered.
+    EVENTMODELERS_SESSION_ID: sessionId,
   };
 
   let proc = null;
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
+  // What the in-flight turn is about, so the cost recorded when its `result` arrives can be
+  // attributed to the prompt (and node) that caused it rather than to the session at large.
+  let currentTurn = { turnId: null, promptId: null, nodeId: null, boardId: null, action: null };
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
   let warmUp = null; // this process's session warm-up turn (see warmUpSession) — null until one is started
   let warmingUp = false; // the in-flight turn is the warm-up: it only reads, so its writes can't echo
@@ -1941,7 +2006,27 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       return;
     }
     if (msg.type === 'result') {
-      log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+      // The authoritative accounting for the turn — `result` is the only message whose usage is
+      // final (assistant events carry mid-stream snapshots) and the only one that prices a
+      // mixed-model turn per model via modelUsage.
+      const turnUsage = usageFromClaudeResult(msg);
+      log(
+        `done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}` +
+        `${turnUsage.outputTokens ? `, ${turnUsage.outputTokens} out / ${turnUsage.cacheReadTokens + turnUsage.inputTokens} in` : ''})`,
+      );
+      // A warm-up or standalone turn has no prompt behind it; it still cost something, and rolls
+      // into the session total instead of being attributed to a prompt nobody sent.
+      tracer.record(PROMPT_TOKENS_SPENT, turnUsage, {
+        turnId: currentTurn.turnId,
+        promptId: currentTurn.promptId,
+        nodeId: currentTurn.nodeId,
+        boardId: currentTurn.boardId,
+        action: currentTurn.action,
+        surface: 'claude-stream',
+        status: msg.is_error ? 'error' : 'ok',
+      });
+      currentTurn = {turnId: null, promptId: null, nodeId: null, boardId: null, action: null};
+
       lastTurnEndedAt = Date.now();
       const turn = pending;
       pending = null;
@@ -2023,6 +2108,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     if (!standalone) return (warmUp = Promise.resolve());
     log('warm-up: connecting and listing chapters before the first turn (chapters are read on first use)');
     warmingUp = true;
+    currentTurn = { turnId: newId(), promptId: null, nodeId: null, boardId: cfg.boardId ?? null, action: 'session-warmup' };
     warmUp = sendTurn(buildWarmUpTurn())
       .then((result) => log(`warm-up done — ${oneLine(result, 200) || 'session ready'}`))
       .catch((err) => {
@@ -2120,6 +2206,13 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
         }
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
         try {
+          currentTurn = {
+            turnId: newId(),
+            promptId: p.id,
+            nodeId: p.node_id ?? null,
+            boardId: p.board_id ?? cfg.boardId ?? null,
+            action: 'prompt-turn',
+          };
           await runClaudeWarm(buildTurn(p));
         } catch (err) {
           log(`turn failed: ${err.message}`);
@@ -2466,6 +2559,13 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     resetObserved();
     lastStandaloneAt = Date.now();
     try {
+      currentTurn = {
+        turnId: newId(),
+        promptId: null,
+        nodeId: null,
+        boardId: cfg.boardId ?? null,
+        action: idle ? 'standalone-idle-review' : 'standalone-turn',
+      };
       const result = await runClaudeWarm(text);
       // NOOP is the agent saying the board needs nothing — widen the floor so a finished
       // board isn't revisited at full rate. Any real contribution resets it.

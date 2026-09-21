@@ -16,8 +16,9 @@
 // Reads tasks.json, picks the next task, and passes its prompts to the model.
 
 import { readFileSync, writeFileSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { createTracer, newId, tracingHeaders, usageFromLocalAi, PROMPT_TOKENS_SPENT, SLICE_TOKENS_SPENT } from './tracing.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -26,6 +27,27 @@ const config = JSON.parse(readFileSync(configPath, 'utf8'));
 const { token, baseUrl } = config;
 const defaultBoardId = config.boardId;
 const localAi = config.localAi || {};
+
+// Tracing identity. This process is spawned per task by ralph-local-ai.js, so the session comes
+// from the environment the loop exported — minting one here would make every task its own
+// "session" and lose the run they belong to.
+const sessionId = process.env.EVENTMODELERS_SESSION_ID || newId();
+const agentId = process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID
+  || config.agentIds?.BUILD || config.agentId || '';
+
+const tracer = createTracer({
+  baseUrl,
+  token,
+  organizationId: config.organizationId,
+  boardId: defaultBoardId,
+  agentId,
+  agentName: process.env.RALPH_AGENT_NAME || config.agentName,
+  agentType: 'BUILD',
+  sessionId,
+  traceFile: join(resolve(__dirname, '..', '..'), '.eventmodelers', 'trace', `${sessionId}.jsonl`),
+  log: (line) => console.error(`[local-ai] ${line}`),
+  enabled: process.env.RALPH_LOCAL !== '1',
+});
 
 // --- Wire dialects -----------------------------------------------------------
 // The only genuinely backend-scoped differences. Everything else that varies
@@ -117,13 +139,25 @@ function parseSse(text) {
   return null;
 }
 
-async function mcpCall(method, params = {}) {
+// The one surface where a tool call CAN carry the cost of the thinking that produced it: this
+// loop makes the MCP request itself, unlike Claude Code, whose .mcp.json headers are expanded
+// once at its startup and are byte-identical thereafter. So the round's usage goes on the call —
+// which is the most precise attribution anywhere in this system, and it costs nothing extra.
+async function mcpCall(method, params = {}, trace = {}) {
   const res = await fetch(`${baseUrl}/mcp`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
+      ...tracingHeaders({
+        agentId,
+        agentType: 'BUILD',
+        sessionId,
+        turnId: trace.turnId,
+        action: trace.action,
+        usage: trace.usage,
+      }),
     },
     body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
   });
@@ -157,6 +191,7 @@ function approxTokens(obj) {
 }
 
 async function chat(messages, tools) {
+  const startedAt = Date.now();
   const d = DIALECTS[TARGET.dialect];
   const body = d.shape({ model: TARGET.model, messages, tools, stream: false }, { numCtx: NUM_CTX });
 
@@ -181,12 +216,18 @@ async function chat(messages, tools) {
     throw new Error(`${TARGET.dialect} HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
 
-  const message = d.unwrap(await res.json());
+  // The raw body is kept, not just d.unwrap's message: both dialects report their token counts
+  // as SIBLINGS of the message (Ollama's prompt_eval_count/eval_count at the top level,
+  // OpenAI-compatible's `usage`), so unwrapping first is what used to throw them away.
+  const raw = await res.json();
+  const message = d.unwrap(raw);
   if (!message) throw new Error(`${TARGET.dialect}: response carried no message`);
-  return message;
+  return { message, usage: usageFromLocalAi(raw, Date.now() - startedAt) };
 }
 
-async function runAgent(userPrompt, boardId) {
+// `trace` carries what the queued task knows about this turn (prompt id, slice id) so the cost
+// lands on the thing that caused it rather than on the run as a whole.
+async function runAgent(userPrompt, boardId, trace = {}) {
   console.error(`[local-ai] dialect=${TARGET.dialect} url=${TARGET.url} model=${TARGET.model} board=${boardId}`);
 
   const { tools: mcpTools } = await mcpCall('tools/list');
@@ -217,11 +258,19 @@ async function runAgent(userPrompt, boardId) {
     { role: 'user', content: userPrompt },
   ];
 
+  const turnId = newId();
+  // Summed across rounds. Unlike Claude Code's stream these numbers ARE final per round — we
+  // asked for the completion and read the server's own accounting of it — so summing is correct
+  // here where it would not be there.
+  let turnUsage = null;
+
   for (let i = 0; i < 12; i++) {
-    const message = await chat(messages, tools);
+    const { message, usage: roundUsage } = await chat(messages, tools);
     messages.push(message);
+    turnUsage = sumUsage(turnUsage, roundUsage);
 
     if (!message.tool_calls?.length) {
+      finishTurn(turnId, turnUsage, boardId, trace, 'ok');
       return stripThinking(message.content) || 'Done.';
     }
 
@@ -235,7 +284,13 @@ async function runAgent(userPrompt, boardId) {
 
       let toolResult;
       try {
-        toolResult = await mcpCall('tools/call', { name, arguments: args });
+        // The round's usage rides along on the call, so the platform's own row for this tool
+        // call already carries what deciding on it cost — no join needed for this surface.
+        toolResult = await mcpCall('tools/call', { name, arguments: args }, {
+          turnId,
+          action: name,
+          usage: roundUsage,
+        });
       } catch (err) {
         toolResult = { isError: true, content: [{ type: 'text', text: err.message }] };
       }
@@ -251,7 +306,30 @@ async function runAgent(userPrompt, boardId) {
     }
   }
 
+  // Hitting the cap is a real outcome, not an error — and the most expensive one, so `status`
+  // records it: a run full of exhausted turns is a run whose prompts need work, and that is only
+  // findable if the exhaustion was written down.
+  finishTurn(turnId, turnUsage, boardId, trace, 'max-iterations');
   return 'Max tool iterations reached.';
+}
+
+const sumUsage = (a, b) => {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    ...a,
+    inputTokens: (a.inputTokens ?? 0) + (b.inputTokens ?? 0),
+    outputTokens: (a.outputTokens ?? 0) + (b.outputTokens ?? 0),
+    durationMs: (a.durationMs ?? 0) + (b.durationMs ?? 0),
+  };
+};
+
+// One event per prompt worked, on whichever identifier this task actually has.
+function finishTurn(turnId, usage, boardId, trace, status) {
+  if (!usage) return;
+  const fields = {turnId, boardId, surface: 'local-ai', status, action: 'local-ai-turn'};
+  if (trace.sliceId) tracer.record(SLICE_TOKENS_SPENT, usage, {...fields, sliceId: trace.sliceId, nodeId: trace.sliceId});
+  else tracer.record(PROMPT_TOKENS_SPENT, usage, {...fields, promptId: trace.promptId ?? null, nodeId: trace.nodeId ?? null});
 }
 
 async function runNextTask() {
@@ -272,10 +350,17 @@ async function runNextTask() {
   console.error(`[local-ai] task=${task.id} prompts=${task.prompts.length}`);
 
   for (const p of task.prompts) {
-    console.log(await runAgent(p.prompt, p.board_id || defaultBoardId));
+    console.log(await runAgent(p.prompt, p.board_id || defaultBoardId, {
+      promptId: p.id ?? p.prompt_id ?? null,
+      nodeId: p.node_id ?? null,
+      sliceId: p.slice_id ?? task.payload?.sliceId ?? null,
+    }));
   }
 
   writeFileSync(tasksPath, JSON.stringify(tasks.slice(1), null, 2));
 }
 
 await runNextTask();
+// This process is spawned per task and exits, so the flush is the whole upload — there is no
+// later opportunity, and a task's cost would otherwise only ever exist in the local trace file.
+await tracer.end({action: 'session-end'});

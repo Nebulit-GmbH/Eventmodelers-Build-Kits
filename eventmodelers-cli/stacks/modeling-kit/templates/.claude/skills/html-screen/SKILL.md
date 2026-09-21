@@ -138,6 +138,7 @@ mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
   "contentType": "html",
   "nodeId": "<generated-uuid>",
+  "title": "<Screen Title>",
   "chapterId": "<CHAPTER_ID>",
   "cellName": "<CELL_NAME>",
   "pages": ["<div>...</div>"],

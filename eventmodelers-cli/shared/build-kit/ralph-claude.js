@@ -3,8 +3,9 @@
 // Usage: node ralph-claude.js [project_dir]
 
 import { startRalph, loadLocalConfig } from './lib/ralph.js';
+import { createTracer, newId, usageFromClaudeResult, SLICE_TOKENS_SPENT } from './lib/tracing.js';
 import { spawn } from 'child_process';
-import { dirname, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const kitDir = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +26,12 @@ const inlineHeader = !localOnly && cfg.boardId
 // own two-tier logging in cli.js.
 const verbose = process.env.RALPH_VERBOSE === '1';
 
+// startRalph mints the session and puts it in the environment before the loop runs, but this
+// module is evaluated first — so read what is there and fall back to minting one, which is also
+// what makes this runner work when driven directly rather than through startRalph.
+const sessionId = process.env.EVENTMODELERS_SESSION_ID || newId();
+process.env.EVENTMODELERS_SESSION_ID = sessionId;
+
 const claudeArgs = ['--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'];
 if (cfg.model) claudeArgs.push('--model', cfg.model);
 const claudeEnv = {
@@ -34,7 +41,26 @@ const claudeEnv = {
   // Lets the skills this agent runs send x-agent-id on their own calls (connect puts it in
   // `.mcp.json` and in every curl fallback), so their board writes are attributed to this agent.
   ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
+  // Expanded by `claude` into .mcp.json's x-agent-session-id header, so the MCP tool calls it
+  // makes land in the same tracing session as this loop's own REST calls.
+  EVENTMODELERS_SESSION_ID: sessionId,
 };
+
+const tracer = createTracer({
+  baseUrl: cfg.baseUrl,
+  token: cfg.token,
+  organizationId: cfg.organizationId,
+  boardId: cfg.boardId,
+  agentId: cfg.agentId,
+  agentName: cfg.agentName,
+  agentType: 'BUILD',
+  sessionId,
+  traceFile: join(projectDir, '.eventmodelers', 'trace', `${sessionId}.jsonl`),
+  log: (line) => console.log(`[ralph] ${line}`),
+  // --local means zero board contact; that has to include the tracing upload, or the one flag
+  // whose whole promise is "no network" would quietly start making requests.
+  enabled: !localOnly,
+});
 
 // Collapses whitespace/newlines to a single line and truncates past `max` chars — a long
 // multi-line curl command wrapped across many terminal lines is just as unreadable as no
@@ -60,8 +86,13 @@ function describeToolUse(block) {
   }
 }
 
-function runClaude(prompt) {
+// `context` is what the loop knows about this turn (see startRalph's docs) — the slice it is
+// building, so the turn's cost can be recorded against that slice rather than against the run
+// as a whole. Absent when a runner is driven directly, in which case the cost still lands on
+// the session.
+function runClaude(prompt, context = {}) {
   return new Promise((resolve, reject) => {
+    const turnId = newId();
     const proc = spawn('claude', [...claudeArgs, '-p', inlineHeader + prompt], {
       cwd: projectDir,
       stdio: ['inherit', 'pipe', 'inherit'],
@@ -88,13 +119,39 @@ function runClaude(prompt) {
             }
           }
         } else if (msg.type === 'result') {
-          console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
-        }
+          // `result` is the only trustworthy accounting for the turn: assistant events carry
+          // mid-stream snapshots, and only modelUsage can price a turn whose subagents ran on a
+          // different model than its lead.
+          const usage = usageFromClaudeResult(msg);
+          console.log(
+            `done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}` +
+            `${usage.outputTokens ? `, ${usage.outputTokens} out / ${usage.inputTokens + usage.cacheReadTokens} in` : ''})`,
+          );
+          tracer.record(SLICE_TOKENS_SPENT, usage, {
+            turnId,
+            sliceId: context.sliceId ?? null,
+            // A slice's id IS its SLICE_BORDER node id, so a node-scoped report finds it too.
+            nodeId: context.sliceId ?? null,
+            boardId: context.boardId ?? null,
+            action: context.source === 'task' ? 'slice-task-turn' : 'slice-build-turn',
+            surface: 'claude-stream',
+            status: msg.is_error ? 'error' : 'ok',
+            meta: {sliceTitle: context.sliceTitle ?? null, attempt: context.attempt ?? null},
+          });
+            }
       }
     });
 
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Claude exited ${code}`))));
     proc.on('error', reject);
+  });
+}
+
+// A build loop ends by being stopped rather than by finishing, so the session rollup has to be
+// taken on the way out or it is never taken at all.
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    tracer.end({action: 'session-end'}).catch(() => {}).finally(() => process.exit(0));
   });
 }
 
