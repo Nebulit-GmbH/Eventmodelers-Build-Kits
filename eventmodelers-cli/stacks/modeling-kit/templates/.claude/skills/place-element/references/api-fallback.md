@@ -164,7 +164,7 @@ Response: `{ "hashes": { "<event-id>": "<hash>" } }` — keyed by the `id` you s
 
 ## Full worked example — place an EVENT via curl, start to finish
 
-With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elementType": "EVENT", "title": "Order Placed" }`.
+With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elements": [{ "elementType": "EVENT", "title": "Order Placed" }] }`.
 
 Placing an EVENT called "Order Placed" at the end of a timeline, over curl:
 

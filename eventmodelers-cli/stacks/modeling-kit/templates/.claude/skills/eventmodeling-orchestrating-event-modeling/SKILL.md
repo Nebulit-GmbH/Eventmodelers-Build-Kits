@@ -110,7 +110,7 @@ For each returned node, check whether it has a valid cell assignment. A node wit
 
   **Prefer MCP:**
   ```
-  mcp__eventmodelers__delete_node { "boardId": "$BOARD_ID", "nodeId": "<nodeId>" }
+  mcp__eventmodelers__delete_node { "boardId": "$BOARD_ID", "nodeIds": ["<nodeId>"] }
   ```
 
   **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Delete an orphaned node".
@@ -135,18 +135,20 @@ Screens placed during Step 3 (Storyboarding) are provisional positions. Steps 4 
 ### Column insertion
 Use `add_column` with `{"index": N}` to insert a column at a specific position (shifts existing columns right) — or, when the insertion point is "immediately before/after a node already on the board" rather than a numeric position you'd otherwise have to compute, pass `beforeNodeId`/`afterNodeId` instead and let the tool resolve the index itself. Do not use no position at all (append) when placing read models or view screens — always target the correct position.
 
-**Suppress auto-connect when inserting into an existing chain.** When you insert columns next to nodes that are *not* meant to connect to what you're about to place — e.g. slotting an output read model's column in beside an automation-chain column — the node placement's default auto-connect will wire the new node to whatever type-compatible node happens to sit in its own or the previous column (the "nearest event to the left"). That is the source of the recurring stray-edge cleanup. When the placement you're about to make should be wired only by your own explicit `set_connections` batch, pass `autoConnect: false` on the placing call (`submit_node_events`, `place_element`, `create_screen`/`create_screens`) and then wire every edge yourself. Keep the default (auto-connect on) for Steps 1/3/4 where same-column neighbors are exactly the intended wiring.
+**Suppress auto-connect when inserting into an existing chain.** When you insert columns next to nodes that are *not* meant to connect to what you're about to place — e.g. slotting an output read model's column in beside an automation-chain column — the node placement's default auto-connect will wire the new node to whatever type-compatible node happens to sit in its own or the previous column (the "nearest event to the left"). That is the source of the recurring stray-edge cleanup. When the placement you're about to make should be wired only by your own explicit `set_connection` batch, pass `autoConnect: false` on the placing call (`submit_node_events`, `place_element`, `create_screen`) and then wire every edge yourself. Keep the default (auto-connect on) for Steps 1/3/4 where same-column neighbors are exactly the intended wiring.
 
-### Prefer batch MCP tools over one-call-per-item loops
+### Every write tool takes an array — fill it
 
-Several MCP tools have a batch form that does the exact same thing as calling their singular form once per item, with the same validation rules and (where order matters, e.g. wiring a READMODEL→AUTOMATION edge before the backward EVENT→READMODEL edge that depends on it) the same in-order guarantee — just fewer round trips. Whenever a step's own instructions below show a single-item call and more than one item is being processed in the same pass, use the batch form instead:
+Each write tool takes its items as an array, so handling several in one pass is one call rather than a loop. Entries are applied in order — which matters where a later one depends on an earlier one, e.g. wiring a READMODEL→AUTOMATION edge before the backward EVENT→READMODEL edge that needs it — every entry reports its own outcome or error in `results`, and one failure does not stop the rest. Whenever a step's instructions below show a one-entry call and more than one item is being processed in the same pass, extend the array instead of repeating the call:
 
-- `set_connections` (not `set_connection` repeated) — wiring multiple edges
-- `auto_connect_nodes` (not `auto_connect_node` repeated) — auto-connecting multiple freshly-placed nodes
-- `create_slice_definitions` (not `create_slice_definition` repeated) — defining multiple slices
-- `create_screens` (not `create_screen` repeated) — creating multiple HTML screens whose content is already authored
-- `move_nodes` (not `move_node_in_timeline` repeated) — moving multiple already-placed nodes within one timeline
-- `delete_nodes` / `delete_columns` (not `delete_node`/`delete_column` repeated) — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
+- `set_connection`'s `connections` — wiring multiple edges
+- `auto_connect_node`'s `nodeIds` — auto-connecting multiple freshly-placed nodes
+- `create_slice_definition`'s `slices` — defining multiple slices
+- `create_screen`'s `screens` — creating multiple screens
+- `place_element`'s `elements` — laying out a whole slice or column run, each entry seeing the columns the previous one added
+- `move_node_in_timeline`'s `moves` — moving multiple already-placed nodes within one timeline
+- `delete_node`'s `nodeIds` / `delete_column`'s `columnIds` — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
+- `add_comment`'s `comments`, `create_drawing`'s `drawings`, `add_lane`'s `lanes` — same shape
 - `add_column`'s `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
 - `create_chapter`'s `columns` param — when the chapter's initial column count is already known, instead of creating the default 3 and appending more after
 
@@ -156,7 +158,7 @@ For a "what is on the board and how is it wired right now" check between steps �
 
 **Structural validation is one call, not a scan.** `validate_model` (`{boardId, chapterId}`) runs the whole structural checklist server-side — unplaced nodes, backward arrows (todo-list exception applied), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios — and returns only `findings`. Use it for the mandatory post-step unplaced check and as the first move in Step 9, instead of per-type `get_nodes` loops and `get_node` `projection: "edges"` spot-checks.
 
-**Ask echo-heavy write tools for less.** `add_scenario`, `add_storyline`, `set_connections` and `submit_node_events` each accept `compact: true`, which drops the full-object echo from the response (returning `{specNodeId, added, count, isNewNode}`, a `{connected, existed, removed, notFound, failed, errors}` tally, or `{persisted: <count>}` respectively). Pass it whenever you're not going to read individual fields back off the response — which is almost always for a large `set_connections` batch or a bulk scenario post.
+**Ask echo-heavy write tools for less.** `add_scenario`, `add_storyline`, `set_connection` and `submit_node_events` each accept `compact: true`, which drops the full-object echo from the response (returning `{specNodeId, added, count, isNewNode}`, a `{connected, existed, removed, notFound, failed, errors}` tally, or `{persisted: <count>}` respectively). Pass it whenever you're not going to read individual fields back off the response — which is almost always for a large `set_connection` batch or a bulk scenario post.
 
 ### Documenting decisions inline, at any step
 
@@ -416,7 +418,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "feedback", "label": "Notes" }
+   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "lanes": [{ "type": "feedback", "label": "Notes" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 11 — Document Reasoning — Add a feedback lane".

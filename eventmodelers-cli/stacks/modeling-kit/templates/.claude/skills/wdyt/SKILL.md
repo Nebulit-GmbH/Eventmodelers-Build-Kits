@@ -138,7 +138,7 @@ Use the `handle-comment` skill with `action=place` to post each comment. Pass:
 - `type` — `COMMENT` (there is no separate question type — the text itself carries the question)
 - `author` — `wdyt`
 
-Post them together, not one at a time: `handle-comment` sends every comment of a run in a single batch request (`add_comments` over MCP, `POST .../boards/:boardId/comments` over REST).
+Post them together, not one at a time: `handle-comment` sends every comment of a run in a single batch request (one `add_comment` call over MCP, `POST .../boards/:boardId/comments` over REST).
 
 Only post questions that are **genuinely unclear or missing** — don't post observations that are clearly intentional design decisions.
 
@@ -153,18 +153,30 @@ There are two kinds — no text-callout kind; a drawing never carries the questi
 - **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions).
 ```
 mcp__eventmodelers__create_drawing {
-  "boardId": "$BOARD_ID", "kind": "path",
-  "x": <sourceX>, "y": <sourceY>, "width": <dx>, "height": <dy>,
-  "path": "M 0 0 L <dx> <dy>", "arrowEnd": true
+  "boardId": "$BOARD_ID",
+  "drawings": [{
+    "kind": "path",
+    "x": <sourceX>,
+    "y": <sourceY>,
+    "width": <dx>,
+    "height": <dy>,
+    "path": "M 0 0 L <dx> <dy>",
+    "arrowEnd": true
+  }]
 }
 ```
 Get element positions from the slice data already loaded in Step 2. If a position is missing, fetch the nodes you need in **one** call — `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<the ids>] }` — not `get_node` per element.
 - **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box:
 ```
 mcp__eventmodelers__create_drawing {
-  "boardId": "$BOARD_ID", "kind": "rect",
-  "x": <minX - pad>, "y": <minY - pad>,
-  "width": <maxX - minX + 2*pad>, "height": <maxY - minY + 2*pad>
+  "boardId": "$BOARD_ID",
+  "drawings": [{
+    "kind": "rect",
+    "x": <minX - pad>,
+    "y": <minY - pad>,
+    "width": <maxX - minX + 2*pad>,
+    "height": <maxY - minY + 2*pad>
+  }]
 }
 ```
 This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.

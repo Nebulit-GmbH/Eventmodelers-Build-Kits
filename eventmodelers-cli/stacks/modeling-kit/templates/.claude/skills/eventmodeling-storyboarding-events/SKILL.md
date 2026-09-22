@@ -122,7 +122,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a c
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "type": "actor", "label": "<Role Name>" }
+   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "lanes": [{ "type": "actor", "label": "<Role Name>" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Resolve One Actor Lane Per Human Role — Step 3: Create a new actor lane".
@@ -226,13 +226,15 @@ Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
-  "contentType": "html",
-  "nodeId": "<node-uuid>",
-  "chapterId": "<CHAPTER_ID>",
-  "cellId": "<actorRowId>-<columnId>",
-  "pages": ["<div>...</div>"],
-  "description": "<concise description of what this screen shows>",
-  "fields": [ /* per "Mandatory Field Definitions" below — set in this same call */ ]
+  "screens": [{
+    "contentType": "html",
+    "nodeId": "<node-uuid>",
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorRowId>-<columnId>",
+    "pages": ["<div>...</div>"],
+    "description": "<concise description of what this screen shows>",
+    "fields": [ /* per "Mandatory Field Definitions" below — set in this same call */ ]
+  }]
 }
 ```
 
@@ -240,7 +242,7 @@ mcp__eventmodelers__create_screen {
 
 The MCP `create_screen` call above already sets `meta.fields` (per "Mandatory Field Definitions" below) in the same call — no separate `node:changed` follow-up needed when using MCP.
 
-A storyboard screen is placed at a *provisional* position — Steps 4 and 5 wire it to its COMMAND / READMODEL once those exist, and may move it first. Pass `autoConnect: false` on `create_screen` / `create_screens` here so the placement doesn't pre-wire the screen to whatever happens to sit in the adjacent column; the real `SCREEN → COMMAND` and `READMODEL → SCREEN` edges are created deliberately in Steps 4 and 5. When creating several screens whose HTML is already authored, use `create_screens` (batch) with `autoConnect: false`.
+A storyboard screen is placed at a *provisional* position — Steps 4 and 5 wire it to its COMMAND / READMODEL once those exist, and may move it first. Pass `autoConnect: false` on `create_screen` here so the placement doesn't pre-wire the screen to whatever happens to sit in the adjacent column; the real `SCREEN → COMMAND` and `READMODEL → SCREEN` edges are created deliberately in Steps 4 and 5. When creating several screens whose HTML is already authored, put them all in one `create_screen` call's `screens` array with `autoConnect: false`.
 
 Design the page(s) as real HTML/CSS, following the `html-screen` skill's guidance: write full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper — the canvas adds those), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default. Every page MUST include real field labels matching the actual event/command fields this screen captures or displays, and at least one primary action (submit/confirm button) for command screens.
 

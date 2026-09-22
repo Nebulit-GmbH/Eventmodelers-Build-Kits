@@ -44,14 +44,17 @@ Use `BOARD_ID` and `BASE_URL` from the `connect` skill. If a `boardId` argument 
 mcp__eventmodelers__place_element {
   "boardId": "<BOARD_ID>",
   "timelineId": "<TIMELINE_ID>",
-  "elementType": "<COMMAND|READMODEL|EVENT>",
-  "title": "<title>",
-  "columnIndex": <position, if given>,
-  "fields": [{ "name": "orderId", "type": "String", "example": "ord-1" }]
+  "elements": [{
+    "elementType": "<COMMAND|READMODEL|EVENT>",
+    "title": "<title>",
+    "columnIndex": <position,
+    if given>,
+    "fields": [{ "name": "orderId", "type": "String", "example": "ord-1" }]
+  }]
 }
 ```
 
-Pass `fields` whenever the element's attributes are already known — they are written by this same call, so don't follow a placement with a `submit_node_events` just to set them. Placing **more than one** element is `place_elements` with an `elements` array (same per-entry options), applied in order so each entry sees the columns the previous one added — one call for a whole slice's or column run's worth instead of one per element.
+Pass `fields` whenever the element's attributes are already known — they are written by this same call, so don't follow a placement with a `submit_node_events` just to set them. Placing **more than one** element is more entries in the same `elements` array, applied in order so each entry sees the columns the previous one added — one call for a whole slice's or column run's worth instead of one per element.
 
 This tool finds or creates an empty cell in the correct lane and places the node in one call — it collapses the "resolve timeline → fetch columns → determine lane → check occupancy → create node" sequence (Steps 2–3, 4, 6, 7b below) into a single round trip. A `columnIndex` past the timeline's current column count is handled automatically (columns are added to reach it) — no need to pre-check the column count or catch an out-of-range error yourself. If `timelineId` is unknown, resolve it first via Step 2's MCP call. Pass `compact: true` for a smaller `{nodeId, cellName, columnIndex}` response (plus `connectedCount` if auto-connect wired an edge) when you don't need the full `lane`/`elementType`/`title`/`autoConnected` detail back. Go straight to Step 8 once it returns.
 
@@ -274,13 +277,15 @@ mcp__eventmodelers__link_element { "boardId": "<BOARD_ID>", "nodeId": "<origin-n
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
-  "contentType": "html",
-  "nodeId": "<node-uuid>",
-  "chapterId": "<TIMELINE_ID>",
-  "cellId": "<CELL_ID>",
-  "title": "<title>",
-  "pages": ["<div>...</div>"],
-  "description": "<title — what this screen shows>"
+  "screens": [{
+    "contentType": "html",
+    "nodeId": "<node-uuid>",
+    "chapterId": "<TIMELINE_ID>",
+    "cellId": "<CELL_ID>",
+    "title": "<title>",
+    "pages": ["<div>...</div>"],
+    "description": "<title — what this screen shows>"
+  }]
 }
 ```
 
@@ -293,13 +298,15 @@ mcp__eventmodelers__create_screen {
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
-  "contentType": "sketch",
-  "nodeId": "<node-uuid>",
-  "chapterId": "<TIMELINE_ID>",
-  "cellId": "<CELL_ID>",
-  "title": "<title>",
-  "elements": [...],
-  "description": "<title — what this screen shows>"
+  "screens": [{
+    "contentType": "sketch",
+    "nodeId": "<node-uuid>",
+    "chapterId": "<TIMELINE_ID>",
+    "cellId": "<CELL_ID>",
+    "title": "<title>",
+    "elements": [...],
+    "description": "<title — what this screen shows>"
+  }]
 }
 ```
 
@@ -378,7 +385,7 @@ Count inbound edges where `target === COMMAND_NODE_ID` and the source node is ty
 - **2 or more** → keep the edge whose source sits in the COMMAND's own column (the deliberate, same-slice issuer) and remove every other one:
 
 ```
-mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }
+mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }] }
 ```
 
 If it's not clear which edge is the deliberate one (e.g. neither source sits in the COMMAND's own column), do not guess — leave both edges and post a comment on the COMMAND node via `handle-comment` instead, describing the ambiguity.
@@ -409,4 +416,4 @@ Timeline: <timelineId>
 
 ## Example — place an EVENT via curl
 
-A full worked example (add column → fetch chapter → create node) placing an EVENT called "Order Placed" at the end of a timeline lives in `references/api-fallback.md`'s "Full worked example" section. With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elementType": "EVENT", "title": "Order Placed" }` (see "Prefer MCP" above).
+A full worked example (add column → fetch chapter → create node) placing an EVENT called "Order Placed" at the end of a timeline lives in `references/api-fallback.md`'s "Full worked example" section. With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elements": [{ "elementType": "EVENT", "title": "Order Placed" }] }` (see "Prefer MCP" above).

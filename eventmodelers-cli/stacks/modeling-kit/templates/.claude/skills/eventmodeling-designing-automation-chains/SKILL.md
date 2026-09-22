@@ -84,9 +84,11 @@ The todo-list read model goes in the interaction lane, **one column before** its
 mcp__eventmodelers__place_element {
   "boardId": "<BOARD_ID>",
   "timelineId": "<CHAPTER_ID>",
-  "elementType": "READMODEL",
-  "title": "NotificationsToSend",
-  "columnIndex": <automationColumnIndex - 1>
+  "elements": [{
+    "elementType": "READMODEL",
+    "title": "NotificationsToSend",
+    "columnIndex": <automationColumnIndex - 1>
+  }]
 }
 ```
 Then set `meta.fields` and `meta.listElement: true` on the returned node id:
@@ -102,7 +104,7 @@ mcp__eventmodelers__submit_node_events {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Placement — todo-list READMODEL, one column before its automation".
 
-**Place every node in a translation chain with `autoConnect: false`** (`place_element` / `create_screen` / `submit_node_events` all take the flag). A chain's columns are inserted into the middle of an existing timeline, so the default nearest-left auto-connect will wire the new todo-list READMODEL or internal EVENT to whatever unrelated event sits in the column before it — the recurring "spurious auto-connect edge near an automation chain" cleanup. Suppress it and build the chain's edges yourself in the `set_connections` batch below, then confirm with `validate_model`.
+**Place every node in a translation chain with `autoConnect: false`** (`place_element` / `create_screen` / `submit_node_events` all take the flag). A chain's columns are inserted into the middle of an existing timeline, so the default nearest-left auto-connect will wire the new todo-list READMODEL or internal EVENT to whatever unrelated event sits in the column before it — the recurring "spurious auto-connect edge near an automation chain" cleanup. Suppress it and build the chain's edges yourself in the `set_connection` batch below, then confirm with `validate_model`.
 
 > **Never call `drop` after using `cellId` in `node:created`.** The drop endpoint adds a second cell reference without removing the first.
 
@@ -112,11 +114,11 @@ For a **translation-chain automation**, place its three columns left to right in
 
 1. **READMODEL → AUTOMATION first** — the automation reads its own todo list. The closing connection below is only accepted once this edge exists.
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }] }
    ```
 2. **Every opening EVENT → READMODEL.**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<openingEventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<openingEventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }] }
    ```
 3. **Every closing EVENT → READMODEL — worker-stage todo lists only.** Including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already has a `READMODEL → AUTOMATION` edge (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the edge from step 1 above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient. **Do not add this edge for a translation automation's todo list** — it has no closing event at all (see the translation-chain rule above); wiring one back is a modeling error, not a convenience.
 
@@ -124,7 +126,7 @@ For a **translation-chain automation**, place its three columns left to right in
 
 Skip a connection silently if the target cell is empty (the element may not exist yet). Log each created arrow, e.g. `→ connected READMODEL→AUTOMATION "NotificationsToSend"→"Send Welcome Notification"`.
 
-If this step is designing more than one automation's chain in the same pass, batch every connection from every automation into one `set_connections` call (with `compact: true`) instead of one `set_connection` per edge — `set_connections` still applies its entries **in order**, so keep each automation's own three-edge sequence intact (READMODEL→AUTOMATION before its closing EVENT→READMODEL) within the combined array; different automations' triples can be interleaved or concatenated freely since they don't depend on each other.
+If this step is designing more than one automation's chain in the same pass, put every connection from every automation into one `set_connection` call (with `compact: true`) instead of one call per edge — `set_connection` still applies its entries **in order**, so keep each automation's own three-edge sequence intact (READMODEL→AUTOMATION before its closing EVENT→READMODEL) within the combined array; different automations' triples can be interleaved or concatenated freely since they don't depend on each other.
 
 ## Verification (run before moving to Step 5)
 

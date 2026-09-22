@@ -99,7 +99,7 @@ For every column from Step 2 that doesn't already have a matching slice, mark ea
 
 Prefer MCP:
 ```
-mcp__eventmodelers__create_slice_definitions { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "slices": [
+mcp__eventmodelers__create_slice_definition { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "slices": [
   { "columnId": "<colId1>", "title": "PlaceOrder" },
   { "columnId": "<colId2>", "title": "OrderStatusView" }
 ] }
@@ -112,7 +112,7 @@ mcp__eventmodelers__create_slice_definitions { "boardId": "<BOARD_ID>", "timelin
 - READMODEL column → title = read model name (state-view slice)
 - AUTOMATION column → title = automation name, or the command it issues (automation slice)
 
-Use **`create_slice_definitions`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definitions`/`slice-definitions` only adds a `SLICE_BORDER` node to each column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
+Use **`create_slice_definition`/`slice-definitions`**, never `create_slice`/the plain **`slices`** endpoint here — `create_slice`/`slices` creates a brand-new column with its own swimlane/content nodes, which would duplicate the element already placed on the timeline. `create_slice_definition`/`slice-definitions` only adds a `SLICE_BORDER` node to each column you already resolved in Step 2. `title` always comes from the request body — it is never derived automatically from the command/read model/automation node.
 
 **If Step 2 finds nothing to slice** (every COMMAND/READMODEL/AUTOMATION on the timeline already has a matching `SLICE_BORDER`), this skill's job is done — there is no existing element left to make explicit. Do not invent new model content here; that is out of scope for a skill whose whole design assumes the model is already complete. Invoke the `add-next-slice` skill instead — it owns deciding on and creating a genuinely new slice from scratch.
 

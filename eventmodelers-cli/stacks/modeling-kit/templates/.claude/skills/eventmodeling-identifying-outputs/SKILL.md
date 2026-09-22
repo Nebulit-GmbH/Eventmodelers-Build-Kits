@@ -256,9 +256,11 @@ Read models go in the `interaction` lane. For a **SCREEN**, the primary read mod
 mcp__eventmodelers__place_element {
   "boardId": "<BOARD_ID>",
   "timelineId": "<CHAPTER_ID>",
-  "elementType": "READMODEL",
-  "title": "ActiveReservationView",
-  "columnIndex": <consumerScreenColumnIndex>  // or <automationColumnIndex - 1> for an AUTOMATION consumer
+  "elements": [{
+    "elementType": "READMODEL",
+    "title": "ActiveReservationView",
+    "columnIndex": <consumerScreenColumnIndex>  // or <automationColumnIndex - 1> for an AUTOMATION consumer
+  }]
 }
 ```
 Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) — and `meta.listElement: true` if this read model is list-shaped — on the returned node id:
@@ -279,7 +281,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5f — Placing a READMODEL node (full manual sequence)".
 
-**Pass `autoConnect: false` on every `place_element` / `node:created` call in this step.** Output read-model columns are inserted right next to automation-chain and command columns whose events are *not* the read model's sources — the default auto-connect would wire the new READMODEL to the nearest event on its left, which is exactly the stray-edge cleanup this step has repeatedly generated. Suppress it here and wire every `EVENT → READMODEL` / `READMODEL → SCREEN` / `READMODEL → AUTOMATION` edge explicitly in Step 5h's `set_connections` batch. After the batch, run `validate_model` (`{boardId, chapterId}`) — its `backward-arrows` and `readmodel-sources` findings confirm the wiring is what you intended and no stray edge slipped in.
+**Pass `autoConnect: false` on every `place_element` / `node:created` call in this step.** Output read-model columns are inserted right next to automation-chain and command columns whose events are *not* the read model's sources — the default auto-connect would wire the new READMODEL to the nearest event on its left, which is exactly the stray-edge cleanup this step has repeatedly generated. Suppress it here and wire every `EVENT → READMODEL` / `READMODEL → SCREEN` / `READMODEL → AUTOMATION` edge explicitly in Step 5h's `set_connection` batch. After the batch, run `validate_model` (`{boardId, chapterId}`) — its `backward-arrows` and `readmodel-sources` findings confirm the wiring is what you intended and no stray edge slipped in.
 
 **For an AUTOMATION** (actor lane) — its READMODEL always goes **one column to its left**, never the same column: the automation's own column already holds the COMMAND it issues (interaction row), so the read model can't also live there.
 
@@ -325,7 +327,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    ```
    mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    # → read cells["<swimlaneRowId>-<columnId>"] for the occupying node id
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.1 — Wire EVENT → READMODEL".
@@ -334,7 +336,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.2 — Wire READMODEL → SCREEN".
@@ -345,14 +347,14 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.3 — Wire READMODEL → AUTOMATION".
 
 Skip a connection silently if the target cell is empty. Log each created arrow: `→ connected EVENT→READMODEL "OrderPlaced"→"OrderStatusView"`, `→ connected READMODEL→SCREEN "OrderStatusView"→"Order Status Screen"`, or `→ connected READMODEL→AUTOMATION "OrderStatusView"→"Fulfillment Processor"`.
 
-If this step is processing more than one read model in the same pass, collect every connection resolved above (across all of them) into one `set_connections` call instead of one `set_connection` per pair — this was the single largest source of individual tool calls in this step. Pass `compact: true` on that call: with `autoConnect: false` set at placement, every edge here is one you're deliberately creating, so a `{connected, existed, removed, notFound, failed, errors}` tally is all you need back — not a row per edge.
+If this step is processing more than one read model in the same pass, collect every connection resolved above (across all of them) into one `set_connection` call instead of one call per pair — this was the single largest source of individual tool calls in this step. Pass `compact: true` on that call: with `autoConnect: false` set at placement, every edge here is one you're deliberately creating, so a `{connected, existed, removed, notFound, failed, errors}` tally is all you need back — not a row per edge.
 
 4. **Document the reasoning for each connected event** — for every EVENT → READMODEL edge wired in step 1 (including any added later, e.g. via Step 5g's backward-connection exemption or a Step 5c/copy pattern), record why that event feeds this read model: which field(s) it sets or updates, and why. Use one MARKDOWN note per read model, in that read model's own column (same feedback-lane + MARKDOWN mechanics as `eventmodeling-orchestrating-event-modeling`'s "Documenting decisions inline, at any step" / Step 11 — add the chapter's feedback lane first if it doesn't already exist, then place the note at `cellId = "<feedbackLaneId>-<readModelColumnId>"`). Extend the existing note (don't create a second one) when the read model later gains another connected event.
 

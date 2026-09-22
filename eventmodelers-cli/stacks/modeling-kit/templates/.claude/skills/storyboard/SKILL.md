@@ -179,13 +179,15 @@ Build the payload, then send a single call that creates the screen node, places 
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
-  "contentType": "html",
-  "nodeId": "<SCREEN_NODE_ID>",
-  "chapterId": "<CHAPTER_ID>",
-  "cellId": "<actorCellId>",
-  "title": "<screenTitle>",
-  "pages": ["<div>...</div>"],
-  "description": "<screenTitle — what this screen shows>"
+  "screens": [{
+    "contentType": "html",
+    "nodeId": "<SCREEN_NODE_ID>",
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorCellId>",
+    "title": "<screenTitle>",
+    "pages": ["<div>...</div>"],
+    "description": "<screenTitle — what this screen shows>"
+  }]
 }
 ```
 
@@ -198,13 +200,15 @@ mcp__eventmodelers__create_screen {
 ```
 mcp__eventmodelers__create_screen {
   "boardId": "<BOARD_ID>",
-  "contentType": "sketch",
-  "nodeId": "<SCREEN_NODE_ID>",
-  "chapterId": "<CHAPTER_ID>",
-  "cellId": "<actorCellId>",
-  "title": "<screenTitle>",
-  "elements": [...],
-  "description": "<screenTitle — what this screen shows>"
+  "screens": [{
+    "contentType": "sketch",
+    "nodeId": "<SCREEN_NODE_ID>",
+    "chapterId": "<CHAPTER_ID>",
+    "cellId": "<actorCellId>",
+    "title": "<screenTitle>",
+    "elements": [...],
+    "description": "<screenTitle — what this screen shows>"
+  }]
 }
 ```
 

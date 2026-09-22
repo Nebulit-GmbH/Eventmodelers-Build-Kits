@@ -43,7 +43,7 @@ Route to the matching section below based on `action`.
 **Prefer MCP** — one call, `type` (`COMMENT`/`TASK`) passed straight through:
 
 ```
-mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK>", "author": "<author>" }
+mcp__eventmodelers__add_comment { "boardId": "$BOARD_ID", "comments": [{ "nodeId": "$NODE_ID", "text": "<text>", "type": "<COMMENT|TASK>", "author": "<author>" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Action: place".
@@ -58,7 +58,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/comments" \
        {"nodeId":"<id2>","text":"<text2>","type":"QUESTION","author":"wdyt"}]'
 ```
 
-Response: `201 {"results":[{"nodeId":"<id>","id":"<commentId>"}, …]}` in request order — an entry whose node doesn't exist reports `error` there without dropping the rest. Over MCP this is the `add_comments` tool.
+Response: `201 {"results":[{"nodeId":"<id>","id":"<commentId>"}, …]}` in request order — an entry whose node doesn't exist reports `error` there without dropping the rest. Over MCP this is the `add_comment` tool's `comments` array.
 
 **Report:**
 ```

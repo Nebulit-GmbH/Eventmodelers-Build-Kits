@@ -148,11 +148,13 @@ Commands go in the **interaction lane**, same column as the event they produce.
 mcp__eventmodelers__place_element {
   "boardId": "<BOARD_ID>",
   "timelineId": "<CHAPTER_ID>",
-  "elementType": "COMMAND",
-  "title": "ReserveBike"
+  "elements": [{
+    "elementType": "COMMAND",
+    "title": "ReserveBike"
+  }]
 }
 ```
-`place_element` finds/creates the empty cell in the interaction lane in the correct column and places the node — but it does not accept `fields`. Immediately follow up with `submit_node_events` (`node:changed`) to set `meta.fields` (with `mapping`/`generated`/`cardinality` per the rules above) on the node it returned:
+`place_element` finds/creates the empty cell in the interaction lane in the correct column and places the node. Pass each entry's `fields` in the same call when the attributes are already known; otherwise follow up with `submit_node_events` (`node:changed`) to set `meta.fields` (with `mapping`/`generated`/`cardinality` per the rules above) on the node it returned:
 ```
 mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
@@ -201,9 +203,9 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
    Read `cells["<actorRowId>-<columnId>"]` for the occupying node id (a cell id absent from that sparse array is empty — no SCREEN placed yet). Then connect with the type-checked edge tool, which auto-corrects direction and skips duplicates:
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }] }
    ```
-   If wiring more than one COMMAND in the same pass, prefer batching every SCREEN→COMMAND and COMMAND→EVENT pair across all of them into one `set_connections` call (see step 2 below) instead of one `set_connection` per pair.
+   If wiring more than one COMMAND in the same pass, put every SCREEN→COMMAND and COMMAND→EVENT pair across all of them into one `set_connection` call's `connections` array (see step 2 below) instead of one call per pair.
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 1: SCREEN → COMMAND".
 
@@ -217,7 +219,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
    Read `cells["<swimlaneRowId>-<columnId>"]` for the occupying node id, then:
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 2: COMMAND → EVENT".
@@ -226,7 +228,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
 Skip a connection silently if the target cell is empty (the element may be placed in a later step). Log each created arrow: `→ connected SCREEN→COMMAND "PlaceOrder"` or `→ connected COMMAND→EVENT "PlaceOrder"→"OrderPlaced"`.
 
-If wiring more than one COMMAND in this pass, send all the SCREEN→COMMAND and COMMAND→EVENT edges in one `set_connections` call with `compact: true` — you author every edge here deliberately, so the `{connected, existed, removed, notFound, failed, errors}` tally is enough.
+If wiring more than one COMMAND in this pass, send all the SCREEN→COMMAND and COMMAND→EVENT edges in one `set_connection` call with `compact: true` — you author every edge here deliberately, so the `{connected, existed, removed, notFound, failed, errors}` tally is enough.
 
 **After wiring, run `validate_model` (`{boardId, chapterId}`).** Its `command-issuers` finding flags any COMMAND that ended up with two issuers — the classic symptom of the platform's auto-connect cross-wiring a previous-column SCREEN into a command that an AUTOMATION already drives (or vice versa). Fix each by removing the wrong edge. If you already know a placement sits next to an unrelated column whose SCREEN/AUTOMATION would be mis-wired, place that COMMAND with `autoConnect: false` and wire its single real issuer yourself.
 

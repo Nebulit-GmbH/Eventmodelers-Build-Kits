@@ -191,7 +191,7 @@ emptyColumns = [columnId, ...]   // in column order, ready to reuse
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnId": "<columnId>" }
+mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnIds": ["<columnId>"] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".
@@ -260,7 +260,7 @@ mcp__eventmodelers__submit_node_events {
 
 **Prefer MCP:** this whole "find/create a column, compute the cell, place the node" sequence collapses into one call:
 ```
-mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "elementType": "EVENT", "title": "<EventName>", "columnIndex": <index> }
+mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "elements": [{ "elementType": "EVENT", "title": "<EventName>", "columnIndex": <index> }] }
 ```
 Extract `nodeId` and `columnId` directly from the tool result.
 
@@ -319,7 +319,7 @@ Two steps — delete the node, then delete the column:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__delete_node { "boardId": "<BOARD_ID>", "nodeId": "<eventNodeId>" }
+mcp__eventmodelers__delete_node { "boardId": "<BOARD_ID>", "nodeIds": ["<eventNodeId>"] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Delete an event node".
@@ -328,7 +328,7 @@ mcp__eventmodelers__delete_node { "boardId": "<BOARD_ID>", "nodeId": "<eventNode
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnId": "<columnId>" }
+mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnIds": ["<columnId>"] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".

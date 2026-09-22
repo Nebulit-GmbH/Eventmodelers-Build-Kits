@@ -50,10 +50,10 @@ No slice depends on another slice directly — only on the events it produces.
 
 ## Creating These Slices via the API
 
-These elements already exist on the timeline (from `spec-info`) — use `create_slice_definitions`/`slice-definitions`, which only adds a `SLICE_BORDER` to each column's existing element. Never use `create_slice`/the plain `/slices` endpoint here: that endpoint creates a brand-new column with its own nodes, which would duplicate the element already on the board.
+These elements already exist on the timeline (from `spec-info`) — use `create_slice_definition`/`slice-definitions`, which only adds a `SLICE_BORDER` to each column's existing element. Never use `create_slice`/the plain `/slices` endpoint here: that endpoint creates a brand-new column with its own nodes, which would duplicate the element already on the board.
 
 ```
-mcp__eventmodelers__create_slice_definitions { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "slices": [
+mcp__eventmodelers__create_slice_definition { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "slices": [
   { "columnId": "<placeOrderColumnId>", "title": "PlaceOrder" },
   { "columnId": "<orderDetailViewColumnId>", "title": "OrderDetailView" },
   { "columnId": "<reserveInventoryOnPaymentColumnId>", "title": "ReserveInventoryOnPayment" }
