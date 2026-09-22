@@ -189,7 +189,8 @@ npx @eventmodelers/cli run --modeling               # react to prompts sent to t
 npx @eventmodelers/cli run --standalone             # …and to board changes, on its own initiative
 ```
 
-`--standalone` implies `--modeling`, so you never need both.
+`--standalone` implies `--modeling`, so you never need both. To drive either one with a local
+model instead of Claude, see [Running the modeling agent on a local model](#running-the-modeling-agent-on-a-local-model).
 
 **No install required.** A modeling agent never touches the directory it was started from —
 it works against the board over MCP/REST — so it doesn't need a kit scaffolded there. When
@@ -316,6 +317,50 @@ Direct prompts always outrank the agent's own initiative — a self-directed tur
 anything from the prompt queue is running, and the changes it was about keep accumulating
 meanwhile.
 
+### Running the modeling agent on a local model
+
+`--local-ai` works on the modeling loop too, not just build kits:
+
+```bash
+npx @eventmodelers/cli run --standalone --local-ai                 # bare flag = Ollama on localhost:11434
+npx @eventmodelers/cli run --standalone --local-ai vllm            # vLLM on localhost:8000
+LOCAL_AI_URL=http://gpu-box:8000/v1 LOCAL_AI_MODEL=Qwen/Qwen3-8B \
+  npx @eventmodelers/cli run --standalone --local-ai               # any OpenAI-compatible server
+```
+
+Two wire dialects cover the field, and the preset picks both the URL and the dialect:
+`ollama` speaks Ollama's native `POST /api/chat`, while `vllm`/`lmstudio`/`llamacpp` speak the
+OpenAI-compatible `POST /v1/chat/completions` that vLLM, LM Studio, llama.cpp-server, TGI and
+SGLang all serve. Everything above the transport is identical, which is why anything
+OpenAI-compatible works by pointing `LOCAL_AI_URL` at it. The `LOCAL_AI_*` vars are the same
+ones a build kit's local runner reads (`LOCAL_AI_TARGET`, `LOCAL_AI_URL`, `LOCAL_AI_API`,
+`LOCAL_AI_MODEL`, `LOCAL_AI_API_KEY`, `LOCAL_AI_NUM_CTX`), or set them once as `localAi` in
+`.eventmodelers/config.json`.
+
+**What you get and what you don't.** The loop around the turn is unchanged — the prompt queue,
+the standalone board-change lane with all its damping, the idle review, the alive-ping, and the
+platform's full MCP tool set, which the runner loads once per session. What a local model
+cannot bring along is the part that isn't a wire format: the **skills** (`/place-element`,
+`/timeline`, the `eventmodeling-*` methodology) and the **subagent fan-out**. Those are Claude
+Code features. So a self-directed turn on a local model does the most valuable piece of work
+itself, inline, with the board tools, instead of dispatching one agent per piece — the board
+rules it needs are stated in the runner's own system prompt (`lib/modeling-local-ai.js`) rather
+than read from `.agent-modeling-kit/CLAUDE.md`. `--max-agents` has nothing to cap and is ignored.
+
+Give it room: the platform's MCP tool schemas alone run to ~16k tokens, so Ollama's default
+`num_ctx` of 4096 would silently truncate the tool block and leave the model inventing tool
+names. The runner raises it to 32768 by default (`LOCAL_AI_NUM_CTX`) and warns when the schemas
+still fill more than 60% of it. On an OpenAI-compatible server the context is fixed at launch
+instead, so start it accordingly (vLLM: `--max-model-len 32768`, llama.cpp: `-c 32768`) —
+overflow there surfaces as an HTTP 400, which the runner reports with that advice attached.
+A turn is capped at 24 tool iterations, which ends a model that has lost the plot without
+ending the session.
+
+Wanting the *full* Claude modeling agent (skills, subagents and all) on local weights is a
+different thing, and `anthropicBaseUrl` below is that path — but note that it needs a server
+speaking Anthropic's own `/v1/messages`, which Ollama does not serve. Pointing it straight at
+`localhost:11434` gets you a 404; a translating proxy has to sit in between.
+
 ### Installing skills globally
 
 By default, skills are copied into the project's own `.claude/skills/`. Pass `--global` to `init` or `init-modeling` to install them into `~/.claude/skills/` instead — available in every project without re-running the installer each time:
@@ -362,7 +407,12 @@ The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STA
 
 ### Claude execution & config resolution
 
-During install you can optionally point the agent at a local LLM server (vLLM, Ollama) instead of the default Claude Code endpoint, and/or pin a specific model:
+During install you can optionally point the agent at a local LLM server instead of the default
+Claude Code endpoint, and/or pin a specific model. This is the *other* local-model route: it
+keeps Claude Code (and so the skills and subagents) and swaps only the endpoint behind it, which
+means the server has to speak Anthropic's own `/v1/messages` — a vLLM deployment fronted for it,
+or a translating proxy. Ollama's native API isn't that, so for Ollama use `--local-ai` above
+instead:
 
 ```
 🧠 Configuring Claude execution (optional)...
