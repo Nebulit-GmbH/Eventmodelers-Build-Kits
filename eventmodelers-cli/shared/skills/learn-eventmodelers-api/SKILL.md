@@ -63,7 +63,6 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages` | §4 `POST .../images/:id/sketch` + `image-nodes` |
 | `add_field_examples` | `boardId`, `nodeId?`, `name?`, `cellName?`, `timelineId?` | Fill empty field examples using linked-node context | — (MCP-only convenience) |
 | `get_attribute_chain` | `boardId`, `timelineId`, `targetCellName`, `sourceCellName` | Resolve every node between two cells, ordered target→source. Both cell names must come from a node's reported `cellName` (`get_board_outline`, `get_nodes`, `get_node`) — a guessed address that happens to exist silently resolves the wrong chain | — (MCP-only convenience) |
-| `verify_screen` | `boardId`, `nodeId` | Check a screen node exists and has rendered content — works for both SCREEN and HTML_SCREEN, dispatching on the node's actual type | — (MCP-only convenience) |
 | `get_image_snapshot_description` | `boardId`, `nodeId` | Load the `{elements:[...]}` sketch description from storage | — (reads what §4 sketch endpoints write) |
 | `validate_slice_data` | `sliceData` | Offline validation of a `SliceDataOutput` payload — no board access | — (MCP-only, pure function) |
 | `commit_board_to_git` | `boardId` | Force a git-extension commit/push, bypassing the autoCommit gate | — (MCP-only; git extension) |
