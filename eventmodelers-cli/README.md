@@ -335,7 +335,20 @@ SGLang all serve. Everything above the transport is identical, which is why anyt
 OpenAI-compatible works by pointing `LOCAL_AI_URL` at it. The `LOCAL_AI_*` vars are the same
 ones a build kit's local runner reads (`LOCAL_AI_TARGET`, `LOCAL_AI_URL`, `LOCAL_AI_API`,
 `LOCAL_AI_MODEL`, `LOCAL_AI_API_KEY`, `LOCAL_AI_NUM_CTX`), or set them once as `localAi` in
-`.eventmodelers/config.json`.
+`.eventmodelers/config.json` — env wins over the file, the file over the preset:
+
+```json
+{
+  "boardId": "...",
+  "token": "...",
+  "localAi": {
+    "target": "ollama",
+    "url": "http://localhost:11434",
+    "model": "qwen3.5:9b",
+    "numCtx": 49152
+  }
+}
+```
 
 **What you get and what you don't.** The loop around the turn is unchanged — the prompt queue,
 the standalone board-change lane with all its damping, the idle review, the alive-ping, and the
@@ -349,9 +362,9 @@ than read from `.agent-modeling-kit/CLAUDE.md`. `--max-agents` has nothing to ca
 
 Give it room: the platform's MCP tool schemas alone run to ~16k tokens, so Ollama's default
 `num_ctx` of 4096 would silently truncate the tool block and leave the model inventing tool
-names. The runner raises it to 32768 by default (`LOCAL_AI_NUM_CTX`) and warns when the schemas
+names. The runner raises it to 49152 by default (`LOCAL_AI_NUM_CTX`) and warns when the schemas
 still fill more than 60% of it. On an OpenAI-compatible server the context is fixed at launch
-instead, so start it accordingly (vLLM: `--max-model-len 32768`, llama.cpp: `-c 32768`) —
+instead, so start it accordingly (vLLM: `--max-model-len 49152`, llama.cpp: `-c 49152`) —
 overflow there surfaces as an HTTP 400, which the runner reports with that advice attached.
 A turn is capped at 24 tool iterations, which ends a model that has lost the plot without
 ending the session.

@@ -47,7 +47,7 @@ const PRESETS = {
 };
 
 const DEFAULT_MODEL = 'qwen3.5:9b';
-const DEFAULT_NUM_CTX = 32768;
+const DEFAULT_NUM_CTX = 49152;
 // A modeling turn is read-then-write (get_nodes, then a placement or a field change),
 // so it needs more round trips than the build kit's 12 — but a local model that has
 // lost the plot loops on one tool forever, and this is what ends that turn instead of
@@ -77,7 +77,22 @@ export function resolveLocalAiTarget({ target, localAi = {} } = {}) {
     throw new Error(`Unknown local-AI dialect "${dialect}" — one of: ${Object.keys(DIALECTS).join(', ')}`);
   }
 
-  const rawCtx = process.env.LOCAL_AI_NUM_CTX || localAi.numCtx;
+  // Configured the same way every other knob here is: env wins over config.json's `localAi`,
+  // and the default stands when neither says otherwise. Validated rather than coerced, because
+  // Number('32k') is NaN, which JSON.stringify turns into `num_ctx: null` — a request Ollama
+  // accepts and silently answers with its own 4096 default, which is the exact failure the
+  // default below exists to prevent.
+  const rawCtx = process.env.LOCAL_AI_NUM_CTX ?? localAi.numCtx;
+  let numCtx = DEFAULT_NUM_CTX;
+  if (rawCtx !== undefined && rawCtx !== null && String(rawCtx).trim() !== '') {
+    numCtx = Number(rawCtx);
+    if (!Number.isInteger(numCtx) || numCtx <= 0) {
+      throw new Error(
+        `Invalid context size "${rawCtx}" (LOCAL_AI_NUM_CTX or localAi.numCtx) — a positive whole number of tokens, e.g. ${DEFAULT_NUM_CTX}`,
+      );
+    }
+  }
+
   return {
     url,
     dialect,
@@ -87,7 +102,7 @@ export function resolveLocalAiTarget({ target, localAi = {} } = {}) {
     // num_ctx is per-request in Ollama and its default (4096) is far below what the
     // MCP tool schemas alone need; on an OpenAI-compatible server the context is fixed
     // at launch, so there is nothing to send and overflow surfaces as an HTTP 400.
-    numCtx: dialect === 'ollama' ? (rawCtx ? Number(rawCtx) : DEFAULT_NUM_CTX) : null,
+    numCtx: dialect === 'ollama' ? numCtx : null,
   };
 }
 
@@ -200,7 +215,7 @@ export function createModelingLocalAiRunner({ cfg, target, log, verbose = false,
         throw new Error(
           `${t.dialect} HTTP 400 — the request exceeds the server's context window. The MCP tool schemas alone ` +
             `are ~${approxTokens(tools)} tokens; restart the server with a larger context ` +
-            `(vLLM: --max-model-len 32768, llama.cpp: -c 32768).\n${text.slice(0, 300)}`,
+            `(vLLM: --max-model-len 49152, llama.cpp: -c 49152).\n${text.slice(0, 300)}`,
         );
       }
       throw new Error(`${t.dialect} HTTP ${res.status}: ${text.slice(0, 300)}`);
