@@ -1568,9 +1568,21 @@ async function fetchDefaultBoardId(baseUrl, token) {
 // .eventmodelers/config.json up the tree beat ~/.eventmodelers/config.json. So
 // `run --standalone --board-id <uuid>` is enough for a board used before, and any run can
 // be pointed somewhere else entirely with --token/--organization-id.
-async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print) {
+async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print, nonInteractive = false) {
   const walked = loadEffectiveConfig(cwd, null, explicitConfigPath).config;
   const explicit = Object.fromEntries(Object.entries(flags ?? {}).filter(([, v]) => v));
+
+  // Whether there is anyone to ask, decided once. A TTY was the only signal before, which is
+  // right for a supervisor or CI (no stdin, so nothing to ask) but wrong for a loop started
+  // from a terminal: stdin is a TTY nobody is watching, and the run stops on a question.
+  // --non-interactive says so explicitly; --print never asks either.
+  const interactive = !print && !nonInteractive && process.stdin.isTTY;
+
+  // An EVENTMODELERS_TOKEN set for this run answers the credentials question below as
+  // squarely as --token does — applyEnvOverrides makes it win over every file anyway, so
+  // asking where this board's credentials come from could not change the outcome. The board
+  // question has always treated its env var this way; this is the same rule for the token.
+  const credentialsNamed = !!(explicit.token || process.env.EVENTMODELERS_TOKEN);
 
   // Which board comes first — everything else is stored per board, so there is nothing to
   // look up until we know which board this run is for.
@@ -1583,7 +1595,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // non-interactive stdin such as CI or a process supervisor), where the resolved value
   // stands on its own exactly as before.
   let boardChosen = !!(explicit.boardId || process.env.EVENTMODELERS_BOARD_ID);
-  if (!boardChosen && !print && process.stdin.isTTY) {
+  if (!boardChosen && interactive) {
     const answer = await prompt(boardId ? `\n  Board ID [${boardId}]: ` : '\n  Board ID: ');
     if (answer) {
       boardId = answer;
@@ -1613,7 +1625,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // implied — explicit credentials on the command line — or when there is no one to ask:
   // --print, or a non-interactive stdin such as CI or a supervisor that would otherwise
   // hang here forever (those keep using whatever is on file, silently).
-  if (!print && !explicit.token && process.stdin.isTTY) {
+  if (interactive && !credentialsNamed) {
     const hasAccountWide = !!(walked.token && walked.organizationId);
 
     // What "keep" would keep. A pointer entry is deliberately not offered: it says the
@@ -1678,9 +1690,10 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
     : { ...applyEnvOverrides({ ...walked, ...stored }), ...explicit };
   if (boardId) config.boardId = boardId;
 
-  if (!config.token || !config.organizationId) {
+  if ((!config.token || !config.organizationId) && interactive) {
     // Nothing anywhere — ask once, and save it account-wide rather than into this
-    // directory, so every later run from anywhere is silent.
+    // directory, so every later run from anywhere is silent. Headless, there is nobody to
+    // interview, so this is skipped and the check below fails the run with the reason.
     console.log('🔐 No Eventmodelers credentials found — configuring them once, account-wide.\n');
     config = await configureCredentials({
       config,
@@ -3107,6 +3120,7 @@ credentialFlags(program
   .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner, via ralph-exec.js (build-kit stacks only) — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto" or "opencode run". The prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
+  .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--global).')
   .option('--standalone', 'Let the modeling agent work the board in the background, on its own initiative: on top of direct prompts it subscribes to the board\'s change channel (like the build agents do) and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for. Changed nodes are a notification, not the task: it judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question comment). Filling that detail in while the human keeps modeling is the point — it does not wait for the board to be finished. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
   .option('--exclusive', 'Work only the prompts addressed to this agent\'s id — the board\'s "preferred agent" (the star in the prompts panel) — and hand every untargeted prompt straight back to the queue for another agent to take. Without it an agent also works everything nobody addressed to anyone, which is what you want for a single agent and exactly what you do not want for a dedicated one (a board with a general agent plus a specialist, or an agent a supervisor drives by id). Pair it with --id so the same agent is addressable across restarts — --global/--standalone otherwise mint a fresh id per run, and prompts addressed to the previous run\'s id are never claimed. Leaves --standalone alone: a self-directed turn is nobody\'s prompt, so an exclusive standalone agent still works the board on its own initiative.')
@@ -3201,7 +3215,7 @@ credentialFlags(program
           ...(opts.credentials ? parseCredentialsArg(opts.credentials) : {}),
           ...Object.fromEntries(Object.entries(credentialOverridesFromOpts(opts)).filter(([, v]) => v)),
         };
-        const config = await resolveModelingCredentials(cwd, flags, globalOpts.config, globalOpts.print);
+        const config = await resolveModelingCredentials(cwd, flags, globalOpts.config, globalOpts.print, !!opts.nonInteractive);
         projectDir = await ensureGlobalKit(config.baseUrl);
         kitDir = join(projectDir, MODELING_KIT.kitDirName);
         overrides = config;

@@ -374,6 +374,44 @@ different thing, and `anthropicBaseUrl` below is that path — but note that it 
 speaking Anthropic's own `/v1/messages`, which Ollama does not serve. Pointing it straight at
 `localhost:11434` gets you a 404; a translating proxy has to sit in between.
 
+### Running headless, in a container
+
+`run` normally confirms which board it is about to drive and where that board's credentials
+come from. Those questions are worth one keystroke at a terminal and fatal anywhere else, so
+`--non-interactive` turns them off: the board and credentials that resolve from flags,
+`EVENTMODELERS_*` env vars and the config files are taken as final, and an incomplete set fails
+the run with the reason instead of being interviewed for.
+
+A missing TTY already implied this, which covers CI and most process supervisors — but not a
+container started with `-it`, or a loop started from a terminal: stdin is a TTY nobody is
+watching, and the run stops on a question forever. Pass the flag rather than relying on how
+stdin happens to be wired.
+
+```bash
+docker run --rm \
+  -e EVENTMODELERS_TOKEN=<token> \
+  -e EVENTMODELERS_ORGANIZATION_ID=<uuid> \
+  -e EVENTMODELERS_BOARD_ID=<uuid> \
+  -e LOCAL_AI_URL=http://host.docker.internal:11434 \
+  node:20 npx -y @eventmodelers/cli run --standalone --local-ai --non-interactive
+```
+
+Two things a container needs that a laptop already had:
+
+- **A writable `HOME`.** With no kit in the working directory the agent installs one under
+  `~/.eventmodelers/kit` and keeps per-board credentials in `~/.eventmodelers/boards/` (`0600`,
+  in a `0700` directory). Run as a user whose home exists and is writable, or mount a volume
+  there to keep the kit across restarts instead of reinstalling it on every boot.
+- **A reachable model server.** `localhost` inside the container is the container, not the host
+  — point `LOCAL_AI_URL` at `host.docker.internal` (Docker Desktop), the host's LAN address, or
+  the service name if Ollama/vLLM is a sibling container.
+
+`EVENTMODELERS_TOKEN` now also answers the credentials question on its own, the way
+`EVENTMODELERS_BOARD_ID` always answered the board question — an env var that wins over every
+config file anyway makes asking where the credentials come from moot. So a fully env-driven run
+is silent even without the flag; pass it anyway, so a half-set environment fails loudly instead
+of waiting for an answer.
+
 ### Installing skills globally
 
 By default, skills are copied into the project's own `.claude/skills/`. Pass `--global` to `init` or `init-modeling` to install them into `~/.claude/skills/` instead — available in every project without re-running the installer each time:
