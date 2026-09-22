@@ -17,8 +17,8 @@ done
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" -H "x-user-id: orchestrator" \
   -H "Content-Type: application/json" \
-  -d '[{"id":"<uuid>","eventType":"node:changed","nodeId":"<nodeId>","boardId":"<BOARD_ID>",
-        "timestamp":1234567890,"chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
+  -d '[{"id":"<event-uuid>","eventType":"node:changed","nodeId":"<nodeId>",
+        "chapterId":"<chapterId>","cellId":"<rowId>-<colId>",
         "meta":{"type":"<TYPE>","title":"<title>"}}]'
 ```
 
@@ -45,7 +45,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-token: $TOKEN" -H "x-user-id: orchestrator" \
   -H "Content-Type: application/json" \
-  -d '[{"id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>","boardId":"<BOARD_ID>",
-        "timestamp":1234567890,"chapterId":"<CHAPTER_ID>","cellId":"<feedbackLaneId>-<firstColumnId>",
+  -d '[{"id":"<event-uuid>","eventType":"node:created","nodeId":"<node-uuid>",
+        "chapterId":"<CHAPTER_ID>","cellId":"<feedbackLaneId>-<firstColumnId>",
         "meta":{"type":"MARKDOWN","title":"Modeling Reasoning — <Chapter Name>","description":"<full markdown body>"}}]'
 ```

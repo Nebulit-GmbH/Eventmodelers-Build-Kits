@@ -246,8 +246,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<CELL_ID>",
     "meta": { "type": "EVENT", "title": "<EventName>" },
@@ -302,8 +300,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<new-uuid>",
     "eventType": "node:changed",
     "nodeId": "<eventNodeId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "changedAttributes": ["meta.title"],
     "meta": { "type": "EVENT", "title": "<NewTitle>" },
     "node": { "id": "<eventNodeId>", "data": {} }

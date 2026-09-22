@@ -22,8 +22,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<uuid>",
     "eventType": "node:changed",
     "nodeId": "<CHAPTER_ID>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <NOW_MS>,
     "changedAttributes": ["meta.title"],
     "meta": { "type": "CHAPTER", "title": "<flow name>" },
     "node": { "id": "<CHAPTER_ID>", "data": {} }

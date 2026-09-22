@@ -124,10 +124,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{
+    "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<TIMELINE_ID>",
     "cellId": "<CELL_ID>",
     "meta": {
@@ -148,10 +147,9 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "x-user-id: agent" \
   -H "Content-Type: application/json" \
   -d '[{
+    "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<TIMELINE_ID>",
     "cellName": "<CELL_NAME>",
     "meta": {
@@ -162,7 +160,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   }]'
 ```
 
-Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
+Response: `{ "hashes": { "<event-id>": "<hash>" } }` — keyed by the `id` you sent on each event, which is how you match a hash back to the event that produced it.
 
 ## Full worked example — place an EVENT via curl, start to finish
 
@@ -188,8 +186,6 @@ curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1714900000000,
     "chapterId": "<TIMELINE_ID>",
     "cellId": "<CELL_ID>",
     "meta": { "type": "EVENT", "title": "Order Placed" },
@@ -197,4 +193,4 @@ curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/
   }]'
 ```
 
-Replace `<TIMELINE_ID>`, `<BOARD_ID>`, `<CELL_ID>`, `<event-uuid>`, and `<node-uuid>` with real UUIDs. Use `Date.now()` or a current unix-ms timestamp for `timestamp`.
+Replace `<TIMELINE_ID>`, `<BOARD_ID>`, `<CELL_ID>`, `<event-uuid>` and `<node-uuid>` with real values — you mint two uuids here: the node's and the event's own `id`, which is required. `boardId`/`timestamp` are omitted on purpose: the server derives both from the request and ignores them if sent.

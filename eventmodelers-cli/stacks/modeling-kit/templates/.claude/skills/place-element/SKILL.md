@@ -321,10 +321,9 @@ This step applies to `SCREEN` (view/output conflict case), `AUTOMATION`, `SCENAR
 mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
+    "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<TIMELINE_ID>",
     "cellId": "<CELL_ID>",
     "meta": { "type": "<ELEMENT_TYPE>", "title": "<title>" },
@@ -343,10 +342,9 @@ mcp__eventmodelers__submit_node_events {
 mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
+    "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<TIMELINE_ID>",
     "cellName": "<CELL_NAME>",
     "meta": { "type": "<ELEMENT_TYPE>", "title": "<title>" },
@@ -357,7 +355,7 @@ mcp__eventmodelers__submit_node_events {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 7b — Create any other node type (fast path, `cellName`)".
 
-Response: `{ "hashes": { "<event-uuid>": "<hash>" } }`
+Response: `{ "hashes": { "<event-id>": "<hash>" } }` — keyed by the `id` you sent on each event, which is how you match a hash back to the event that produced it.
 
 > **`node:created` with `cellId`/`cellName` IS the placement** — do NOT also call the `drop` endpoint afterwards. The `drop` endpoint adds a second cell reference without removing the first, causing the node to appear in two columns simultaneously. Use `node:created` with `cellId` or `cellName` for all initial placements.
 

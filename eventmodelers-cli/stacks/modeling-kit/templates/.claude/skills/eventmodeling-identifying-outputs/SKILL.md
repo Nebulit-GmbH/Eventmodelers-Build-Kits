@@ -267,7 +267,6 @@ mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<returned-node-id>",
-    "boardId": "<BOARD_ID>", "timestamp": 1234567890,
     "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}
   }]
 }

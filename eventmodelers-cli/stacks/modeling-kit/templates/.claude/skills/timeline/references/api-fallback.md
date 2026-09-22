@@ -48,8 +48,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<CELL_ID>",
     "meta": { "type": "EVENT", "title": "<EventName>" },
@@ -67,8 +65,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<new-uuid>",
     "eventType": "node:changed",
     "nodeId": "<eventNodeId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "changedAttributes": ["meta.title"],
     "meta": { "type": "EVENT", "title": "<NewTitle>" },
     "node": { "id": "<eventNodeId>", "data": {} }
@@ -84,8 +80,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -d '[{
     "id": "<new-uuid>",
     "eventType": "node:deleted",
-    "nodeId": "<eventNodeId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>
+    "nodeId": "<eventNodeId>"
   }]'
 ```

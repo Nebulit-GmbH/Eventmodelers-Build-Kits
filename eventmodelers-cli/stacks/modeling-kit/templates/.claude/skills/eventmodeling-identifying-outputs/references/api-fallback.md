@@ -26,8 +26,6 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
        "id": "<event-uuid>",
        "eventType": "node:created",
        "nodeId": "<node-uuid>",
-       "boardId": "<BOARD_ID>",
-       "timestamp": 1234567890,
        "chapterId": "<CHAPTER_ID>",
        "cellId": "<interactionRowId>-<columnId>",
        "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}

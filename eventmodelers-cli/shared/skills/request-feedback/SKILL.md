@@ -128,8 +128,6 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
     "id": "<new-random-uuid>",
     "eventType": "node:changed",
     "nodeId": "<SLICE_NODE_ID>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <Date.now()>,
     "changedAttributes": ["sliceStatus"],
     "meta": {
       "sliceStatus": "Blocked"

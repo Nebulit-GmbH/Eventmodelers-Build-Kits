@@ -283,15 +283,17 @@ The same discipline applies to writes: `submit_node_events` takes `events[]`, so
 
 Where per-node calls genuinely can't be avoided, issue them together in one message so they run concurrently rather than in sequence.
 
-### Ids and timestamps
+### Ids
 
-Elements you create carry client-side ids, and every `node:created` event carries a timestamp. Mint them **once per turn, in a single call**, and take from that pool as you assemble the event array:
+Elements you create carry client-side ids — one `nodeId` per new node — and **every event carries its own `id`**, a fresh uuid per event, never the node's. Mint them **once per turn, in a single call**, and take from that pool as you assemble the event array:
 
 ```bash
-for i in $(seq 5); do uuidgen; done; echo $(( $(date +%s) * 1000 ))
+for i in $(seq 8); do uuidgen; done
 ```
 
-Nothing in that depends on anything you're about to read, so splitting it across three shells is three round trips bought for nothing. Never reach for GNU-only `date` specifiers (`%N`, `%3N`) here: BSD/macOS `date` prints them literally instead of failing, so the malformed timestamp survives until something downstream rejects it.
+Nothing in that depends on anything you're about to read, so splitting it across several shells is round trips bought for nothing.
+
+The event `id` is **required** — an event without one is rejected as an invalid shape. It is what keys the returned `hashes` map, and what makes a resubmit idempotent: the same event sent twice under the same id writes one board event, not two. An event's `boardId` and `timestamp`, by contrast, are **not** yours to send — the server takes the board from the call and stamps the time itself, and ignores both if you send them.
 
 ---
 

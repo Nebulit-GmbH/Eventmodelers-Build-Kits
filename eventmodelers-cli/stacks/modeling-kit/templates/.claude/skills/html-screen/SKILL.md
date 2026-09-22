@@ -97,7 +97,6 @@ mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
     "meta": {
       "type": "HTML_SCREEN",
       "title": "<Screen Title>",
@@ -174,7 +173,6 @@ mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "HTML_SCREEN", "fields": [
       {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}

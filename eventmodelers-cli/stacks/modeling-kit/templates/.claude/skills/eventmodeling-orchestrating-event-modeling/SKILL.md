@@ -431,7 +431,6 @@ Not delegated to a separate skill — performed directly by this orchestrating s
      "boardId": "$BOARD_ID",
      "events": [{
        "id": "<event-uuid>", "eventType": "node:created", "nodeId": "<node-uuid>",
-       "boardId": "$BOARD_ID", "timestamp": 1234567890,
        "chapterId": "$CHAPTER_ID", "cellId": "<feedbackLaneId>-<firstColumnId>",
        "meta": { "type": "MARKDOWN", "title": "Modeling Reasoning — <Chapter Name>", "description": "<full markdown body>" }
      }]

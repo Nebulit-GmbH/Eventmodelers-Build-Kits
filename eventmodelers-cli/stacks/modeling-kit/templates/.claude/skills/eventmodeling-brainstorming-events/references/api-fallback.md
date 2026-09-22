@@ -35,8 +35,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<uuid>",
     "eventType": "node:changed",
     "nodeId": "<chapterId>",
-    "boardId": "<boardId>",
-    "timestamp": 1234567890,
     "meta": {"type": "CHAPTER", "title": "Reservation & Lending"}
   }]'
 ```
@@ -78,8 +76,6 @@ Same body via `POST .../nodes/events`:
   "id": "<event-uuid>",
   "eventType": "node:created",
   "nodeId": "<node-uuid>",
-  "boardId": "<boardId>",
-  "timestamp": 1234567890,
   "chapterId": "<chapterId>",
   "cellId": "<swimlaneRowId>-<columnId>",
   "meta": {

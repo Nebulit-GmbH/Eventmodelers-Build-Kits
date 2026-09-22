@@ -107,8 +107,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<uuid>",
     "eventType": "node:changed",
     "nodeId": "<chapterId>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
     "meta": {"type": "CHAPTER", "title": "Reservation & Lending"}
   }]
 }
@@ -200,8 +198,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
     "chapterId": "<chapterId>",
     "cellId": "<swimlaneRowId>-<columnId>",
     "meta": {

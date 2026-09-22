@@ -94,13 +94,11 @@ Build the payload with Python to avoid shell JSON-escaping issues, then POST it:
 
 ```bash
 python3 - <<EOF > /tmp/examples_payload.json
-import json, time, uuid
+import json, uuid
 payload = [{
   "id": str(uuid.uuid4()),
   "eventType": "node:changed",
   "nodeId": "<TARGET_NODE.id>",
-  "boardId": "<BOARD_ID>",
-  "timestamp": int(time.time() * 1000),
   "changedAttributes": ["meta.fields"],
   "meta": {
     "fields": <updated-fields-array as Python list>

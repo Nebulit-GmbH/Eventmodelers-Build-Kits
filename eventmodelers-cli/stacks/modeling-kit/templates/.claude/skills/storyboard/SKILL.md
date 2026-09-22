@@ -224,7 +224,6 @@ mcp__eventmodelers__submit_node_events {
   "boardId": "<BOARD_ID>",
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",
-    "boardId": "<BOARD_ID>", "timestamp": <NOW_MS>,
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "HTML_SCREEN", "fields": [ /* planned fields */ ] }
   }]

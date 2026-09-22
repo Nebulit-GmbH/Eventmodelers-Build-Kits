@@ -256,8 +256,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorRowId>-<columnId>",
     "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}

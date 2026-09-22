@@ -232,8 +232,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<uuid>",
     "eventType": "node:changed",
     "nodeId": "<CHAPTER_ID>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": <NOW_MS>,
     "changedAttributes": ["meta.title"],
     "meta": { "type": "CHAPTER", "title": "<flow name>" },
     "node": { "id": "<CHAPTER_ID>", "data": {} }

@@ -160,8 +160,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>",
     "eventType": "node:changed",
     "nodeId": "<returned-node-id>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
     "meta": {
       "type": "COMMAND",
       "title": "ReserveBike",

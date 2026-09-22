@@ -43,7 +43,7 @@ A run that opens each element with its own `get_node` to "read existing examples
 
 - `target` is a UUID → pass `nodeId`
 - `target` is a name → pass `name`
-- `target` is a cell name (e.g. `B3`) → pass `cellName` + `timelineId` (the chapter id — if multiple chapters exist on the board, resolve which one first using 2c-fallback's chapter lookup, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`, and ask the user if ambiguous)
+- `target` is a cell name (e.g. `B3`) → pass `cellName` + `timelineId` (the chapter id — if multiple chapters exist on the board, resolve which one first using 2c-fallback's chapter lookup, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`, and ask the user if ambiguous). Only pass a cell name you were given or read back as a node's `cellName` (`get_board_outline`/`get_nodes`/`get_node` all report it) — if all you have is a node id or title, pass that instead rather than constructing an address.
 
 ```
 mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "nodeId": "<target, if a UUID>" }
@@ -105,8 +105,6 @@ mcp__eventmodelers__submit_node_events {
     "id": "<uuid>",
     "eventType": "node:changed",
     "nodeId": "<TARGET_NODE.id>",
-    "boardId": "$BOARD_ID",
-    "timestamp": <epoch-ms>,
     "changedAttributes": ["meta.fields"],
     "meta": { "fields": "<updated-fields-array>" }
   }]

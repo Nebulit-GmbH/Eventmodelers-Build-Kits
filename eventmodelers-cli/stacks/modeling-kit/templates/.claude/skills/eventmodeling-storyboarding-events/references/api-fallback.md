@@ -52,8 +52,6 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<BOARD_ID>",
-    "timestamp": 1234567890,
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorRowId>-<columnId>",
     "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}

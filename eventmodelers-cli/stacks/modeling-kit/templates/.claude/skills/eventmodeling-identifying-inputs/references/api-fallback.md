@@ -34,8 +34,6 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<event-uuid>",
     "eventType": "node:created",
     "nodeId": "<node-uuid>",
-    "boardId": "<boardId>",
-    "timestamp": 1234567890,
     "chapterId": "<chapterId>",
     "cellId": "<interactionRowId>-<columnId>",
     "meta": {

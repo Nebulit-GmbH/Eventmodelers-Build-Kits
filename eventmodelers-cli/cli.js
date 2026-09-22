@@ -3595,11 +3595,11 @@ program
           ...agentHeaders(cfg),
         },
         body: JSON.stringify([{
+          // The event id is the caller's and required; boardId/timestamp are the server's —
+          // it derives both from the request and ignores anything sent here.
           id: randomUUID(),
           eventType: 'node:changed',
           nodeId: slice.id,
-          boardId: cfg.boardId,
-          timestamp: Date.now(),
           changedAttributes: ['sliceStatus'],
           meta: { sliceStatus: newStatus },
         }]),

@@ -42,6 +42,8 @@ mcp__eventmodelers__get_attribute_chain {
 
 The result gives you the ordered chain directly — save it as the chain used in Step 4, and skip the manual walk in 2a–3c below. Continue with the fallback only if MCP isn't connected.
 
+**Both cell names must be real.** When the task named a node (an id, a title, a comment on it) instead of a cell, read that node's `cellName` off `get_board_outline` (every node in the chapter, with its address), `get_nodes`, or `get_node` — all three report it. Never compute an address from where a node appeared in a list, and never hand `get_attribute_chain` an address you have not read: a cell that exists but holds a different node resolves a wrong chain without any error.
+
 ### Fallback (no MCP) — resolve both cells to nodes
 
 For each cell (target and source), resolve it to a node using the exact same cell-resolution steps as the `examples` skill's "2c — Cell name" section (fetch chapters, fetch the chapter fresh to decode the grid, decode the cell name into a `CELL_ID`, then always fetch the cell live — `get_nodes` has no `cellId` filter) — see there for the full mechanics, substituting `x-user-id: attributes-skill`.
@@ -149,8 +151,6 @@ mcp__eventmodelers__submit_node_events {
       "id": "<uuid>",
       "eventType": "node:changed",
       "nodeId": "<NODE_ID_1>",
-      "boardId": "$BOARD_ID",
-      "timestamp": <epoch-ms>,
       "changedAttributes": ["meta.fields"],
       "meta": { "fields": "<updated_fields_array_1>" }
     },

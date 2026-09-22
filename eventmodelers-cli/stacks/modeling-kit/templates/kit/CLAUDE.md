@@ -96,7 +96,7 @@ stale. Then a single full-`meta` `get_nodes`, scoped by
 `chapterId` or `nodeIds`, covering the nodes you concluded you will touch. Both tiers are once per turn: keep what
 came back and answer later questions from it instead of re-fetching a chapter you already hold. `/connect` Step 5
 carries the full discipline — the two tiers, the one-call `submit_node_events` rule for writes, and the per-turn
-pool for the ids and timestamps a `node:created` needs. Whatever you hand a subagent comes out of that same read,
+pool for the ids a `node:created` needs (one for the node, one for the event itself). Whatever you hand a subagent comes out of that same read,
 never out of a second one it pays for itself (step 2).
 
 **Every prompt gets exactly two `/update-prompt-status` calls per turn — never zero, never one.** `IN_PROGRESS` before you start the work (step 4), `DONE` after you finish it (step 6). This holds even for a prompt that turns out to be trivial or a no-op — the board UI has no other way to know the agent picked it up and finished it.
