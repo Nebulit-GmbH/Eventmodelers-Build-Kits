@@ -100,9 +100,9 @@ For each returned node, check whether it has a valid cell assignment. A node wit
 **For each unplaced node:**
 - **If it belongs in the current model** → compute the correct `cellId` and place it.
 
-  **Prefer MCP:** the node already exists but has never been assigned a cell, so this is a placement, not a repositioning — use `drop_node_to_cell` (not `move_node_in_timeline`, which is for moving a node that already occupies a different cell):
+  **Prefer MCP:** the node already exists, so give `place_element` an `action: "move"` entry with its `nodeId` and the target cell — the node keeps its type, and the same entry moves it if it already sits in another cell:
   ```
-  mcp__eventmodelers__drop_node_to_cell { "boardId": "$BOARD_ID", "timelineId": "<chapterId>", "cellId": "<rowId>-<colId>", "nodeId": "<nodeId>", "nodeType": "<TYPE>" }
+  mcp__eventmodelers__place_element { "boardId": "$BOARD_ID", "timelineId": "<chapterId>", "elements": [{ "action": "move", "nodeId": "<nodeId>", "cellName": "<e.g. B2>" }] }
   ```
 
   **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Place a found unplaced node".
@@ -146,7 +146,7 @@ Each write tool takes its items as an array, so handling several in one pass is 
 - `create_slice_definition`'s `slices` — defining multiple slices
 - `create_screen`'s `screens` — creating multiple screens
 - `place_element`'s `elements` — laying out a whole slice or column run, each entry seeing the columns the previous one added
-- `move_node_in_timeline`'s `moves` — moving multiple already-placed nodes within one timeline
+- `place_element`'s `elements` with `{action: "move", nodeId, cellName}` entries — placing or moving multiple existing nodes within one timeline
 - `delete_node`'s `nodeIds` / `delete_column`'s `columnIds` — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
 - `add_comment`'s `comments`, `create_drawing`'s `drawings`, `add_lane`'s `lanes` — same shape
 - `add_column`'s `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
