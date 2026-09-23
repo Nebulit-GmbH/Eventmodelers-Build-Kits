@@ -3,7 +3,8 @@
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called when tasks.json has entries
-//   onPlannedSlice(prompt) — called when .slices/ has a "Planned" entry (omit to skip)
+//   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
+//     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -250,7 +251,9 @@ async function fetchAndPersistSlices(cfg, kitDir) {
       mkdirSync(sliceDir, { recursive: true });
       const sliceJsonPath = join(sliceDir, 'slice.json');
       const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice }, null, 2), 'utf-8');
+      // The summary omits ticketNumber when the slice has none, so a cleared ticket must be cleared
+      // here too — otherwise the old one survives the merge and lands on the next build's trace.
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, ticketNumber: slice.ticketNumber ?? null }, null, 2), 'utf-8');
     }
   }
 
@@ -417,6 +420,17 @@ function readCurrentContext(kitDir) {
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
 }
 
+// The slice's ticket as of the last fetch, from its slice.json — a trace carries the ticket the
+// slice is built under, since it can be reassigned between builds.
+function readTicketNumber(kitDir, ctx, folder) {
+  if (!folder) return null;
+  try {
+    return JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8')).ticketNumber ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Returns the first Planned slice IN THE CURRENT CONTEXT ONLY. If the current
 // context has no planned work, returns null so the loop waits — it must NEVER
 // cross into another context to find something to build.
@@ -428,7 +442,7 @@ function getFirstPlannedSlice(kitDir) {
   try {
     const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
     const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
-    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx };
+    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx, ticketNumber: readTicketNumber(kitDir, currentCtx, planned.folder) };
   } catch {}
   return null;
 }
@@ -566,7 +580,14 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
-      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt));
+      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
+        sliceId: planned.id,
+        sliceTitle: planned.title,
+        context: planned.ctx,
+        ticketNumber: planned.ticketNumber,
+        boardId: cfg.boardId ?? null,
+        attempt: stuckSlice.count,
+      }));
       console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
@@ -590,15 +611,23 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
+// Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
+// passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
+// agent of the same type can run side by side without the two overwriting each other's
+// heartbeat row, and so the board can show a name instead of a bare uuid. An override skips
+// ensureAgentId rather than overwriting it — the project's stable id stays on disk for the next
+// plain run. Exported so a runner can resolve it at load time, before startRalph runs — the env
+// it hands its `claude` is built then. Idempotent: ensureAgentId returns the id it persisted.
+export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLocalConfig(kitDir)) {
+  const agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
+  const agentName = process.env.RALPH_AGENT_NAME || cfg.agentName || '';
+  process.env.EVENTMODELERS_AGENT_ID = agentId;
+  return { agentId, agentName, agentType };
+}
+
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
-  // RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`, passed down as env
-  // (see cli.js's run dispatcher): a per-run identity override so a second agent of the same
-  // type can run side by side without the two overwriting each other's heartbeat row, and so
-  // the board can show a name instead of a bare uuid. An override skips ensureAgentId rather
-  // than overwriting it — the project's stable id stays on disk for the next plain run.
-  local.agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
-  if (process.env.RALPH_AGENT_NAME) local.agentName = process.env.RALPH_AGENT_NAME;
+  Object.assign(local, resolveAgentIdentity(kitDir, agentType, local));
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);

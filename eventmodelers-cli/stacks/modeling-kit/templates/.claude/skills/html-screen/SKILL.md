@@ -140,6 +140,7 @@ mcp__eventmodelers__create_screen {
     "nodeId": "<generated-uuid>",
     "chapterId": "<CHAPTER_ID>",
     "cellName": "<CELL_NAME>",
+    "title": "<Screen Title>",
     "pages": ["<div>...</div>"],
     "fields": [ /* optional — set meta.fields here too (see Step 5) instead of a separate call */ ]
   }]

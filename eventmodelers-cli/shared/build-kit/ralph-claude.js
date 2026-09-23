@@ -2,9 +2,10 @@
 // Ralph loop + realtime agent using Claude Code as the executor.
 // Usage: node ralph-claude.js [project_dir]
 
-import { startRalph, loadLocalConfig } from './lib/ralph.js';
+import { startRalph, loadLocalConfig, resolveAgentIdentity } from './lib/ralph.js';
+import { createSliceTracer, usageFromClaudeResult } from './lib/tracing.js';
 import { spawn } from 'child_process';
-import { dirname, resolve } from 'path';
+import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const kitDir = dirname(fileURLToPath(import.meta.url));
@@ -12,6 +13,23 @@ const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, 
 
 const cfg = loadLocalConfig(kitDir);
 const localOnly = process.env.RALPH_LOCAL === '1';
+// Resolved here, not left to startRalph: claudeEnv below is built at load time, and without it
+// the agent id never reached `claude`, so its MCP calls went unattributed.
+Object.assign(cfg, resolveAgentIdentity(kitDir, 'BUILD', cfg));
+
+// What each slice build turn cost — see lib/tracing.js. Off unless the project opted in
+// (`agentTracing: true`, see `eventmodelers config`); nothing is ever sent with --local.
+const tracingOn = !localOnly && cfg.agentTracing === true;
+if (!tracingOn && !localOnly) console.log('[ralph] agent tracing off — no slice cost data is sent (turn on: eventmodelers config --agent-tracing on)');
+const tracer = createSliceTracer({
+  baseUrl: cfg.baseUrl,
+  token: cfg.token,
+  organizationId: cfg.organizationId,
+  agentId: cfg.agentId,
+  traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
+  log: (line) => console.log(`[ralph] ${line}`),
+  enabled: tracingOn,
+});
 // --local must mean zero board contact — never hand Claude live board
 // credentials via the inline header, even if config.json has them, or it'll
 // treat them as already-connected and skip straight to board sync.
@@ -60,7 +78,8 @@ function describeToolUse(block) {
   }
 }
 
-function runClaude(prompt) {
+// `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
+function runClaude(prompt, slice = null) {
   return new Promise((resolve, reject) => {
     const proc = spawn('claude', [...claudeArgs, '-p', inlineHeader + prompt], {
       cwd: projectDir,
@@ -89,6 +108,7 @@ function runClaude(prompt) {
           }
         } else if (msg.type === 'result') {
           console.log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+          if (slice) tracer.record({...slice, status: msg.is_error ? 'error' : 'ok'}, usageFromClaudeResult(msg));
         }
       }
     });
