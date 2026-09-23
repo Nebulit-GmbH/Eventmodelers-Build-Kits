@@ -266,6 +266,14 @@ public class {SliceName}CommandHandler {
 `Metadata` is `org.axonframework.messaging.core.Metadata` — **not** `AxonMetadata`, which does not
 exist as a type in this version.
 
+**Concurrent writes**: if another command commits an event matching this entity's `@EventCriteriaBuilder`
+criteria between this handler's read and its append, the event store rejects the write with
+`AppendEventsTransactionRejectedException` — the decision was made against state that's now stale. Don't
+leave this unhandled. In most setups, configure a `RetryScheduler` on the command bus so the whole command
+is retried automatically. Only fall back to a manual retry loop around the handler body (catch
+`AppendEventsTransactionRejectedException`, cap the attempts, rethrow past the cap) if the project has no
+`RetryScheduler` configured and you're not in a position to add one.
+
 ## Step 5: REST endpoint — only if slice.json shows an inbound `SCREEN` dependency on the command
 
 ```java
