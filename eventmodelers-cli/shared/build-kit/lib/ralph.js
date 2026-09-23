@@ -2,20 +2,15 @@
 // Not meant to be run directly — use ralph-claude.js or ralph-local-ai.js.
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
-//   onTask(prompt, context) — called when tasks.json has entries
-//   onPlannedSlice(prompt, context) — called when .slices/ has a "Planned" entry (omit to skip)
-//
-// `context` is what the loop already knows about the work it is handing over — the slice or task
-// it resolved, plus the tracing session — so a runner can attribute what a turn cost to the slice
-// that caused it. It is a second argument rather than a change to the first because runners that
-// only want the prompt (ralph-exec.js, and any hand-written one) keep working untouched.
+//   onTask(prompt) — called when tasks.json has entries
+//   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
+//     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
-import { newId, tracingHeaders } from './tracing.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -158,17 +153,9 @@ function ensureAgentId(kitDir, agentType) {
 // ensureAgentId above / RALPH_AGENT_ID). The heartbeat says this agent is alive; the header says
 // which calls are its, so its board writes are attributed to it and a prompt the user addressed
 // to one preferred agent is only ever claimed by that agent.
-// Since tracing, this also carries the session id, so every call this loop makes is groupable
-// into one run and reportable against what that run cost. `extra` lets the few call sites that
-// know a usage/action attach it — see lib/tracing.js for why most cannot.
-function agentHeaders(cfg, extra = {}) {
-  return tracingHeaders({
-    agentId: cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '',
-    agentName: cfg?.agentName || process.env.RALPH_AGENT_NAME || process.env.EVENTMODELERS_AGENT_NAME || '',
-    agentType: cfg?.agentType || '',
-    sessionId: cfg?.sessionId || process.env.EVENTMODELERS_SESSION_ID || '',
-    ...extra,
-  });
+function agentHeaders(cfg) {
+  const agentId = cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '';
+  return agentId ? { 'x-agent-id': agentId } : {};
 }
 
 async function fetchPlatformConfig(local) {
@@ -264,7 +251,9 @@ async function fetchAndPersistSlices(cfg, kitDir) {
       mkdirSync(sliceDir, { recursive: true });
       const sliceJsonPath = join(sliceDir, 'slice.json');
       const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice }, null, 2), 'utf-8');
+      // The summary omits ticketNumber when the slice has none, so a cleared ticket must be cleared
+      // here too — otherwise the old one survives the merge and lands on the next build's trace.
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, ticketNumber: slice.ticketNumber ?? null }, null, 2), 'utf-8');
     }
   }
 
@@ -425,24 +414,21 @@ function hasPendingTasks(kitDir) {
   }
 }
 
-// The oldest queued task, for attributing a turn's cost to the slice that triggered it.
-// Deliberately separate from hasPendingTasks: that one is asked on every loop pass and only ever
-// needs to know whether the file is non-empty.
-function firstPendingTask(kitDir) {
-  const tasksPath = join(kitDir, 'tasks.json');
-  if (!existsSync(tasksPath)) return null;
-  try {
-    const tasks = JSON.parse(readFileSync(tasksPath, 'utf-8'));
-    return Array.isArray(tasks) && tasks.length ? tasks[0] : null;
-  } catch {
-    return null;
-  }
-}
-
 function readCurrentContext(kitDir) {
   const ctxPath = join(kitDir, '.slices', 'current_context.json');
   if (!existsSync(ctxPath)) return null;
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
+}
+
+// The slice's ticket as of the last fetch, from its slice.json — a trace carries the ticket the
+// slice is built under, since it can be reassigned between builds.
+function readTicketNumber(kitDir, ctx, folder) {
+  if (!folder) return null;
+  try {
+    return JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8')).ticketNumber ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // Returns the first Planned slice IN THE CURRENT CONTEXT ONLY. If the current
@@ -456,7 +442,7 @@ function getFirstPlannedSlice(kitDir) {
   try {
     const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
     const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
-    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx };
+    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx, ticketNumber: readTicketNumber(kitDir, currentCtx, planned.folder) };
   } catch {}
   return null;
 }
@@ -575,18 +561,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8');
-      // The queued task's own payload names the slice this turn is about (writeTask's
-      // SliceChangedPayload: sliceId is the SLICE_BORDER node's uuid). Read here rather than in
-      // the runner so every runner gets it the same way, and so the file is read once.
-      const task = firstPendingTask(kitDir);
-      await runWithRetry('onTask: loading slice from board...', () => onTask(prompt, {
-        sessionId: cfg.sessionId ?? null,
-        sliceId: task?.payload?.sliceId ?? null,
-        sliceTitle: task?.payload?.sliceTitle ?? null,
-        boardId: task?.payload?.boardId ?? cfg.boardId ?? null,
-        taskId: task?.id ?? null,
-        source: 'task',
-      }));
+      await runWithRetry('onTask: loading slice from board...', () => onTask(prompt));
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }
@@ -606,12 +581,11 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
       await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
-        sessionId: cfg.sessionId ?? null,
         sliceId: planned.id,
         sliceTitle: planned.title,
-        boardId: cfg.boardId ?? null,
         context: planned.ctx,
-        source: 'planned-slice',
+        ticketNumber: planned.ticketNumber,
+        boardId: cfg.boardId ?? null,
         attempt: stuckSlice.count,
       }));
       console.log(`[ralph] Slice build complete — waiting for next slice`);
@@ -637,24 +611,23 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
 
+// Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
+// passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
+// agent of the same type can run side by side without the two overwriting each other's
+// heartbeat row, and so the board can show a name instead of a bare uuid. An override skips
+// ensureAgentId rather than overwriting it — the project's stable id stays on disk for the next
+// plain run. Exported so a runner can resolve it at load time, before startRalph runs — the env
+// it hands its `claude` is built then. Idempotent: ensureAgentId returns the id it persisted.
+export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLocalConfig(kitDir)) {
+  const agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
+  const agentName = process.env.RALPH_AGENT_NAME || cfg.agentName || '';
+  process.env.EVENTMODELERS_AGENT_ID = agentId;
+  return { agentId, agentName, agentType };
+}
+
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
-  // RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`, passed down as env
-  // (see cli.js's run dispatcher): a per-run identity override so a second agent of the same
-  // type can run side by side without the two overwriting each other's heartbeat row, and so
-  // the board can show a name instead of a bare uuid. An override skips ensureAgentId rather
-  // than overwriting it — the project's stable id stays on disk for the next plain run.
-  local.agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
-  if (process.env.RALPH_AGENT_NAME) local.agentName = process.env.RALPH_AGENT_NAME;
-  local.agentType = agentType;
-  // One tracing session per loop process. Unlike the agent id this is deliberately NOT persisted:
-  // an agent id answers "who", and should survive a restart; a session answers "which run", and a
-  // restart genuinely is a new one. Exported into the environment so a `claude` (or any host)
-  // this loop spawns expands it into .mcp.json's x-agent-session-id and its MCP calls land in the
-  // same session as the REST calls made here.
-  local.sessionId = process.env.EVENTMODELERS_SESSION_ID || newId();
-  process.env.EVENTMODELERS_SESSION_ID = local.sessionId;
-  console.log(`         session: ${local.sessionId}`);
+  Object.assign(local, resolveAgentIdentity(kitDir, agentType, local));
 
   console.log(`Ralph — kit: ${kitDir}`);
   console.log(`         project: ${projectDir}`);
@@ -671,10 +644,6 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
   }
 
   const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
-  // fetchPlatformConfig merges the platform's answer over the local config, which knows nothing
-  // about this run's identity — restore the two fields that belong to the process, not the account.
-  cfg.sessionId = local.sessionId;
-  cfg.agentType = local.agentType;
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([

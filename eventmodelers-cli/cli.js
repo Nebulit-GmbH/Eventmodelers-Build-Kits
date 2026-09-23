@@ -25,24 +25,20 @@ import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js
 // copyDirContents in installStack) for ralph.js to import standalone — see
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter } from './shared/build-kit/lib/adapters/realtime-adapter.js';
-// Same arrangement as the adapter above: one canonical copy that is also copied into every
-// installed kit, so cli.js and a project's ralph runners agree on the header names and on how
-// each host's usage numbers are read. See that file's header for why usage cannot ride on the
-// call it describes.
-import { createTracer, newId, tracingHeaders, usageFromClaudeResult, PROMPT_TOKENS_SPENT } from './shared/build-kit/lib/tracing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Each stack is a template set under stacks/<key>/templates/{.claude,root,<kitSubdir>}.
 // Stacks with useShared:true also get shared/build-kit/* copied into their kit dir
-// first (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph-exec.js, ralph.sh, realtime-agent.js,
+// (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph-exec.js, ralph.sh, realtime-agent.js,
 // code-export.mjs, lib/agent.sh, lib/local-ai-agent.js, package.json, README.md) —
 // those files have no per-stack content, so they live once instead of being
 // copy-pasted into every stack (that copy-pasting is exactly how they drifted out
 // of sync before: a bugfix or default landing in one stack's copy but not another's).
-// Each stack's own templates/<kitSubdir>/* is then overlaid on top for genuine
-// per-stack differences (ralph-claude.js's build tooling, lib/prompt.md, etc.).
+// Each stack's own templates/<kitSubdir>/* supplies the genuine per-stack files
+// (lib/prompt.md, lib/backend-prompt.md, lib/AGENT.md, checks, etc.); shared/build-kit/*
+// is copied after it, so the shared runtime always wins over any copy a stack still ships.
 // modeling-kit (below) is the one kit that opts out of all of this (useShared:false)
 // — it has no cold-spawn/tasks.json runtime at all, so none of shared/build-kit/*
 // applies to it; see its own templates/kit for its (much smaller) self-contained set.
@@ -645,19 +641,9 @@ function readJsonSafe(path) {
 // this" rather than one anonymous robot), and matches it when claiming a prompt the user
 // addressed to one preferred agent. Optional everywhere: an id-less caller behaves exactly as
 // callers did before it existed.
-// Since tracing, this also carries the session (and the agent's name/type when known), so the
-// platform can group a run's calls into one traceable unit and report what it cost. `usage` is
-// passed by the few call sites that know it — see shared/build-kit/lib/tracing.js for why most
-// cannot. Every header stays optional: a caller that knows none of this behaves exactly as
-// callers did before any of it existed.
-function agentHeaders(cfg, extra = {}) {
-  return tracingHeaders({
-    agentId: cfg?.agentId || process.env.EVENTMODELERS_AGENT_ID || '',
-    agentName: cfg?.agentName || process.env.EVENTMODELERS_AGENT_NAME || '',
-    agentType: cfg?.agentType || '',
-    sessionId: cfg?.sessionId || process.env.EVENTMODELERS_SESSION_ID || '',
-    ...extra,
-  });
+function agentHeaders(cfg) {
+  const agentId = cfg?.agentId || process.env.EVENTMODELERS_AGENT_ID || '';
+  return agentId ? { 'x-agent-id': agentId } : {};
 }
 
 // Distinguishes this agent process from any other agent pinging the same
@@ -1025,10 +1011,13 @@ async function installStack(stackKey, stackCfg, options = {}) {
     mkdirSync(kitDir, { recursive: true });
     console.log(`📦 Installing agent kit into ${stackCfg.kitDirName}/...`);
 
+    copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers'] });
+    // Shared runtime goes on LAST so it always wins: a stack (built-in or --git) that still
+    // ships its own ralph.js / ralph-claude.js / ... is shipping a stale copy, and letting it
+    // overlay the shared one silently drops runtime fixes (e.g. agent_id on the heartbeat).
     if (stackCfg.useShared) {
       copyDirContents(sharedBuildKit, kitDir);
     }
-    copyDirContents(join(templatesSource, stackCfg.kitSubdir), kitDir, { skip: ['.eventmodelers'] });
 
     // An outdated community/--git stack that still ships root/CLAUDE.md (the pre-fix
     // layout every built-in stack used to follow too) gets it relocated here instead
@@ -1136,6 +1125,8 @@ async function installStack(stackKey, stackCfg, options = {}) {
       // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
       ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
       ensureEnvToken(targetDir, config.token);
+      // Only build stacks trace (slice build cost); they are the ones running the shared runtime.
+      if (stackCfg.useShared) await configureAgentTracing(configPath, options.print);
     }
 
     // --- 6. Install manifest (drives precise `uninstall` later) ---
@@ -1166,6 +1157,23 @@ async function installStack(stackKey, stackCfg, options = {}) {
     console.log(`  npx @eventmodelers/cli init-mcp\n`);
     console.log('Expose these skills to other AI agent hosts (Cursor, Windsurf, Gemini CLI, Copilot, Codex CLI, Kiro, ...):\n');
     console.log(`  npx @eventmodelers/cli init-agents\n`);
+}
+
+// `agentTracing` in config.json: whether a build agent reports what each slice build cost to the
+// platform (see agent-tracking.md). Asked once per project; off unless the user opts in — unset
+// (e.g. --print installs) is off, and off means the runner sends nothing.
+// `reask` (a bare `init-config`) asks again even when it is already set, defaulting to the
+// current answer.
+async function configureAgentTracing(configPath, print, reask = false) {
+  const current = readJsonSafe(configPath);
+  if (print || (typeof current.agentTracing === 'boolean' && !reask)) return;
+  const agentTracing = await selectPrompt('Should EM-Studio track the agent cost of each slice?', [
+    { label: 'Yes — track the cost per slice', value: true },
+    { label: 'No — send nothing', value: false },
+  ], current.agentTracing === true ? 0 : 1);
+  mkdirSync(dirname(configPath), { recursive: true });
+  writeFileSync(configPath, JSON.stringify({ ...current, agentTracing }, null, 2));
+  console.log(`  ✓ Agent tracing ${agentTracing ? 'on' : 'off'} — change it with \`eventmodelers config --agent-tracing on|off\``);
 }
 
 // Extracted from installStack so `init-config` can reuse the exact same
@@ -1266,6 +1274,43 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
     console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
   }
   return config;
+}
+
+// `re-init` for a build kit: re-copy shared/build-kit (ralph.js, the runners, tracing, adapters)
+// over the installed kit, then re-run the config steps. Stack templates and skills are untouched.
+async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
+  console.log(`📦 Refreshing the shared runtime in ${relative(targetDir, kitDir)}/ (stack files untouched)...`);
+  copyDirContents(join(__dirname, 'shared', 'build-kit'), kitDir);
+  for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
+    const p = join(kitDir, script);
+    if (existsSync(p)) {
+      try { execSync(`chmod +x "${p}"`); } catch {}
+    }
+  }
+  console.log('📦 Installing kit dependencies...');
+  try {
+    execSync('npm install', { cwd: kitDir, stdio: ['ignore', 'inherit', 'inherit'] });
+  } catch {
+    console.error('  ⚠️  npm install failed in kit — run it manually');
+  }
+
+  console.log('🔐 Configuring...');
+  const configPath = globalOpts.config
+    ? resolve(targetDir, globalOpts.config)
+    : join(targetDir, '.eventmodelers', 'config.json');
+  const overrides = { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) };
+  const cfg = await configureCredentials({
+    config: loadEffectiveConfig(targetDir, kitDir, globalOpts.config).config,
+    configPath,
+    targetDir,
+    requiredFields: ['organizationId', 'boardId', 'token'],
+    overrides,
+    print: globalOpts.print,
+    force: opts.force,
+  });
+  ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
+  ensureEnvToken(targetDir, cfg.token);
+  await configureAgentTracing(configPath, globalOpts.print, true);
 }
 
 // Configure the MCP server registration for a project — split out of `init` into
@@ -1436,16 +1481,7 @@ function ensureMcpRegistered(projectDir, baseUrl) {
   mcpConfig.mcpServers.eventmodelers = {
     type: 'http',
     url: `${baseUrl}/mcp`,
-    headers: {
-      'x-token': '${EVENTMODELERS_TOKEN}',
-      'x-agent-id': '${EVENTMODELERS_AGENT_ID}',
-      // The one piece of tracing that survives this file's expand-once semantics. Claude Code
-      // resolves these placeholders at ITS startup and then sends the result unchanged on every
-      // MCP call, so a live token count can never go here — but a session id is fixed per
-      // process, which is exactly what makes it the join key between the action trail the
-      // platform records for each tool call and the cost events the runner uploads separately.
-      'x-agent-session-id': '${EVENTMODELERS_SESSION_ID}',
-    },
+    headers: { 'x-token': '${EVENTMODELERS_TOKEN}', 'x-agent-id': '${EVENTMODELERS_AGENT_ID}' },
   };
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
 }
@@ -1605,16 +1641,22 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // common case to one keystroke. Skipped when there is no one to ask (--print, or a
   // non-interactive stdin such as CI or a process supervisor), where the resolved value
   // stands on its own exactly as before.
+  //
+  // The answer may also be the whole credentials blob from the account page — it names the
+  // board too, so it answers this question and the "where do its credentials come from" one
+  // below in a single paste.
   let boardChosen = !!(explicit.boardId || process.env.EVENTMODELERS_BOARD_ID);
+  let pasted = null;
   if (!boardChosen && !print && process.stdin.isTTY) {
     const answer = await prompt(boardId ? `\n  Board ID [${boardId}]: ` : '\n  Board ID: ');
     if (answer) {
-      boardId = answer;
+      pasted = parseCredentialsPaste(answer, ['organizationId', 'token', 'boardId']);
+      boardId = pasted ? pasted.boardId : answer;
       boardChosen = true;
     }
   }
 
-  let stored = boardId ? readJsonSafe(boardCredentialsPath(boardId)) : {};
+  let stored = pasted ?? (boardId ? readJsonSafe(boardCredentialsPath(boardId)) : {});
 
   // Follow a pointer left by an earlier answer: this directory (or the account config) keeps
   // resolving to one board, but the credentials pasted for it named another. Without this the
@@ -1636,7 +1678,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print)
   // implied — explicit credentials on the command line — or when there is no one to ask:
   // --print, or a non-interactive stdin such as CI or a supervisor that would otherwise
   // hang here forever (those keep using whatever is on file, silently).
-  if (!print && !explicit.token && process.stdin.isTTY) {
+  if (!pasted && !print && !explicit.token && process.stdin.isTTY) {
     const hasAccountWide = !!(walked.token && walked.organizationId);
 
     // What "keep" would keep. A pointer entry is deliberately not offered: it says the
@@ -1896,40 +1938,6 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     return withSessionHeader(`${fields}${context}\n\n${p.prompt}`);
   }
 
-  // One session per warm process. A respawn (see spawnProcess) is deliberately still the same
-  // tracing session: the agent, the board and the run are unchanged, and splitting a session in
-  // two because a subprocess died would fragment exactly the report someone reaches for when
-  // asking why a run cost what it did. `cfg.sessionId` is what agentHeaders() then puts on every
-  // platform call this process makes.
-  const sessionId = newId();
-  cfg.sessionId = sessionId;
-  cfg.agentType = 'MODELING';
-
-  const tracer = createTracer({
-    baseUrl: cfg.baseUrl,
-    token: cfg.token,
-    organizationId: cfg.organizationId,
-    boardId: cfg.boardId,
-    agentId: cfg.agentId,
-    agentName: cfg.agentName,
-    agentType: 'MODELING',
-    sessionId,
-    // Written whether or not the upload works, and the reason a failed upload is retryable:
-    // every event carries an id the platform de-duplicates on, so the file is both the local
-    // trace and the outbox.
-    traceFile: join(projectDir, '.eventmodelers', 'trace', `${sessionId}.jsonl`),
-    log,
-  });
-
-  // A warm modeling process runs until it is stopped, so the session rollup has to be taken on
-  // the way out or it is never taken at all. One await, then exit — no handler existed here
-  // before, so the default "terminate immediately" would otherwise abandon the request.
-  for (const signal of ['SIGINT', 'SIGTERM']) {
-    process.on(signal, () => {
-      tracer.end({ action: 'session-end' }).catch(() => {}).finally(() => process.exit(0));
-    });
-  }
-
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
   const claudeEnv = {
@@ -1939,18 +1947,11 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     // What the connect skill puts in `.mcp.json`'s x-agent-id header and every curl-fallback
     // call, so the board work this agent does on the platform is attributed to this agent.
     ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
-    // Expanded by `claude` into .mcp.json's x-agent-session-id header at ITS startup, which is
-    // what lets the platform group this process's MCP tool calls into one session. It is the
-    // only tracing value that can reach an MCP call at all — see ensureMcpRegistered.
-    EVENTMODELERS_SESSION_ID: sessionId,
   };
 
   let proc = null;
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
-  // What the in-flight turn is about, so the cost recorded when its `result` arrives can be
-  // attributed to the prompt (and node) that caused it rather than to the session at large.
-  let currentTurn = { turnId: null, promptId: null, nodeId: null, boardId: null, action: null };
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
   let warmUp = null; // this process's session warm-up turn (see warmUpSession) — null until one is started
   let warmingUp = false; // the in-flight turn is the warm-up: it only reads, so its writes can't echo
@@ -2006,27 +2007,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       return;
     }
     if (msg.type === 'result') {
-      // The authoritative accounting for the turn — `result` is the only message whose usage is
-      // final (assistant events carry mid-stream snapshots) and the only one that prices a
-      // mixed-model turn per model via modelUsage.
-      const turnUsage = usageFromClaudeResult(msg);
-      log(
-        `done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''}` +
-        `${turnUsage.outputTokens ? `, ${turnUsage.outputTokens} out / ${turnUsage.cacheReadTokens + turnUsage.inputTokens} in` : ''})`,
-      );
-      // A warm-up or standalone turn has no prompt behind it; it still cost something, and rolls
-      // into the session total instead of being attributed to a prompt nobody sent.
-      tracer.record(PROMPT_TOKENS_SPENT, turnUsage, {
-        turnId: currentTurn.turnId,
-        promptId: currentTurn.promptId,
-        nodeId: currentTurn.nodeId,
-        boardId: currentTurn.boardId,
-        action: currentTurn.action,
-        surface: 'claude-stream',
-        status: msg.is_error ? 'error' : 'ok',
-      });
-      currentTurn = {turnId: null, promptId: null, nodeId: null, boardId: null, action: null};
-
+      log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
       lastTurnEndedAt = Date.now();
       const turn = pending;
       pending = null;
@@ -2108,7 +2089,6 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     if (!standalone) return (warmUp = Promise.resolve());
     log('warm-up: connecting and listing chapters before the first turn (chapters are read on first use)');
     warmingUp = true;
-    currentTurn = { turnId: newId(), promptId: null, nodeId: null, boardId: cfg.boardId ?? null, action: 'session-warmup' };
     warmUp = sendTurn(buildWarmUpTurn())
       .then((result) => log(`warm-up done — ${oneLine(result, 200) || 'session ready'}`))
       .catch((err) => {
@@ -2206,13 +2186,6 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
         }
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
         try {
-          currentTurn = {
-            turnId: newId(),
-            promptId: p.id,
-            nodeId: p.node_id ?? null,
-            boardId: p.board_id ?? cfg.boardId ?? null,
-            action: 'prompt-turn',
-          };
           await runClaudeWarm(buildTurn(p));
         } catch (err) {
           log(`turn failed: ${err.message}`);
@@ -2559,13 +2532,6 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     resetObserved();
     lastStandaloneAt = Date.now();
     try {
-      currentTurn = {
-        turnId: newId(),
-        promptId: null,
-        nodeId: null,
-        boardId: cfg.boardId ?? null,
-        action: idle ? 'standalone-idle-review' : 'standalone-turn',
-      };
       const result = await runClaudeWarm(text);
       // NOOP is the agent saying the board needs nothing — widen the floor so a finished
       // board isn't revisited at full rate. Any real contribution resets it.
@@ -2886,9 +2852,9 @@ const REINITIABLE_STACKS = { ...STACKS, [MODELING_KIT.key]: MODELING_KIT, [BLANK
 
 credentialFlags(program
   .command('re-init')
-  .description('Refresh an already-installed kit from the current CLI version — re-copies skills and the kit dir (.build-kit or .agent-modeling-kit) so you pick up script/skill updates after upgrading. Unlike `init`, never touches the project root scaffold or the root CLAUDE.md router, and leaves existing credentials alone unless --force is passed.')
+  .description("Refresh an installed kit from the current CLI version. For a build kit: re-copies this CLI's shared runtime (ralph.js, ralph-claude.js, tracing, adapters) into .build-kit and re-runs the config (credentials unless complete, agent tracing) — the stack's own files and skills are left alone, so this works for --git stacks too. --stack <name> instead refreshes everything from that built-in stack; --modeling refreshes .agent-modeling-kit. Never touches the project root scaffold or the root CLAUDE.md router.")
   .option('--modeling', 'Refresh the modeling kit (.agent-modeling-kit) instead of a build kit')
-  .option('--stack <name>', `Override which stack to refresh from (${Object.keys(REINITIABLE_STACKS).join(', ')}) instead of the one recorded in install-manifest.json — use this when the manifest is missing/stale, or to switch a .build-kit install to a different stack`)
+  .option('--stack <name>', `Also refresh the stack's own files and skills from this built-in stack (${Object.keys(REINITIABLE_STACKS).join(', ')}) — or switch a .build-kit install to a different stack. Without it, only the shared runtime and the config are refreshed`)
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit) and wire it up via `git config core.hooksPath .githooks` — same as `init --hooks`, for turning it on after the fact without a full re-scaffold. Off by default.')
   .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
@@ -2916,6 +2882,14 @@ credentialFlags(program
     }
 
     const manifest = readJsonSafe(join(kitDir, '.eventmodelers', 'install-manifest.json'));
+
+    // A build kit without --stack: refresh only what this CLI owns — the shared runtime and the
+    // config — and never the stack's own files. Works for any stack, --git ones included.
+    if (!opts.modeling && !opts.stack) {
+      await refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts });
+      return;
+    }
+
     const stackKey = opts.modeling ? MODELING_KIT.key : (opts.stack || manifest.stack);
     const stackCfg = stackKey ? REINITIABLE_STACKS[stackKey] : null;
 
@@ -3160,6 +3134,9 @@ credentialFlags(program
       // (see the beta-api protected-resource-metadata incident this fixed).
       ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
       ensureEnvToken(targetDir, cfg.token);
+      if (existsSync(join(targetDir, STACKS.node.kitDirName))) {
+        await configureAgentTracing(configPath, globalOpts.print, !Object.values(overrides).some(Boolean));
+      }
     }
   });
 
@@ -3250,6 +3227,12 @@ credentialFlags(program
       // credentials resolved from flags/env/~/.eventmodelers — so the current directory is
       // neither read nor written, and the command works from anywhere.
       let kitDir = opts.global ? null : modelingKitDir;
+      // A pre-config.js install (the old ralph-based kit) shares the dir name but can't
+      // drive this loop — fall through to the global install rather than refusing to run.
+      if (kitDir && !existsSync(join(kitDir, 'lib', 'config.js'))) {
+        console.log(`ℹ️  Ignoring ${relative(cwd, kitDir)} — an outdated kit without lib/config.js (run \`init --modeling\` here to replace it). Using the global install.\n`);
+        kitDir = null;
+      }
       let projectDir = kitDir ? resolve(kitDir, '..') : null;
       let overrides = null;
       if (!kitDir) {
@@ -3869,10 +3852,25 @@ program
 program
   .command('config')
   .description('Print the fully resolved config (merged across the directory hierarchy + EVENTMODELERS_* env vars), with the token masked')
+  .option('--agent-tracing <on|off>', "Turn agent tracing on or off for this project (saved as `agentTracing` in the project's .eventmodelers/config.json). Off: the build agent sends no slice cost data to the platform at all.")
   .action((opts, command) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
     const explicitConfig = command.optsWithGlobals().config;
+
+    if (opts.agentTracing !== undefined) {
+      const value = String(opts.agentTracing).toLowerCase();
+      if (!['on', 'off'].includes(value)) {
+        console.error('❌ --agent-tracing takes "on" or "off"');
+        process.exit(1);
+      }
+      const configPath = explicitConfig
+        ? resolve(explicitConfig)
+        : join(kitDir ? dirname(kitDir) : cwd, '.eventmodelers', 'config.json');
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify({ ...readJsonSafe(configPath), agentTracing: value === 'on' }, null, 2));
+      console.log(`✓ Agent tracing ${value} — saved to ${relative(cwd, configPath) || configPath}\n`);
+    }
     const { sources, config } = loadEffectiveConfig(cwd, kitDir, explicitConfig);
 
     const resolved = { ...config };

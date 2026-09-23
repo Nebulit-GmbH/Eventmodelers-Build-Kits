@@ -17,7 +17,7 @@
 //        RALPH_EXEC_CMD="opencode run" node ralph-exec.js
 // Or persist it as localAi.exec in .eventmodelers/config.json.
 
-import { startRalph, loadLocalConfig } from './lib/ralph.js';
+import { startRalph, loadLocalConfig, resolveAgentIdentity } from './lib/ralph.js';
 import { spawn } from 'child_process';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
@@ -29,6 +29,8 @@ const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, 
 
 const cfg = loadLocalConfig(kitDir);
 const localOnly = process.env.RALPH_LOCAL === '1';
+// Same as ralph-claude.js: childEnv is built at load time, before startRalph resolves identity.
+Object.assign(cfg, resolveAgentIdentity(kitDir, 'BUILD', cfg));
 const execCmd = process.env.RALPH_EXEC_CMD || cfg.localAi?.exec;
 
 if (!execCmd) {
