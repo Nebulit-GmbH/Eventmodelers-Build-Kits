@@ -51,7 +51,7 @@ node .build-kit/ralph-claude.js /path/to/project
 **Phase 2** — triggered when any file in `.slices/` contains `"status": "Planned"`:
 - The loop runs Claude with `backend-prompt.md`
 - Claude implements the slice in the project
-- Phase 2 is Claude-only; local-AI mode skips it (local-ai-agent handles its own queue)
+- Phase 2 (building slices) never runs with `--local-ai` — see *`--local-ai` does not build code*. Build with `--exec` instead
 
 Both phases run in a continuous loop with a 3-second idle sleep. The realtime agent runs concurrently in the same process.
 
@@ -71,6 +71,34 @@ node .build-kit/realtime-agent.js
 
 `ralph-local-ai.js` drives any local or self-hosted model that can do tool calling.
 Claude (`ralph-claude.js`) stays the default runner — this is opt-in.
+
+### `--local-ai` does not build code
+
+**`--local-ai` works on the board only. It never builds a slice.** Planned slices stay
+Planned. That is by design, not a bug:
+
+- **Planned slices are never handed to it.** `ralph-local-ai.js` gives `startRalph` no
+  `onPlannedSlice`, so the loop only feeds it `tasks.json` prompts.
+- **It has no coding tools.** `lib/local-ai-agent.js` exposes only the board MCP tools:
+  no file read/write, no shell, no git, no test run.
+- **Its system prompt forbids file and shell access.** Such a request is answered with
+  `Blocked: …`.
+- **A prompt stops after 12 tool-call rounds.** That is enough for board edits, but far
+  short of a slice build.
+
+Here the kit is the agent loop and the model only picks tools. Building would mean
+rewriting a full coding agent inside the kit, so it is left out on purpose.
+
+**To build with a local model, use `--exec`** with a coding harness pointed at that model
+(see *External agent commands* below):
+
+```bash
+npx @eventmodelers/cli run --exec "codex exec --oss --json --full-auto"   # Codex on local Ollama
+npx @eventmodelers/cli run --exec "opencode run --auto --format json"     # OpenCode, with an Ollama/vLLM/LM Studio provider in its config
+```
+
+Or keep Claude Code as the builder and point `anthropicBaseUrl` at a local endpoint that
+speaks the Anthropic API.
 
 ```bash
 LOCAL_AI_TARGET=ollama          # preset: ollama | vllm | lmstudio | llamacpp
@@ -108,6 +136,20 @@ to a temp file named by `RALPH_PROMPT_FILE` for commands that prefer to read it.
 child runs with the project dir as its cwd and inherits stdio — a harness owns its own
 output format, so there is no condensed per-step logging here the way `ralph-claude.js`
 has it.
+
+**Agent tracing needs the harness's JSON output flag.** With agent tracing on
+(`eventmodelers config --agent-tracing on`), slice builds are costed just like with Claude —
+but only if the harness runs in its JSON output mode. Its normal output has no token counts,
+so without the flag a turn is not traced (the runner logs a hint). Add the flag yourself:
+
+```bash
+npx @eventmodelers/cli run --exec "codex exec --json --full-auto"
+npx @eventmodelers/cli run --exec "opencode run --auto --format json"
+npx @eventmodelers/cli run --exec "gemini --yolo --output-format stream-json -p"
+```
+
+The terminal then shows the raw JSON events. Only OpenCode reports a dollar cost; Codex and
+Gemini turns record tokens and duration with no cost. See `agent-tracking.md`.
 
 Persist a default alongside the local-AI settings:
 

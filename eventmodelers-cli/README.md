@@ -125,8 +125,8 @@ npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install
 npx @eventmodelers/cli init --stack <name> --demo   # same, plus a ready-made demo model in the kit's .slices/ to build against
 npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
-npx @eventmodelers/cli run --local-ai [target]      # same, via a local/self-hosted model (ralph-local-ai.js)
-npx @eventmodelers/cli run --exec "<command>"        # same, via an external agent harness (ralph-exec.js)
+npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
+npx @eventmodelers/cli run --exec "<command>"        # same, via an external agent harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue

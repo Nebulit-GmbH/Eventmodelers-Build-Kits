@@ -45,6 +45,69 @@ export function usageFromLocalAi(raw, durationMs) {
   };
 }
 
+/** One event from an external harness's JSON output (ralph-exec.js), or null if it carries no usage.
+ *  Matched on shape, not on the command name, so a wrapper script around a harness still counts:
+ *   - Codex `codex exec --json`: `turn.completed` with `usage` (input_tokens includes the cached ones)
+ *   - OpenCode `opencode run --format json`: `step_finish` per model step, with tokens and cost
+ *   - Gemini CLI `--output-format stream-json`: the final `result` with `stats`;
+ *     `--output-format json`: one object whose `stats.models` holds tokens per model
+ *  Only OpenCode reports a cost — the others leave costUsd null rather than guessing a price. */
+export function usageFromHarnessEvent(msg) {
+  if (msg?.type === 'turn.completed' && msg.usage) {
+    const u = msg.usage;
+    const cached = n(u.cached_input_tokens);
+    return { inputTokens: Math.max(0, n(u.input_tokens) - cached), outputTokens: n(u.output_tokens), cacheReadTokens: cached };
+  }
+  if (msg?.type === 'step_finish' && msg.part?.tokens) {
+    const t = msg.part.tokens;
+    return {
+      inputTokens: n(t.input),
+      outputTokens: n(t.output) + n(t.reasoning),
+      cacheReadTokens: n(t.cache?.read),
+      cacheWriteTokens: n(t.cache?.write),
+      costUsd: Number.isFinite(msg.part.cost) ? msg.part.cost : null,
+    };
+  }
+  if (msg?.type === 'result' && msg.stats && !('total_cost_usd' in msg)) {
+    const s = msg.stats;
+    return {
+      inputTokens: n(s.input_tokens),
+      outputTokens: n(s.output_tokens),
+      durationMs: Number.isFinite(s.duration_ms) ? s.duration_ms : null,
+    };
+  }
+  if (msg?.stats?.models && typeof msg.stats.models === 'object') {
+    const models = Object.entries(msg.stats.models);
+    const tok = (key) => models.reduce((sum, [, m]) => sum + n(m?.tokens?.[key]), 0);
+    const cached = tok('cached');
+    const [dominant] = models.sort((a, b) => n(b[1]?.tokens?.candidates) - n(a[1]?.tokens?.candidates))[0] ?? [];
+    return {
+      inputTokens: Math.max(0, tok('prompt') - cached),
+      outputTokens: tok('candidates') + tok('thoughts'),
+      cacheReadTokens: cached,
+      model: dominant ?? null,
+    };
+  }
+  return null;
+}
+
+/** Sums the usage of every event in one turn. A field no event reported stays null (cost, model)
+ *  or 0 (tokens), so a harness without a cost does not show up as a free turn. */
+export function sumUsage(parts) {
+  if (!parts.length) return null;
+  const add = (key) => parts.reduce((sum, p) => sum + n(p[key]), 0);
+  const costs = parts.map((p) => p.costUsd).filter(Number.isFinite);
+  return {
+    inputTokens: add('inputTokens'),
+    outputTokens: add('outputTokens'),
+    cacheReadTokens: add('cacheReadTokens'),
+    cacheWriteTokens: add('cacheWriteTokens'),
+    costUsd: costs.length ? costs.reduce((a, b) => a + b, 0) : null,
+    durationMs: parts.findLast((p) => Number.isFinite(p.durationMs))?.durationMs ?? null,
+    model: parts.findLast((p) => p.model)?.model ?? null,
+  };
+}
+
 /** Records slice build turns. The agent id is the session: the platform requires one, and a
  *  restart of the same build agent is still the same agent building the same slices. */
 export function createSliceTracer({ baseUrl, token, organizationId, agentId, traceFile, log = () => {}, enabled = true } = {}) {

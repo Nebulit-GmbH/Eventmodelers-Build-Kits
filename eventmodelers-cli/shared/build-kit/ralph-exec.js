@@ -18,6 +18,7 @@
 // Or persist it as localAi.exec in .eventmodelers/config.json.
 
 import { startRalph, loadLocalConfig, resolveAgentIdentity } from './lib/ralph.js';
+import { createSliceTracer, usageFromHarnessEvent, sumUsage } from './lib/tracing.js';
 import { spawn } from 'child_process';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
@@ -52,6 +53,21 @@ const childEnv = {
   ...(cfg.agentId && !localOnly ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
 };
 
+// What each slice build turn cost — see lib/tracing.js. Same opt-in as ralph-claude.js, but a
+// harness only reports usage in its JSON output mode (`codex exec --json`, `opencode run --format
+// json`, `gemini --output-format stream-json`), so without that flag a turn has nothing to record.
+const tracingOn = !localOnly && cfg.agentTracing === true;
+if (!tracingOn && !localOnly) console.log('[ralph-exec] agent tracing off — no slice cost data is sent (turn on: eventmodelers config --agent-tracing on)');
+const tracer = createSliceTracer({
+  baseUrl: cfg.baseUrl,
+  token: cfg.token,
+  organizationId: cfg.organizationId,
+  agentId: cfg.agentId,
+  traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
+  log: (line) => console.log(`[ralph-exec] ${line}`),
+  enabled: tracingOn,
+});
+
 const promptDir = mkdtempSync(join(tmpdir(), 'ralph-exec-'));
 
 // POSIX single-quote escaping: close, insert an escaped quote, reopen. The prompt is
@@ -62,22 +78,59 @@ function shellQuote(s) {
 
 console.log(`[ralph-exec] command: ${execCmd}`);
 
-function runExec(prompt) {
+// Parses a harness's stdout for usage while still passing it through. Most harnesses emit JSONL;
+// Gemini's `--output-format json` is one pretty-printed object, hence the whole-output fallback.
+function collectUsage(stream) {
+  const parts = [];
+  let buffer = '';
+  let all = '';
+  const take = (text) => {
+    try { const u = usageFromHarnessEvent(JSON.parse(text)); if (u) parts.push(u); } catch { /* not JSON */ }
+  };
+  stream.on('data', (chunk) => {
+    process.stdout.write(chunk);
+    const text = chunk.toString();
+    all += text;
+    buffer += text;
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) if (line.trim()) take(line);
+  });
+  return () => {
+    if (buffer.trim()) take(buffer);
+    if (!parts.length && all.trim()) take(all);
+    return sumUsage(parts);
+  };
+}
+
+// `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
+function runExec(prompt, slice = null) {
   return new Promise((resolvePromise, reject) => {
     const full = inlineHeader + prompt;
     const promptFile = join(promptDir, 'prompt.md');
     writeFileSync(promptFile, full);
+    const traced = tracingOn && !!slice;
+    const startedAt = Date.now();
 
     // stdio inherit: the harness owns its own output format, and there is no
     // cross-harness stream schema to parse into the condensed per-step logging
-    // that ralph-claude.js does — so it goes straight through.
+    // that ralph-claude.js does — so it goes straight through. A traced turn pipes
+    // stdout instead, only to read usage from it; the output is still echoed as is.
     const proc = spawn(`${execCmd} ${shellQuote(full)}`, {
       cwd: projectDir,
-      stdio: 'inherit',
+      stdio: ['inherit', traced ? 'pipe' : 'inherit', 'inherit'],
       shell: true,
       env: { ...childEnv, RALPH_PROMPT_FILE: promptFile },
     });
-    proc.on('close', (code) => (code === 0 ? resolvePromise() : reject(new Error(`exec command exited ${code}`))));
+    const usage = traced ? collectUsage(proc.stdout) : null;
+    proc.on('close', (code) => {
+      if (traced) {
+        const u = usage();
+        if (u) tracer.record({ ...slice, status: code === 0 ? 'ok' : 'error' }, { ...u, durationMs: u.durationMs ?? Date.now() - startedAt });
+        else console.log('[ralph-exec] trace: no usage in the command output — run the harness in its JSON output mode to record slice cost');
+      }
+      code === 0 ? resolvePromise() : reject(new Error(`exec command exited ${code}`));
+    });
     proc.on('error', reject);
   });
 }
