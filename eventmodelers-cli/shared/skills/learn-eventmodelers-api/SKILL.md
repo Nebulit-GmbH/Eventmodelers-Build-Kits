@@ -27,7 +27,7 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `get_nodes` | `boardId`, `type?`, `name?`, `chapterId?`, `nodeIds?`, `projection?` (`"line"`) | List nodes, optionally by type and/or a partial case-insensitive title match. `chapterId` scopes to one timeline — prefer this over an unscoped board-wide call whenever the step is working within one chapter (the common case); `nodeIds` fetches a known, scattered subset in one call (e.g. re-verifying exactly the nodes just touched by a batch write) instead of a full `type` refetch; `projection: "line"` maps each match to `{id, type, title}` only. Every node carries `cellName`, its cell address in the chapter it is placed in (absent when unplaced) — read the cell names the cell-addressed tools need from here, never derive or invent one | §3 `GET .../nodes` |
 | `get_node` | `boardId`, `nodeId`, `projection?` (`"cells"` \| `"edges"`) | Get one node — the full response carries `cellName`, its cell address in the chapter it is placed in. `projection: "cells"` (CHAPTER nodes only) returns just `{rows, columns, cells}` instead of the full `timelineData` — use whenever only the grid/occupancy is needed, not the whole chapter; `projection: "edges"` returns just that node's inbound/outbound connections instead of `findNodeById`'s full record. Both are opt-in — omitting `projection` is the unchanged full response | §3 `GET .../nodes/:nodeId` |
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
-| `get_board_events` | `boardId` | All board events, in sequence | §1 `GET .../events` |
+| `get_board_events` | `boardId`, `since?`, `seq?` | A page of at most 200 board events, oldest first. Not the whole log: page on by passing the last event's `seq` as `since` until a page comes back shorter than 200. `seq` returns only the event of exactly that seq | §1 `GET .../events` |
 | `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
 | `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). Every event property is described on the tool's own `events[]` schema — read that rather than this skill when all you need is the event shape. An event needs its own `id` (required — a fresh uuid per event, never the node id) and its `eventType`, plus the keys of its kind (`nodeId`/`meta`/`node`, or `edgeId`/`source`/`target`). The `id` keys the returned `hashes` map and makes a resubmit idempotent — the same event sent twice under one id writes a single board event. Don't send `boardId` or `timestamp` per event — the server takes the board from the call and stamps the time itself, and ignores both if sent. `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
 | `delete_node` | `boardId`, `nodeIds[]` | Delete nodes, applied in order — one failure doesn't stop the rest; answers `{results}`. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
@@ -197,9 +197,25 @@ Search events by node name.
 ---
 
 ### GET `/api/org/:orgId/boards/:boardId/events`
-Get all board events in sequence.
+Get a page of board events in sequence order — **at most 200 per call**, oldest first. One call is not the whole log: to read it all, pass the last event's `seq` as `since` and repeat until a page holds fewer than 200 events.
 
-**Response**: `200` — event array
+**Query params**:
+- `since` (integer, optional) — only events with a `seq` greater than this
+- `skipSilent` (boolean, default `true`) — `false` also includes events marked silent
+- `seq` (integer, optional) — only the event of exactly this seq (silent or not); `since` and `skipSilent` are ignored
+
+**Response**: `200` — event array (at most 200; at most one with `seq`, empty if there is none)
+**Errors**: `400` `EVENT_SEQ_INVALID` — `seq` is not a non-negative integer
+
+```bash
+since=0
+while :; do
+  page=$(curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/events?since=$since" -H "x-token: $TOKEN")
+  # ...use $page...
+  [ "$(echo "$page" | jq length)" -lt 200 ] && break
+  since=$(echo "$page" | jq '.[-1].seq')
+done
+```
 
 ---
 

@@ -53,10 +53,7 @@ Steps:
    chain they belong to, the timeline around them — and spend a full-`meta` `get_nodes` only
    on the handful you conclude you are actually going to touch. One `get_node` per changed
    node, or a second outline call for a chapter you already read this turn, is the same
-   fetch paid for twice (see `connect` Step 5).
-   `mcp__eventmodelers__get_board_events` with the header's `seq` range tells you what the
-   change actually was when the node's current state doesn't make it obvious. Then judge the
-   board as a whole: run `/analyze-existing-model` once per session to get that picture and
+   fetch paid for twice (see `connect` Step 5). Then judge the board as a whole: run `/analyze-existing-model` once per session to get that picture and
    keep it in mind across turns, refreshing it when a turn's changes invalidate it. On a
    `BOARD_REVIEW` turn that model-wide picture *is* the starting point.
    **What you read here is what you hand down in step 3.** Index it and keep it: every fact

@@ -68,12 +68,10 @@ Each trace is also appended to `.eventmodelers/trace/slices.jsonl`; upload is be
 ## API
 
 ```
-POST /api/org/:orgId/boards/:boardId/agent-traces   {traces: [...]}  → {recorded}
-     400  a trace without sliceId, a uuid agentId, or a valid sessionId, or naming a boardId other
-          than the path's (whole batch rejected); a trace without a boardId is filed under the path's
-     403  no access to the board in this org, or the agent is not a connected build agent: no
-          /api/agent-alive heartbeat with agent_type BUILD within 45s under a token of this org
-     404  no such board
+POST /api/org/:orgId/agent-traces           {traces: [...]}  → {recorded}
+     400  a trace without sliceId, a uuid agentId, or a valid sessionId (whole batch rejected)
+     403  the agent is not a connected build agent: no /api/agent-alive heartbeat with
+          agent_type BUILD within 45s under a token of this org
 GET  /api/org/:orgId/boards/:boardId/reporting/slices/cost?sliceId=&context=   (this board's turns only)
      → {slices: [{sliceId, sliceTitle, context, iterations, firstAt, lastAt, costUsd, inputTokens, outputTokens,
                   cacheReadTokens, cacheWriteTokens, durationMs}]}

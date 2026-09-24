@@ -1,5 +1,5 @@
 // What a slice costs: one trace per build turn against one slice, posted to the platform's
-// /api/org/:orgId/boards/:boardId/agent-traces. Only the runner can see what a turn cost, so it reports it.
+// /api/org/:orgId/agent-traces. Only the runner can see what a turn cost, so it reports it.
 //
 // Best effort: each trace is appended to a local JSONL file, then POSTed once. No retries, no
 // buffering. A failed upload is logged and forgotten; the file is the record.
@@ -114,10 +114,9 @@ export function createSliceTracer({ baseUrl, token, organizationId, agentId, tra
   const canUpload = !!(enabled && baseUrl && token && organizationId && agentId);
 
   async function post(trace) {
-    // The platform files a trace under the board in its path — a turn without a board has nowhere to go.
-    if (!canUpload || !trace.boardId) return;
+    if (!canUpload) return;
     try {
-      const res = await fetch(`${baseUrl}/api/org/${organizationId}/boards/${trace.boardId}/agent-traces`, {
+      const res = await fetch(`${baseUrl}/api/org/${organizationId}/agent-traces`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-token': token, 'x-agent-id': agentId },
         body: JSON.stringify({ traces: [trace] }),
