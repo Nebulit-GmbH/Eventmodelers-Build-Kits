@@ -5,12 +5,14 @@
 // Usage: node realtime-agent.js [kit_dir]
 
 import { loadLocalConfig, fetchPlatformConfig, exitOn401, retryTransient, startRealtimeAgent } from './lib/ralph.js';
+import { redactConsole } from './lib/redact.js';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const kitDir = process.argv[2] ? resolve(process.argv[2]) : dirname(fileURLToPath(import.meta.url));
 
 const local = loadLocalConfig(kitDir);
+redactConsole([local.token]);
 const cfg = await exitOn401('fetchPlatformConfig', () => retryTransient('fetchPlatformConfig', () => fetchPlatformConfig(local)));
 
 console.log(`[agent] Starting — org=${cfg.organizationId}${cfg.boardId ? `, board=${cfg.boardId}` : ''}, base=${cfg.baseUrl}`);

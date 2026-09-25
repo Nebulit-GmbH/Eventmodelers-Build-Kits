@@ -43,9 +43,8 @@ const inlineHeader = !localOnly && cfg.boardId
   : '';
 const timeoutMs = turnTimeoutMs(cfg);
 // The model can still surface the token (e.g. a Bash command it expanded by hand), and
-// --verbose logs tool input and assistant text as is — mask it before it hits the log.
-const redact = (s) => (cfg.token ? String(s).split(cfg.token).join('***') : s);
-
+// --verbose logs tool input and assistant text as is — startRalph routes every console line
+// through lib/redact.js, which masks it before it hits the log.
 // --verbose here (set via `eventmodelers run --verbose`, passed down as RALPH_VERBOSE)
 // logs full tool input and assistant reasoning text; the default (condensed) mode logs
 // only the high-level step — a skill name, or a bare tool name — mirroring `run --modeling`'s
@@ -109,9 +108,9 @@ function runClaude(prompt, slice = null) {
 
         if (msg.type === 'assistant') {
           for (const block of msg.message?.content ?? []) {
-            if (block.type === 'text' && block.text && verbose) console.log(redact(block.text));
+            if (block.type === 'text' && block.text && verbose) console.log(block.text);
             if (block.type === 'tool_use') {
-              if (verbose) console.log(`→ ${redact(describeToolUse(block))}`);
+              if (verbose) console.log(`→ ${describeToolUse(block)}`); // masked by lib/redact.js
               else if (block.name === 'Skill') console.log(`→ Skill: ${block.input?.skill ?? ''}`);
               else console.log(`→ ${block.name}`);
             }

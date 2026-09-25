@@ -12,6 +12,7 @@ import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
+import { redactConsole } from './redact.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -726,6 +727,7 @@ export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLoca
 
 export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
+  redactConsole([local.token]);
   Object.assign(local, resolveAgentIdentity(kitDir, agentType, local));
 
   console.log(`Ralph — kit: ${kitDir}`);
