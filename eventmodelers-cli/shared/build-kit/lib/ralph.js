@@ -14,6 +14,9 @@ import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
 import { redactConsole } from './redact.js';
 
+// Backoff for calls to the platform that failed for a reason on its side (startup, the channel).
+const PLATFORM_BACKOFF = { baseMs: 2_000, capMs: 5 * 60_000 };
+
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 class HttpError extends Error {
@@ -23,31 +26,25 @@ class HttpError extends Error {
   }
 }
 
+// Every fetchJSON call authenticates with the platform API token (x-token), and a 401 for it
+// always means that token is missing, invalid or revoked (see requireApiToken on the
+// platform) — no retry or wait can fix that, so the first one ends the process with a message
+// saying what to fix. (The alive-ping, on the short-lived realtime token, doesn't come
+// through here: a 401 there just means that token needs refreshing.)
 async function fetchJSON(url, options) {
   const res = await fetch(url, options);
+  if (res.status === 401) {
+    console.error(`[agent] 401 from ${new URL(url).pathname} — the token was rejected: ${await res.text()}`);
+    console.error('[agent] Check the token in .eventmodelers/config.json (or EVENTMODELERS_TOKEN) — shutting down');
+    process.exit(1);
+  }
   if (!res.ok) throw new HttpError(res.status, await res.text());
   return res.json();
 }
 
-// A 401 from the platform always means the token itself is missing, invalid or revoked (see
-// requireApiToken on the platform) — retrying the same token can't fix that, and neither can
-// waiting, so the first one ends the process with a message saying what to fix.
-async function exitOn401(label, fn) {
-  try {
-    return await fn();
-  } catch (err) {
-    if (err instanceof HttpError && err.status === 401) {
-      console.error(`[agent] ${label} — 401, the token was rejected: ${err.message}`);
-      console.error('[agent] Check the token in .eventmodelers/config.json (or EVENTMODELERS_TOKEN) — shutting down');
-      process.exit(1);
-    }
-    throw err;
-  }
-}
-
 // Startup can't wait for a person to notice a platform blip: a 429, a 5xx or a request that
-// never got an answer is retried with backoff until it goes through. Anything else — a 4xx,
-// including the 401 exitOn401 turns into an exit — is a real answer and goes straight back.
+// never got an answer is retried with backoff until it goes through. Any other 4xx is a real
+// answer and goes straight back (a 401 has already ended the process in fetchJSON).
 function isTransient(err) {
   if (err instanceof HttpError) return err.status === 429 || err.status >= 500;
   // fetch() rejects with a TypeError when there's no response at all (DNS, refused, reset),
@@ -61,7 +58,7 @@ async function retryTransient(label, fn, { sleepFn = sleep } = {}) {
       return await fn();
     } catch (err) {
       if (!isTransient(err)) throw err;
-      const delay = backoffMs(attempt, { baseMs: 2_000, capMs: 5 * 60_000 });
+      const delay = backoffMs(attempt, PLATFORM_BACKOFF);
       console.warn(`[agent] ${label} failed (attempt ${attempt}: ${err.message}) — retrying in ${Math.round(delay / 1000)}s`);
       await sleepFn(delay);
     }
@@ -289,8 +286,7 @@ async function fetchAndPersistSlices(cfg, kitDir) {
 // while an onTask turn runs (see inTurn), a change is held here instead — latest per slice —
 // and written the moment the turn ends. Every write goes through a temp file and a rename,
 // so a reader never sees a half-written file either.
-let turnRunning = false;
-const heldTasks = new Map(); // sliceId → payload
+let heldTasks = null; // sliceId → payload while an onTask turn runs, null otherwise
 
 function writeTasksAtomically(tasksPath, tasks) {
   const tmp = `${tasksPath}.${process.pid}.tmp`;
@@ -317,7 +313,7 @@ function appendTasks(kitDir, payloads) {
 }
 
 async function writeTask(payload, kitDir) {
-  if (turnRunning) {
+  if (heldTasks) {
     heldTasks.set(payload.sliceId, payload);
     console.log(`[agent] Task held until the current turn ends — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
     return;
@@ -329,14 +325,13 @@ async function writeTask(payload, kitDir) {
 // Runs one agent turn that may rewrite tasks.json, keeping this process's own writes out of
 // its way; whatever arrived meanwhile is written as soon as it's over, success or not.
 async function inTurn(kitDir, fn) {
-  turnRunning = true;
+  heldTasks = new Map();
   try {
     return await fn();
   } finally {
-    turnRunning = false;
-    if (heldTasks.size > 0) {
-      const payloads = [...heldTasks.values()];
-      heldTasks.clear();
+    const payloads = [...heldTasks.values()];
+    heldTasks = null;
+    if (payloads.length > 0) {
       appendTasks(kitDir, payloads);
       console.log(`[agent] Wrote ${payloads.length} task(s) held during the turn`);
     }
@@ -345,18 +340,19 @@ async function inTurn(kitDir, fn) {
 
 async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-  await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
-    console.error('[agent] Slice persist error:', err),
-  );
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
   // as slice:changed. Queuing them only buys a turn in which the agent reads its own echo and
-  // skips it. Attribution decides, never a guess: only an agentId equal to ours is dropped —
-  // a person's edit or another agent's (different id), or an event with no attribution at all,
-  // is still queued, so a missing field degrades to the old behaviour rather than losing work.
+  // skips it, and re-reading the slices for them is wasted too: ralphLoop re-reads them right
+  // after every turn anyway. Attribution decides, never a guess: only an agentId equal to ours
+  // is dropped — a person's edit or another agent's, or an event with no attribution at all,
+  // is still handled, so a missing field degrades to queuing rather than losing work.
   if (payload?.agentId && cfg.agentId && payload.agentId === cfg.agentId) {
     console.log(`[agent] Own write — not queued (slice="${payload.sliceTitle}" status="${payload.sliceStatus}")`);
     return;
   }
+  await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
+    console.error('[agent] Slice persist error:', err),
+  );
   // Planned slices are handled by onPlannedSlice directly — no task needed.
   // queueAllStatuses opts out of that split entirely (e.g. bridge has no
   // onPlannedSlice consumer, so a lingering Planned slice would otherwise
@@ -369,9 +365,9 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
 // createAdapter is the realtime transport factory — injectable so the channel handling can be
 // tested against a fake transport.
 async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false, createAdapter = createRealtimeAdapter } = {}) {
-  let realtimeToken = await exitOn401('getRealtimeToken', () => retryTransient('getRealtimeToken', () => getRealtimeToken(cfg)));
+  let realtimeToken = await retryTransient('getRealtimeToken', () => getRealtimeToken(cfg));
 
-  await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+  await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
     console.error('[agent] Initial slice fetch error:', err),
   );
 
@@ -389,7 +385,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
       console.log(`[agent] ${ts()} Refreshing realtime token (reason: ${reason})...`);
       refreshing = (async () => {
         try {
-          realtimeToken = await exitOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
+          realtimeToken = await getRealtimeToken(cfg);
           await realtime.setAuth(realtimeToken);
           console.log(`[agent] ${ts()} Token refreshed (reason: ${reason}, took ${Date.now() - startedAt}ms)`);
         } catch (err) {
@@ -404,34 +400,33 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
   };
 
   // A subscribe that errors on a stale token needs a fresh token AND a new join
-  // attempt — setAuth alone doesn't re-join a channel that already errored out.
-  // Retried with exponential backoff (2s → 5min) rather than a fixed delay and a cap:
-  // the cap used to leave the channel dead for good — the scheduled refresh only calls
-  // setAuth, it never re-joins — while the backoff alone keeps a genuinely revoked
-  // access from hammering the platform. A revoked token ends the process anyway, via
-  // exitOn401 inside refreshToken.
+  // attempt — setAuth alone doesn't re-join a channel that already errored out, and nothing
+  // else ever re-joins it, so this retries for as long as it takes, with backoff so a
+  // lasting failure doesn't hammer the platform. (A revoked token ends the process anyway:
+  // refreshToken's fetch gets the 401.)
   let channelErrorStreak = 0;
-  let resubscribeTimer = null;
+  let resubscribePending = false;
   const onChannelFailure = (reason) => {
     // One failure can be reported more than once (a channel erroring while its retry is
     // already scheduled); a second resubscribe on top would join the channel twice.
-    if (resubscribeTimer) return;
+    if (resubscribePending) return;
+    resubscribePending = true;
     channelErrorStreak += 1;
-    const delay = backoffMs(channelErrorStreak, { baseMs: 2_000, capMs: 5 * 60_000 });
+    const delay = backoffMs(channelErrorStreak, PLATFORM_BACKOFF);
     console.warn(`[agent] ${ts()} Channel "${channelName}": ${reason} (attempt ${channelErrorStreak}) — resubscribing in ${Math.round(delay / 1000)}s`);
-    resubscribeTimer = setTimeout(async () => {
+    setTimeout(async () => {
       try {
         await refreshToken(`channel ${reason}`);
       } catch {
         // Logged by refreshToken. Rejoining on the old token is still worth a try —
         // if it fails too, that's just the next failure, with a longer delay.
       }
-      resubscribeTimer = null;
+      resubscribePending = false;
       subscribeChannel();
     }, delay);
   };
   const subscribeChannel = () => {
-    Promise.resolve(realtime.subscribe(
+    realtime.subscribe(
       channelName,
       {
         // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}.
@@ -457,11 +452,11 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
         // Broadcasts sent while the channel was down are gone. Re-read the slices once so a
         // slice set to Planned during the gap still gets built — .slices/ is what ralphLoop
         // picks Planned work from.
-        exitOn401('fetchAndPersistSlices (after reconnect)', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+        fetchAndPersistSlices(cfg, kitDir).catch((err) =>
           console.error(`[agent] ${ts()} Slice re-fetch after reconnect failed:`, err),
         );
       },
-    )).catch((err) => onChannelFailure(`subscribe failed: ${err.message}`));
+    ).catch((err) => onChannelFailure(`subscribe failed: ${err.message}`));
   };
   subscribeChannel();
 
@@ -623,9 +618,8 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
 // Returns true once fn succeeds; false for a turn that timed out (see lib/turn.js). A timeout
 // is not retried in place: re-running the same hung turn every 60s would spin forever without
 // the stuck-slice guard ever seeing it, so it goes back to ralphLoop, which recounts the slice.
-// Any other failure is retried in place with exponential backoff (30s → 10min): a harness
-// that fails fast (API outage, rate limit, broken install) used to be relaunched every 60s
-// for as long as it stayed broken.
+// Any other failure is retried in place, with backoff (30s → 10min) so a harness that keeps
+// failing fast (API outage, rate limit, broken install) isn't relaunched in a tight loop.
 async function runWithRetry(label, fn) {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -700,7 +694,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         console.log(`[ralph] No planned slices in current context "${ctx}" — waiting. Switch context on the board to continue.`);
         lastIdleCtx = ctx;
       }
-      await new Promise((r) => setTimeout(r, 10_000));
+      await sleep(10_000);
     } else {
       lastIdleCtx = undefined;
     }
@@ -709,7 +703,20 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks };
+
+// The connect line a runner puts in front of every prompt. --local must mean zero board
+// contact, so it is empty then — handed live credentials, the agent would treat itself as
+// already connected and go straight to board sync. The token is named, never included: the
+// prompt reaches the harness on its command line (visible to every local user in `ps`) and
+// lands in session transcripts, so it carries $EVENTMODELERS_TOKEN — the runner puts the value
+// in the child's env, connect treats the reference as the inline token, and a curl header
+// written as "x-token: $EVENTMODELERS_TOKEN" expands in the shell.
+export function connectHeader(cfg, localOnly) {
+  return !localOnly && cfg.boardId
+    ? `board=${cfg.boardId} token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
+    : '';
+}
 
 // Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
 // passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
@@ -744,7 +751,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
     return;
   }
 
-  const cfg = await exitOn401('fetchPlatformConfig', () => retryTransient('fetchPlatformConfig', () => fetchPlatformConfig(local)));
+  const cfg = await retryTransient('fetchPlatformConfig', () => fetchPlatformConfig(local));
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([

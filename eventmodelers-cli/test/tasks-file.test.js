@@ -1,15 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { hasPendingTasks, inTurn, writeTask } from '../shared/build-kit/lib/ralph.js';
+import { quiet, tempKit } from './helpers.js';
 
 function kit(t) {
-  t.mock.method(console, 'log', () => {});
-  const dir = mkdtempSync(join(tmpdir(), 'ralph-tasks-'));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  return dir;
+  quiet(t);
+  return tempKit(t);
 }
 
 const read = (dir) => JSON.parse(readFileSync(join(dir, 'tasks.json'), 'utf-8'));

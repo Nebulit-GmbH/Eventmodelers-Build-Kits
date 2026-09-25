@@ -18,7 +18,7 @@ const MIN_SECRET_LENGTH = 8;
 export function redactString(text, secrets = []) {
   let out = String(text).replace(JWT, '***');
   for (const secret of secrets) {
-    if (typeof secret === 'string' && secret.length >= MIN_SECRET_LENGTH) out = out.split(secret).join('***');
+    if (typeof secret === 'string' && secret.length >= MIN_SECRET_LENGTH) out = out.replaceAll(secret, '***');
   }
   return out;
 }

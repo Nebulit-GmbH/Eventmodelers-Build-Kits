@@ -10,9 +10,8 @@ export async function createSupabaseRealtimeAdapter(cfg, initialToken, deps = {}
   });
   await supabase.realtime.setAuth(initialToken);
 
-  // A resubscribe must replace the channel, not add to it: supabase.channel(topic) hands back
-  // the existing channel for a topic it already knows, so every retry used to stack another
-  // set of broadcast handlers onto it — after N reconnects each slice:changed ran N+1 times.
+  // supabase.channel(topic) hands back the existing channel for a topic it already knows, so
+  // re-subscribing on it would stack another set of handlers — the old channel is removed first.
   let current = null;
 
   return {

@@ -2,9 +2,9 @@
 // Ralph loop + realtime agent using Claude Code as the executor.
 // Usage: node ralph-claude.js [project_dir]
 
-import { startRalph, loadLocalConfig, resolveAgentIdentity } from './lib/ralph.js';
+import { startRalph, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
 import { createSliceTracer, usageFromClaudeResult } from './lib/tracing.js';
-import { turnTimeoutMs, superviseTurn, TurnTimeoutError } from './lib/turn.js';
+import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
 import { spawn } from 'child_process';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -31,20 +31,8 @@ const tracer = createSliceTracer({
   log: (line) => console.log(`[ralph] ${line}`),
   enabled: tracingOn,
 });
-// --local must mean zero board contact — never hand Claude live board
-// credentials via the inline header, even if config.json has them, or it'll
-// treat them as already-connected and skip straight to board sync.
-// The token itself stays out of the prompt: `-p` is argv, visible to every local
-// user in `ps`, and the prompt lands in session transcripts. The header names the
-// env var instead (set in claudeEnv below) — connect treats it as the inline token,
-// and a curl header written as "x-token: $EVENTMODELERS_TOKEN" expands in the shell.
-const inlineHeader = !localOnly && cfg.boardId
-  ? `board=${cfg.boardId} token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
-  : '';
+const inlineHeader = connectHeader(cfg, localOnly);
 const timeoutMs = turnTimeoutMs(cfg);
-// The model can still surface the token (e.g. a Bash command it expanded by hand), and
-// --verbose logs tool input and assistant text as is — startRalph routes every console line
-// through lib/redact.js, which masks it before it hits the log.
 // --verbose here (set via `eventmodelers run --verbose`, passed down as RALPH_VERBOSE)
 // logs full tool input and assistant reasoning text; the default (condensed) mode logs
 // only the high-level step — a skill name, or a bare tool name — mirroring `run --modeling`'s
@@ -110,7 +98,7 @@ function runClaude(prompt, slice = null) {
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text && verbose) console.log(block.text);
             if (block.type === 'tool_use') {
-              if (verbose) console.log(`→ ${describeToolUse(block)}`); // masked by lib/redact.js
+              if (verbose) console.log(`→ ${describeToolUse(block)}`);
               else if (block.name === 'Skill') console.log(`→ Skill: ${block.input?.skill ?? ''}`);
               else console.log(`→ ${block.name}`);
             }
@@ -123,7 +111,8 @@ function runClaude(prompt, slice = null) {
     });
 
     proc.on('close', (code) => {
-      if (turn.timedOut()) reject(new TurnTimeoutError('Claude turn', timeoutMs));
+      const timeout = turn.timeoutError();
+      if (timeout) reject(timeout);
       else if (code === 0) resolve();
       else reject(new Error(`Claude exited ${code}`));
     });

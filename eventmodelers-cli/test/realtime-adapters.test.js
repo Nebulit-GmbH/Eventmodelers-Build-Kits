@@ -6,9 +6,9 @@ import { createPocketBaseRealtimeAdapter } from '../shared/build-kit/lib/adapter
 
 const handlers = { message() {}, 'slice:changed'() {} };
 
-test('supabase: resubscribing replaces the channel instead of stacking handlers on it', async (t) => {
-  // The real supabase-js client — its channel(topic) returning the existing channel is exactly
-  // the behaviour under test. Nothing listens on this address; no connection is needed.
+// The real supabase-js client — its channel(topic) returning the existing channel is exactly
+// the behaviour under test. Nothing listens on this address; no connection is needed.
+async function supabaseAdapter(t) {
   let client;
   const adapter = await createSupabaseRealtimeAdapter(
     { supabaseUrl: 'http://127.0.0.1:1', supabaseAnonKey: 'anon' },
@@ -16,6 +16,11 @@ test('supabase: resubscribing replaces the channel instead of stacking handlers 
     { createClient: (...args) => (client = createClient(...args)) },
   );
   t.after(async () => { await client.removeAllChannels(); client.realtime.disconnect(); });
+  return { adapter, client };
+}
+
+test('supabase: resubscribing replaces the channel instead of stacking handlers on it', async (t) => {
+  const { adapter, client } = await supabaseAdapter(t);
 
   for (let i = 0; i < 3; i++) await adapter.subscribe('board:b-slicechanged', handlers, () => {});
 
@@ -25,13 +30,7 @@ test('supabase: resubscribing replaces the channel instead of stacking handlers 
 });
 
 test('supabase: status from a replaced channel is not reported', async (t) => {
-  let client;
-  const adapter = await createSupabaseRealtimeAdapter(
-    { supabaseUrl: 'http://127.0.0.1:1', supabaseAnonKey: 'anon' },
-    'token',
-    { createClient: (...args) => (client = createClient(...args)) },
-  );
-  t.after(async () => { await client.removeAllChannels(); client.realtime.disconnect(); });
+  const { adapter } = await supabaseAdapter(t);
 
   const first = [];
   await adapter.subscribe('board:b-slicechanged', handlers, (s) => first.push(s));

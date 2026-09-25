@@ -1,9 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { startRealtimeAgent } from '../shared/build-kit/lib/ralph.js';
+import { quiet, tempKit } from './helpers.js';
 
 // Lets pending promise chains (a stubbed fetch, an awaited token refresh) run to completion.
 // setImmediate is left real by the timer mock, so it is a safe way to yield.
@@ -35,16 +33,11 @@ function stubPlatform(t) {
   return calls;
 }
 
-function quiet(t) {
-  for (const m of ['log', 'warn', 'error']) t.mock.method(console, m, () => {});
-}
-
 async function start(t, script) {
   quiet(t);
   t.mock.method(Math, 'random', () => 0); // backoff = half its ceiling: 1s, 2s, 4s, …
   t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
-  const kitDir = mkdtempSync(join(tmpdir(), 'ralph-channel-'));
-  t.after(() => rmSync(kitDir, { recursive: true, force: true }));
+  const kitDir = tempKit(t);
   const platform = stubPlatform(t);
   const adapter = fakeAdapter(script);
   const cfg = { baseUrl: 'http://platform', organizationId: 'org', boardId: 'board', token: 'tok', agentId: 'agent' };

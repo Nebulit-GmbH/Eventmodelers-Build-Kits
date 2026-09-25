@@ -24,8 +24,7 @@ export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = 
   const pb = new PocketBase(cfg.pocketbaseUrl);
   pb.authStore.save(initialToken, null);
 
-  // Same rule as the Supabase adapter: a resubscribe replaces the previous listener instead
-  // of adding a second one, or every event would be handled once per earlier subscribe.
+  // subscribe() replaces the previous listener (see realtime-adapter.js).
   let unsubscribe = null;
 
   return {
