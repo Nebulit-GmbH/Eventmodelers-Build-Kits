@@ -61,6 +61,8 @@ If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priori
 
 (`agent=<uuid>` is not one of the four required values — it is optional, and its absence never makes this skill ask anything.)
 
+**`token=$EVENTMODELERS_TOKEN` is an inline token too.** The build loop passes the env var's *name*, not its value, so the secret never sits in the prompt. Treat it exactly like a literal inline token: `TOKEN` is `$EVENTMODELERS_TOKEN` (it counts toward "all four inline" below). Keep using the reference, never its value — write curl headers as `-H "x-token: $EVENTMODELERS_TOKEN"` (double quotes, so the shell expands it), don't `echo` or print it, and hand it to a subagent as `token=$EVENTMODELERS_TOKEN` (it inherits the same environment). MCP calls need nothing extra — `.mcp.json` already reads the same variable.
+
 **All four inline means this skill is already finished — stop here.** `token=`, `board=`, `org=` and `baseUrl=` arriving together is the shape a parent agent hands a subagent, and it resolves every required value in this one step. Do not walk the config file (Step 1), do not ask anything (Step 2), do not persist (Step 3), and do not make the verify call (Step 4): the parent resolved these values against this board and verified them there, so a subagent verifying them again learns nothing it wasn't just told and pays a round trip for it. Step 3.5 is a no-op too whenever `.mcp.json` already carries an `eventmodelers` entry — read the file, don't rewrite it, and don't re-register a server the session is already connected to. Print `Connected — board <BOARD_ID>` and return to the skill that invoked you.
 
 ---

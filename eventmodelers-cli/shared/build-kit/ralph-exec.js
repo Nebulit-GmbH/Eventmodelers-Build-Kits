@@ -19,6 +19,7 @@
 
 import { startRalph, loadLocalConfig, resolveAgentIdentity } from './lib/ralph.js';
 import { createSliceTracer, usageFromHarnessEvent, sumUsage } from './lib/tracing.js';
+import { turnTimeoutMs, superviseTurn, TurnTimeoutError } from './lib/turn.js';
 import { spawn } from 'child_process';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
@@ -42,10 +43,12 @@ if (!execCmd) {
 }
 
 // Same rule as ralph-claude.js: --local must mean zero board contact, so credentials
-// never reach the child even when config.json has them.
+// never reach the child even when config.json has them. Also as there: the token is
+// passed by env var name, never by value — the prompt goes on the command line.
 const inlineHeader = !localOnly && cfg.boardId
-  ? `board=${cfg.boardId} token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
+  ? `board=${cfg.boardId} token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl}\n\n`
   : '';
+const timeoutMs = turnTimeoutMs(cfg);
 
 const childEnv = {
   ...process.env,
@@ -122,8 +125,10 @@ function runExec(prompt, slice = null) {
       shell: true,
       env: { ...childEnv, RALPH_PROMPT_FILE: promptFile },
     });
+    const turn = superviseTurn(proc, { timeoutMs, label: 'exec turn', viaShell: true, log: (line) => console.error(`[ralph-exec] ${line}`) });
     const usage = traced ? collectUsage(proc.stdout) : null;
     proc.on('close', (code) => {
+      if (turn.timedOut()) return reject(new TurnTimeoutError('exec turn', timeoutMs));
       if (traced) {
         const u = usage();
         if (u) tracer.record({ ...slice, status: code === 0 ? 'ok' : 'error' }, { ...u, durationMs: u.durationMs ?? Date.now() - startedAt });

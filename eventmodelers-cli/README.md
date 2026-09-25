@@ -55,6 +55,8 @@ npx @eventmodelers/cli run
 
 `run` doesn't re-configure anything. It finds whatever kit dir `init` already created in this project and starts its agent loop (`ralph-claude.js`) against your existing `.eventmodelers/config.json`.
 
+Each agent turn is capped at 60 minutes by default so a hung agent can't stall the loop: it gets SIGTERM, then SIGKILL 10s later, and a slice that keeps timing out is Blocked by the stuck-slice guard. Change the cap with `"turnTimeoutMinutes"` in `.eventmodelers/config.json` or `RALPH_TURN_TIMEOUT_MIN` for one run; `0` turns it off.
+
 **Pulling the latest board state without starting an agent** — e.g. to inspect a context's slices, or in a script:
 
 ```bash

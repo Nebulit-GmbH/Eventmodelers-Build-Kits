@@ -540,13 +540,20 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
 }
 
+// Returns true once fn succeeds; false for a turn that timed out (see lib/turn.js). A timeout
+// is not retried in place: re-running the same hung turn every 60s would spin forever without
+// the stuck-slice guard ever seeing it, so it goes back to ralphLoop, which recounts the slice.
 async function runWithRetry(label, fn) {
   while (true) {
     try {
       console.log(`[ralph] ${label}`);
       await fn();
-      return;
+      return true;
     } catch (err) {
+      if (err?.timedOut) {
+        console.error(`[ralph] ${err.message} — back to the loop`);
+        return false;
+      }
       console.error(`[ralph] Error — retrying in 60s:`, err.message);
       await new Promise((r) => setTimeout(r, 60_000));
     }
@@ -589,7 +596,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
-      await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
+      const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
         sliceId: planned.id,
         sliceTitle: planned.title,
         context: planned.ctx,
@@ -597,7 +604,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         boardId: cfg.boardId ?? null,
         attempt: stuckSlice.count,
       }));
-      console.log(`[ralph] Slice build complete — waiting for next slice`);
+      if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }
