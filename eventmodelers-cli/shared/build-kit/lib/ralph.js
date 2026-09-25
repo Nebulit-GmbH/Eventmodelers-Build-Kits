@@ -11,6 +11,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
+import { backoffMs, sleep } from './backoff.js';
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
@@ -330,11 +331,33 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
 
   // A subscribe that errors on a stale token needs a fresh token AND a new join
   // attempt — setAuth alone doesn't re-join a channel that already errored out.
-  // Capped so a non-expiry auth failure (e.g. genuinely revoked access) can't turn
-  // into a tight resubscribe loop hammering the platform forever.
+  // Retried with exponential backoff (2s → 5min) rather than a fixed delay and a cap:
+  // the cap used to leave the channel dead for good — the scheduled refresh only calls
+  // setAuth, it never re-joins — while the backoff alone keeps a genuinely revoked
+  // access from hammering the platform. A revoked token ends the process anyway, via
+  // retryOn401 inside refreshToken.
   let channelErrorStreak = 0;
+  let resubscribeTimer = null;
+  const onChannelFailure = (reason) => {
+    // One failure can be reported more than once (a channel erroring while its retry is
+    // already scheduled); a second resubscribe on top would join the channel twice.
+    if (resubscribeTimer) return;
+    channelErrorStreak += 1;
+    const delay = backoffMs(channelErrorStreak, { baseMs: 2_000, capMs: 5 * 60_000 });
+    console.warn(`[agent] ${ts()} Channel "${channelName}": ${reason} (attempt ${channelErrorStreak}) — resubscribing in ${Math.round(delay / 1000)}s`);
+    resubscribeTimer = setTimeout(async () => {
+      try {
+        await refreshToken(`channel ${reason}`);
+      } catch {
+        // Logged by refreshToken. Rejoining on the old token is still worth a try —
+        // if it fails too, that's just the next failure, with a longer delay.
+      }
+      resubscribeTimer = null;
+      subscribeChannel();
+    }, delay);
+  };
   const subscribeChannel = () => {
-    realtime.subscribe(
+    Promise.resolve(realtime.subscribe(
       channelName,
       {
         // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}.
@@ -349,32 +372,22 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
         },
         'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
       },
-      async (status) => {
-        if (status !== 'CHANNEL_ERROR' && status !== 'TIMED_OUT') {
-          if (channelErrorStreak > 0) {
-            console.log(`[agent] ${ts()} Channel "${channelName}": ${status} — recovered after ${channelErrorStreak} failed attempt(s)`);
-          } else {
-            console.log(`[agent] ${ts()} Channel "${channelName}": ${status}`);
-          }
-          channelErrorStreak = 0;
+      (status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') return onChannelFailure(status);
+        if (status !== 'SUBSCRIBED' || channelErrorStreak === 0) {
+          console.log(`[agent] ${ts()} Channel "${channelName}": ${status}`);
           return;
         }
-        channelErrorStreak += 1;
-        console.warn(`[agent] ${ts()} Channel "${channelName}": ${status} (attempt ${channelErrorStreak}/5)`);
-        if (channelErrorStreak > 5) {
-          console.error(`[agent] ${ts()} Channel "${channelName}" failed ${channelErrorStreak} times in a row — giving up until the next scheduled token refresh (every 10min)`);
-          return;
-        }
-        try {
-          await refreshToken(`channel ${status}`);
-          await new Promise((r) => setTimeout(r, 2_000));
-          console.log(`[agent] ${ts()} Resubscribing to channel "${channelName}" (attempt ${channelErrorStreak}/5)...`);
-          subscribeChannel();
-        } catch (err) {
-          console.error(`[agent] ${ts()} Token refresh after channel error failed, will not resubscribe this round:`, err);
-        }
+        console.log(`[agent] ${ts()} Channel "${channelName}": ${status} — recovered after ${channelErrorStreak} failed attempt(s)`);
+        channelErrorStreak = 0;
+        // Broadcasts sent while the channel was down are gone. Re-read the slices once so a
+        // slice set to Planned during the gap still gets built — .slices/ is what ralphLoop
+        // picks Planned work from.
+        retryOn401('fetchAndPersistSlices (after reconnect)', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+          console.error(`[agent] ${ts()} Slice re-fetch after reconnect failed:`, err),
+        );
       },
-    );
+    )).catch((err) => onChannelFailure(`subscribe failed: ${err.message}`));
   };
   subscribeChannel();
 
@@ -543,8 +556,11 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
 // Returns true once fn succeeds; false for a turn that timed out (see lib/turn.js). A timeout
 // is not retried in place: re-running the same hung turn every 60s would spin forever without
 // the stuck-slice guard ever seeing it, so it goes back to ralphLoop, which recounts the slice.
+// Any other failure is retried in place with exponential backoff (30s → 10min): a harness
+// that fails fast (API outage, rate limit, broken install) used to be relaunched every 60s
+// for as long as it stayed broken.
 async function runWithRetry(label, fn) {
-  while (true) {
+  for (let attempt = 1; ; attempt++) {
     try {
       console.log(`[ralph] ${label}`);
       await fn();
@@ -554,8 +570,9 @@ async function runWithRetry(label, fn) {
         console.error(`[ralph] ${err.message} — back to the loop`);
         return false;
       }
-      console.error(`[ralph] Error — retrying in 60s:`, err.message);
-      await new Promise((r) => setTimeout(r, 60_000));
+      const delay = backoffMs(attempt, { baseMs: 30_000, capMs: 10 * 60_000 });
+      console.error(`[ralph] Error (attempt ${attempt}) — retrying in ${Math.round(delay / 1000)}s:`, err.message);
+      await sleep(delay);
     }
   }
 }
