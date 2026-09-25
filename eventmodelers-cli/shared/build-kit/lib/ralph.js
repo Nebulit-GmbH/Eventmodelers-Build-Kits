@@ -6,7 +6,7 @@
 //   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
 //     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
+import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
@@ -282,14 +282,64 @@ async function fetchAndPersistSlices(cfg, kitDir) {
   console.log(`[agent] Persisted ${slices.length} slice(s)`);
 }
 
-async function writeTask(payload, kitDir) {
+// tasks.json has two writers: this process, queueing slice changes, and the agent, removing
+// the task it just handled (as each stack's prompt.md tells it to). An unlocked read-modify-
+// write from both sides at once lost whichever update landed first. So the two never overlap:
+// while an onTask turn runs (see inTurn), a change is held here instead — latest per slice —
+// and written the moment the turn ends. Every write goes through a temp file and a rename,
+// so a reader never sees a half-written file either.
+let turnRunning = false;
+const heldTasks = new Map(); // sliceId → payload
+
+function writeTasksAtomically(tasksPath, tasks) {
+  const tmp = `${tasksPath}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(tasks, null, 2), 'utf-8');
+  renameSync(tmp, tasksPath);
+}
+
+function readTasks(tasksPath) {
+  if (!existsSync(tasksPath)) return [];
+  try {
+    const tasks = JSON.parse(readFileSync(tasksPath, 'utf-8'));
+    return Array.isArray(tasks) ? tasks : [];
+  } catch {
+    return []; // the agent left it unparseable — start over rather than wedge the queue
+  }
+}
+
+function appendTasks(kitDir, payloads) {
   const tasksPath = join(kitDir, 'tasks.json');
-  const existing = existsSync(tasksPath) ? JSON.parse(readFileSync(tasksPath, 'utf-8')) : [];
-  const filtered = existing.filter(t => t.payload?.sliceId !== payload.sliceId);
-  const task = { id: randomUUID(), createdAt: new Date().toISOString(), payload };
-  filtered.push(task);
-  writeFileSync(tasksPath, JSON.stringify(filtered, null, 2), 'utf-8');
+  const replaced = new Set(payloads.map((p) => p.sliceId));
+  const tasks = readTasks(tasksPath).filter((t) => !replaced.has(t.payload?.sliceId));
+  for (const payload of payloads) tasks.push({ id: randomUUID(), createdAt: new Date().toISOString(), payload });
+  writeTasksAtomically(tasksPath, tasks);
+}
+
+async function writeTask(payload, kitDir) {
+  if (turnRunning) {
+    heldTasks.set(payload.sliceId, payload);
+    console.log(`[agent] Task held until the current turn ends — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+    return;
+  }
+  appendTasks(kitDir, [payload]);
   console.log(`[agent] Task written — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+}
+
+// Runs one agent turn that may rewrite tasks.json, keeping this process's own writes out of
+// its way; whatever arrived meanwhile is written as soon as it's over, success or not.
+async function inTurn(kitDir, fn) {
+  turnRunning = true;
+  try {
+    return await fn();
+  } finally {
+    turnRunning = false;
+    if (heldTasks.size > 0) {
+      const payloads = [...heldTasks.values()];
+      heldTasks.clear();
+      appendTasks(kitDir, payloads);
+      console.log(`[agent] Wrote ${payloads.length} task(s) held during the turn`);
+    }
+  }
 }
 
 async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
@@ -449,14 +499,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
 // ── Ralph loop ────────────────────────────────────────────────────────────────
 
 function hasPendingTasks(kitDir) {
-  const tasksPath = join(kitDir, 'tasks.json');
-  if (!existsSync(tasksPath)) return false;
-  try {
-    const tasks = JSON.parse(readFileSync(tasksPath, 'utf-8'));
-    return Array.isArray(tasks) && tasks.length > 0;
-  } catch {
-    return false;
-  }
+  return readTasks(join(kitDir, 'tasks.json')).length > 0;
 }
 
 function readCurrentContext(kitDir) {
@@ -617,7 +660,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8');
-      await runWithRetry('onTask: loading slice from board...', () => onTask(prompt));
+      await runWithRetry('onTask: loading slice from board...', () => inTurn(kitDir, () => onTask(prompt)));
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }
@@ -665,7 +708,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, retryTransient, startRealtimeAgent };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks };
 
 // Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
 // passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
