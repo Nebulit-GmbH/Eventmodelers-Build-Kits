@@ -28,21 +28,19 @@ async function fetchJSON(url, options) {
   return res.json();
 }
 
-async function retryOn401(label, fn, maxRetries = 3) {
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      if (err instanceof HttpError && err.status === 401) {
-        if (attempt < maxRetries) {
-          console.warn(`[agent] ${label} — 401, retrying (${attempt}/${maxRetries})...`);
-          continue;
-        }
-        console.error(`[agent] ${label} — 401 after ${maxRetries} retries, shutting down`);
-        process.exit(1);
-      }
-      throw err;
+// A 401 from the platform always means the token itself is missing, invalid or revoked (see
+// requireApiToken on the platform) — retrying the same token can't fix that, and neither can
+// waiting, so the first one ends the process with a message saying what to fix.
+async function exitOn401(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof HttpError && err.status === 401) {
+      console.error(`[agent] ${label} — 401, the token was rejected: ${err.message}`);
+      console.error('[agent] Check the token in .eventmodelers/config.json (or EVENTMODELERS_TOKEN) — shutting down');
+      process.exit(1);
     }
+    throw err;
   }
 }
 
@@ -273,7 +271,7 @@ async function writeTask(payload, kitDir) {
 
 async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-  await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+  await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
     console.error('[agent] Slice persist error:', err),
   );
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
@@ -295,9 +293,9 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
 }
 
 async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false } = {}) {
-  let realtimeToken = await retryOn401('getRealtimeToken', () => getRealtimeToken(cfg));
+  let realtimeToken = await exitOn401('getRealtimeToken', () => getRealtimeToken(cfg));
 
-  await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+  await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
     console.error('[agent] Initial slice fetch error:', err),
   );
 
@@ -315,7 +313,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
       console.log(`[agent] ${ts()} Refreshing realtime token (reason: ${reason})...`);
       refreshing = (async () => {
         try {
-          realtimeToken = await retryOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
+          realtimeToken = await exitOn401('getRealtimeToken (refresh)', () => getRealtimeToken(cfg));
           await realtime.setAuth(realtimeToken);
           console.log(`[agent] ${ts()} Token refreshed (reason: ${reason}, took ${Date.now() - startedAt}ms)`);
         } catch (err) {
@@ -335,7 +333,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
   // the cap used to leave the channel dead for good — the scheduled refresh only calls
   // setAuth, it never re-joins — while the backoff alone keeps a genuinely revoked
   // access from hammering the platform. A revoked token ends the process anyway, via
-  // retryOn401 inside refreshToken.
+  // exitOn401 inside refreshToken.
   let channelErrorStreak = 0;
   let resubscribeTimer = null;
   const onChannelFailure = (reason) => {
@@ -383,7 +381,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
         // Broadcasts sent while the channel was down are gone. Re-read the slices once so a
         // slice set to Planned during the gap still gets built — .slices/ is what ralphLoop
         // picks Planned work from.
-        retryOn401('fetchAndPersistSlices (after reconnect)', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
+        exitOn401('fetchAndPersistSlices (after reconnect)', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
           console.error(`[agent] ${ts()} Slice re-fetch after reconnect failed:`, err),
         );
       },
@@ -642,7 +640,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { loadLocalConfig, fetchPlatformConfig, retryOn401, startRealtimeAgent };
+export { loadLocalConfig, fetchPlatformConfig, exitOn401, startRealtimeAgent };
 
 // Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
 // passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
@@ -676,7 +674,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
     return;
   }
 
-  const cfg = await retryOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
+  const cfg = await exitOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([
