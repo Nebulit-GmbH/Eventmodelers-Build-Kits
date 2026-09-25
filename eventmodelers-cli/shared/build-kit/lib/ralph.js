@@ -275,6 +275,15 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   await retryOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
     console.error('[agent] Slice persist error:', err),
   );
+  // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
+  // as slice:changed. Queuing them only buys a turn in which the agent reads its own echo and
+  // skips it. Attribution decides, never a guess: only an agent_id equal to ours is dropped —
+  // a person's edit or another agent's (different id), or an event with no attribution at all,
+  // is still queued, so a missing field degrades to the old behaviour rather than losing work.
+  if (payload?.agent_id && cfg.agentId && payload.agent_id === cfg.agentId) {
+    console.log(`[agent] Own write — not queued (slice="${payload.sliceTitle}" status="${payload.sliceStatus}")`);
+    return;
+  }
   // Planned slices are handled by onPlannedSlice directly — no task needed.
   // queueAllStatuses opts out of that split entirely (e.g. bridge has no
   // onPlannedSlice consumer, so a lingering Planned slice would otherwise
