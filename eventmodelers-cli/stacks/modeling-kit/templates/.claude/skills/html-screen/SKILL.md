@@ -54,6 +54,7 @@ Write normal, full-size HTML/CSS for each page — as if designing a real webpag
 Guidelines:
 - **Keep it simple — this is a view-only mockup, not a working app.** No JavaScript, no interactivity beyond what a static page can show (enforced server-side, see below). Keep the CSS compact: inline styles or a handful of Bulma classes are enough — don't write a large embedded `<style>` block or reinvent what Bulma already gives you for free.
 - Each page is one complete, standalone HTML fragment — not a `data-step` div nested inside a shared blob. A multi-step flow (e.g. cart → payment → confirmation) is three separate pages in the array, each fully self-contained.
+- **Each page may be at most 6000 characters** (the full markup string, including inline styles). The server rejects a longer page with `400 HTML_SCREEN_PAGE_TOO_LONG` (`context: {pageIndex, length, maxLength}`) and saves nothing — the render call fails as a whole. Check each page's length before rendering; if one is over, trim it (fewer inline styles, Bulma classes instead of custom CSS, fewer repeated sample rows) or split the content into another page. Adding a mark also counts toward the limit, since it adds attributes to the page's markup.
 - Inline styles (`style="..."`) are the simplest way to keep each page self-contained.
 - No `<script>` tags, no inline event handlers (`onclick`, `onload`, ...), no `javascript:` URIs — these are stripped server-side from every page before persisting regardless of what's sent. This is a static visual mockup, not an interactive prototype.
 - A real page background (e.g. a light gray full-bleed background behind a centered white card) reads more realistically than a bare form floating on white.
@@ -149,7 +150,7 @@ mcp__eventmodelers__create_screen {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Creating a new node".
 
-Expect `204 No Content` on success from either curl call.
+Expect `204 No Content` on success from either curl call. A `HTML_SCREEN_PAGE_TOO_LONG` error means a page exceeds 6000 characters — shorten or split that page (see Step 3's guidelines) and send the call again; don't give up on the render.
 
 ## Step 5 — Define field data lineage (mandatory)
 

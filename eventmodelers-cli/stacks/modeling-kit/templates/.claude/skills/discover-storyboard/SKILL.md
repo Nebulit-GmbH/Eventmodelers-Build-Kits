@@ -317,6 +317,8 @@ mcp__eventmodelers__create_screen {
 
 **Never pass an empty `pages` array** — an empty array produces a blank placeholder, same as in `html-screen`/`eventmodeling-storyboarding-events`.
 
+**Keep every reconstructed page at most 6000 characters per page (the server rejects a longer page with `400 HTML_SCREEN_PAGE_TOO_LONG` — split the screen into more pages or trim the markup instead).** A reconstructed real-world page easily runs longer — keep only the structure and content the screen is about, not every nav link, footer, or repeated list item.
+
 **Image path — `renderMode == "image"` only, when the user explicitly asked for screenshots:**
 
 ```

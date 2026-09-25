@@ -31,31 +31,21 @@ From `$ARGUMENTS`, extract:
 
 1. Read the chapter **once**: `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }`. That single response carries every element's `meta.fields` *including the `example` values already filled in* — which is exactly the canonical-value pool Step 3c asks for, for the whole chapter, in one call.
 2. Pick the canonical value per field name from that pool (e.g. `customerId: "cust-123"`, `email: "jane@example.com"`) before writing anything, so every element ends up consistent.
-3. Then fill the targets. `add_field_examples` is still the preferred writer, one call per target — but it is the *only* per-target call you should be making. If you are generating the values yourself instead, batch every element's update into a single `submit_node_events { events: [...] }` call.
+3. Then generate every target's values and write them all in a single `submit_node_events { events: [...] }` call — one `node:changed` event per element, never one call per element.
 
 A run that opens each element with its own `get_node` to "read existing examples first" is doing step 1 N times over.
 
 ---
 
-## Step 2 — Resolve and generate examples (prefer MCP)
+## Step 2 — Resolve the element (prefer MCP)
 
-`add_field_examples` is a whole-algorithm convenience tool: it resolves the node, loads linked neighbours for cross-element consistency, fills any empty field examples, and writes the result back — collapsing the entire "find node → find linked nodes → build examples → submit_node_events" flow (Steps 2–5 below) into one call. Call it with whichever identifier matches `target`:
+Resolve `target` to a node, with whichever identifier it is:
 
-- `target` is a UUID → pass `nodeId`
-- `target` is a name → pass `name`
-- `target` is a cell name (e.g. `B3`) → pass `cellName` + `timelineId` (the chapter id — if multiple chapters exist on the board, resolve which one first using 2c-fallback's chapter lookup, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`, and ask the user if ambiguous). Only pass a cell name you were given or read back as a node's `cellName` (`get_board_outline`/`get_nodes`/`get_node` all report it) — if all you have is a node id or title, pass that instead rather than constructing an address.
+- `target` is a UUID → `mcp__eventmodelers__get_node { "boardId": "$BOARD_ID", "nodeId": "<target>" }`
+- `target` is a name → `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "name": "<target>" }` — a partial, case-insensitive title match; prefer an exact title, and if several elements still match, list them and ask the user to pick one
+- `target` is a cell name (e.g. `B3`) → `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }` and take the node whose `cellName` is `target` (if multiple chapters exist, find the chapter first with `get_nodes { "type": "CHAPTER" }` and ask the user if ambiguous). Never construct a cell address yourself — only use one you were given or read back as a node's `cellName`.
 
-```
-mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "nodeId": "<target, if a UUID>" }
-```
-```
-mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "name": "<target, if a name>" }
-```
-```
-mcp__eventmodelers__add_field_examples { "boardId": "$BOARD_ID", "cellName": "<target, if a cell name>", "timelineId": "$CHAPTER_ID" }
-```
-
-If this succeeds, skip straight to Step 6 (report back), describing the fields the tool reports as changed. Use the manual fallback flow below (Steps 2–5) only if MCP isn't connected.
+Then continue with Step 3 (linked elements) — `mcp__eventmodelers__get_connected_nodes { "boardId": "$BOARD_ID", "nodeId": "<resolved id>", "includeFields": true }` returns the neighbours and their fields in one call.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — Resolve the element".
 

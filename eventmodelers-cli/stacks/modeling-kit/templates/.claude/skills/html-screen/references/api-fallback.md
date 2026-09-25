@@ -2,6 +2,8 @@
 
 Only needed when MCP is not connected. Every call below has an MCP equivalent in the main SKILL.md — always prefer that.
 
+Each entry in `pages` may be at most 6000 characters — a longer page returns `400 {"code": "HTML_SCREEN_PAGE_TOO_LONG", "context": {"pageIndex", "length", "maxLength"}}` and nothing is saved.
+
 ## Step 2 — Load existing pages
 
 ```bash

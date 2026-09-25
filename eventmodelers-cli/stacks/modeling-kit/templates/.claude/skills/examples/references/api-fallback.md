@@ -15,11 +15,12 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$target" \
 ```
 
 ### 2b — Name search
-If `target` is not a UUID, search by name:
+If `target` is not a UUID, list the board's nodes and match on `meta.title` (the REST nodes endpoint has no name filter):
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/events/search?name=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$target")" \
-  -H "x-user-id: examples-skill"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes" \
+  -H "x-user-id: examples-skill" \
+  | jq --arg t "$target" '[.[] | select((.meta.title // "") | ascii_downcase | contains($t | ascii_downcase))]'
 ```
 
 Pick the best match (exact title match preferred; case-insensitive). If multiple matches exist, list them and ask the user to pick one.

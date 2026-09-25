@@ -27,8 +27,7 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `get_nodes` | `boardId`, `type?`, `name?`, `chapterId?`, `nodeIds?`, `projection?` (`"line"`) | List nodes, optionally by type and/or a partial case-insensitive title match. `chapterId` scopes to one timeline — prefer this over an unscoped board-wide call whenever the step is working within one chapter (the common case); `nodeIds` fetches a known, scattered subset in one call (e.g. re-verifying exactly the nodes just touched by a batch write) instead of a full `type` refetch; `projection: "line"` maps each match to `{id, type, title}` only. Every node carries `cellName`, its cell address in the chapter it is placed in (absent when unplaced) — read the cell names the cell-addressed tools need from here, never derive or invent one | §3 `GET .../nodes` |
 | `get_node` | `boardId`, `nodeId`, `projection?` (`"cells"` \| `"edges"`) | Get one node — the full response carries `cellName`, its cell address in the chapter it is placed in. `projection: "cells"` (CHAPTER nodes only) returns just `{rows, columns, cells}` instead of the full `timelineData` — use whenever only the grid/occupancy is needed, not the whole chapter; `projection: "edges"` returns just that node's inbound/outbound connections instead of `findNodeById`'s full record. Both are opt-in — omitting `projection` is the unchanged full response | §3 `GET .../nodes/:nodeId` |
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
-| `get_board_events` | `boardId`, `since?`, `seq?` | A page of at most 200 board events, oldest first. Not the whole log: page on by passing the last event's `seq` as `since` until a page comes back shorter than 200. `seq` returns only the event of exactly that seq | §1 `GET .../events` |
-| `search_board_events` | `boardId`, `name` | Search events by node name | §1 `GET .../events/search` |
+| `get_board_events` | `boardId`, `since?`, `seq?` | A page of at most 300 board events, oldest first, as `{events, pageSize, hasMore}`. Not the whole log: while `hasMore` is true, page on by passing the last event's `seq` as `since`. `seq` returns only the event of exactly that seq | §1 `GET .../events` |
 | `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). Every event property is described on the tool's own `events[]` schema — read that rather than this skill when all you need is the event shape. An event needs its own `id` (required — a fresh uuid per event, never the node id) and its `eventType`, plus the keys of its kind (`nodeId`/`meta`/`node`, or `edgeId`/`source`/`target`). The `id` keys the returned `hashes` map and makes a resubmit idempotent — the same event sent twice under one id writes a single board event. Don't send `boardId` or `timestamp` per event — the server takes the board from the call and stamps the time itself, and ignores both if sent. `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
 | `delete_node` | `boardId`, `nodeIds[]` | Delete nodes, applied in order — one failure doesn't stop the rest; answers `{results}`. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
 | `create_drawing` | `boardId`, `drawings[]` (each `kind`, `x`, `y`, `width`, `height`, ...) | Freehand canvas annotation (path/rect/text/sticky) — never placed in a cell. An annotation is rarely one stroke: a loop plus its arrows and label is one call with several `drawings` entries, applied in order, not three calls | — (REST `POST .../drawing/draw` accepts a single drawing or an array) |
@@ -59,9 +58,8 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `link_element` | `boardId`, `nodeId`, plus either `targetNodeId` or `timelineId` (+ `columnIndex?`, `lane?`) | Turn a node into a linked copy of `nodeId` — it receives a full copy of that node's meta plus `meta.linkedTo`. Name an existing `targetNodeId`, or pass `timelineId` to have the copy placed and linked in this one call (inheriting the original's type and title), which is what a translation or automation chain wants | §3 `POST .../nodes/:nodeId/link` |
 | `add_comment` | `boardId`, `comments[]` (each `nodeId`, `text`, `type?` `'COMMENT'\|'TASK'\|'QUESTION'`, `author?`) | Add comments on any nodes of one board — `QUESTION` is the type for a gap/edge case raised during review, and a review posts all its questions in one call; answers `{results}` in request order | §1 `POST .../boards/:boardId/comments` (batch) |
 | `update_comment` | `boardId`, `nodeId`, `commentId`, `action` (`'resolve'\|'delete'`) | Resolve or delete a comment | — (via comment events) |
-| `create_screen` | `boardId`, `screens[]` (each `contentType` `'image'\|'sketch'\|'html'`, `chapterId`, `cellId?`/`cellName?`, `nodeId?`, content fields `imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`, `title?`, `description?`, `fields?`), `autoConnect?` | Create + place new screen nodes (SCREEN or HTML_SCREEN) with their content, in one call; entries applied in order, one failure doesn't stop the rest; answers `{results}`. `title` names the node (`meta.title`) in the same call — no follow-up `node:changed` just to label the screen. `autoConnect: false` places without wiring to timeline neighbors | §4 `POST .../images/:id/sketch` + `image-nodes` |
-| `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages` | §4 `POST .../images/:id/sketch` + `image-nodes` |
-| `add_field_examples` | `boardId`, `nodeId?`, `name?`, `cellName?`, `timelineId?` | Fill empty field examples using linked-node context | — (MCP-only convenience) |
+| `create_screen` | `boardId`, `screens[]` (each `contentType` `'image'\|'sketch'\|'html'`, `chapterId`, `cellId?`/`cellName?`, `nodeId?`, content fields `imageBase64`/`mimeType`, `elements[]`, or `pages[]`/`backgroundColor`, `title?`, `description?`, `fields?`), `autoConnect?` | Create + place new screen nodes (SCREEN or HTML_SCREEN) with their content, in one call; each HTML page at most 6000 characters (`HTML_SCREEN_PAGE_TOO_LONG` otherwise); entries applied in order, one failure doesn't stop the rest; answers `{results}`. `title` names the node (`meta.title`) in the same call — no follow-up `node:changed` just to label the screen. `autoConnect: false` places without wiring to timeline neighbors | §4 `POST .../images/:id/sketch` + `image-nodes` |
+| `render_screen` | `boardId`, `nodeId`, `elements[]?` (SCREEN) or `pages[]?`+`backgroundColor?` (HTML_SCREEN), `description?` | Update an existing screen's content — exactly one of `elements`/`pages`; each HTML page at most 6000 characters (`HTML_SCREEN_PAGE_TOO_LONG` otherwise) | §4 `POST .../images/:id/sketch` + `image-nodes` |
 | `get_attribute_chain` | `boardId`, `timelineId`, `targetCellName`, `sourceCellName` | Resolve every node between two cells, ordered target→source. Both cell names must come from a node's reported `cellName` (`get_board_outline`, `get_nodes`, `get_node`) — a guessed address that happens to exist silently resolves the wrong chain | — (MCP-only convenience) |
 | `get_image_snapshot_description` | `boardId`, `nodeId` | Load the `{elements:[...]}` sketch description from storage | — (reads what §4 sketch endpoints write) |
 | `validate_slice_data` | `sliceData` | Offline validation of a `SliceDataOutput` payload — no board access | — (MCP-only, pure function) |
@@ -188,32 +186,25 @@ Delete a board.
 
 ---
 
-### GET `/api/org/:orgId/boards/:boardId/events/search`
-Search events by node name.
-
-**Query params**: `name` (string)  
-**Response**: `200` — matching event array
-
----
-
 ### GET `/api/org/:orgId/boards/:boardId/events`
-Get a page of board events in sequence order — **at most 200 per call**, oldest first. One call is not the whole log: to read it all, pass the last event's `seq` as `since` and repeat until a page holds fewer than 200 events.
+Get a page of board events in sequence order — **at most 300 per call**, oldest first. One call is not the whole log: to read it all, pass the last event's `seq` as `since` and repeat while the `X-Has-More` response header is `true`. `X-Page-Size` carries the page size that applied.
 
 **Query params**:
 - `since` (integer, optional) — only events with a `seq` greater than this
 - `skipSilent` (boolean, default `true`) — `false` also includes events marked silent
 - `seq` (integer, optional) — only the event of exactly this seq (silent or not); `since` and `skipSilent` are ignored
 
-**Response**: `200` — event array (at most 200; at most one with `seq`, empty if there is none)
+**Response**: `200` — event array (at most 300; at most one with `seq`, empty if there is none — `X-Has-More` is then `false`)
 **Errors**: `400` `EVENT_SEQ_INVALID` — `seq` is not a non-negative integer
 
 ```bash
 since=0
 while :; do
-  page=$(curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/events?since=$since" -H "x-token: $TOKEN")
-  # ...use $page...
-  [ "$(echo "$page" | jq length)" -lt 200 ] && break
-  since=$(echo "$page" | jq '.[-1].seq')
+  more=$(curl -s -D - -o page.json "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/events?since=$since" -H "x-token: $TOKEN" \
+    | tr -d '\r' | awk -F': ' 'tolower($1)=="x-has-more"{print $2}')
+  # ...use page.json...
+  [ "$more" = "true" ] || break
+  since=$(jq '.[-1].seq' page.json)
 done
 ```
 

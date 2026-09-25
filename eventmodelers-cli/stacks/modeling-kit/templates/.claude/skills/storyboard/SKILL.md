@@ -43,7 +43,7 @@ Then **create one task per screen** using TaskCreate, naming each task after the
 
 ## HTML page design (default)
 
-Design each page as real, full-size HTML/CSS following the `html-screen` skill's conventions: full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default.
+Design each page as real, full-size HTML/CSS following the `html-screen` skill's conventions: full-size markup (16px body text, generous padding — the canvas scales it down, don't shrink it yourself), one complete self-contained fragment per page (no `<html>`/`<head>`/`<body>` wrapper), no `<script>`/inline handlers (stripped server-side), and Bulma CSS classes (`title`, `button`, `is-primary`, `field`/`control`/`input`, etc. — remember heading size modifiers like `class="title is-1"`) since Bulma 0.9.4 is loaded by default. Keep every page at most 6000 characters per page (the server rejects a longer page with `400 HTML_SCREEN_PAGE_TOO_LONG` — split the screen into more pages or trim the markup instead).
 
 ## Sketch path (explicit request only)
 
