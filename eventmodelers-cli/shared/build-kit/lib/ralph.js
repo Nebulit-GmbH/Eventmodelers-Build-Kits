@@ -44,6 +44,29 @@ async function exitOn401(label, fn) {
   }
 }
 
+// Startup can't wait for a person to notice a platform blip: a 429, a 5xx or a request that
+// never got an answer is retried with backoff until it goes through. Anything else — a 4xx,
+// including the 401 exitOn401 turns into an exit — is a real answer and goes straight back.
+function isTransient(err) {
+  if (err instanceof HttpError) return err.status === 429 || err.status >= 500;
+  // fetch() rejects with a TypeError when there's no response at all (DNS, refused, reset),
+  // and with a TimeoutError/AbortError from an AbortSignal.timeout.
+  return err instanceof TypeError || err?.name === 'TimeoutError' || err?.name === 'AbortError';
+}
+
+async function retryTransient(label, fn, { sleepFn = sleep } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTransient(err)) throw err;
+      const delay = backoffMs(attempt, { baseMs: 2_000, capMs: 5 * 60_000 });
+      console.warn(`[agent] ${label} failed (attempt ${attempt}: ${err.message}) — retrying in ${Math.round(delay / 1000)}s`);
+      await sleepFn(delay);
+    }
+  }
+}
+
 // ── Config ────────────────────────────────────────────────────────────────────
 
 // Config is resolved by walking from the kit dir up through every ancestor
@@ -295,7 +318,7 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
 // createAdapter is the realtime transport factory — injectable so the channel handling can be
 // tested against a fake transport.
 async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false, createAdapter = createRealtimeAdapter } = {}) {
-  let realtimeToken = await exitOn401('getRealtimeToken', () => getRealtimeToken(cfg));
+  let realtimeToken = await exitOn401('getRealtimeToken', () => retryTransient('getRealtimeToken', () => getRealtimeToken(cfg)));
 
   await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
     console.error('[agent] Initial slice fetch error:', err),
@@ -642,7 +665,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, startRealtimeAgent };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, retryTransient, startRealtimeAgent };
 
 // Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
 // passed down as env (see cli.js's run dispatcher): a per-run identity override so a second
@@ -676,7 +699,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
     return;
   }
 
-  const cfg = await exitOn401('fetchPlatformConfig', () => fetchPlatformConfig(local));
+  const cfg = await exitOn401('fetchPlatformConfig', () => retryTransient('fetchPlatformConfig', () => fetchPlatformConfig(local)));
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([
