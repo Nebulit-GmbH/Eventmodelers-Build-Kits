@@ -292,7 +292,9 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   }
 }
 
-async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false } = {}) {
+// createAdapter is the realtime transport factory — injectable so the channel handling can be
+// tested against a fake transport.
+async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false, createAdapter = createRealtimeAdapter } = {}) {
   let realtimeToken = await exitOn401('getRealtimeToken', () => getRealtimeToken(cfg));
 
   await exitOn401('fetchAndPersistSlices', () => fetchAndPersistSlices(cfg, kitDir)).catch((err) =>
@@ -300,7 +302,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
   );
 
   const channelName = `board:${cfg.boardId}-slicechanged`;
-  const realtime = await createRealtimeAdapter(cfg, realtimeToken);
+  const realtime = await createAdapter(cfg, realtimeToken);
 
   // Shared by the scheduled timer, a CHANNEL_ERROR/TIMED_OUT subscribe status, and a
   // 401 from the alive-ping — whichever notices the token is bad first wins; the rest
@@ -640,7 +642,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { loadLocalConfig, fetchPlatformConfig, exitOn401, startRealtimeAgent };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, exitOn401, startRealtimeAgent };
 
 // Who this process is. RALPH_AGENT_ID/RALPH_AGENT_NAME are `eventmodelers run --id/--name`,
 // passed down as env (see cli.js's run dispatcher): a per-run identity override so a second

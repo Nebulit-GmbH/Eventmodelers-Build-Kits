@@ -2,8 +2,9 @@
 // broadcast channel and dispatches named broadcast events to caller-supplied handlers.
 // See realtime-adapter.js for the interface both this and the PocketBase adapter implement.
 
-export async function createSupabaseRealtimeAdapter(cfg, initialToken) {
-  const { createClient } = await import('@supabase/supabase-js');
+// deps.createClient is injectable for tests; by default it is supabase-js's own.
+export async function createSupabaseRealtimeAdapter(cfg, initialToken, deps = {}) {
+  const createClient = deps.createClient ?? (await import('@supabase/supabase-js')).createClient;
   const supabase = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, {
     realtime: { params: { apikey: cfg.supabaseAnonKey } },
   });
@@ -16,13 +17,16 @@ export async function createSupabaseRealtimeAdapter(cfg, initialToken) {
 
   return {
     async subscribe(topic, handlers, onStatus) {
-      if (current) await supabase.removeChannel(current).catch(() => {});
+      // Detach before removing: the removal itself makes the old channel report CLOSED, and a
+      // late status from a replaced channel must not count as this subscription's.
+      const previous = current;
+      current = null;
+      if (previous) await supabase.removeChannel(previous).catch(() => {});
       let channel = supabase.channel(topic, { config: { private: true } });
       for (const [event, handler] of Object.entries(handlers)) {
         channel = channel.on('broadcast', { event }, (msg) => handler(msg.payload));
       }
       current = channel;
-      // Once removed, the old channel reports CLOSED — only the current one speaks for the subscription.
       channel.subscribe((status) => { if (channel === current) onStatus?.(status); });
     },
     setAuth(token) {

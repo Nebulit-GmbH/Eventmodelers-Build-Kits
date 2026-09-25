@@ -5,7 +5,7 @@
 // RALPH_TURN_TIMEOUT_MIN (env) or turnTimeoutMinutes (.eventmodelers/config.json);
 // default 60, 0 turns the cap off.
 
-import { execFile } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import { constants as osConstants } from 'os';
 
 const KILL_GRACE_MS = 10_000;
@@ -44,15 +44,31 @@ function signal(proc, sig, viaShell) {
 // process alone, and the node default (exit on the spot) left the running agent orphaned —
 // still editing the project with nobody watching it. So: on SIGTERM/SIGINT/SIGHUP, stop every
 // live turn the same way a timeout does and exit once they're gone. A second signal exits
-// immediately, for when the grace period is too long to wait out.
+// immediately (force-killing whatever is still running), for when the grace period is too
+// long to wait out.
 const liveTurns = new Set();
 let shuttingDown = false;
 let exitCode = 0;
 let handlersInstalled = false;
 
+// Synchronous SIGKILL, for the one path that exits right after: an async pkill would never
+// get to run.
+function killNow(proc, viaShell) {
+  if (viaShell && proc.pid) {
+    try { execFileSync('pkill', ['-KILL', '-P', String(proc.pid)]); } catch { /* no children left */ }
+  }
+  try { proc.kill('SIGKILL'); } catch { /* already gone */ }
+}
+
 function exitOnSignal(sig) {
   const code = 128 + (osConstants.signals[sig] ?? 15);
-  if (shuttingDown || liveTurns.size === 0) process.exit(code);
+  if (liveTurns.size === 0) process.exit(code);
+  if (shuttingDown) {
+    // Second signal: don't wait out the grace period, but don't orphan a turn that ignored
+    // the first one either.
+    for (const t of liveTurns) killNow(t.proc, t.viaShell);
+    process.exit(code);
+  }
   shuttingDown = true;
   exitCode = code;
   for (const t of liveTurns) {
