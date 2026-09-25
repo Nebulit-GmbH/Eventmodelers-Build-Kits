@@ -1943,13 +1943,16 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // board-change turn can just as well be the first turn a (re)spawned process
   // ever sees, so both turn builders go through this rather than buildTurn owning it.
   function withSessionHeader(body) {
+    // token= names the env var, never its value: claudeEnv already carries EVENTMODELERS_TOKEN,
+    // and a literal token here would sit in every session transcript (the connect skill treats
+    // the reference as an inline token — see its Step 0).
     // Nothing to prepend for a local model: it has no CLAUDE.md to read and no /connect to run
     // (its tools are already authenticated), and handing it the raw token would put credentials
     // in a context that has no way to use them.
     if (localRunner) return body;
     if (!firstTurn) return body;
     firstTurn = false;
-    return `MODE=modeling token=${cfg.token} org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return `MODE=modeling token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
   }
 
   function buildTurn(p) {
