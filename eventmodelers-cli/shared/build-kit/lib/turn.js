@@ -6,6 +6,7 @@
 // default 60, 0 turns the cap off.
 
 import { execFile } from 'child_process';
+import { constants as osConstants } from 'os';
 
 const KILL_GRACE_MS = 10_000;
 
@@ -38,7 +39,45 @@ function signal(proc, sig, viaShell) {
   else killSelf();
 }
 
+// Stopping the loop has to stop its turn too. Ctrl-C only ever worked because the terminal
+// signals the whole foreground group; a SIGTERM from systemd, Docker or `kill` reaches this
+// process alone, and the node default (exit on the spot) left the running agent orphaned —
+// still editing the project with nobody watching it. So: on SIGTERM/SIGINT/SIGHUP, stop every
+// live turn the same way a timeout does and exit once they're gone. A second signal exits
+// immediately, for when the grace period is too long to wait out.
+const liveTurns = new Set();
+let shuttingDown = false;
+let exitCode = 0;
+let handlersInstalled = false;
+
+function exitOnSignal(sig) {
+  const code = 128 + (osConstants.signals[sig] ?? 15);
+  if (shuttingDown || liveTurns.size === 0) process.exit(code);
+  shuttingDown = true;
+  exitCode = code;
+  for (const t of liveTurns) {
+    t.log(`Received ${sig} — stopping ${t.label} before exiting (send it again to exit now)`);
+    signal(t.proc, 'TERM', t.viaShell);
+    setTimeout(() => signal(t.proc, 'KILL', t.viaShell), KILL_GRACE_MS);
+  }
+  // Backstop: a child whose close never fires mustn't keep the process up forever.
+  setTimeout(() => process.exit(code), KILL_GRACE_MS + 2_000);
+}
+
+function trackTurn(entry) {
+  if (!handlersInstalled) {
+    handlersInstalled = true;
+    for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => exitOnSignal(sig));
+  }
+  liveTurns.add(entry);
+  entry.proc.on('close', () => {
+    liveTurns.delete(entry);
+    if (shuttingDown && liveTurns.size === 0) process.exit(exitCode);
+  });
+}
+
 export function superviseTurn(proc, { timeoutMs, label, log, viaShell = false }) {
+  trackTurn({ proc, label, log, viaShell });
   let timedOut = false;
   let killTimer;
   const timer = timeoutMs
