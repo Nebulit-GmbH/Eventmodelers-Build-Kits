@@ -969,9 +969,7 @@ carries its `type`, so a chapter is told from a command without a second lookup.
 
 `hidden: true` marks an agent-only task: still claimed by `/prompts/next` like any other
 prompt, but excluded from every client read (and from Supabase's `prompts_select` RLS policy),
-so it never shows up in the user's prompt list. A canvas **poke** (Alt+Shift+P) is exactly
-this — a hidden prompt whose text is the bare word `Focus`, carrying `node_id` (when a single
-element was selected) plus the `focusArea`, and nothing else.
+so it never shows up in the user's prompt list.
 
 **Response**: `201` — the created row, `status: "ADDED"`.
 **Errors**: `400` missing required fields or malformed `context` · `403` no access to board · `404` board/timeline not found or no API token configured for the org

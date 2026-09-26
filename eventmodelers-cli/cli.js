@@ -1867,7 +1867,9 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, chat = true, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null } = {}) {
+async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null } = {}) {
+  // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
+  const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
   if (!existsSync(configLibPath)) {
     console.error(`❌ ${relative(process.cwd(), configLibPath)} not found — --modeling needs a kit installed via \`init --modeling\`.`);
@@ -1977,10 +1979,9 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     ].filter(Boolean).join(' ');
     // What the user had selected and on screen when they submitted (selectedCell,
     // selectedNodes, timelineId, focusArea). CLAUDE.md's step 3 resolves CELL_ID/NODE_ID/
-    // TIMELINE_ID from it in preference to the flat fields above, and a canvas "poke" —
-    // whose prompt text is the bare word `Focus` — is nothing BUT this context: drop it and
-    // the turn says "Focus" and names nowhere to look. Sent as JSON on its own line because
-    // it is structured, unlike the flat k=v fields.
+    // TIMELINE_ID from it in preference to the flat fields above, and it is what "this" or
+    // "here" in the prompt refers to. Sent as JSON on its own line because it is structured,
+    // unlike the flat k=v fields.
     const context = p.context && typeof p.context === 'object' && Object.keys(p.context).length
       ? `\ncontext=${JSON.stringify(p.context)}`
       : '';
@@ -2006,6 +2007,15 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // session's context once. Cleared whenever the process is (re)spawned: a fresh process has read
   // nothing.
   const chatCursor = new Map();
+  // --modeling: the people this agent has taken a chat message from — the only ones whose board
+  // edits it proposes on. Everyone else's edits cost no turn: an agent one person started must not
+  // spend their money reacting to the whole board, nor write to people who never talked to it. Kept
+  // across respawns (it is about people, not the Claude process), lost when the CLI restarts.
+  const chatPartners = new Set();
+  // When each partner was last sent a proposal. The backend lets an unanswered proposal stand for
+  // UNPROMPTED_COOLDOWN_MS before another; waiting here keeps a turn from being spent on one it
+  // would refuse. Cleared when the person writes in the chat.
+  const lastProposalAt = new Map();
 
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
   let warmUp = null; // this process's session warm-up turn (see warmUpSession) — null until one is started
@@ -2175,11 +2185,11 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   log(
     standalone
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (${localRunner ? 'work is done inline — a local model has no subagents' : `max ${maxAgents} subagent(s) per self-directed turn`})`
-      : chat
-        ? 'standalone: off — board changes get a proposal in the chat, nothing is changed without a yes'
-        : 'standalone: off — reacting to direct prompts only (board changes are dropped: no chat to propose in)',
+      : worker
+        ? 'worker: ON — working prompts only (no chat, board changes are dropped)'
+        : 'standalone: off — board changes get a proposal in the chat, nothing is changed without a yes',
   );
-  log(chat ? 'chat: ON — answering chat messages addressed to this agent' : 'chat: off (--disable-chat)');
+  log(chat ? 'chat: ON — answering chat messages addressed to this agent' : 'chat: off (--worker)');
   if (exclusive) {
     log(`exclusive: ON — only prompts addressed to ${cfg.agentId} are worked; every untargeted prompt is handed back to the queue`);
     // A global/standalone run mints its id per run (see resolveModelingCredentials), so an id
@@ -2228,7 +2238,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // panel, and each message addressed to it is claimed here (`chat/next` flips it to picked_up)
   // and handed to Claude as a CHAT turn. Claude decides — answer, ask back, or create prompts for
   // the work — and replies with post_chat_message; any prompts it creates are addressed to this
-  // agent and worked by the same drain pass right after. Off with --disable-chat.
+  // agent and worked by the same drain pass right after. Off with --worker.
   async function fetchNextChatMessage(jwtToken) {
     try {
       const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/chat/next?board_id=${encodeURIComponent(cfg.boardId)}`, {
@@ -2281,6 +2291,10 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
 
   async function runChatTurn(m) {
     log(`chat message received: "${oneLine(m.text, 80)}" (session=${m.sessionId})`);
+    if (m.userId) {
+      chatPartners.add(m.userId);
+      lastProposalAt.delete(m.userId);
+    }
     let result = '';
     let failed = false;
     try {
@@ -2292,6 +2306,8 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     chatCursor.set(m.sessionId, m.id);
     const text = String(result ?? '').replace(/<promise>[^<]*<\/promise>/g, '').trim();
     await replyIfUnanswered(m, text && !failed ? text : 'Sorry — I could not finish that just now. Please try again.');
+    // Edits they made while their last proposal waited for this answer get their turn now.
+    if (m.userId && proposalBuffer.has(m.userId)) armProposalTurn(STANDALONE_DEBOUNCE_MS);
   }
 
   let realtimeToken = await getRealtimeToken();
@@ -2428,15 +2444,16 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // MIN_INTERVAL floor: a person cannot be this agent's feedback loop, whereas two agents on
   // one board can ping-pong, so another agent's write keeps waiting its turn.
   // Whether board changes get a turn at all, and what that turn may do. --standalone acts on its
-  // own initiative. A plain --modeling agent reacts too, but only proposes: it asks in the chat,
-  // says what it would do and waits for a yes — so it needs the chat, and with --disable-chat it
-  // has no way to ask and board changes are dropped as before.
+  // own initiative, on everyone's edits. A plain --modeling agent only proposes, and only to the
+  // people talking to it in the chat — about their own edits (the propose lane below). A --worker
+  // takes neither: it only works prompts.
   const boardLane = standalone || chat;
   const proposeOnly = !standalone;
 
   const observed = new Map();
   let observedCount = 0;
-  // The person behind the latest human edit in the buffer — who a proposal should be put to.
+  // --standalone: the person behind the latest human edit in the buffer — who a blocking question
+  // may be put to in the chat.
   let lastChangedBy = null;
   let seqLo = null;
   let seqHi = null;
@@ -2465,7 +2482,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
 
   function onBoardEvent(type, payload) {
     if (!boardLane) {
-      if (verbose) log(`board event ${type} dropped — --disable-chat leaves a --modeling agent no way to propose`);
+      if (verbose) log(`board event ${type} dropped — a --worker only works prompts`);
       return;
     }
     const sinceTurn = Date.now() - lastTurnEndedAt;
@@ -2480,6 +2497,10 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     // editing while this agent worked had their change written off as an echo of it.
     const writerAgent = payload?.agent_id || null;
     const writerUser = payload?.user_id || null;
+    if (proposeOnly) {
+      onProposableEvent(type, payload, writerUser, writerAgent);
+      return;
+    }
     const origin =
       writerAgent && cfg.agentId && writerAgent === cfg.agentId
         ? 'own'
@@ -2600,12 +2621,101 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'is a notification, not the task. Judge the changed areas in their context (slice, chain, timeline) the ' +
     'way .agent-modeling-kit/CLAUDE-STANDALONE.md describes — read it now if you have not this session, and ' +
     'follow its "Propose mode" section. Read what this needs and no more: every nodeId above in one get_nodes, ' +
-    'plus one get_board_outline per chapter you have not read this session. If something is worth doing, post ' +
-    'ONE chat message with post_chat_message (no sessionId, no replyTo; preferUserId = changed_by from the ' +
-    'header when it is there) that says concretely what you would do ' +
-    '— element names, which chapter — and asks whether to go ahead. CHAT_NO_ACTIVE_SESSION (nobody is talking ' +
-    'to you) or CHAT_AWAITING_REPLY (your last proposal is still unanswered) → do nothing. If the model ' +
-    'genuinely needs nothing, or you could not ask, change nothing and reply <promise>NOOP</promise>.';
+    'plus one get_board_outline per chapter you have not read this session. Every change above is by one person, ' +
+    'changed_by, who is talking to you in the chat. ALWAYS post ONE short chat message to them with ' +
+    'post_chat_message (no sessionId, no replyTo, preferUserId = changed_by) — never stay silent after their ' +
+    'edit. A fresh, half-finished element (placeholder name, no ' +
+    'fields, names still changing) is the reason to speak, not to wait. Something worth doing → say concretely ' +
+    'what you would do (element names) and ask whether to go ahead. Nothing concrete → say what you saw and ' +
+    'that you are not sure what to do with it, and ask ("You renamed Orders to take — not sure what to do with ' +
+    'it yet. Want fields on it?"). Fold anything your earlier unanswered message proposed into this one instead ' +
+    'of repeating it. One to three sentences. Only CHAT_NO_ACTIVE_SESSION (they cleared the conversation or ' +
+    'switched to another agent) or CHAT_AWAITING_REPLY (you wrote to them less than 3 minutes ago) keep you ' +
+    'silent: then change nothing and reply <promise>NOOP</promise>.';
+
+  // ── Propose lane (--modeling) ─────────────────────────────────────────────
+  //
+  // Per person: what each chat partner changed since their last proposal. Each gets their own turn
+  // and their own proposal, about their own edits only — nobody hears about someone else's work.
+  const PROPOSAL_COOLDOWN_MS = 3 * 60_000; // the backend's UNPROMPTED_COOLDOWN_MS
+  const proposalBuffer = new Map(); // userId -> Map(nodeId -> { types: Set<string>, count })
+  let proposalFirstAt = 0; // start of the current burst — MAX_WAIT is measured from here
+  let proposalTimer = null;
+
+  function onProposableEvent(type, payload, writerUser, writerAgent) {
+    const nodeId = payload?.node_id ?? '(board)';
+    // Only a person at the canvas who is talking to this agent. Agents' writes (this one's
+    // included) and unattributed ones name nobody to propose to.
+    if (!writerUser || writerAgent || !chatPartners.has(writerUser)) {
+      if (verbose) log(`board change: ${type} node=${nodeId} — ignored, not by a person chatting with this agent`);
+      return;
+    }
+    const nodes = proposalBuffer.get(writerUser) ?? new Map();
+    const entry = nodes.get(nodeId) ?? { types: new Set(), count: 0 };
+    entry.types.add(type);
+    entry.count += 1;
+    nodes.set(nodeId, entry);
+    proposalBuffer.set(writerUser, nodes);
+    if (!proposalFirstAt) proposalFirstAt = Date.now();
+    log(`board change: ${type} node=${nodeId} — by a chat partner`);
+    armProposalTurn(Math.max(0, Math.min(STANDALONE_DEBOUNCE_MS, STANDALONE_MAX_WAIT_MS - (Date.now() - proposalFirstAt))));
+  }
+
+  function armProposalTurn(delayMs) {
+    if (proposalTimer) clearTimeout(proposalTimer);
+    proposalTimer = setTimeout(() => {
+      proposalTimer = null;
+      dispatchProposals().catch((err) => log(`proposal dispatch error: ${err.message}`));
+    }, delayMs);
+  }
+
+  function buildProposalTurn(userId, nodes) {
+    const lines = [...nodes.entries()].map(([nodeId, entry]) => `- ${nodeId}: ${[...entry.types].join(', ')} (${entry.count}×)`);
+    const events = [...nodes.values()].reduce((sum, entry) => sum + entry.count, 0);
+    const header = [
+      'BOARD_CHANGE',
+      'mode=propose',
+      `changed_by=${userId}`,
+      `board_id=${cfg.boardId}`,
+      `organization_id=${cfg.organizationId}`,
+      `events=${events}`,
+      `nodes=${nodes.size}`,
+    ].join(' ');
+    return withSessionHeader(`${header}\nchanged:\n${lines.join('\n')}\n\n${PROPOSE_TASK}`);
+  }
+
+  async function dispatchProposals() {
+    // A direct message always outranks the agent's own initiative.
+    if (pending || draining) {
+      armProposalTurn(STANDALONE_DEBOUNCE_MS);
+      return;
+    }
+    const now = Date.now();
+    const due = [];
+    let waitMs = Infinity;
+    for (const [userId, nodes] of proposalBuffer) {
+      // Their last proposal is still unanswered: keep collecting, fold it all into the next one.
+      const left = (lastProposalAt.get(userId) ?? 0) + PROPOSAL_COOLDOWN_MS - now;
+      if (left > 0) {
+        waitMs = Math.min(waitMs, left);
+        continue;
+      }
+      due.push([userId, nodes]);
+      proposalBuffer.delete(userId);
+    }
+    if (!proposalBuffer.size) proposalFirstAt = 0;
+    for (const [userId, nodes] of due) {
+      log(`propose turn: ${nodes.size} node(s) changed by ${userId.slice(0, 8)}`);
+      lastProposalAt.set(userId, Date.now());
+      try {
+        await runTurn(buildProposalTurn(userId, nodes));
+      } catch (err) {
+        log(`propose turn failed: ${err.message}`);
+      }
+    }
+    // Still waiting out a cooldown, or edits that arrived while these turns ran.
+    if (proposalBuffer.size) armProposalTurn(Number.isFinite(waitMs) && !due.length ? waitMs : STANDALONE_DEBOUNCE_MS);
+  }
 
   function buildStandaloneTurn() {
     const lines = [...observed.entries()].map(([nodeId, entry]) => {
@@ -2621,7 +2731,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     });
     const header = [
       'BOARD_CHANGE',
-      `mode=${proposeOnly ? 'propose' : 'act'}`,
+      'mode=act',
       lastChangedBy ? `changed_by=${lastChangedBy}` : null,
       `board_id=${cfg.boardId}`,
       `organization_id=${cfg.organizationId}`,
@@ -2629,7 +2739,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       `events=${observedCount}`,
       `nodes=${observed.size}`,
     ].filter(Boolean).join(' ');
-    return withSessionHeader(`${header}\nchanged:\n${lines.join('\n')}\n\n${proposeOnly ? PROPOSE_TASK : STANDALONE_TASK}`);
+    return withSessionHeader(`${header}\nchanged:\n${lines.join('\n')}\n\n${STANDALONE_TASK}`);
   }
 
   // No events at all — the board has been sitting still. Same self-directed turn, with the
@@ -2811,7 +2921,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     boardChannelName,
     Object.fromEntries(BOARD_CHANGE_EVENTS.map((event) => [event, (payload) => onBoardEvent(event, payload)])),
     (status) => {
-      log(`channel "${boardChannelName}": ${status}${boardLane ? '' : ' (events dropped — --modeling with --disable-chat)'}`);
+      log(`channel "${boardChannelName}": ${status}${boardLane ? '' : ' (events dropped — --worker)'}`);
       if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         refreshRealtimeToken(status).catch(() => {});
       }
@@ -2830,7 +2940,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
         // chat_enabled tells the board this agent answers chat messages (the panel only offers chat
-        // with one that does); --disable-chat reports false, and older CLIs send nothing, which the
+        // with one that does); a --worker reports false, and older CLIs send nothing, which the
         // backend reads as false too.
         body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, chat_enabled: chat, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
         signal: AbortSignal.timeout(10_000),
@@ -3356,10 +3466,10 @@ credentialFlags(program
   .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner, via ralph-exec.js (build-kit stacks only) — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto" or "opencode run". The prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. With agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
-  .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--global).')
-  .option('--standalone', 'Let the modeling agent act on board changes on its own initiative, without asking: it subscribes to the board\'s change channel and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for, judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question). Filling that detail in while the human keeps modeling is the point. A plain --modeling agent reacts to board changes too, but only proposes: it says in the chat what it would do and waits for a yes. Implies --modeling.')
+  .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
+  .option('--standalone', 'Let the modeling agent act on board changes on its own initiative, without asking: it subscribes to the board\'s change channel and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for, judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question). Filling that detail in while the human keeps modeling is the point. A plain --modeling agent only proposes, and only to the people chatting with it: after their edits it says in the chat what it would do and waits for a yes; everyone else\'s edits are ignored. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
-  .option('--disable-chat', 'Do not take part in the board\'s chat: the heartbeat reports chat_enabled=false, so the chat panel does not offer this agent, and chat messages are never drained. Prompts are worked as usual. Modeling loop only (--modeling/--standalone/--global).')
+  .option('--worker', 'A modeling agent that only works prompts: it neither takes part in the board\'s chat (the heartbeat reports chat_enabled=false, so the chat panel does not offer it) nor reacts to board changes — it waits for prompts and does them. For a dedicated agent a supervisor or another agent feeds, often paired with --exclusive and --id. Implies --modeling; cannot be combined with --standalone.')
   .option('--exclusive', 'Work only the prompts addressed to this agent\'s id — the board\'s "preferred agent" (the star in the prompts panel) — and hand every untargeted prompt straight back to the queue for another agent to take. Without it an agent also works everything nobody addressed to anyone, which is what you want for a single agent and exactly what you do not want for a dedicated one (a board with a general agent plus a specialist, or an agent a supervisor drives by id). Pair it with --id so the same agent is addressable across restarts — --global/--standalone otherwise mint a fresh id per run, and prompts addressed to the previous run\'s id are never claimed. Leaves --standalone alone: a self-directed turn is nobody\'s prompt, so an exclusive standalone agent still works the board on its own initiative.')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
@@ -3379,11 +3489,14 @@ credentialFlags(program
     }
     // The build-kit runners claim their work from the same queue but have no addressee
     // filter, so the flag would silently do nothing there rather than half of what it says.
-    if (opts.exclusive && !(opts.modeling || opts.standalone || opts.global)) {
-      console.log('ℹ️  --exclusive only applies to the modeling loop (--modeling/--standalone/--global); ignoring it here.');
+    if (opts.exclusive && !(opts.modeling || opts.standalone || opts.worker || opts.global)) {
+      console.log('ℹ️  --exclusive only applies to the modeling loop (--modeling/--standalone/--worker/--global); ignoring it here.');
     }
-    if (opts.disableChat && !(opts.modeling || opts.standalone || opts.global)) {
-      console.log('ℹ️  --disable-chat only applies to the modeling loop (--modeling/--standalone/--global); ignoring it here.');
+    // A worker is defined by what it doesn't do on its own — --standalone is exactly that, so the
+    // two contradict each other rather than one quietly winning.
+    if (opts.worker && opts.standalone) {
+      console.error('❌ --worker and --standalone are mutually exclusive — a worker never acts on board changes.');
+      process.exit(1);
     }
     // --id/--name are what the platform will see for this run, so a blank one is a
     // mistake worth failing on rather than silently falling back to the stored identity.
@@ -3425,8 +3538,8 @@ credentialFlags(program
     // was never a second thing it could have selected, and requiring both flags only made
     // the shorter, more obvious command fail. --global picks the modeling loop too — it has
     // no meaning for a build kit, which is scaffolded per project by definition.
-    if (opts.modeling || opts.standalone || opts.global) {
-      const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : '--global';
+    if (opts.modeling || opts.standalone || opts.worker || opts.global) {
+      const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : opts.worker ? '--worker' : '--global';
       // --bash/--exec stay build-kit only: they drive the cold-spawn tasks.json loop, which the
       // modeling loop has no equivalent of. --local-ai is different — it names a *model*, not a
       // queue, and the modeling loop has its own runner for one (lib/modeling-local-ai.js).
@@ -3476,7 +3589,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, chat: !opts.disableChat, overrides, maxAgents, identity, localAi: modelingLocalAi });
+        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

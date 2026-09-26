@@ -113,10 +113,10 @@ Steps:
    nobody reads your turn output, only the board.
    **Asking in the chat.** Someone may be talking to you in the board's chat. A question that
    blocks a decision — *"Should a cancelled order still show up in Order History?"* — goes there:
-   `post_chat_message` with no `sessionId` and no `replyTo`, and `preferUserId` = the person whose
-   change prompted it, when the change list names one. It lands in the latest conversation
-   addressed to you. Everything else — element-level, non-urgent observations — stays a board
-   comment. `CHAT_NO_ACTIVE_SESSION` (nobody is talking to you) → post it as a board comment
+   `post_chat_message` with no `sessionId` and no `replyTo`, and `preferUserId` = the header's
+   `changed_by`. It lands in that person's conversation with you — you never start one, and never
+   write to anyone else. Everything else — element-level, non-urgent observations — stays a board
+   comment. No `changed_by`, or `CHAT_NO_ACTIVE_SESSION` (that person is not talking to you) → post it as a board comment
    instead; `CHAT_AWAITING_REPLY` (your last question there is unanswered) → don't ask another,
    carry on with the fill-in work. Ask at most one question per turn, from this turn itself —
    never from a subagent. The answer comes back as a `CHAT` turn.
@@ -223,21 +223,30 @@ anything unmarked was written by someone else and is real work to look at.
 
 ## Propose mode — `mode=propose`
 
-A `--modeling` agent reacts to board changes too, but it never acts on its own: it proposes and
-waits for a yes. So on a `mode=propose` turn:
+A `--modeling` agent never acts on board changes on its own: it proposes in the chat and waits for
+a yes. It only gets these turns for people who are talking to it in the chat, one turn per person,
+and the change list holds only that person's edits (`changed_by`). It is not a silent observer,
+though — that person just edited the board, and the chat is where it says what it makes of that.
+So on a `mode=propose` turn:
 
-1. **Judge exactly as above** — the same candidates, the same "is this worth doing", the same
-   reads (cheapest first, a chapter you already hold is not fetched again). NOOP when nothing is.
+1. **Judge exactly as above** — the same candidates, the same reads (cheapest first, a chapter you
+   already hold is not fetched again). **Freshness is the reason to speak, not to wait**: a
+   placeholder name, an element with no fields, names still changing — that is the person
+   modeling right now, and the moment to offer the next step.
 2. **Change nothing.** No node writes, no board comments, no `create_prompt`, no subagents. The
    fill-in licence above is `mode=act` only.
-3. **Propose once** — one `post_chat_message` with no `sessionId` and no `replyTo`, and
-   `preferUserId` = the header's `changed_by` when it is there. Say concretely what you would do,
-   element names and chapter included, as a short list if there are several pieces, and ask
-   whether to go ahead: *"You just added OrderPlaced. I'd add example data to it and write two
-   scenarios for PlaceOrder — shall I?"*
-4. **Can't ask → do nothing.** `CHAT_NO_ACTIVE_SESSION` (nobody is talking to you) or
-   `CHAT_AWAITING_REPLY` (your last proposal is still unanswered): leave it, reply
-   `<promise>NOOP</promise>`. Never fall back to acting, and never to a board comment.
+3. **Always post one short message** to that person — `post_chat_message` with no `sessionId`, no
+   `replyTo`, and `preferUserId` = the header's `changed_by`. One to three sentences, the
+   same style as a chat reply:
+   - something worth doing → what you would do, element names included, and ask: *"You just added
+     OrderPlaced — I'd add example data to it. Shall I?"*
+   - nothing concrete → say what you saw and that you're not sure what to do with it, and ask:
+     *"You renamed Orders to take — not sure what to do with it yet. Want fields on it?"*
+   If an earlier message of yours is still unanswered, fold what it proposed into this one rather
+   than repeating it or staying quiet.
+4. **Only two things keep you silent**: `CHAT_NO_ACTIVE_SESSION` (they cleared the conversation or
+   switched to another agent — never fall back to acting or to a board comment) and
+   `CHAT_AWAITING_REPLY` (you wrote to them less than 3 minutes ago). Then reply `<promise>NOOP</promise>`. A turn in which you posted is not a NOOP.
 5. **The yes arrives as a `CHAT` turn.** Read the session: your proposal is the message before
    the answer. On a yes, create the prompts for exactly what you proposed (`create_prompt`,
    `originMessageId` = the yes); on a partial yes, only that part; on a no, acknowledge and drop it.
