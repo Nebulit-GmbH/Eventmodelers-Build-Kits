@@ -1,10 +1,13 @@
 # Standalone board-change turns
 
-**Read this file only in a `standalone=on` session, and only once the first turn whose first
-line is `BOARD_CHANGE` or `BOARD_REVIEW` actually arrives.** It is a one-time read like
-`.agent-modeling-kit/CLAUDE.md` itself — don't re-read it on later self-directed turns, don't
-read it at all in a `standalone=off` session, and don't read it "to be prepared" while handling
-a prompt turn. Nothing in here loosens what you may do on a prompt turn: the fill-in licence
+**Read this file only once the first turn whose first line is `BOARD_CHANGE` or `BOARD_REVIEW`
+actually arrives.** It is a one-time read like `.agent-modeling-kit/CLAUDE.md` itself — don't
+re-read it on later self-directed turns, and don't read it "to be prepared" while handling a
+prompt or chat turn.
+
+**Check the turn's `mode=` first.** `mode=act` (`--standalone`): everything below applies as
+written. `mode=propose` (`--modeling`): the judgement below applies, the doing does not — see
+"Propose mode" at the end of this file. Nothing in here loosens what you may do on a prompt turn: the fill-in licence
 below belongs to turns nobody asked for, and a prompt turn that has this file in its context is
 exactly how it starts doing more than it was asked.
 
@@ -75,7 +78,8 @@ Steps:
    - a timeline element that clearly should be sliced and isn't →
      `/eventmodeling-slicing-event-models`
    - a gap or unhandled case that raises a real business question → one QUESTION comment via
-     `/handle-comment` with `action=place`
+     `/handle-comment` with `action=place` — or, when the question **blocks** work you would do now
+     and a guess would likely be wrong, ask it in the chat instead (see "Asking in the chat" below)
    Nothing is a candidate when it's cosmetic (a node moved, resized or renamed), when the
    target already has the thing you'd add, when it's inside something you yourself just
    wrote, or when the element is still visibly half-finished in itself (a placeholder name,
@@ -107,6 +111,15 @@ Steps:
    earlier turn parks the one structural sweep you asked about and nothing else. It never
    becomes a standing hold on fill-in work, and you never wait across turns for an answer —
    nobody reads your turn output, only the board.
+   **Asking in the chat.** Someone may be talking to you in the board's chat. A question that
+   blocks a decision — *"Should a cancelled order still show up in Order History?"* — goes there:
+   `post_chat_message` with no `sessionId` and no `replyTo`, and `preferUserId` = the person whose
+   change prompted it, when the change list names one. It lands in the latest conversation
+   addressed to you. Everything else — element-level, non-urgent observations — stays a board
+   comment. `CHAT_NO_ACTIVE_SESSION` (nobody is talking to you) → post it as a board comment
+   instead; `CHAT_AWAITING_REPLY` (your last question there is unanswered) → don't ask another,
+   carry on with the fill-in work. Ask at most one question per turn, from this turn itself —
+   never from a subagent. The answer comes back as a `CHAT` turn.
 3. **Spawn a subagent for each piece of work that needs doing — and only where one does.** The
    analysis in steps 1–2 is yours: you look at every entry in `changed:` yourself, in the
    context of the model, and decide what (if anything) needs to happen. Then, for each
@@ -206,3 +219,25 @@ yours alongside it, marked `YOUR OWN earlier write`. Take that mark literally: t
 there for context, not to be reworked. A line marked `unattributed, possibly your own earlier
 write` is the one uncertain case (a write that reached the platform without an agent id);
 anything unmarked was written by someone else and is real work to look at.
+
+
+## Propose mode — `mode=propose`
+
+A `--modeling` agent reacts to board changes too, but it never acts on its own: it proposes and
+waits for a yes. So on a `mode=propose` turn:
+
+1. **Judge exactly as above** — the same candidates, the same "is this worth doing", the same
+   reads (cheapest first, a chapter you already hold is not fetched again). NOOP when nothing is.
+2. **Change nothing.** No node writes, no board comments, no `create_prompt`, no subagents. The
+   fill-in licence above is `mode=act` only.
+3. **Propose once** — one `post_chat_message` with no `sessionId` and no `replyTo`, and
+   `preferUserId` = the header's `changed_by` when it is there. Say concretely what you would do,
+   element names and chapter included, as a short list if there are several pieces, and ask
+   whether to go ahead: *"You just added OrderPlaced. I'd add example data to it and write two
+   scenarios for PlaceOrder — shall I?"*
+4. **Can't ask → do nothing.** `CHAT_NO_ACTIVE_SESSION` (nobody is talking to you) or
+   `CHAT_AWAITING_REPLY` (your last proposal is still unanswered): leave it, reply
+   `<promise>NOOP</promise>`. Never fall back to acting, and never to a board comment.
+5. **The yes arrives as a `CHAT` turn.** Read the session: your proposal is the message before
+   the answer. On a yes, create the prompts for exactly what you proposed (`create_prompt`,
+   `originMessageId` = the yes); on a partial yes, only that part; on a no, acknowledge and drop it.

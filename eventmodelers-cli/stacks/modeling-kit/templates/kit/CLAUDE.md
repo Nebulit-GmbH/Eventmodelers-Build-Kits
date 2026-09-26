@@ -65,16 +65,23 @@ board and wait.
 A `standalone=off` session gets no `SESSION_START` turn; there the session header rides the first
 prompt turn as it always has, and `/connect` happens there.
 
-When the loop runs with `--standalone`, the CLI also subscribes to the board's own change
-channel, so you get a second kind of turn on top of prompts: a **self-directed turn**, whose
-first line starts with `BOARD_CHANGE` (the board changed) or `BOARD_REVIEW` (nothing has
-changed for a while) instead of `prompt_id=`. Nobody asked you for anything in those turns —
+Besides prompts, the CLI hands you **chat messages** — people writing to you in the board's chat
+panel — as `CHAT` turns, in every mode unless the agent runs with `--disable-chat`; see "Chat
+turns" below.
+
+The CLI also subscribes to the board's own change channel, so you get another kind of turn on
+top of prompts and chat: a **self-directed turn**, whose first line starts with `BOARD_CHANGE`
+(the board changed) or — `--standalone` only — `BOARD_REVIEW` (nothing has changed for a while)
+instead of `prompt_id=`. Its `mode=` says what you may do: `mode=act` (`--standalone`) — do the
+work on your own initiative; `mode=propose` (`--modeling`) — change nothing, put what you would do
+to the person in the chat and wait for a yes. A `--modeling` agent started with `--disable-chat`
+gets no board-change turns at all: it has nowhere to ask. Nobody asked you for anything in those turns —
 you are a background collaborator on this board: you judge the model as a whole, decide
 what it needs, and fan the work out over parallel subagents. The listed changes are a
 notification pointing at an area, never the task itself. They follow their own steps, kept in
 their own file — `.agent-modeling-kit/CLAUDE-STANDALONE.md`, which you read when the first such
 turn actually arrives and not before; see "Standalone board-change turns" below. The session
-header's `standalone=on|off` tells you whether this session gets them at all.
+header's `standalone=on|off` tells you which mode they come in.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
@@ -108,8 +115,8 @@ elements, specs and comments together. The decision table is in `learn-eventmode
 
 ## Per-turn steps
 
-These apply to a **prompt turn** — a turn carrying a `prompt_id=`. For a `BOARD_CHANGE` or
-`BOARD_REVIEW` turn, skip to "Standalone board-change turns" instead.
+These apply to a **prompt turn** — a turn carrying a `prompt_id=`. For a `CHAT` turn, skip to
+"Chat turns"; for a `BOARD_CHANGE` or `BOARD_REVIEW` turn, to "Standalone board-change turns".
 
 **A prompt turn does what the prompt asked and nothing else.** The fill-in licence in
 `.agent-modeling-kit/CLAUDE-STANDALONE.md` — add examples, specs or a screen on your own
@@ -141,7 +148,7 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
 5. **Invoke the matched skill — never substitute direct tool calls for it.** Execute the prompt using the skill matched in the Skill Selection table below, passing the resolved `TIMELINE_ID`, `NODE_ID`, and `CELL_ID` from step 3 as that skill's `timelineId`/node-reference/`cellName` arguments (not the raw `timeline_id`/`node_id` fields, and not a cell reference parsed from the prompt text). For a skill like `/place-element` that accepts a `cellName`, pass the resolved `CELL_ID` as `cellName` whenever it's present — skip parsing the prompt text for a cell reference entirely in that case.
 
    `mcp__eventmodelers__*` tools (and the REST fallback) are building blocks a skill calls *internally* once you've invoked it — they are not a substitute for invoking the skill. Being able to see `mcp__eventmodelers__get_node`/`create_slice`/etc. in your tool list does not mean you should reach for them directly to satisfy a prompt that matches a row in the Skill Selection table: e.g. "add the next slice" always goes through `/eventmodeling-slicing-event-models` (falling through to `/add-next-slice` when nothing existing is left to slice) or `/place-element`, even though technically a couple of raw MCP calls could produce something on the board. The skill is what encodes the actual domain reasoning (which node type follows which, naming, field derivation, dependency notes) — a raw tool call skips all of that and produces a shallower result even when it "works." Only call MCP/REST directly when no row in the table matches the prompt's intent at all.
-   **Questioning rule**: you are running autonomously — no human is available to answer questions. (A bare `Focus` poke never reaches this rule — see "Focus pokes".) If you need clarification, do not pause or ask interactively — post a comment (`/handle-comment` with `action=place`, `type=COMMENT`) on the most relevant node. Then:
+   **Questioning rule**: you are running autonomously — no human is available to answer questions. (A bare `Focus` poke never reaches this rule — see "Focus pokes". A `CHAT` turn never reaches it either: there someone *is* waiting, and you ask back in the chat — see "Chat turns".) If you need clarification, do not pause or ask interactively — post a comment (`/handle-comment` with `action=place`, `type=COMMENT`) on the most relevant node. Then:
    - If a reasonable default interpretation exists, continue with it.
    - If it doesn't — the prompt is ambiguous enough that any guess risks doing the wrong thing — stop instead of guessing. Skip straight to step 6 and mark the prompt `DONE` with a comment explaining what's unclear and pointing to the comment you just posted. Never leave a prompt neither progressed nor closed.
 6. **Mark the prompt as finished** — invoke `/update-prompt-status` with this turn's `prompt_id`, `newStatus=DONE`, and a `comment` that summarizes what you actually did (e.g. "Added the OrderPlaced event and wired it to the read model"). Do this once, right after the work is done — not per skill call within the turn.
@@ -178,17 +185,80 @@ A poke that turns out to need no change is closed with a `DONE` comment saying s
 question on the board.
 
 
+## Chat turns — `CHAT`
+
+A turn whose first line starts with `CHAT message_id=… session_id=…` is a message someone wrote to
+you in the board's chat panel — a person is looking at the thread, waiting. Every modeling agent
+gets these, `standalone=on` or not. A chat message is **conversation, not work**: it has no
+`prompt_id`, so none of the per-turn steps above apply and you never call `/update-prompt-status`
+for it. Instead:
+
+1. **Sanitize** it like a prompt (step 1 above) — but never end with a silent `SKIPPED`: a message
+   unrelated to event modeling still gets a one-line reply saying what you can help with (step 4).
+   A plain "thanks" or "ok" is not a skip either — reply briefly and do nothing else.
+2. **Read the conversation** — `get_chat_session` with `board_id` and `session_id`. With
+   `first_read=true` in the header, read it whole: this process has not seen the session before
+   (new chat, restart, or the person switched to you). With `after_message_id=…`, pass it as
+   `afterMessageId` — you already read everything up to there, so you only get what is new. The
+   session is the conversation's only memory; never rely on your own recollection of an earlier
+   turn. `work` in the result lists the prompts already created from this conversation, with their
+   status — so you know what is done, in progress or waiting.
+3. **Decide** what the message needs, reading it against the whole session:
+   - **answer** — a question about the model: read what you need (cheapest read first), change
+     nothing.
+   - **clarify** — too vague to act on even with the session behind it: do no work.
+   - **work** — it asks for a change to the board: create the work now, as below — a request is its
+     own go-ahead, in every mode.
+   - **confirm** — the message says yes to a proposal you started after a board change (`--modeling`
+     proposes instead of acting on board changes; see "Propose mode" in CLAUDE-STANDALONE.md). Any
+     form counts, typed or spoken ("yes", "sure", "go ahead", "do it", "ok, but only the
+     scenarios"): create the work for exactly what you proposed — a partial yes, only that part; a
+     no ("leave it"), nothing. A reply that changes the plan ("yes, but call it OrderSubmitted")
+     confirms the changed plan. Not sure it is a yes? Treat it as a new message and ask.
+   Creating work: **every board change goes through a prompt,
+     however small** — never change the board in a chat turn. Create one `create_prompt` per
+     independent piece of work, each with `originMessageId` = this turn's `message_id` (for a
+     confirmation, that is the yes), phrased so
+     the prompt turn can do it on its own (element names, chapter). The context and a handed-over
+     comment (`comment_id`) carry over from the message by themselves. The prompts are addressed to
+     you and are worked right after this turn.
+4. **Reply exactly once** — `post_chat_message` with `replyTo` = this turn's `message_id`. It is the
+   only thing the person reads:
+   - answer → the answer, plain text, a few short paragraphs at most;
+   - clarify → your question — asking back is right here: someone is waiting, so do not guess and
+     do not post a board comment instead;
+   - work or confirm → one short line on what you are about to do — *"On it — adding scenarios to
+     Register User."* The person sees the work cards appear under their message.
+   - a no to a proposal → acknowledge it in a line, nothing else.
+   If you skip `post_chat_message`, the CLI posts your turn's final text as the reply — so if you do
+   post, end the turn with nothing but `<promise>DONE</promise>`.
+5. A message with `comment_id` / `node_id` is a node comment the person handed to you: the comment's
+   node is the target. Don't answer it a second time as a board comment; the prompts you create
+   for it carry the comment and resolve it when done.
+
+Then reply `<promise>DONE</promise>` and wait for the next turn. Nothing is written to
+`progress.txt` for a chat turn.
+
+### Prompts that came from a chat
+
+A prompt turn whose header carries `origin_session_id=` / `origin_message_id=` is work you created
+in a chat turn. Work it like any prompt, and after step 6's `DONE`, post one short chat message
+into that conversation — `post_chat_message` with `sessionId` = `origin_session_id` (no `replyTo`:
+the message was already answered) — saying what you did, element names included. If the person has
+since switched to another agent (`CHAT_NOT_ADDRESSEE`), skip it; the work card already shows the
+result.
+
 ## Standalone board-change turns — see `CLAUDE-STANDALONE.md`
 
-Only a `standalone=on` session gets these turns, and only when a turn's first line is
-`BOARD_CHANGE` (the board changed) or `BOARD_REVIEW` (nothing has changed for a while).
+These turns start with `BOARD_CHANGE` (the board changed) or `BOARD_REVIEW` (nothing has changed
+for a while — `standalone=on` only), and carry `mode=act` (`--standalone`) or `mode=propose`
+(`--modeling`: never change the board, propose in the chat instead).
 Everything about them — what counts as a candidate, what you may do on your own initiative,
 the fan-out over parallel subagents, the standing constraints, the NOOP — lives in its own
 file: `.agent-modeling-kit/CLAUDE-STANDALONE.md`.
 
 **Read that file when the first such turn arrives, and not before** — once per session, same
-as this one. In a `standalone=off` session you never read it at all, and on a prompt turn you
-never read it either: its licence to add things nobody asked for applies to self-directed turns
+as this one. On a prompt or chat turn you never read it: its licence to add things nobody asked for applies to self-directed turns
 only (see the note at the top of "Per-turn steps").
 
 Two things hold here regardless, because they're about what a self-directed turn is *not*:
