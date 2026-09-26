@@ -91,11 +91,11 @@ For each timeline in scope, check all node types that should be in cells.
 ```
 mcp__eventmodelers__validate_model { "boardId": "$BOARD_ID", "chapterId": "$TIMELINE_ID" }
 ```
-Only fall back to per-type `get_nodes` (`chapterId`-scoped, once each for `EVENT`, `COMMAND`, `READMODEL`, `SCREEN`, `AUTOMATION`) when you also need the node bodies for another reason in the same pass.
+Only fall back to per-type `get_nodes` (`chapterId`-scoped, once each for `EVENT`, `COMMAND`, `READMODEL`, `SCREEN`, `AUTOMATION`) when you also need the node bodies for another reason in the same pass — otherwise add `"projection": "line"` (it carries no `cellName`): a returned id that `get_board_outline` for that chapter doesn't list is the unplaced one.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "No unplaced elements (0,0 nodes) — Scan for unplaced nodes".
 
-For each returned node, check whether it has a valid cell assignment. A node without a `cellId` (or with `chapterId` missing) is unplaced.
+For each returned node, check whether it has a valid cell assignment. A node without a `cellId` (or with `chapterId` missing) is unplaced; a `line`-projected result has no cell info, so check it against `get_board_outline`, which lists every placed node with its `cellName`.
 
 **For each unplaced node:**
 - **If it belongs in the current model** → compute the correct `cellId` and place it.
@@ -152,7 +152,7 @@ Each write tool takes its items as an array, so handling several in one pass is 
 - `add_column`'s `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
 - `create_chapter`'s `columns` param — when the chapter's initial column count is already known, instead of creating the default 3 and appending more after
 
-Also prefer `get_nodes`' `chapterId` param over an unscoped board-wide fetch whenever the step is working within one timeline (the common case), and `get_node`'s `projection: "cells"` over a full chapter fetch whenever only `{rows, columns, cells}` is needed (most cell/column bookkeeping lookups).
+Also prefer `get_nodes`' `chapterId` param over an unscoped board-wide fetch whenever the step is working within one timeline (the common case), and `get_node`'s `projection: "cells"` over a full chapter fetch whenever only `{rows, columns, cells}` is needed (most cell/column bookkeeping lookups). When only ids/titles/types/attribute names matter (existence check, dedupe by title, picking a chapter or context, finding a node by name), pass `projection: "line"` to `get_nodes` — `{id, type, title, fields}` per node; cell addresses come only from `get_board_outline`.
 
 For a "what is on the board and how is it wired right now" check between steps — the common orientation read, and the input to choosing an insertion anchor — use `get_board_outline` (`{boardId, chapterId}`). It returns one compact object: per-column node lists (`{id, type, title, lane}`) plus a flat edge list, with no rendered screen HTML or field bodies. Reserve full `get_nodes` (no projection) for when you actually need a node's `meta.fields` or page content.
 

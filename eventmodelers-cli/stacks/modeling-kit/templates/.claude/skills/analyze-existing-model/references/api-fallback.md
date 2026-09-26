@@ -19,8 +19,16 @@ Response: `{ "slices": [{ "id": "<uuid>", "title": "<name>", "status": "<status>
 curl -s \
   -H "x-token: $TOKEN" \
   -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT&projection=line"
+
+# Timelines too — one without a context is its own context, named after the timeline
+curl -s \
+  -H "x-token: $TOKEN" \
+  -H "x-user-id: analyze-existing-model" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 ```
+
+Returns `{id, type, title}` per node — all this step needs.
 
 ## Step 4 — Fetch slice data per context
 
@@ -28,14 +36,18 @@ curl -s \
 curl -s \
   -H "x-token: $TOKEN" \
   -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=<CONTEXT_NAME>"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=<CONTEXT_NAME>&projection=fields&format=toon"
+
+curl -s \
+  -H "x-token: $TOKEN" \
+  -H "x-user-id: analyze-existing-model" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=<CONTEXT_NAME>&projection=specs&format=toon"
 ```
 
-Each response contains a `slices` array. Each slice entry includes:
-- `id`, `title`, `status`
-- `elements`: array of `{ type, id, title, fields[] }`  — element types: `EVENT`, `COMMAND`, `READMODEL`, `SCREEN`, `AUTOMATION`
-- `specs`: array of GWT scenarios (may be empty)
-- `edges`: relationships between elements
+- `projection=fields` — slice header (id, title, status, sliceType, chapter, context) + elements (commands, events, readmodels, screens, processors, tables) with their fields and dependencies. No specs/comments.
+- `projection=specs` — slice header + specifications (given/when/then) and storylines. No elements.
+- `projection=outline` — slice header + elements as `{id, title, type}` only; use it instead of `fields` when no gap/shape check is needed.
+- `outline` and `specs` require `format=json|yaml|toon` (others → 400 `PROJECTION_FORMAT_UNSUPPORTED`).
 
 ## Example — full board analysis
 
@@ -46,17 +58,25 @@ curl -s \
   -H "x-user-id: analyze-existing-model" \
   "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata/slices"
 
-# 2. Fetch MODEL_CONTEXT nodes
+# 2. Fetch MODEL_CONTEXT nodes and timelines (a timeline without a context is its own context)
 curl -s \
   -H "x-token: $TOKEN" \
   -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=MODEL_CONTEXT&projection=line"
+curl -s \
+  -H "x-token: $TOKEN" \
+  -H "x-user-id: analyze-existing-model" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 
-# 3. Fetch full slice data for a context
+# 3. Fetch fields + specs projections for a context
 curl -s \
   -H "x-token: $TOKEN" \
   -H "x-user-id: analyze-existing-model" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=Ordering"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=Ordering&projection=fields&format=toon"
+curl -s \
+  -H "x-token: $TOKEN" \
+  -H "x-user-id: analyze-existing-model" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/slicedata?contextName=Ordering&projection=specs&format=toon"
 ```
 
 Replace `$TOKEN`, `$ORG_ID`, `$BOARD_ID`, and the context name with real values resolved from the `connect` skill.

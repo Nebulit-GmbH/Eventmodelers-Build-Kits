@@ -45,29 +45,36 @@ Save the full slice list. Count total slices and group by status:
 
 ## Step 3 — Discover contexts
 
-Fetch all `MODEL_CONTEXT` nodes to identify bounded contexts on the board:
+Fetch the `MODEL_CONTEXT` nodes **and** the timelines — a timeline with no assigned or connected context is its own context (named after the timeline), so the MODEL_CONTEXT nodes alone miss it. Only ids and titles are needed, so use the `line` projection:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT", "projection": "line" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 3 — Discover contexts".
 
 - If a `contextName` argument was given, filter to that single context and skip others.
-- If no `MODEL_CONTEXT` nodes exist, continue with a single unnamed context scope.
-- Record each context's `id` and `title`.
+- Record each MODEL_CONTEXT's `id` and `title`, and each timeline's `id` and `title`.
+- Step 4 fetches every MODEL_CONTEXT by title first. Each slice in a response carries its `chapter`; every timeline never named there is its own context (or holds no slices) — fetch it too, passing the timeline's title as `contextName`. With no MODEL_CONTEXT nodes at all, that is every timeline.
 
 ---
 
 ## Step 4 — Fetch slice data per context
 
-For each resolved context, fetch the full element graph:
+For each resolved context, fetch two trimmed projections instead of the full graph — this analysis never needs comments, codegen prompts, notes or screen images:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>" }
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>", "projection": "fields", "format": "toon" }
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>", "projection": "specs", "format": "toon" }
 ```
+
+- `fields` — slice header (id, title, status, sliceType, chapter, context) plus every element with its fields and **dependencies**. Covers 5a (inventory), 5b (status), 5d (gaps) and 5f (structural shapes — the bed needs the SCREEN → COMMAND dependencies).
+- `specs` — slice header plus specifications (given/when/then) and storylines, no elements. Covers 5c (spec coverage).
+- If the user only asked for counts/status/coverage (no gap or shape check), use `"projection": "outline"` instead of `fields` — elements as `{id, title, type}` only, the cheapest read.
+- `outline` and `specs` only encode as `json`, `yaml` or `toon` (`textual`/`emlang`/`esdm` return `PROJECTION_FORMAT_UNSUPPORTED`); use `toon` (token-efficient) or `json`.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Fetch slice data per context".
 
@@ -97,7 +104,7 @@ Group slices by status. Report counts per status. Flag any status that suggests 
 
 ### 5c — Spec coverage
 
-For each slice, check whether `specs` is non-empty. Calculate:
+For each slice in the `specs` projection, check whether its specifications are non-empty. Calculate:
 - Slices **with** at least one GWT scenario
 - Slices **without** any scenarios (grouped by slice type if detectable)
 
@@ -201,8 +208,10 @@ If a context was specified but not found, tell the user clearly and list the con
 **Prefer MCP:**
 ```
 mcp__eventmodelers__list_slices { "boardId": "$BOARD_ID" }
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT" }
-mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "Ordering" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "MODEL_CONTEXT", "projection": "line" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER", "projection": "line" }
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "Ordering", "projection": "fields", "format": "toon" }
+mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "Ordering", "projection": "specs", "format": "toon" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Example — full board analysis".

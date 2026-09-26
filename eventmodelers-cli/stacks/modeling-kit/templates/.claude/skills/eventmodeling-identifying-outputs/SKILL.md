@@ -195,7 +195,7 @@ Before finalizing any read model, ask: "does this screen contain more than one c
 
 **Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.eventmodelers/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
 
-For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields`. Step 3 already required every field to carry a `mapping`, and for view fields that mapping is already in the exact form `"<ReadModelTitle>.<fieldName>"` — recorded specifically so this step doesn't have to re-guess it.
+For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields` — a full read on purpose (`projection: "line"` carries field names only, not the `mapping` this step groups by); scope it to the chapter, e.g. `get_nodes { "boardId": "<BOARD_ID>", "type": "SCREEN", "chapterId": "<CHAPTER_ID>" }`, rather than board-wide. Step 3 already required every field to carry a `mapping`, and for view fields that mapping is already in the exact form `"<ReadModelTitle>.<fieldName>"` — recorded specifically so this step doesn't have to re-guess it.
 
 - **Group the screen's fields by the `<ReadModelTitle>` already named in their `mapping`.** That grouping — not a fresh read of the screen's visuals — is the read model's title and field list. Build the READMODEL node from it directly.
 - If a field's `mapping` names a read model that isn't `"<CommandTitle>.<fieldName>"` or `"session:..."` or `"derived:..."`, it is a read-model reference — treat it as a requirement, not a suggestion.
@@ -273,7 +273,7 @@ mcp__eventmodelers__submit_node_events {
   }]
 }
 ```
-To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (there is no `cellId` filter on `get_nodes` — see the note under "Wire connections" below), fetch the chapter and read its cell map — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
+To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (`get_nodes` filters by `type`, `name`, `chapterId` and `nodeIds`, but has no `cellId` filter — see the note under "Wire connections" below), fetch the chapter and read its cell map — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 ```
 mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
 # → rows (find "interaction"/"actor" rows) and cells (sparse; absent id = empty)
@@ -323,7 +323,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
 1. **EVENT → READMODEL** — find the primary source EVENT node in the swimlane row of the same column.
 
-   **Prefer MCP** — `get_nodes` has no `cellId` filter (only `type`); look up occupancy via the chapter's cell map instead (`projection: "cells"`), then connect with the type-checked edge tool (auto-corrects direction, skips duplicates):
+   **Prefer MCP** — `get_nodes` has no `cellId` filter (it filters by `type`, `name`, `chapterId`, `nodeIds` only); look up occupancy via the chapter's cell map instead (`projection: "cells"`), then connect with the type-checked edge tool (auto-corrects direction, skips duplicates):
    ```
    mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    # → read cells["<swimlaneRowId>-<columnId>"] for the occupying node id
@@ -369,7 +369,7 @@ If this step is processing more than one read model in the same pass, collect ev
 
 ### Step 5i — Mandatory per-node verification (run before declaring this step done)
 
-Do not declare Step 5 complete on the strength of the read models you happened to design. Instead, **re-fetch every SCREEN and AUTOMATION node on the board** (`get_nodes` per type — don't rely on the list built earlier in this step, the board may have moved on) and check each one individually:
+Do not declare Step 5 complete on the strength of the read models you happened to design. Instead, **re-fetch every SCREEN and AUTOMATION node on the board** (don't rely on the list built earlier in this step, the board may have moved on) and check each one individually. Questions 1–3 need only node types and edges: `get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<CHAPTER_ID>" }` per chapter returns every node per column plus the flat edge list — the full node records from `get_nodes` carry no edges. Read a node in full (`get_node`) only when you fix a gap and need its `meta.fields`/`mapping`:
 
 1. Does it now have an incoming `READMODEL → SCREEN` or `READMODEL → AUTOMATION` connection?
 2. If it's a SCREEN and not connected — is it a provably blank creation form with no prior state? State the reason in one line (e.g. `"Register Account" screen: blank form, no prior state — exempt`). This exemption applies to screens only.

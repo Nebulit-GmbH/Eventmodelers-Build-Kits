@@ -5,14 +5,16 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Step 2 — Discover chapters
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 ```
 
 ## Step 3 — Fetch the chapter node (columns + cells)
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TIMELINE_ID"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TIMELINE_ID?projection=cells"
 ```
+
+Returns `{rows, columns, cells}` directly (not wrapped in `meta.timelineData`).
 
 ## Step 4a — SCENARIO: append scenarios via the spec endpoint
 
@@ -66,7 +68,7 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID&timeli
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?colId=$COLUMN_ID&timelineId=$TIMELINE_ID"
 ```
 
-If you already have fresh `timelineData` loaded from Step 3, reading its `cells` array directly (sparse — an entry only exists once something has been placed there) avoids the extra round-trip; use the calls above otherwise, or when `timelineData` might be stale (e.g. a column was just created).
+If you already have a fresh grid loaded from Step 3, reading its `cells` array directly (sparse — an entry only exists once something has been placed there) avoids the extra round-trip; use the calls above otherwise, or when the grid might be stale (e.g. a column was just created).
 
 ## Step 6 — Insert a column at a specific index (conflict resolution)
 
@@ -176,7 +178,7 @@ curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/timeli
 
 # 2. Fetch chapter to find the target lane cell for the new column
 curl -s -H "x-user-id: place-element-skill" \
-  "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<TIMELINE_ID>"
+  "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<TIMELINE_ID>?projection=cells"
 
 # 3. Create the EVENT node — do not skip the x-user-id header
 curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \

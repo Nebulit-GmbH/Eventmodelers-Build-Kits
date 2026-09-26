@@ -32,8 +32,10 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
 ```
+
+Returns `{rows, columns, cells}` directly (not wrapped in `meta.timelineData`).
 
 ## Step 7a — Create column
 

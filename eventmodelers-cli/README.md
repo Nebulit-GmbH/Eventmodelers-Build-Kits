@@ -635,6 +635,8 @@ npx @eventmodelers/cli re-init --stack supabase      # override which stack to r
 
 `re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/`ralph.sh`/skills without re-scaffolding a project you've since built on top of.
 
+You don't have to remember to: on startup every command prints a 💡 hint (on stderr) when a newer CLI is on npm, or when a kit in the current directory was installed by an older CLI than the one running — naming the exact `re-init` command to run. The npm lookup happens at most once a day (cached in `~/.eventmodelers/update-check.json`, 1.5 s timeout, silent when offline). Set `EVENTMODELERS_NO_UPDATE_CHECK=1` to turn it off; it is also off when `CI` is set.
+
 Pass `--stack <name>` to override the stack instead of relying on the manifest — useful if the manifest is missing/stale, or you want to point a `.build-kit` install at a different built-in stack's templates. It's mutually exclusive with `--modeling`.
 
 Credentials are left alone unless you pass `--force` — same rule `init` already follows when everything required is already configured. `--global` defaults to however skills were originally installed; pass it explicitly to move them.

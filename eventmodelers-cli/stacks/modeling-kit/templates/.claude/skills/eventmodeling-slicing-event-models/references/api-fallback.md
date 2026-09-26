@@ -5,7 +5,8 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Step 1: Resolve the Timeline
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line" -H "x-token: $TOKEN"
+# → [{ id, type, title }] — enough to pick a chapter
 ```
 
 ## Step 2: Enumerate Commands, Read Models, and Automations — spec-info
@@ -15,12 +16,19 @@ curl "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$TL/spec-info" -H "x-
 # → { timelineId, elements: [{ id, title, type }] } — filter client-side to type in COMMAND, READMODEL (no elementTypes param over REST)
 ```
 
+AUTOMATION nodes in the timeline:
+
+```bash
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=AUTOMATION&chapterId=$TL&projection=line" -H "x-token: $TOKEN"
+# → [{ id, type, title, fields? }]
+```
+
 ## Step 2: Enumerate Commands, Read Models, and Automations — Chapter Node
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TL" -H "x-token: $TOKEN"
-# → meta.timelineData.columns: [{ id, index }]
-# → meta.timelineData.cells:   [{ id: "<rowId>-<columnId>", nodeId }]
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$TL?projection=cells" -H "x-token: $TOKEN"
+# → columns: [{ id, index }]
+# → cells:   [{ id: "<rowId>-<columnId>", nodeId }]
 ```
 
 ## Step 2: Enumerate Commands, Read Models, and Automations — Check Existing Slices

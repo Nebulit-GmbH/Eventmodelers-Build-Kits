@@ -5,9 +5,11 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## 3a — Use Node Edges
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EDGE_SOURCE_ID" \
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EDGE_SOURCE_ID?projection=edges" \
   -H "x-token: $TOKEN" -H "x-user-id: attributes-skill"
 ```
+
+`projection=edges` returns `{nodeId, edges}` — the node's inbound/outbound connections only, no content (the full node record carries no edges). Fields for Step 4 come from the chapter-scoped `GET .../nodes?chapterId=` read.
 
 ## Step 4 — Apply the Change to Each Node in the Chain
 

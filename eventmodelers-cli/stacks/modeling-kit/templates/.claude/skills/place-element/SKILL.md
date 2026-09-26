@@ -64,10 +64,10 @@ This tool finds or creates an empty cell in the correct lane and places the node
 
 ## Step 2 — Resolve the timeline
 
-**Prefer MCP:**
+**Prefer MCP** — ids and titles are all this step needs, so use `projection: "line"` (without it every chapter's full grid comes back):
 
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 2 — Discover chapters". If `timelineId` is not provided, this discovers chapters on the board.
@@ -90,7 +90,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<TIMELINE_ID>
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 3 — Fetch the chapter node".
 
-Read `columns` (ordered array of column objects with `id` and `index`) and `cells` (from the result directly via MCP, or from `meta.timelineData` via the REST fallback).
+Read `columns` (ordered array of column objects with `id` and `index`) and `cells` (directly from the result — MCP and the REST fallback's `?projection=cells` return the same `{rows, columns, cells}` shape).
 
 Then resolve `position`:
 
@@ -191,7 +191,7 @@ Save `columnId` from the response.
 
 ## Step 6 — Compute the target cell ID and check availability
 
-Using the `timelineData` already fetched in Step 3 (re-fetch if a column was just created):
+Using the `{rows, columns, cells}` grid already fetched in Step 3 (re-fetch if a column was just created):
 
 - Find the row in `rows` whose `type` matches the target lane (`swimlane`, `interaction`, or `actor`).
 - Compute the cell ID directly: **`CELL_ID = targetRow.id + "-" + columnId`**
@@ -208,7 +208,7 @@ Cell IDs are always `<rowId>-<columnId>` — no cell array search needed.
 
 **Fastest path**: use the `cells` array you already fetched in Step 3 via `get_node` (`projection: "cells"`) on the chapter/timeline node — `cells` is a sparse array, so a `nodeId` absent from the entry for `CELL_ID` means the cell is empty. Also scan it for the column-wide conflict from the rule above: any entry with `colId === columnId` and `nodeType === elementType` (for COMMAND/READMODEL/SCREEN/AUTOMATION) means the column is occupied even though `CELL_ID` itself is free. This avoids an extra round-trip, but can be stale if a column was just created in Step 5 — re-fetch first in that case.
 
-**No direct MCP equivalent** for querying by cell/column: `get_nodes` only filters by `type`. The REST API does support it directly though — `GET /nodes` takes `cellId` **or** `colId`, both requiring `timelineId`:
+**No direct MCP equivalent** for querying by cell/column: `get_nodes` filters by `type`, `name`, `chapterId` and `nodeIds`, but has no `cellId`/`colId` filter. The REST API does support it directly though — `GET /nodes` takes `cellId` **or** `colId`, both requiring `timelineId`:
 
 ```bash
 # Same-cell occupancy — returns [] if empty, or [nodeRecord] if occupied
@@ -218,7 +218,7 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=$CELL_ID&timeli
 curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?colId=$COLUMN_ID&timelineId=$TIMELINE_ID"
 ```
 
-Use this REST call (see the curl fallback below) when you don't already have fresh `timelineData` loaded, instead of re-fetching the whole chapter node just to check occupancy.
+Use this REST call (see the curl fallback below) when you don't already have a fresh grid loaded, instead of re-fetching the chapter just to check occupancy.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Check cell occupancy".
 
@@ -281,7 +281,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "html",
     "nodeId": "<node-uuid>",
     "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
+    "cellName": "<CELL_NAME>",
     "title": "<title>",
     "pages": ["<div>...</div>"],
     "description": "<title — what this screen shows>"
@@ -302,7 +302,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "sketch",
     "nodeId": "<node-uuid>",
     "chapterId": "<TIMELINE_ID>",
-    "cellId": "<CELL_ID>",
+    "cellName": "<CELL_NAME>",
     "title": "<title>",
     "elements": [...],
     "description": "<title — what this screen shows>"
@@ -312,7 +312,7 @@ mcp__eventmodelers__create_screen {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 7a — SCREEN: create and render (sketch path, explicit request only)".
 
-Pass whichever cell reference you already resolved — `CELL_ID` from Step 6, or `CELL_NAME` from Step 1's fast path (either path accepts `cellId` or `cellName`). Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once. Then skip the rest of Step 7 and go to Step 8.
+MCP `create_screen` takes only `cellName`: pass `CELL_NAME` from Step 1's fast path as-is, or, on the normal path, don't convert Step 6's `CELL_ID` from array positions — read it from `get_board_outline` for that chapter (call it once if you don't already hold it): the column letter is the target column's `letter` there, the row number is the target lane's 1-based position in its `lanes` list (lanes are listed top to bottom, so the first lane is row 1) (e.g. column `letter: "C"`, the target lane second in `lanes` → `C2`). The curl fallback still accepts `cellId`. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once. Then skip the rest of Step 7 and go to Step 8.
 
 ### Step 7b — All other element types
 
@@ -372,14 +372,14 @@ Response: `{ "hashes": { "<event-id>": "<hash>" } }` — keyed by the `id` you s
 
 **A command is never issued by more than one thing.** The server's fire-and-forget auto-connect (`learn-eventmodelers-api` §3) already enforces this — it skips wiring the previous column's SCREEN/AUTOMATION into a COMMAND that already has an inbound trigger, whether that trigger came from the COMMAND's own column or from a pre-existing edge in the DB. Still, run this check whenever `elementType` is `SCREEN`, `AUTOMATION`, or `COMMAND` as a sanity check — e.g. a manual `set_connection` call, or an edge created before this guard existed, can still leave a COMMAND with two issuers.
 
-After placing, resolve the relevant COMMAND node (the one just placed, or the one in the same/adjacent column as the SCREEN/AUTOMATION just placed) and inspect its edges:
+After placing, resolve the relevant COMMAND node (the one just placed, or the one in the same/adjacent column as the SCREEN/AUTOMATION just placed) and inspect its edges — only its connections are needed, so use `projection: "edges"` (the full node record carries no edges):
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<COMMAND_NODE_ID>" }
+mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<COMMAND_NODE_ID>", "projection": "edges" }
 ```
 
-Count inbound edges where `target === COMMAND_NODE_ID` and the source node is type `SCREEN` or `AUTOMATION`.
+Take the inbound edges (`target === COMMAND_NODE_ID`) and resolve their source types in one call — only `type` is needed, so `get_nodes { "boardId": "<BOARD_ID>", "nodeIds": [<every inbound source id>], "projection": "line" }`. Count the inbound edges whose source node is type `SCREEN`, `HTML_SCREEN` or `AUTOMATION`.
 
 - **0 or 1 such edge** → fine, nothing to do.
 - **2 or more** → keep the edge whose source sits in the COMMAND's own column (the deliberate, same-slice issuer) and remove every other one:

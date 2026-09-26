@@ -14,8 +14,8 @@ curl -s -H "x-token: $TOKEN" \
 **Step B — Fetch the chapter to find the interaction row ID:**
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-# → timelineData.rows — find the row where type === "interaction"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
+# → rows — find the row where type === "interaction" ({rows, columns, cells} directly, not under meta.timelineData)
 ```
 Save `interactionRow.id`.
 
@@ -51,7 +51,7 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
 ## Wire connections — Step 1: SCREEN → COMMAND
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<actorRowId>-<columnId>" \
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<actorRowId>-<columnId>&timelineId=$CHAPTER_ID" \
   -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs"
 ```
 If a SCREEN node exists, connect it:
@@ -65,7 +65,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/connections" \
 ## Wire connections — Step 2: COMMAND → EVENT
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>&timelineId=$CHAPTER_ID" \
   -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-inputs"
 ```
 Connect command to its resulting event:

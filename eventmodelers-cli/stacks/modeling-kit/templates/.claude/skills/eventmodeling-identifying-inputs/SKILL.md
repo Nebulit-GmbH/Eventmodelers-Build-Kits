@@ -197,7 +197,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
 1. **SCREEN → COMMAND** — find the SCREEN node in the actor row of the same column.
 
-   **Prefer MCP** — there is no `cellId` filter on `get_nodes` (see note below), so read the chapter's cell map instead — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
+   **Prefer MCP** — `get_nodes` has no `cellId` filter (see note below), so read the chapter's cell map instead — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
    ```
    mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    ```
@@ -224,7 +224,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 2: COMMAND → EVENT".
 
-   *Note:* `get_nodes` has no `cellId` filter (only `type`) — the `get_node`-on-CHAPTER (`projection: "cells"`) + `cells` lookup above is the only way to check single-cell occupancy via MCP.
+   *Note:* `get_nodes` filters by `type`, `name` (partial title), `chapterId` and `nodeIds`, but has no `cellId` filter — the `get_node`-on-CHAPTER (`projection: "cells"`) + `cells` lookup above is the only way to check single-cell occupancy via MCP. (The REST `GET .../nodes` does take `cellId`/`colId`, each requiring `timelineId` — see the fallback file.)
 
 Skip a connection silently if the target cell is empty (the element may be placed in a later step). Log each created arrow: `→ connected SCREEN→COMMAND "PlaceOrder"` or `→ connected COMMAND→EVENT "PlaceOrder"→"OrderPlaced"`.
 

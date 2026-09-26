@@ -7,9 +7,11 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ```bash
 for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
   curl -s -H "x-token: $TOKEN" \
-    "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE"
+    "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE&projection=line"
 done
 ```
+
+`projection=line` returns `{id, type, title, fields?}` per node — no cell info. To find the unplaced ones, read each chapter's grid (`GET .../nodes/$CHAPTER_ID?projection=cells`) and collect every `cells[].nodeId`; a node id that appears in no chapter's `cells` is unplaced.
 
 ## No unplaced elements (0,0 nodes) — Place a found unplaced node
 

@@ -43,9 +43,11 @@ Steps:
 
 1. **Get the whole picture, not just the changed nodes — in two reads, not twenty.** The
    whole `changed:` list goes into **one**
-   `mcp__eventmodelers__get_nodes { boardId, nodeIds: [...] }` (or the REST equivalent), and
-   the area around it into **one** `get_board_outline` per chapter those nodes land in; `projection: "line"`
-   is enough for both whenever you only need names, types and slice statuses. That pair is your
+   `mcp__eventmodelers__get_nodes { boardId, nodeIds: [...], projection: "line" }` (REST:
+   `POST .../nodes/query` with `"projection": "line"`), and
+   the area around it into **one** `get_board_outline` per chapter those nodes land in — the outline is the
+   only read that carries slice statuses; `line` gives ids, names, types and attribute names, nothing more (cell names come from the outline).
+   Drop `projection` only if you need field types, examples or descriptions of those nodes. That pair is your
    orientation — and you pay for a chapter's half of it **once per session**: the `SESSION_START` warm-up
    deliberately read no chapter at all, so the first turn that touches one fetches its outline and keeps it,
    and every later turn works from that copy, re-reading only where this turn's `changed:` list says it moved
@@ -124,7 +126,7 @@ Steps:
    - `board_id`, plus the exact target ids (`node_id`/`cellName`/`timelineId`/slice) it owns
      — never "the node that changed";
    - **the board state you already read, inline.** For each target: its id, title and type,
-     its cell (column/row), its `meta.fields` as you loaded them, its `sliceStatus`, and the
+     its cell (column/row), its `meta.fields` as you loaded them, its column's `sliceStatus` (from the outline), and the
      neighbours that bear on the work (the event a read model follows, the chain a field has
      to travel, the persona and values other elements already use). All of it is sitting in
      your step-1 read. An agent handed bare ids has exactly one way to recover it — fetch the

@@ -6,16 +6,17 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN&projection=line"
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN&projection=line"
 ```
 
 ## Resolve One Actor Lane Per Human Role — Step 1: Fetch the chapter's actor rows
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
+# → {rows, columns, cells} directly — collect every row where type === "actor"
 ```
 
 ## Resolve One Actor Lane Per Human Role — Step 3: Create a new actor lane

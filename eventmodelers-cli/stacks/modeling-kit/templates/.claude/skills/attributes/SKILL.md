@@ -1,6 +1,6 @@
 ---
 name: attributes
-description: Add a new attribute or rename an existing attribute across a chain of elements from a source cell to a target cell, following inbound dependencies
+description: Add a new attribute or rename an existing attribute across a chain of elements from a source element to a target element, following inbound dependencies
 ---
 
 # Attributes
@@ -9,7 +9,7 @@ description: Add a new attribute or rename an existing attribute across a chain 
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
-You are propagating an attribute change (add or rename) across a chain of elements on an eventmodelers board. You start at the target cell, apply the change, then walk backwards through inbound dependencies until you reach the source cell, applying the change to every element along the way.
+You are propagating an attribute change (add or rename) across a chain of elements on an eventmodelers board. You start at the target element, apply the change, then walk backwards through inbound dependencies until you reach the source element, applying the change to every element along the way.
 
 ---
 
@@ -17,8 +17,8 @@ You are propagating an attribute change (add or rename) across a chain of elemen
 
 Ask the user for all required information **in a single message** (do not ask one at a time):
 
-1. **Target cell** — the end of the chain (e.g. `B2`)
-2. **Source cell** — the start of the chain (e.g. `A2`)
+1. **Target element** — the end of the chain: a node id, a title, or a cell name (e.g. `B2`)
+2. **Source element** — the start of the chain: a node id, a title, or a cell name (e.g. `A2`)
 3. **Operation** — `add` a new attribute, or `rename` an existing one
 4. If **rename**: which attribute name to rename FROM, and what to rename it TO
 5. If **add**: the name of the new attribute to add
@@ -29,24 +29,27 @@ If any of these were already provided in `$ARGUMENTS`, skip asking for them.
 
 ## Step 2 — Resolve the chain
 
-**Prefer MCP:** `get_attribute_chain` resolves every node between the source and target cells (inclusive), ordered target→source, each with its full `fields[]` — this collapses the manual cell-resolution and inbound-edge walk below into one call. You still need `TIMELINE_ID` (the chapter to search): if multiple chapters exist on the board, resolve which one first (see 2a fallback below, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }`) and ask the user if ambiguous.
+**Prefer MCP:** `get_attribute_chain` resolves every node in the columns between the source and target nodes (inclusive), ordered target→source (top-to-bottom within a column), each as `{id, type, title, cellName, fields}` — this collapses the manual inbound-edge walk below into one call. You still need `TIMELINE_ID` (the chapter to search): if multiple chapters exist on the board, resolve which one first (see 2a fallback below, or `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER", "projection": "line" }` — ids/titles are enough to pick one) and ask the user if ambiguous.
+
+First resolve target and source to node ids (`TARGET_NODE_ID`, `SOURCE_NODE_ID`):
+- **Node id** (incl. a node the task or a comment points at) — use it as-is.
+- **Title** — `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID", "name": "<title>", "projection": "line" }`; ask the user if several match.
+- **Cell name** (e.g. `B2`) — `mcp__eventmodelers__get_board_outline { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }` and take the node whose `cellName` equals it. `get_board_outline` is the only read that reports `cellName`; never compute a node from a cell address yourself.
 
 ```
 mcp__eventmodelers__get_attribute_chain {
   "boardId": "$BOARD_ID",
   "timelineId": "$CHAPTER_ID",
-  "targetCellName": "<target cell, e.g. B2>",
-  "sourceCellName": "<source cell, e.g. A2>"
+  "targetNodeId": "<TARGET_NODE_ID>",
+  "sourceNodeId": "<SOURCE_NODE_ID>"
 }
 ```
 
-The result gives you the ordered chain directly — save it as the chain used in Step 4, and skip the manual walk in 2a–3c below. Continue with the fallback only if MCP isn't connected.
+The result gives you the ordered chain directly — save it as the chain used in Step 4, and skip the manual walk in 2a–3c below. A `NODE_NOT_IN_TIMELINE` error means one of the two nodes isn't placed in `$CHAPTER_ID` — pick the right chapter (or tell the user) rather than retrying. Continue with the fallback only if MCP isn't connected.
 
-**Both cell names must be real.** When the task named a node (an id, a title, a comment on it) instead of a cell, read that node's `cellName` off `get_board_outline` (every node in the chapter, with its address), `get_nodes`, or `get_node` — all three report it. Never compute an address from where a node appeared in a list, and never hand `get_attribute_chain` an address you have not read: a cell that exists but holds a different node resolves a wrong chain without any error.
+### Fallback (no MCP) — resolve target and source to nodes
 
-### Fallback (no MCP) — resolve both cells to nodes
-
-For each cell (target and source), resolve it to a node using the exact same cell-resolution steps as the `examples` skill's "2c — Cell name" section (fetch chapters, fetch the chapter fresh to decode the grid, decode the cell name into a `CELL_ID`, then always fetch the cell live — `get_nodes` has no `cellId` filter) — see there for the full mechanics, substituting `x-user-id: attributes-skill`.
+A node id needs no resolving (`GET .../nodes/:nodeId`); a title resolves via `GET .../nodes?chapterId=&name=`. For a cell name, resolve it to a node using the exact same cell-resolution steps as the `examples` skill's "2c — Cell name" section (fetch chapters, fetch the chapter fresh to decode the grid, decode the cell name into a `CELL_ID`, then always fetch the cell live via REST `?cellId=&timelineId=` — MCP `get_nodes` has no `cellId` filter) — see there for the full mechanics, substituting `x-user-id: attributes-skill`.
 
 Take the first non-CHAPTER result as the node for each cell. Save as `TARGET_NODE` and `SOURCE_NODE`.
 
@@ -165,7 +168,7 @@ Nodes that are skipped (field already exists / field not found) simply contribut
 
 Verify the response is HTTP 200. If the batch fails, report the error and stop; nothing was partially applied from your side, so re-run after fixing the cause rather than retrying node by node.
 
-If you also need to verify the result, re-read the whole chain in one call — `get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<every node id you just wrote>] }` — never one `get_node` per node.
+If you also need to verify the result, re-read the whole chain in one call — `get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<every node id you just wrote>], "projection": "line" }` when you only check that the attribute name is present/renamed (`line` lists each node's field names), or without `projection` when you must also check the field's type/example — never one `get_node` per node.
 
 ---
 

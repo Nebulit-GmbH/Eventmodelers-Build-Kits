@@ -5,21 +5,21 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Fetch all chapters (Steps 1a, 1b)
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 ```
 
 ## Fetch the chapter's grid state (Steps 1b, 3c)
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
 ```
 
-Read `meta.timelineData` for `{rows, columns, cells}`.
+Returns `{rows, columns, cells}` directly (not wrapped in `meta.timelineData`).
 
 ## Fetch all EVENT nodes (Step 1b)
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&chapterId=$CHAPTER_ID&projection=line"
 ```
 
 ## Create a new chapter (Step 1c)

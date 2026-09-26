@@ -6,14 +6,14 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&projection=line"
 ```
 
 ## Board Context — Check existing CHAPTER nodes
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 ```
 
 ## Timeline Discovery — Step 2: Create one chapter per group — create the chapter
@@ -63,8 +63,8 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/$CHAPTER_I
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-# → node.meta.timelineData.rows — find the row where type === "swimlane"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
+# → rows — find the row where type === "swimlane" ({rows, columns, cells} directly, not under meta.timelineData)
 ```
 
 ## Mode A — Step D: Create the event with cellId

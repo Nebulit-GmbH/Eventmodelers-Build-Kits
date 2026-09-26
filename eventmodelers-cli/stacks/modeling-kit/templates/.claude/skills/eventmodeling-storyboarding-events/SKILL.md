@@ -90,12 +90,12 @@ Solution: Every event includes timestamp
 
 ## Board Integration
 
-Before starting the analysis, read existing screen nodes from the board to avoid designing screens that already exist. Screens created by this skill default to HTML_SCREEN, but older boards may still have plain SCREEN (sketch) nodes — check both types:
+Before starting the analysis, read existing screen nodes from the board to avoid designing screens that already exist. Screens created by this skill default to HTML_SCREEN, but older boards may still have plain SCREEN (sketch) nodes — check both types. Titles and field names are all this dedupe needs, so use `projection: "line"` (no HTML bodies); read a screen in full with `get_node` only if you must inspect its design:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN" }
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN", "projection": "line" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Integration — Check existing screen nodes".
@@ -219,8 +219,9 @@ Every screen node requires rendered content. **HTML_SCREEN (via the `html-screen
 1. Determine the target column (same column as the event/command for a command/input screen, OR the same column as the read model for a view/output screen — one column to the right only if that shared column isn't available).
 2. `actorRowId = roleLaneMap[<this screen's role>]` — the map was already resolved once for the whole chapter; do not re-fetch the chapter per screen. If this screen's role is genuinely new (wasn't in the original Role Catalog), resolve/create its lane now the same way (see above) and add it to the map before continuing.
 3. `cellId = actorRowId + "-" + columnId`
+4. For MCP `create_screen`, which takes only `cellName`: never derive it from array positions — read it from `get_board_outline` for that chapter (call it once if you don't already hold it): the column letter is the target column's `letter` there, the row number is the target lane's 1-based position in its `lanes` list (lanes are listed top to bottom, so the first lane is row 1) (e.g. column `letter: "E"`, this role's actor lane second in `lanes` → `E2`).
 
-**Step B (default) — Create the HTML_SCREEN node and render it in one atomic call.** Use `create_screen` with `contentType: "html"` — this creates the node, places it in `cellId`, and renders its pages together, so there is no window where the node exists without content:
+**Step B (default) — Create the HTML_SCREEN node and render it in one atomic call.** Use `create_screen` with `contentType: "html"` — this creates the node, places it in that cell, and renders its pages together, so there is no window where the node exists without content:
 
 **Prefer MCP:**
 ```
@@ -230,7 +231,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "html",
     "nodeId": "<node-uuid>",
     "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorRowId>-<columnId>",
+    "cellName": "<cellName, e.g. E2>",
     "title": "<Screen Title>",
     "pages": ["<div>...</div>"],
     "description": "<concise description of what this screen shows>",
@@ -394,7 +395,7 @@ Older versions of this skill wrote the storyboard as a markdown document (swimla
 - [ ] **Every human role from the Role Catalog has at least one swimlane**
 - [ ] **Every human-role swimlane is labeled with the role name from the catalog**
 - [ ] **Swimlanes organized by actor/system in the narrative report**
-- [ ] **Every human role's swimlane is a real, distinct `actor`-type lane on the board (`meta.timelineData.rows`), not just a grouping in the markdown report** — no two different human roles share the same `actorRowId`
+- [ ] **Every human role's swimlane is a real, distinct `actor`-type lane on the board (the chapter's `rows`), not just a grouping in the markdown report** — no two different human roles share the same `actorRowId`
 - [ ] **No system actor / processor has been given its own labeled actor lane** — every AUTOMATION node sits in the chapter's default actor lane, never a lane fabricated to mimic a human role's
 - [ ] **Human role screens clearly separated from processor screens**
 - [ ] **Processor todo list pattern shown for automated systems**

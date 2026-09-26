@@ -7,12 +7,12 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 1. Find the column where the consumer SCREEN or AUTOMATION lives. For an AUTOMATION, the read model's target column is always the one immediately **before** it (skip straight to inserting that column — its interaction row is guaranteed occupied by the automation's own COMMAND). For a SCREEN, target the screen's own column. Fetch the timeline to get the interaction row ID:
    ```bash
    curl -s -H "x-token: $TOKEN" \
-     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
-   # → timelineData.rows — find the row where type === "interaction"
+     "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
+   # → rows — find the row where type === "interaction" ({rows, columns, cells} directly, not under meta.timelineData)
    ```
 2. Check if the target interaction cell is already occupied (existing COMMAND):
    ```bash
-   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<interactionRowId>-<columnId>" \
+   curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<interactionRowId>-<columnId>&timelineId=$CHAPTER_ID" \
      -H "x-token: $TOKEN"
    ```
    If a COMMAND occupies that cell, insert a new column immediately **before** it (`{"index": currentIndex}` — this shifts the consumer's column, and everything after it, one to the right) and use that new column's ID instead. The read model must end up upstream of (to the left of) its consumer, never downstream of it.
@@ -35,7 +35,7 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Step 5h.1 — Wire EVENT → READMODEL
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>" \
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?cellId=<swimlaneRowId>-<columnId>&timelineId=$CHAPTER_ID" \
   -H "x-token: $TOKEN" -H "x-user-id: eventmodeling-identifying-outputs"
 ```
 Connect it:

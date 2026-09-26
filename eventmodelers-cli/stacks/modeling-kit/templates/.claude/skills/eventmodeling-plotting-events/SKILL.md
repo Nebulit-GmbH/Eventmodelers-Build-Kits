@@ -107,9 +107,9 @@ Timelines (chapters) are **created and assigned during Step 1 (Brainstorming)**.
 
 Before placing events, resolve the target timeline:
 
-Prefer MCP:
+Prefer MCP — ids and titles are enough to pick one, so `projection: "line"` (without it every chapter's full grid comes back):
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Chapters and Timelines — Resolve the Target Timeline".

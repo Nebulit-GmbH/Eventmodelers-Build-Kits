@@ -47,20 +47,20 @@ Follow **`eventmodeling-interview-protocol`** to run this interview and record i
 
 ## Board Context
 
-Before brainstorming, check for EVENT nodes already on the board to avoid duplicating events from a previous session:
+Before brainstorming, check for EVENT nodes already on the board to avoid duplicating events from a previous session — titles (plus field names) are all a dedupe needs, so use `projection: "line"`:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context — Check existing EVENT nodes".
 
-If events already exist, treat them as the starting list and focus on discovering what might be missing. Also check for existing chapters (timelines) so you can reuse them:
+If events already exist, treat them as the starting list and focus on discovering what might be missing. Also check for existing chapters (timelines) so you can reuse them — ids and titles only, so `projection: "line"` (without it every chapter's full grid comes back):
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context — Check existing CHAPTER nodes".

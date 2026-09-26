@@ -38,13 +38,25 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 Read the current board state before running the checklist:
 
-**Prefer MCP:** call `get_nodes` once per type, or pull the fuller graph in one shot with `get_slice_data` if you need events/commands/readmodels/screens/specs/actors together:
+**Prefer MCP** — pick the read by what the phase checks:
 
-```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
-```
+- **Name/type checks** (Phase 1.1 timeline ownership by name, Phase 2.3 past tense, duplicate names) — `get_nodes` once per type with the `line` projection (`{id, type, title, fields}`, `fields` = attribute names only):
+
+  ```
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL", "projection": "line" }
+  ```
+
+- **Field-level checks** (Phase 2.1/2.2 computed or mutable event data, Phase 3 read-model sources, Phase 5 traceability, Phase 7 structural shapes via dependencies) — the slice data `fields` projection per context: elements with fields and dependencies, no specs/comments:
+
+  ```
+  mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT_NAME>", "projection": "fields", "format": "toon" }
+  ```
+
+- **Business rules / scenarios** (Phase 4) — add `"projection": "specs"` (format `json`, `yaml` or `toon` only).
+
+Context names come from `get_nodes { "type": "MODEL_CONTEXT", "projection": "line" }` (or use a timeline name).
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 

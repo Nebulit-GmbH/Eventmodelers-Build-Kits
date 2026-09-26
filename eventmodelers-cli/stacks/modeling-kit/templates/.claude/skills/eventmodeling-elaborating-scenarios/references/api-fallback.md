@@ -5,7 +5,7 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 ## Post Scenarios to Board — Step 1: Identify the Target Timeline and Column
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER" \
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line" \
   -H "x-token: $TOKEN"
 ```
 

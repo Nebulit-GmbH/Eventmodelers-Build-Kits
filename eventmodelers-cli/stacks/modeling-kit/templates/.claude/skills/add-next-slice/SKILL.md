@@ -5,7 +5,7 @@ description: Decide on and create a genuinely new slice from scratch when there'
 
 # Add Next Slice
 
-> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Every API call this skill needs (`create_slice`, `get_nodes`/`get_node`) is already given in full below — do not additionally load `learn-eventmodelers-api`; only reach for it if you hit an error this file doesn't cover.
+> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed. Every API call this skill needs (`create_slice`, `get_board_outline`, `get_nodes`/`get_node`) is already given in full below — do not additionally load `learn-eventmodelers-api`; only reach for it if you hit an error this file doesn't cover.
 
 **Purpose**: Given a timeline where every existing COMMAND/READMODEL/AUTOMATION already has a slice (or there's no model content at all yet), decide on a plausible next capability and create it as a brand-new slice — screen, command/read model, and event all at once.
 
@@ -31,7 +31,7 @@ Same rules as `eventmodeling-slicing-event-models`'s own "Core Concept" section 
 
 **If the prompt gives no specific instruction about what the next slice should be** (e.g. a bare "add the next slice"), don't ask for one — look at the previous slices already on the timeline and derive the next one yourself:
 
-- Read the existing COMMAND/READMODEL/AUTOMATION titles and their fields in narrative order (left to right on the timeline) — they tell a story (e.g. Reserve Table → Cancel Reservation → Check-In → ...).
+- Read the existing COMMAND/READMODEL/AUTOMATION titles and their fields in narrative order (left to right on the timeline) — they tell a story (e.g. Reserve Table → Cancel Reservation → Check-In → ...). Titles and attribute names are enough here: `mcp__eventmodelers__get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<TL>" }` gives the per-column order, and `mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "chapterId": "<TL>", "projection": "line" }` adds each node's field names — no full node read needed.
 - Identify what the story is missing next: the natural following lifecycle stage, an unaddressed affordance implied by an existing screen (a button/link with nothing behind it yet), or a CRUD/notification gap the existing entity clearly has (created but never updated/cancelled/queried in detail, an action with no confirmation view, etc.).
 - Prefer the option that most directly continues the existing narrative over one that starts an unrelated new thread — the goal is the slice that makes the most sense as *next*, not just *any* plausible slice.
 
@@ -47,7 +47,7 @@ mcp__eventmodelers__create_slice { "boardId": "<BOARD_ID>", "timelineId": "<TL>"
 
 Pick `type` based on what you decided in Step 1 — `state-change` for a new command, `state-view` for a new read model, `automation` for a new automation. Always pass `nodes.interaction.title` as the command/read model/automation name you decided on in Step 1 — per the Core Concept above, the slice is *named after that element*, and the backend only derives the slice title from this field; omitting it produces a useless generic "State Change"/"State View"/"Automation" label instead. This also creates the slice's `SLICE_BORDER` automatically — no separate `create_slice_definition` call needed.
 
-If the chapter has more than one lane of the same type (e.g. several actor lanes for different user roles), `create_slice` places each node in the **first** matching lane by default — pass `nodes.<actor|interaction|swimlane>.rowId` (the target row's id, from the chapter's `timelineData.rows`) to target a specific lane instead of the first one.
+If the chapter has more than one lane of the same type (e.g. several actor lanes for different user roles), `create_slice` places each node in the **first** matching lane by default — pass `nodes.<actor|interaction|swimlane>.rowId` (the target row's id, from the chapter's `rows` — `get_node { "boardId": "<BOARD_ID>", "nodeId": "<TL>", "projection": "cells" }`) to target a specific lane instead of the first one.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Create the Slice".
 
@@ -55,7 +55,7 @@ If the chapter has more than one lane of the same type (e.g. several actor lanes
 
 For `state-change`/`state-view`, the actor node this creates is an `HTML_SCREEN` — but only as a **stub**: a single visibly-placeholder page ("Untitled screen — design pending"), never real content. Never leave it at that:
 
-1. Look up the board's other screens on this timeline (`mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "HTML_SCREEN" }`, or the equivalent already-loaded slice data) and note their established visual style — layout conventions, color/tone, recurring components (nav bar, card style, button treatment).
+1. Look up the board's other screens on this timeline (`mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "HTML_SCREEN", "chapterId": "<TL>" }` — a full read on purpose, since the style lives in the HTML bodies; scoped to this chapter, not board-wide) and note their established visual style — layout conventions, color/tone, recurring components (nav bar, card style, button treatment).
 2. Invoke the `html-screen` skill on the new stub node, passing a `description` that covers **both** what this screen should contain (derived from the new command/read model's fields) **and** the style to match (derived from what you just observed in step 1). `html-screen` has no visibility into other screens on the board — gathering that context and folding it into the description is this skill's job, not something to expect `html-screen` to do on its own.
 3. Default to `html-screen` here, never `storyboard-screen` (wireframe sketch) — a sketch is only for an explicit user request for one.
 

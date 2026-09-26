@@ -18,18 +18,17 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 Before starting, read the current board state to drive the analysis from what is actually on the board rather than relying solely on conversation context:
 
-**Prefer MCP:**
+**Prefer MCP** — the field origin/destination checks need every element's fields plus its dependencies, which the `fields` projection of the slice data returns per slice in one call (no specs, comments or prompts):
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND" }
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL" }
+mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT_NAME>", "projection": "fields", "format": "toon" }
 ```
+Drive it by timeline, not by MODEL_CONTEXT — a timeline with no assigned or connected context is its own context, so listing only the MODEL_CONTEXT nodes misses it. List the timelines (ids/titles only): `mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }`, then pass each timeline's title as `contextName`. The response covers that timeline's whole effective context — every timeline in the same context — and each slice carries its `chapter`, so skip any timeline already named in a response you have (call the rest in parallel).Drop `projection` only for a node whose field types/examples you actually need to inspect — and then scope it with `nodeIds`.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 
 Use these results as the source of truth for the completeness check.
 
-**Before treating any nodes as duplicates**: check each node's `data.linkedTo` field (see `learn-eventmodelers-api`). A node with `linkedTo` set is an intentional **linked copy** of another node — placed elsewhere on the timeline for readability, not a modeling defect. When two or more nodes share a title/type:
+**Before treating any nodes as duplicates**: check each node's `data.linkedTo` field (see `learn-eventmodelers-api`). Neither projection above carries it — fetch the full records of just the same-titled candidates with `mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "nodeIds": [<their ids>] }`. A node with `linkedTo` set is an intentional **linked copy** of another node — placed elsewhere on the timeline for readability, not a modeling defect. When two or more nodes share a title/type:
 - If any of them carries `linkedTo`, do not report a duplicate. This is expected, not a gap.
 - Never propose deleting, suppressing, or "cleaning up" either node in a linked pair. Specifically, never target the node that has *no* `linkedTo` (the original) for removal — copies reference it via `moveToWidget=<originNodeId>`, so deleting it breaks every copy.
 - Only flag same-titled nodes as an actual duplicate gap when **none** of them has `linkedTo` — i.e., they are genuinely two independent, unlinked nodes describing the same concept.
@@ -53,18 +52,15 @@ Verify every field a read model displays is sourced from a connected event. A fu
 
 Every column that holds a COMMAND or READMODEL node must have a slice defined (a SLICE_BORDER node on that column) — otherwise it can never be built as a feature. Skip columns whose COMMAND/READMODEL node has `data.linkedTo` set: it's a linked copy (see Board Context above), and only the original's column needs a slice.
 
-**Prefer MCP** — `list_slices` is lighter than filtering all nodes, and also returns each slice's status:
+**Prefer MCP** — `get_board_outline` answers this directly per chapter: every column with its node list (id, type, title) and a `sliceStatus` when a slice spans it — no need to pull full SLICE_BORDER records and join on `columnId`:
 ```
-mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }
+mcp__eventmodelers__get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<CHAPTER_ID>" }
 ```
-Or, to get the full SLICE_BORDER nodes (with `columnId`) the same way as the curl fallback:
-```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "SLICE_BORDER" }
-```
+Get the chapter ids from `mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }` (ids/titles only). For just the slice list with statuses, `mcp__eventmodelers__list_slices { "boardId": "<BOARD_ID>" }` is the lightest read.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "4. Check Slice Coverage".
 
-Cross-reference each COMMAND/READMODEL node's column against the `columnId` of the SLICE_BORDER nodes, flagging any column with no matching slice as a gap (skipping linked copies, which are exempt). A full worked example is in `references/examples.md`.
+Flag any column that holds a COMMAND or READMODEL node but carries no `sliceStatus` as a gap (skipping linked copies, which are exempt — confirm `linkedTo` on the flagged nodes with a `nodeIds`-scoped full `get_nodes`). A full worked example is in `references/examples.md`.
 
 ### 5. Check Event Stream Completeness
 Verify no "missing" events:

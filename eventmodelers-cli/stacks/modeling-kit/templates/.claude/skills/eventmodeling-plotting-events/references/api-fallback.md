@@ -6,5 +6,5 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=CHAPTER&projection=line"
 ```

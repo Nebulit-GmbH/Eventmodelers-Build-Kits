@@ -327,18 +327,18 @@ After designing all scenarios, post them to the board using the timeline/column 
 
 ### Step 1 — Identify the target timeline and column
 
-Fetch all CHAPTER nodes to find the timeline.
+Fetch all CHAPTER nodes to find the timeline — ids and titles only, so `projection: "line"` (without it every chapter's full grid comes back).
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 1: Identify the Target Timeline and Column".
 
 If there is more than one chapter, ask the user which timeline to target.
 
-For each command or view being specified, find its column: fetch the chapter node and read `meta.timelineData.columns`. Match the column to the COMMAND or READMODEL node that occupies the interaction row in that column. If the user named the slice, find the SLICE_BORDER node with that title to get its `colId`.
+For each command or view being specified, find its column: `mcp__eventmodelers__get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<TL>" }` lists every column (`columnId`, index) with the nodes in it — take the column whose node list holds that COMMAND or READMODEL. If the user named the slice, find the SLICE_BORDER node with that title (`get_nodes { "type": "SLICE_BORDER", "name": "<slice title>", "projection": "line" }` gives its id) or its column in the outline to get the `colId`. (REST fallback: `GET .../nodes/$TL?projection=cells` → `{rows, columns, cells}`; find the cell whose `nodeId` is the COMMAND/READMODEL and take its `colId`.)
 
 ### Step 2 — Load valid step elements
 

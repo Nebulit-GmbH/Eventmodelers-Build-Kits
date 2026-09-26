@@ -1,6 +1,6 @@
 ---
 name: wdyt
-description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as comments on relevant nodes. Findings about a relationship between elements or a cluster of elements are always additionally drawn on the canvas (arrows, group loops) — comments carry every textual question, drawings carry every visual/structural hint.
+description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as comments on relevant nodes. Findings about a relationship between two elements are additionally drawn on the canvas as an arrow — comments carry every textual question, arrows carry the relational hints.
 ---
 
 # WDYT — What Do You Think?
@@ -37,6 +37,8 @@ mcp__eventmodelers__get_slice_data {
   "format": "textual"
 }
 ```
+
+This deliberately stays the **full graph (no `projection`)**: a business review needs elements, specs *and* existing comments together — `fields` drops specs and comments, `specs` drops elements, `outline` drops both fields and specs — and the full graph is also what carries the element geometry Step 4 draws from. Stitching two projections together would still miss the comments (existing questions you must not re-ask).
 
 `format` matters here because this skill reads the entire model before it writes anything. `"textual"` is a compact markdown dump and `"toon"` a token-efficient tabular encoding — both carry the same graph as `"json"` in a fraction of the tokens. Use `"json"` only when you need to read exact `x`/`y`/`width`/`height` values for the drawings in Step 4.2.
 
@@ -117,16 +119,16 @@ Never raise a candidate off the count alone — reason about the specific events
 - **The right chair** — only if it holds up: "Is this screen answering one question for the user, or several different ones bundled together?"
 - **The shelf** — only if it holds up: "This step has a lot more cases than the ones around it — is that because it's really doing more, or because it's covering something that should be its own step?"
 
-Each of these four is inherently about a relationship or cluster of elements, so whichever you do raise always gets a drawing per Step 4.2 in addition to its comment — a group loop around the elements involved, or an arrow if the concern is specifically about one edge among several.
+Whichever of these four you raise, its comment goes on the element at the centre of it; add an arrow per Step 4.2 only if the concern is specifically about one edge among several.
 
 ---
 
-## Step 4 — Comments carry every textual question; drawings carry every visual/structural hint
+## Step 4 — Comments carry every textual question; arrows carry relational hints
 
 The two channels have a strict division of labor, always applied the same way — never swap them:
 
 - **Every textual question is a comment.** If the finding is "what happens / who does this / what do we expect" about a single element, it is worded and lives only in a comment. Never draw a text callout on the canvas to carry a question — that content belongs in 4.1, full stop.
-- **Every visual/structural hint is a drawing.** If the finding is inherently about *where things are relative to each other* — a relationship between two elements, or a cluster of elements sharing one concern — it is always additionally drawn on the canvas (4.2), not left as text alone. This isn't a selective "top 3" step; it's determined by the shape of the finding itself: relational or clustered → draw it, every time.
+- **Every relational hint is an arrow.** If the finding is inherently about a relationship between two elements, it is always additionally drawn on the canvas as an arrow (4.2), not left as text alone. This isn't a selective "top 3" step; it's determined by the shape of the finding itself: relational → draw the arrow, every time. A concern spanning a cluster of elements is a comment on the element at its centre — there is no drawing for clusters.
 
 ### 4.1 Comments (every textual question, always)
 
@@ -142,13 +144,13 @@ Post them together, not one at a time: `handle-comment` sends every comment of a
 
 Only post questions that are **genuinely unclear or missing** — don't post observations that are clearly intentional design decisions.
 
-### 4.2 Drawings (every relational or clustered finding, always)
+### 4.2 Arrows (every relational finding, always)
 
 **Prefer MCP:** `mcp__eventmodelers__create_drawing` — one call per drawing, no auth headers needed.
 
 **Fallback (no MCP):** `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-user-id: wdyt`). Same fields as the tool args below.
 
-There are two kinds — no text-callout kind; a drawing never carries the question itself, only the shape of the concern:
+There is one kind — no text callout, no group outline; an arrow never carries the question itself, only the relationship:
 
 - **Arrow** (`kind: "path"`, `arrowEnd: true`) — the concern is about a missing or unclear relationship *between two elements* (e.g. "does this event actually reach this automation?"). Draw a straight line from one element's position to the other's. `path` is `M 0 0 L <dx> <dy>` in the box's own local coordinates; `x`/`y`/`width`/`height` describe that box in canvas space (so `width`/`height` = the delta between the two elements' positions).
 ```
@@ -165,25 +167,10 @@ mcp__eventmodelers__create_drawing {
   }]
 }
 ```
-Get element positions from the slice data already loaded in Step 2. If a position is missing, fetch the nodes you need in **one** call — `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<the ids>] }` — not `get_node` per element.
-- **Group loop** (`kind: "rect"`, drawn around a computed bounding box) — the concern spans a *cluster* of elements together (e.g. "this whole flow assumes nothing ever fails"). There's no dedicated group endpoint — union the elements' own `x`/`y`/`width`/`height` (plus some padding) yourself and draw one `rect` around that box:
-```
-mcp__eventmodelers__create_drawing {
-  "boardId": "$BOARD_ID",
-  "drawings": [{
-    "kind": "rect",
-    "x": <minX - pad>,
-    "y": <minY - pad>,
-    "width": <maxX - minX + 2*pad>,
-    "height": <maxY - minY + 2*pad>
-  }]
-}
-```
-This is a visual grouping only — unrelated to the `MODEL_CONTEXT` node type; never touch a `modelContext` field to satisfy this.
+Get element positions from the slice data already loaded in Step 2. If a position is missing, fetch the nodes you need in **one** call — `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "nodeIds": [<the ids>] }` — not `get_node` per element. Keep this read full (no `projection`): positions (`node.position`, width/height) are exactly what `line` leaves out; scoping by `nodeIds` is what keeps it cheap.
+Every arrow is paired with a comment on the relevant node(s) from 4.1 — the arrow makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
 
-Every arrow/group loop is paired with a comment on the relevant node(s) from 4.1 — the drawing makes the concern visible at a glance on the canvas itself, the comment carries the actual worded question. Post both; neither replaces the other.
-
-A finding about a single element with no relational or cluster dimension gets a comment only — don't manufacture an arrow or loop for it just to add a drawing.
+A finding about a single element, or about a cluster, gets a comment only — don't manufacture an arrow for it just to add a drawing.
 
 ---
 

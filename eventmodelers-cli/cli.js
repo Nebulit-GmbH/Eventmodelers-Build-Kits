@@ -21,6 +21,7 @@ import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
+import { latestPublishedVersion, updateHints } from './lib/update-check.js';
 // Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
 // copy that every useShared:true stack also gets copied into its installed kit (see
 // copyDirContents in installStack) for ralph.js to import standalone — see
@@ -1282,6 +1283,11 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
 async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
   console.log(`📦 Refreshing the shared runtime in ${relative(targetDir, kitDir)}/ (stack files untouched)...`);
   copyDirContents(join(__dirname, 'shared', 'build-kit'), kitDir);
+  // The kit is now this CLI's runtime — record that, so the startup "kit is outdated" hint stops.
+  const manifestPath = join(kitDir, '.eventmodelers', 'install-manifest.json');
+  if (existsSync(manifestPath)) {
+    writeFileSync(manifestPath, JSON.stringify({ ...readJsonSafe(manifestPath), version: CLI_VERSION }, null, 2));
+  }
   for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
     const p = join(kitDir, script);
     if (existsSync(p)) {
@@ -2708,7 +2714,7 @@ const program = new Command();
 program
   .name('eventmodelers')
   .description('Eventmodelers CLI — real-time Claude agent + skills for Claude Code, for any stack')
-  .version('1.0.0')
+  .version(CLI_VERSION)
   .option('--config <path>', 'Path to an explicit config.json, overriding directory-based resolution (individual fields can also be set via EVENTMODELERS_* env vars, which always win)')
   .option('--print', 'Print follow-up commands (e.g. claude mcp add) instead of prompting to run them');
 
@@ -2727,6 +2733,21 @@ program
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
 const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run']);
+
+// Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
+// front of them would only be noise.
+const NO_KIT_UPDATE_HINT = new Set(['init', 're-init', 'uninstall']);
+
+// Startup hint when this CLI is behind npm, or an installed kit here is behind this CLI.
+// Best effort and on stderr, so it never breaks piped output; EVENTMODELERS_NO_UPDATE_CHECK
+// (or CI) turns it off.
+program.hook('preAction', async (_thisCommand, actionCommand) => {
+  if (process.env.EVENTMODELERS_NO_UPDATE_CHECK || process.env.CI) return;
+  const latestVersion = await latestPublishedVersion({ cachePath: join(GLOBAL_DIR, 'update-check.json') });
+  const kitDirs = NO_KIT_UPDATE_HINT.has(actionCommand.name()) ? [] : findAllInstalledKitDirs(process.cwd());
+  const hints = updateHints({ currentVersion: CLI_VERSION, latestVersion, kitDirs });
+  if (hints.length) console.error(`${hints.join('\n')}\n`);
+});
 
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;

@@ -256,11 +256,11 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Fetch chapter grid".
 
-From the result (`rows`/`columns`/`cells` directly via MCP, or `meta.timelineData` via the REST fallback):
+From the result (`rows`/`columns`/`cells` directly — the REST fallback's `?projection=cells` returns the same shape):
 - `rows` — find the row with `type === "actor"` → save its `id` as `actorRowId` and its 0-based position in `rows` as `actorRowIndex`
 - `columns` — ordered list; build an empty-column queue, remembering each entry's 0-based position in `columns` as its `columnIndex`
 
-**Cell ID convention**: `<rowId>-<columnId>` — always computed directly, never looked up. **Cell name convention** (spreadsheet-style, needed for the MCP tool in Step 7b): `<columnLetter><rowNumber>`, where `columnLetter` is `columnIndex` converted to spreadsheet letters (0→A, 1→B, …25→Z, 26→AA, …) and `rowNumber` is `actorRowIndex + 1`.
+**Cell ID convention**: `<rowId>-<columnId>` — always computed directly, never looked up. **Cell name** (spreadsheet-style, needed for the MCP tool in Step 7b): read, never computed from `columnIndex`/`actorRowIndex`. Call `mcp__eventmodelers__get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<CHAPTER_ID>" }` once and take the target column's `letter` plus the actor lane's 1-based position in its `lanes` list (lanes are listed top to bottom) — e.g. `letter: "D"`, actor lane first in `lanes` → `D1`.
 
 ---
 
@@ -272,7 +272,7 @@ For each screen:
 
 ### 7a — Acquire a column slot
 
-**If the empty-column queue is non-empty** — pop the first entry → `columnId` and its remembered `columnIndex`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
+**If the empty-column queue is non-empty** — pop the first entry → `columnId` and its remembered `columnIndex`. Compute `CELL_ID = actorRowId + "-" + columnId` and take `CELL_NAME` from the outline as described above.
 
 **If the empty-column queue is empty** — create a new column.
 
@@ -280,11 +280,11 @@ For each screen:
 ```
 mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
 ```
-The result's `index` field is the new column's `columnIndex` (use it directly for `CELL_NAME` — no need to recompute from the full column list).
+Re-read `get_board_outline` after adding the column and take the new (last) column's `letter` for `CELL_NAME` — don't convert the result's `index` into a letter yourself.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 7a — Create column".
 
-Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId` and `CELL_NAME` per the convention above.
+Extract `columnId`. Compute `CELL_ID = actorRowId + "-" + columnId` and take `CELL_NAME` from the outline as described above.
 
 ### 7b — Create the SCREEN node, atomically
 
@@ -307,7 +307,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "html",
     "nodeId": "<SCREEN_NODE_ID>",
     "chapterId": "<CHAPTER_ID>",
-    "cellId": "<CELL_ID>",
+    "cellName": "<CELL_NAME>",
     "title": "<screen.title>",
     "pages": ["<reconstructed HTML fragment for this screen>"],
     "description": "<screen.description — 'Shows X. Arrived via: Y. Actions: user can do A, user can do B.'>"

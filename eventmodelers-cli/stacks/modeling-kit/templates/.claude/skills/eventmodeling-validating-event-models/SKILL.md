@@ -27,13 +27,29 @@ The source can be also determined by looking at the defined Scenarios. Are all S
 
 Before starting, read the current board state to validate what is actually on the board.
 
-Prefer MCP — call `mcp__eventmodelers__get_nodes` once per type (no header wiring needed, auth resolves from the connected session):
+Prefer MCP (no header wiring needed, auth resolves from the connected session). Pick the read by what each check needs:
 
-```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT" }
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND" }
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL" }
-```
+- **Naming, past tense, duplicates, attribute names** — only titles, types and field names are needed, so call `get_nodes` once per type with the `line` projection (`{id, type, title, fields}`, `fields` = attribute names):
+
+  ```
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL", "projection": "line" }
+  ```
+
+- **Field-source traceability** (every command field comes from a connected read model or is marked generated) — needs field bodies and dependencies, so use the slice data `fields` projection per context:
+
+  ```
+  mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>", "projection": "fields", "format": "toon" }
+  ```
+
+- **Scenario coverage** — use the `specs` projection (given/when/then per slice, no elements):
+
+  ```
+  mcp__eventmodelers__get_slice_data { "boardId": "$BOARD_ID", "contextName": "<CONTEXT_NAME>", "projection": "specs", "format": "toon" }
+  ```
+
+  `specs` (like `outline`) only encodes as `json`, `yaml` or `toon`. Context names: `get_nodes { "type": "MODEL_CONTEXT", "projection": "line" }`, or a timeline name.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Context".
 

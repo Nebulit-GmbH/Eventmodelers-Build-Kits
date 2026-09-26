@@ -228,8 +228,10 @@ MCP tools only become visible to the current agent session after the host (re)co
 Prefer verifying through MCP if `mcp__eventmodelers__*` tools are already visible in this session (e.g. from a `.mcp.json` set up in an earlier turn or a previous session):
 
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
+
+(`projection: "line"` because this is only an access check — without it every chapter's full grid comes back.)
 
 A successful result (even an empty array) confirms the token and board are valid. An error mentioning "not found or access denied" means the token/board pairing is wrong — treat it like the `403`/`404` curl cases below.
 
@@ -245,7 +247,7 @@ Otherwise (no MCP tools visible yet this session), fall back to the equivalent c
 curl -s -o /dev/null -w "%{http_code}" \
   -H "x-token: <TOKEN>" \
   -H "x-user-id: connect-skill" \
-  "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes?type=CHAPTER"
+  "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes?type=CHAPTER&projection=line"
 ```
 
 | Response | Action |
@@ -263,21 +265,24 @@ curl -s -o /dev/null -w "%{http_code}" \
 Connecting is also where the session's read discipline starts. Every skill that runs after this one shares the same board, so **fetch it once and index it in memory** instead of re-deriving it per step:
 
 - **Orientation** (what is where, how is it wired) — `get_board_outline { boardId, chapterId }`. One compact call per chapter: per-column node lists plus a flat edge list, no HTML pages or field bodies.
-- **Working set** (you need `meta.fields`, examples, descriptions) — `get_nodes { boardId, chapterId }`. One call returns every node in the chapter with full `meta`, plus `node.position` and `node.parentId`. A whole 70-node board is well under 100 KB unscoped; scoped to a chapter it is smaller still.
+- **Working set** (you need `meta.fields`, examples, descriptions) — `get_nodes { boardId, chapterId }`. One call returns every node in the chapter with full `meta`, plus `node.position` and `node.parentId`. **An unscoped `get_nodes` is expensive** — full `meta` costs about 2 KB per node, roughly 1 MB (and as many tokens of context) for a 500-node board, most of it HTML screens and specs. Always scope it: one chapter is typically 1–30 KB. Never read the whole board to find something; `projection: "line"` or `get_board_outline` answers that for a fraction.
 - **A known, scattered subset** — `get_nodes { boardId, nodeIds: [...] }`. One call, not one per id.
-- **Just names/types** — add `projection: "line"` (carries `sliceStatus` too). **Just a chapter's grid** — `get_node { nodeId: <chapterId>, projection: "cells" }`. **Just one node's wiring** — `get_node { nodeId, projection: "edges" }`.
+- **Just names/types** — add `projection: "line"` (`{id, type, title, fields}` — `fields` being just the attribute names; no `cellName` — cell names come only from `get_board_outline`). **Just a chapter's grid** — `get_node { nodeId: <chapterId>, projection: "cells" }`. **Just one node's wiring** — `get_node { nodeId, projection: "edges" }`. None of these carries `sliceStatus`, `meta`, positions, field types or examples — if the step needs those, it needs the working-set read.
+- **Slice-level** — `get_slice_data` with `projection: "outline"` to find slices and their elements, `"fields"` for attribute/field-flow work, `"specs"` for scenario review (`outline`/`specs` only in format `json`/`yaml`/`toon`). The full graph only when a step needs elements, specs and comments together — and say why.
+
+**Pick the cheapest read that answers the step, and name the reason next to the call** (e.g. "line — only need titles to dedupe"). The full decision table is in `learn-eventmodelers-api` → *Which read to use*.
 
 **Orientation first, working set second — the two tiers are a sequence, not a choice.** "Where is the thing I was pointed at, and what sits around it" is an orientation question, and it is answered by `get_board_outline` or by `get_nodes` with `projection: "line"`. Answer it there, decide from it which nodes you are actually going to touch, and only then spend a full-`meta` read — `get_nodes` scoped by `chapterId`, or by `nodeIds` for a scattered handful — on those. Opening instead with an unscoped full-`meta` read drags every field body and every rendered HTML page on the board across the wire to work out which column someone poked at: the most expensive possible way to ask the cheapest question in the session.
 
 **Each tier is once per session, not once per step.** A chapter's outline and grid don't change unless you or a human changes them, so keep the indexed result and answer later questions from memory; re-read only after a structural write (a node created, moved or deleted), and then only the part that moved. Three `get_board_outline` calls inside one turn means the first two were fetched and thrown away.
 
-### The slice status comes with it
+### The slice status comes with the outline
 
-That same read tells you what you may write to. `get_nodes` returns `sliceStatus` per node and `get_board_outline` returns it per column, so index it alongside everything else:
+The orientation read also tells you what you may write to. `get_board_outline` returns `sliceStatus` per column — a slice owns a column, so every element in that column shares its status. `get_nodes` does **not** carry it, so take it from the outline before any write:
 
-**Only a slice in `Created` may be written to.** Any other status — `Planned`, `Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working on that slice: read its elements for context, but never change, move, rename or delete them, and never add scenarios, fields or examples to them. An element with **no** `sliceStatus` is in no slice at all, which is not the same as locked — that one is writable.
+**Only a slice in `Created` may be written to.** Any other status — `Planned`, `Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working on that slice: read its elements for context, but never change, move, rename or delete them, and never add scenarios, fields or examples to them. An element in a column with **no** `sliceStatus` is in no slice at all, which is not the same as locked — that one is writable.
 
-Never spend a `list_slices`/`get_slice_data` call to answer this; the board read already did.
+Never spend a `list_slices`/`get_slice_data` call to answer this; the outline already did.
 
 `get_node` without a projection is for **one** node you did not already load — most often re-reading a node right after writing it. A step that issues it in a loop over nodes that were already in a list response is doing the same fetch N times; collapse it to the single chapter-scoped read above.
 

@@ -123,7 +123,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 4 — Fetch the chapter's grid state".
 
-Parse the result (`{rows, columns, cells}` directly via MCP, or `meta.timelineData` via the REST fallback):
+Parse the result (`{rows, columns, cells}` directly — the REST fallback's `?projection=cells` returns the same shape):
 - `rows` — list of row objects, each with `id` and `type`
 - `columns` — list of column objects, each with `id`
 - `cells` — list of cell objects, each with `rowId`, `colId`, and optionally `nodeId` (used only to check occupancy)
@@ -183,7 +183,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "html",
     "nodeId": "<SCREEN_NODE_ID>",
     "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorCellId>",
+    "cellName": "<actorCellName>",
     "title": "<screenTitle>",
     "pages": ["<div>...</div>"],
     "description": "<screenTitle — what this screen shows>"
@@ -204,7 +204,7 @@ mcp__eventmodelers__create_screen {
     "contentType": "sketch",
     "nodeId": "<SCREEN_NODE_ID>",
     "chapterId": "<CHAPTER_ID>",
-    "cellId": "<actorCellId>",
+    "cellName": "<actorCellName>",
     "title": "<screenTitle>",
     "elements": [...],
     "description": "<screenTitle — what this screen shows>"
@@ -214,7 +214,7 @@ mcp__eventmodelers__create_screen {
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5b — Create the screen node and render it (sketch path, explicit request only)".
 
-Pass the already-computed `actorCellId` directly as `cellId` in either path. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
+MCP `create_screen` takes only `cellName`. Don't derive `actorCellName` from array positions in the grid — read it from `get_board_outline` for that chapter (call it once if you don't already hold it): the column letter is the target column's `letter` there, the row number is the target lane's 1-based position in its `lanes` list (lanes are listed top to bottom, so the first lane is row 1) (e.g. column `letter: "D"`, the actor lane first in `lanes` → `D1`). A column appended by `add_column` only has a letter once you re-read the outline. The curl fallback still takes the computed `actorCellId` as `cellId`. Expect success (MCP: `created: true`; curl: `204`). On failure, read the validation error, fix the payload, and retry once before reporting failure.
 
 ### Step 5b(ii) — Set field data lineage (mandatory)
 

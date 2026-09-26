@@ -51,7 +51,8 @@ On that turn, and only that turn:
    and stop there. Do **not** read any chapter's contents on this turn: a board of a dozen chapters
    read up front is a minute and a dollar spent before anyone has asked for anything, and most of
    what comes back is never used. A chapter is read on the first turn that has business in it (one
-   `get_board_outline`, or `get_nodes` with `projection: "line"`) and **kept** from then on — that
+   `get_board_outline` — the only read that carries slice statuses; `get_nodes` with `projection: "line"`
+   gives just ids, names, types and attribute names) and **kept** from then on — that
    growing set of read chapters is this session's board picture: columns, elements, slice statuses.
    Later turns answer from it instead of re-reading, and refresh only the part a change invalidated.
 
@@ -81,8 +82,8 @@ At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists
 `Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
 on that slice: read it for context, but never change, move, rename or delete its elements, and
 never add scenarios, fields or examples to them. An element in no slice at all is not locked.
-`get_nodes` returns `sliceStatus` per node and `get_board_outline` per column, so the board read
-`/connect` Step 5 already makes answers this — no `list_slices`/`get_slice_data` call needed.
+`get_board_outline` returns `sliceStatus` per column (`get_nodes` does not carry it), so the
+outline read `/connect` Step 5 already makes answers this — no `list_slices`/`get_slice_data` call needed.
 If only part of what you were asked to do is locked, do the rest and name what you skipped and
 why; if all of it is, change nothing and post a `COMMENT` on that slice saying which status
 blocked it.
@@ -98,6 +99,10 @@ came back and answer later questions from it instead of re-fetching a chapter yo
 carries the full discipline — the two tiers, the one-call `submit_node_events` rule for writes, and the per-turn
 pool for the ids a `node:created` needs (one for the node, one for the event itself). Whatever you hand a subagent comes out of that same read,
 never out of a second one it pays for itself (step 2).
+**Pick every read by what the step needs, cheapest first**: `get_nodes` `projection: "line"` for ids/titles/types/
+attribute names, `get_node` `projection: "cells"` for a grid and `"edges"` for one node's wiring, and
+`get_slice_data` `projection: "outline"` / `"fields"` / `"specs"` instead of the full graph unless the step needs
+elements, specs and comments together. The decision table is in `learn-eventmodelers-api` → *Which read to use*.
 
 **Every prompt gets exactly two `/update-prompt-status` calls per turn — never zero, never one.** `IN_PROGRESS` before you start the work (step 4), `DONE` after you finish it (step 6). This holds even for a prompt that turns out to be trivial or a no-op — the board UI has no other way to know the agent picked it up and finished it.
 

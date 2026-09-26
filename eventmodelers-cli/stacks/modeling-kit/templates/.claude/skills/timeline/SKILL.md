@@ -31,11 +31,11 @@ From `$ARGUMENTS` and the conversation, extract:
 
 ### 1a — Discover existing timelines
 
-Before doing anything else, fetch all chapters (timelines) on the board.
+Before doing anything else, fetch all chapters (timelines) on the board — only ids and titles are needed to list/pick one, so use `projection: "line"` (without it every chapter's full grid comes back).
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all chapters".
@@ -55,17 +55,17 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
 
 A chapter and a timeline are the same thing — the terms are interchangeable.
 
-If `timelineId` is provided, first resolve it to a UUID if a name was given instead.
+If `timelineId` is provided, first resolve it to a UUID if a name was given instead (ids and titles only — `projection: "line"`).
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all chapters".
 
 - If the value looks like a UUID, use it directly as `CHAPTER_ID`.
-- If it looks like a name, find the CHAPTER node whose `meta.title` matches (case-insensitive) and use its `id` as `CHAPTER_ID`.
+- If it looks like a name, find the CHAPTER node whose `title` matches (case-insensitive) and use its `id` as `CHAPTER_ID`.
 - If no match is found, tell the user and stop.
 
 Fetch the chapter node to read its grid structure — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node.
@@ -77,21 +77,21 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Fetch the chapter's grid state".
 
-From the result (`{rows, columns, cells}` via MCP's `projection: "cells"`, or `meta.timelineData` via the REST fallback):
+From the result (`{rows, columns, cells}` — both MCP and the REST fallback use `projection=cells`):
 - `rows` — find the row with `type === "swimlane"` and save its `id` as `swimlaneRowId`
 - `columns` — ordered list of columns, each with an `id`
 - `cells` — each cell has `colId`, `rowId`, and optionally `nodeId`
 
-Then load the existing EVENT nodes.
+Then load the existing EVENT nodes of this chapter — only `id` and `title` are needed (the column comes from `cells`), so use `projection: "line"`.
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT", "chapterId": "<CHAPTER_ID>", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Fetch all EVENT nodes".
 
-For each EVENT node, find its cell in `timelineData.cells` where `nodeId === event.id`. That cell's `colId` gives the `columnId`. Order events by their column's position in `timelineData.columns`.
+For each EVENT node, find its cell in `cells` where `nodeId === event.id`. That cell's `colId` gives the `columnId`. Order events by their column's position in `columns`.
 
 Set `CHAPTER_ID = <resolved uuid>`.
 
@@ -176,7 +176,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>"
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Fetch the chapter's grid state".
 
-From the result (`rows`/`columns`/`cells` directly via MCP, or under `meta.timelineData` via the REST fallback):
+From the result (`rows`/`columns`/`cells` directly, via MCP or the REST fallback's `?projection=cells`):
 - Read `rows` to find and save `swimlaneRowId` (the row whose `type === "swimlane"`).
 - Identify **empty columns**: columns where no cell has a `nodeId` set.
 

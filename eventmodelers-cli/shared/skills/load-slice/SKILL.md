@@ -36,7 +36,9 @@ This returns `{ "slices": [ { "id": "...", "title": "...", "status": "..." } ] }
 mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<name>" }
 ```
 
-(`get_slice_data` requires a `contextName` or `contextId` — call `list_slices` first, then resolve context per slice via `mcp__eventmodelers__get_node` on each `SLICE_BORDER` id if the context isn't already known.)
+This call stays full (no `projection`): Step 3 persists the complete slice object as `slice.json`, which the build skills read fields, specs and comments from. When only one slice is needed, pass `sliceId` as well.
+
+(`get_slice_data` requires a `contextName` or `contextId`. If the context isn't already known, list the context names in one call — `mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "MODEL_CONTEXT", "projection": "line" }` (only titles needed; a timeline name works as `contextName` too, so fall back to `type: "CHAPTER"` with `projection: "line"` when there are no MODEL_CONTEXT nodes) — then map slices to contexts with `list_slices { "boardId": "<BOARD_ID>", "contextName": "<name>" }` per context. Don't `get_node` each `SLICE_BORDER`.)
 
 **Fallback (no MCP):**
 

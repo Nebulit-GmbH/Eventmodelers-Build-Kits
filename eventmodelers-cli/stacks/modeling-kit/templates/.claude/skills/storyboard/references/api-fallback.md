@@ -15,10 +15,10 @@ Extract `id` from the response → `CHAPTER_ID`.
 ## Step 4 — Fetch the chapter's grid state
 
 ```bash
-curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID"
+curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$CHAPTER_ID?projection=cells"
 ```
 
-Read `meta.timelineData` for `{rows, columns, cells}`.
+Returns `{rows, columns, cells}` directly (not wrapped in `meta.timelineData`).
 
 ## Step 5a — Add a column
 

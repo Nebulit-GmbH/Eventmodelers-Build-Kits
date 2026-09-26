@@ -47,9 +47,9 @@ Walk the timeline column by column:
 
 `$TL` (the timeline/chapter UUID) is required for every call below. If it wasn't given up front, resolve it before doing anything else:
 
-Prefer MCP:
+Prefer MCP — only ids and titles are needed to pick a chapter, so use the `line` projection (without it every chapter's full grid comes back):
 ```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER" }
+mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 1: Resolve the Timeline".
@@ -69,7 +69,7 @@ mcp__eventmodelers__get_spec_info { "boardId": "<BOARD_ID>", "timelineId": "<TL>
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 2: Enumerate Commands, Read Models, and Automations — spec-info".
 
-Separately, enumerate AUTOMATION nodes via `get_nodes { "boardId": "<BOARD_ID>", "type": "AUTOMATION", "chapterId": "<TL>" }` — `spec-info` cannot return them.
+Separately, enumerate AUTOMATION nodes via `get_nodes { "boardId": "<BOARD_ID>", "type": "AUTOMATION", "chapterId": "<TL>", "projection": "line" }` — `spec-info` cannot return them; `line` is enough since only id and title are needed (the column comes from the chapter's `cells` below).
 
 `spec-info` doesn't include the column each element sits in, so fetch the chapter node to resolve it — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
 
