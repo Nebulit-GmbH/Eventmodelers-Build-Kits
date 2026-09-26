@@ -1941,7 +1941,8 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'as a QUESTION-type comment (via /handle-comment with action=place and type=QUESTION) on the most ' +
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt. ' +
     'The one exception is a CHAT turn: there a person is waiting in the chat, so you ask back with post_chat_message ' +
-    '(see "Chat turns" in .agent-modeling-kit/CLAUDE.md), and never by pausing the session.\n\n';
+    '(see "Chat turns" in .agent-modeling-kit/CLAUDE.md), and never by pausing the session. ' +
+    'A chat message is at most 1000 characters.\n\n';
 
   // Sent once, on the first turn only — it's what tells the agent to follow
   // .agent-modeling-kit/CLAUDE.md's per-turn steps for this warm session (instead
@@ -2272,6 +2273,9 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     return withSessionHeader(`${fields}${context}\n\n${m.text}`);
   }
 
+  // The backend rejects a chat message over this many characters (CHAT_TEXT_TOO_LONG).
+  const CHAT_TEXT_MAX_LENGTH = 1000;
+
   // Posted only if the turn didn't answer — the backend checks (only_if_unanswered), so a reply
   // the agent did post is never doubled. What makes "every message gets an answer" hold even for a
   // turn that errored or forgot its post_chat_message.
@@ -2280,7 +2284,12 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-messages`, {
         method: 'POST',
         headers: { 'x-token': cfg.token, 'Content-Type': 'application/json', ...agentHeaders(cfg) },
-        body: JSON.stringify({ text, reply_to: m.id, only_if_unanswered: true }),
+        // A turn's final text can run long; cut it rather than lose the reply to a 400.
+        body: JSON.stringify({
+          text: text.length > CHAT_TEXT_MAX_LENGTH ? `${text.slice(0, CHAT_TEXT_MAX_LENGTH - 1)}…` : text,
+          reply_to: m.id,
+          only_if_unanswered: true,
+        }),
       });
       if (!res.ok) log(`chat fallback reply failed: HTTP ${res.status}`);
       else if (res.status === 201) log(`chat turn left message ${m.id} unanswered — posted its final text as the reply`);
@@ -2623,7 +2632,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'follow its "Propose mode" section. Read what this needs and no more: every nodeId above in one get_nodes, ' +
     'plus one get_board_outline per chapter you have not read this session. Every change above is by one person, ' +
     'changed_by, who is talking to you in the chat. ALWAYS post ONE short chat message to them with ' +
-    'post_chat_message (no sessionId, no replyTo, preferUserId = changed_by) — never stay silent after their ' +
+    'post_chat_message (no sessionId, no replyTo, preferUserId = changed_by; at most 1000 characters) — never stay silent after their ' +
     'edit. A fresh, half-finished element (placeholder name, no ' +
     'fields, names still changing) is the reason to speak, not to wait. Something worth doing → say concretely ' +
     'what you would do (element names) and ask whether to go ahead. Nothing concrete → say what you saw and ' +

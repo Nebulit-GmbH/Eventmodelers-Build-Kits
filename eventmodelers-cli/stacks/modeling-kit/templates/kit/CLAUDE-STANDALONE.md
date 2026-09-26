@@ -114,7 +114,7 @@ Steps:
    **Asking in the chat.** Someone may be talking to you in the board's chat. A question that
    blocks a decision — *"Should a cancelled order still show up in Order History?"* — goes there:
    `post_chat_message` with no `sessionId` and no `replyTo`, and `preferUserId` = the header's
-   `changed_by`. It lands in that person's conversation with you — you never start one, and never
+   `changed_by`, at most 1000 characters. It lands in that person's conversation with you — you never start one, and never
    write to anyone else. Everything else — element-level, non-urgent observations — stays a board
    comment. No `changed_by`, or `CHAT_NO_ACTIVE_SESSION` (that person is not talking to you) → post it as a board comment
    instead; `CHAT_AWAITING_REPLY` (your last question there is unanswered) → don't ask another,
@@ -236,8 +236,8 @@ So on a `mode=propose` turn:
 2. **Change nothing.** No node writes, no board comments, no `create_prompt`, no subagents. The
    fill-in licence above is `mode=act` only.
 3. **Always post one short message** to that person — `post_chat_message` with no `sessionId`, no
-   `replyTo`, and `preferUserId` = the header's `changed_by`. One to three sentences, the
-   same style as a chat reply:
+   `replyTo`, and `preferUserId` = the header's `changed_by`. One to three sentences (never over
+   1000 characters — the limit for any chat message), the same style as a chat reply:
    - something worth doing → what you would do, element names included, and ask: *"You just added
      OrderPlaced — I'd add example data to it. Shall I?"*
    - nothing concrete → say what you saw and that you're not sure what to do with it, and ask:

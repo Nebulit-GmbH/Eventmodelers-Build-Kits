@@ -201,7 +201,8 @@ for it. Instead:
      you and are worked right after this turn.
 4. **Reply exactly once** — `post_chat_message` with `replyTo` = this turn's `message_id`. It is the
    only thing the person reads, in a narrow side panel, often while they keep modeling — so it is
-   **short: one to three sentences**, like a colleague answering in chat, not a report:
+   **short: one to three sentences**, like a colleague answering in chat, not a report — and never
+   more than **1000 characters**, the hard limit for any chat message (`CHAT_TEXT_TOO_LONG`):
    - lead with the answer or the result; no preamble ("Done.", "Sure!", "Great question"), no
      recap of what they asked;
    - no cell addresses, column letters or ids — element names are enough;
@@ -217,7 +218,8 @@ for it. Instead:
      Register User."* The person sees the work cards appear under their message, so don't
      describe the work beyond that.
    - a no to a proposal → acknowledge it in a line, nothing else.
-   If you skip `post_chat_message`, the CLI posts your turn's final text as the reply — so if you do
+   If you skip `post_chat_message`, the CLI posts your turn's final text as the reply (cut at 1000
+   characters) — so if you do
    post, end the turn with nothing but `<promise>DONE</promise>`.
 5. A message with `comment_id` / `node_id` is a node comment the person handed to you: the comment's
    node is the target. Don't answer it a second time as a board comment; the prompts you create

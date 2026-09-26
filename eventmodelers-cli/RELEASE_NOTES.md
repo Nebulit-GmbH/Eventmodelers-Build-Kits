@@ -9,6 +9,9 @@
 - The `anthropicBaseUrl` option no longer implies Ollama works behind it. That route keeps Claude Code and swaps only the endpoint, so the server has to speak Anthropic's own `/v1/messages`; Ollama does not, and pointing it at `localhost:11434` returns a 404. For Ollama, `--local-ai` is the supported route, and the README now says which of the two to reach for.
 - `LOCAL_AI_*` is documented for the first time — the `--local-ai` help text had been pointing at "the docs" for vars that appeared nowhere in the README.
 
+### Fixes
+- Chat messages are limited to 1000 characters, in both directions — the platform now rejects longer ones (`CHAT_TEXT_TOO_LONG`). The kit instructions say so, and the CLI's fallback reply (a chat turn's final text, posted when the turn didn't reply itself) is cut at the limit instead of failing with a 400 and leaving the message unanswered.
+
 ## v1.0.72
 
 ### Features
