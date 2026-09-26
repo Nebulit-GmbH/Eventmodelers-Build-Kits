@@ -16,15 +16,15 @@ const REALTIME_EVENTS_COLLECTION = 'realtime_events';
 // ourselves.
 const RECONNECT_INTERVALS_MS = [200, 300, 500, 1000, 1200, 1500, 2000];
 
-export async function createPocketBaseRealtimeAdapter(cfg, initialToken) {
+// deps.PocketBase is injectable for tests; by default it is the pocketbase SDK's client.
+export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = {}) {
   const { EventSource } = await import('eventsource');
   if (!globalThis.EventSource) globalThis.EventSource = EventSource; // PocketBase's SDK assumes a browser-style global
-  const { default: PocketBase } = await import('pocketbase');
+  const PocketBase = deps.PocketBase ?? (await import('pocketbase')).default;
   const pb = new PocketBase(cfg.pocketbaseUrl);
   pb.authStore.save(initialToken, null);
 
-  // Same rule as the Supabase adapter: a resubscribe replaces the previous listener instead
-  // of adding a second one, or every event would be handled once per earlier subscribe.
+  // subscribe() replaces the previous listener (see realtime-adapter.js).
   let unsubscribe = null;
 
   return {

@@ -3,7 +3,9 @@
 // record-change events for self-hosted/on-prem) and hands back one common interface:
 //
 //   subscribe(topic, handlers, onStatus?) — handlers is a { [eventName]: (payload) => void }
-//     map; onStatus?.(status) fires once the subscription is live ('SUBSCRIBED').
+//     map; onStatus?.(status) fires once the subscription is live ('SUBSCRIBED'). Calling it
+//     again replaces the previous subscription — never adds to it — and a replaced one no
+//     longer reports status.
 //   setAuth(token) — refresh the short-lived realtime token on the live connection.
 //
 // cfg.realtimeProvider absent (older servers, predating PocketBase support) means
