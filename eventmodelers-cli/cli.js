@@ -1867,7 +1867,7 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null } = {}) {
+async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -1934,6 +1934,24 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       process.exit(1);
     }
   }
+  // --exec: any agent harness, one process per turn (lib/modeling-exec.js). Unlike a local model
+  // it brings its own tool loop and reads the kit — CLAUDE.md and whatever skills `init-agents`
+  // installed for it — so its turns keep the session header; what it lacks is the Agent tool, so
+  // they drop the fan-out like a local model's do. Imported only here: its turn supervisor
+  // installs signal handlers on import, which no other command should get.
+  let execRunner = null;
+  if (exec) {
+    const { createModelingExecRunner } = await import('./lib/modeling-exec.js');
+    try {
+      execRunner = createModelingExecRunner({ cfg, command: exec === true ? cfg.localAi?.exec : exec, projectDir, log });
+    } catch (err) {
+      console.error(`❌ --exec: ${err.message}`);
+      process.exit(1);
+    }
+  }
+  // The runner that is not the warm `claude` process, if any — for the few places that only care
+  // whether one is.
+  const otherRunner = localRunner ?? execRunner;
 
   const QUESTIONING_RULE =
     'IMPORTANT: You are running autonomously — no human is available to answer questions. ' +
@@ -1943,6 +1961,17 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'The one exception is a CHAT turn: there a person is waiting in the chat, so you ask back with post_chat_message ' +
     '(see "Chat turns" in .agent-modeling-kit/CLAUDE.md), and never by pausing the session. ' +
     'A chat message is at most 1000 characters.\n\n';
+
+  // An exec turn is a fresh process on every turn, so the kit's connect step would run — and
+  // re-verify the same credentials — once per message. It has nothing left to do: registerMcp
+  // (lib/modeling-exec.js) put the eventmodelers server into the harness's config before the
+  // first turn, authenticated from the env this process hands it. The credentials in the header
+  // stay, for the skills' REST fallback.
+  const EXEC_CONNECTED =
+    'The eventmodelers MCP server is already registered and authenticated for you, so you are connected: ' +
+    'do NOT run /connect and do not check any MCP config file — wherever the kit or a skill says to connect ' +
+    'first, that is already done. Use the eventmodelers tools directly, with the board_id of this turn. The ' +
+    'credentials above are only for a REST fallback, should a tool you need be missing.\n\n';
 
   // Sent once, on the first turn only — it's what tells the agent to follow
   // .agent-modeling-kit/CLAUDE.md's per-turn steps for this warm session (instead
@@ -1961,9 +1990,11 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     // (its tools are already authenticated), and handing it the raw token would put credentials
     // in a context that has no way to use them.
     if (localRunner) return body;
-    if (!firstTurn) return body;
+    // Every exec turn is a fresh process — a new session that has read nothing, so each one gets
+    // the header its first turn would.
+    if (!firstTurn && !execRunner) return body;
     firstTurn = false;
-    return `MODE=modeling token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return `MODE=modeling token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}${execRunner?.mcpRegistered ? EXEC_CONNECTED : ''}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
   }
 
   function buildTurn(p) {
@@ -2174,18 +2205,19 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // The one thing that knew a `claude` process was behind a turn. Both lanes — the prompt
   // queue (drain) and the self-directed one (dispatchStandaloneTurn) — go through here.
   async function runTurn(text) {
-    if (localRunner) return localRunner.runTurn(text);
+    if (otherRunner) return otherRunner.runTurn(text);
     if (!proc) spawnProcess();
     await warmUpSession();
     return sendTurn(text);
   }
 
-  if (!localRunner) spawnProcess();
+  if (!otherRunner) spawnProcess();
   log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId}`);
   if (localRunner) log(`runner: local model — ${localRunner.describe()} (board tools over MCP; no skills, no subagents)`);
+  if (execRunner) log(`runner: ${execRunner.describe()} — one process per turn (skills from the kit; no subagents)`);
   log(
     standalone
-      ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (${localRunner ? 'work is done inline — a local model has no subagents' : `max ${maxAgents} subagent(s) per self-directed turn`})`
+      ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (${localRunner ? 'work is done inline — a local model has no subagents' : execRunner ? 'work is done inline — an exec agent has no subagents' : `max ${maxAgents} subagent(s) per self-directed turn`})`
       : worker
         ? 'worker: ON — working prompts only (no chat, board changes are dropped)'
         : 'standalone: off — board changes get a proposal in the chat, nothing is changed without a yes',
@@ -2201,8 +2233,10 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // Both warm-ups are the same bet — pay the session's fixed setup cost before a turn arrives
   // rather than making whoever sends the first prompt wait for it. For a local model that cost
   // is the MCP tool set; for Claude it is reading CLAUDE.md and running /connect.
+  // An exec runner has nothing to warm: every turn is its own process, so a warm-up would connect
+  // a session that exits right after.
   if (localRunner) localRunner.warmUp().catch((err) => log(`local-ai warm-up failed (the first turn will retry): ${err.message}`));
-  else warmUpSession();
+  else if (!execRunner) warmUpSession();
 
   async function getRealtimeToken() {
     const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, {
@@ -2580,6 +2614,9 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   const AGENT_BUDGET = localRunner
     ? 'You have no subagents and no skills here — the board tools are all you have. Do the single most ' +
       'valuable piece of work yourself, inline, in this turn, and leave the rest for a later turn.'
+    : execRunner
+      ? 'You have no subagents here — wherever the kit says to dispatch an Agent, do that work yourself instead. ' +
+        'Do the single most valuable piece of work yourself, inline, in this turn, and leave the rest for a later turn.'
     : maxAgents > 1
       ? `Dispatch at most ${maxAgents} Agents in this turn (--max-agents=${maxAgents}). Merge pieces that share a slice or ` +
         'chain first — that is a correctness rule, not a way to fit the cap — and if more than that is still left, ' +
@@ -2595,6 +2632,9 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // from disk; a local model has neither, so it just works the board directly.
   const FAN_OUT = localRunner
     ? `get the most valuable piece of it done with the board tools in this turn. ${AGENT_BUDGET}`
+    : execRunner
+      ? `get the most valuable piece of it done in this turn. ${AGENT_BUDGET} Read ` +
+        '.agent-modeling-kit/CLAUDE-STANDALONE.md now and follow it: it holds the steps for this kind of turn, and only this kind.'
     : 'work in parallel rather than serially — dispatch one Agent per piece of ' +
       'work that needs doing, all in a single message, merging pieces that share a slice or chain so no two ' +
       `agents write to the same area. ${AGENT_BUDGET} Read .agent-modeling-kit/CLAUDE-STANDALONE.md now (once ` +
@@ -3473,9 +3513,9 @@ credentialFlags(program
   .command('run')
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
-  .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner, via ralph-exec.js (build-kit stacks only) — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto" or "opencode run". The prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. With agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded.')
+  .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
-  .option('--modeling', 'Keep one Claude process warm across prompts instead of spawning a fresh one per task, for low-latency voice/live use. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
+  .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --local-ai or --exec pick another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
   .option('--standalone', 'Let the modeling agent act on board changes on its own initiative, without asking: it subscribes to the board\'s change channel and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for, judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question). Filling that detail in while the human keeps modeling is the point. A plain --modeling agent only proposes, and only to the people chatting with it: after their edits it says in the chat what it would do and waits for a yes; everyone else\'s edits are ignored. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
@@ -3550,14 +3590,19 @@ credentialFlags(program
     // no meaning for a build kit, which is scaffolded per project by definition.
     if (opts.modeling || opts.standalone || opts.worker || opts.global) {
       const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : opts.worker ? '--worker' : '--global';
-      // --bash/--exec stay build-kit only: they drive the cold-spawn tasks.json loop, which the
-      // modeling loop has no equivalent of. --local-ai is different — it names a *model*, not a
-      // queue, and the modeling loop has its own runner for one (lib/modeling-local-ai.js).
-      if (opts.bash || opts.exec) {
-        console.error(`❌ ${picked} is mutually exclusive with --bash/--exec — those select a build-kit runner, which the modeling loop has no use for.`);
+      // --bash stays build-kit only: it is the bash tasks.json loop, which the modeling loop has
+      // no equivalent of. --local-ai and --exec are different — they name what does a turn, not a
+      // queue, and the modeling loop has its own runner for each (lib/modeling-local-ai.js,
+      // lib/modeling-exec.js).
+      if (opts.bash) {
+        console.error(`❌ ${picked} is mutually exclusive with --bash — that selects a build-kit runner, which the modeling loop has no use for.`);
         process.exit(1);
       }
       const modelingLocalAi = resolveLocalAiTarget(opts);
+      if (modelingLocalAi !== null && opts.exec) {
+        console.error('❌ --local-ai and --exec are mutually exclusive — pick one runner.');
+        process.exit(1);
+      }
       if (opts.local) {
         console.error(`❌ ${picked} has no local-only mode — it is always driven by the org-wide realtime prompt queue, so --local has no use for it.`);
         process.exit(1);
@@ -3596,10 +3641,10 @@ credentialFlags(program
       // needed to drain, so a piped watcher sees the ping arrive after runModeling's own
       // [modeling] log lines instead of before them.
       const shown = relative(cwd, kitDir);
-      const runnerLabel = modelingLocalAi ? 'local model' : 'warm Claude process';
+      const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi });
+        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
