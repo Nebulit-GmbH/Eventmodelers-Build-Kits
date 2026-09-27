@@ -67,6 +67,55 @@ function resolveLocalAiTarget(opts) {
   return raw;
 }
 
+// --- --agent: named shortcuts for --exec ---------------------------------------
+// `run --agent opencode` is exactly `run --exec "<preset>"` — the harness command spelled out
+// once here, so nobody has to remember its headless flags. The two loops want different output
+// from the same harness: the modeling loop reads a turn's answer from plain-text stdout, while a
+// build kit wants the JSON mode, the only one that reports the usage agent tracing records.
+// claude has no command — it is the default runner, named so it can be picked explicitly.
+// --exec stays the fallback for any harness or flag set not listed here.
+const AGENT_PRESETS = {
+  claude: null,
+  opencode: { modeling: 'opencode run', build: 'opencode run --auto --format json' },
+  codex: { modeling: 'codex exec --full-auto', build: 'codex exec --json --full-auto' },
+  gemini: { modeling: 'gemini --yolo -p', build: 'gemini --yolo --output-format stream-json -p' },
+};
+
+function printAgentPresets() {
+  console.log('Supported agents for run --agent <name>:\n');
+  for (const [name, preset] of Object.entries(AGENT_PRESETS)) {
+    console.log(`  ${name.padEnd(9)}${preset ? `modeling: ${preset.modeling}\n  ${''.padEnd(9)}build:    ${preset.build}` : 'the default runner (warm Claude process / ralph-claude.js)'}`);
+  }
+  console.log('\nAny other harness: run --exec "<command>".');
+  console.log(`A local or self-hosted model: run --local-ai [${LOCAL_AI_TARGETS.join('|')}].`);
+}
+
+// Resolves --agent into the --exec command it stands for, or null for the default Claude runner.
+// Bare --agent lists the presets and stops.
+function resolveAgentPreset(opts, loop) {
+  if (opts.agent === undefined) return null;
+  if (opts.agent === true) {
+    printAgentPresets();
+    process.exit(0);
+  }
+  const name = String(opts.agent).toLowerCase();
+  if (!(name in AGENT_PRESETS)) {
+    console.error(`❌ Unknown --agent "${opts.agent}" — one of: ${Object.keys(AGENT_PRESETS).join(', ')}.`);
+    console.error('   Any other harness works via --exec "<command>".');
+    console.error(`   A local or self-hosted model works via --local-ai [${LOCAL_AI_TARGETS.join('|')}].`);
+    process.exit(1);
+  }
+  if (opts.exec) {
+    console.error('❌ --agent and --exec are mutually exclusive — --agent is a shortcut for --exec.');
+    process.exit(1);
+  }
+  if (resolveLocalAiTarget(opts) !== null || opts.bash) {
+    console.error('❌ --agent is mutually exclusive with --local-ai/--bash — pick one runner.');
+    process.exit(1);
+  }
+  return AGENT_PRESETS[name]?.[loop] ?? null;
+}
+
 const STACKS = {
   node: {
     label: 'Node.js / TypeScript',
@@ -3513,9 +3562,10 @@ credentialFlags(program
   .command('run')
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
-  .option('--exec [command]', 'Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
+  .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec, --local-ai and --bash.`)
+  .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
-  .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --local-ai or --exec pick another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
+  .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
   .option('--standalone', 'Let the modeling agent act on board changes on its own initiative, without asking: it subscribes to the board\'s change channel and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for, judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question). Filling that detail in while the human keeps modeling is the point. A plain --modeling agent only proposes, and only to the people chatting with it: after their edits it says in the chat what it would do and waits for a yes; everyone else\'s edits are ignored. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
@@ -3534,6 +3584,9 @@ credentialFlags(program
     // should fail on the spot, not once the loop is already up — and a cap passed where
     // nothing will read it is worth saying out loud rather than ignoring silently.
     const maxAgents = parseMaxAgents(opts.maxAgents);
+    // --agent is --exec with the command filled in for the loop this run picks.
+    const agentExec = resolveAgentPreset(opts, (opts.modeling || opts.standalone || opts.worker || opts.global) ? 'modeling' : 'build');
+    if (agentExec) opts.exec = agentExec;
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
     }

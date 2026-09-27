@@ -128,7 +128,8 @@ npx @eventmodelers/cli init --stack <name> --demo   # same, plus a ready-made de
 npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
-npx @eventmodelers/cli run --exec "<command>"        # same, via an external agent harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
+npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
@@ -191,8 +192,31 @@ npx @eventmodelers/cli run --modeling               # react to prompts sent to t
 npx @eventmodelers/cli run --standalone             # …and to board changes, on its own initiative
 ```
 
-`--standalone` implies `--modeling`, so you never need both. To drive either one with a local
-model instead of Claude, see [Running the modeling agent on a local model](#running-the-modeling-agent-on-a-local-model).
+`--standalone` implies `--modeling`, so you never need both.
+
+**Another coding agent.** `--agent` hands each prompt and chat message to another harness
+instead of the warm Claude process — one process per turn, with the eventmodelers MCP server
+registered for it (`opencode.json`, `.gemini/settings.json`, or `-c` flags for Codex):
+
+```bash
+npx @eventmodelers/cli run --standalone --agent opencode   # = --exec "opencode run"
+npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exec --full-auto"
+npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
+npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
+npx @eventmodelers/cli run --agent                         # list the agents and the command each runs
+```
+
+`--agent` is only a shortcut: to run a harness it does not know, or the same one with other
+flags, pass the command yourself with `--exec "<command>"`. Keep the harness in its plain-text
+output mode — its stdout is the turn's answer. For an unknown command the loop logs the MCP
+server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELERS_TOKEN`).
+Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
+`.claude/skills`. There are no subagents: self-directed work is done inline.
+
+`--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
+any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.
+
+To drive either one with a local model instead of Claude, see [Running the modeling agent on a local model](#running-the-modeling-agent-on-a-local-model).
 
 **No install required.** A modeling agent never touches the directory it was started from —
 it works against the board over MCP/REST — so it doesn't need a kit scaffolded there. When

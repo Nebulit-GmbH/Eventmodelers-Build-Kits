@@ -121,7 +121,17 @@ llama.cpp `-c 32768`); an overflow there surfaces as an HTTP 400.
 
 Agentic harnesses that bring their own tool loop — Codex CLI, OpenCode, Gemini CLI —
 are not `--local-ai` targets: `--local-ai` *supplies* the agent loop, while a harness
-already is one and only wants a prompt. They go through `ralph-exec.js` instead:
+already is one and only wants a prompt. They go through `ralph-exec.js` instead. The
+known ones have a shortcut that fills in the command, JSON flag for agent tracing included
+(bare `--agent` lists them):
+
+```bash
+npx @eventmodelers/cli run --agent opencode   # = --exec "opencode run --auto --format json"
+npx @eventmodelers/cli run --agent codex      # = --exec "codex exec --json --full-auto"
+npx @eventmodelers/cli run --agent gemini     # = --exec "gemini --yolo --output-format stream-json -p"
+```
+
+`--exec` is the manual fallback: any other harness, or one of these with other flags:
 
 ```bash
 npx @eventmodelers/cli run --exec "codex exec --full-auto"
