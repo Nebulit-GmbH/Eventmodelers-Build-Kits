@@ -9,7 +9,7 @@ description: Resolve eventmodelers connection config (token, boardId, baseUrl) f
 
 **This should happen once per session, not once per skill.** If `TOKEN`/`BOARD_ID`/`ORG_ID`/`BASE_URL` are already resolved and verified from earlier in the current session — including earlier in the *same turn*, e.g. one skill internally invoking a second skill (`add-next-slice` → `html-screen`) — every subsequent "invoke `connect`" instruction is satisfied immediately by reusing those values. Do not re-run Steps 0–4 below. Only re-run this skill from scratch when a value actually needs to change: a fresh `401`/`403`/access-denied response from some other call, a different `board_id` on this turn, or a new inline param that overrides what's already resolved.
 
-**Subagents are a fresh session — hand them the resolved values.** When you spawn a subagent to do board work, put the already-resolved credentials inline in its prompt (`token=… board=… org=… baseUrl=…`, plus `agent=…` when you have an `AGENT_ID` — a subagent's writes are still this agent's writes, and it cannot read your environment). Its `connect` then satisfies everything at Step 0 and skips Steps 1–4 entirely: no config-file walk, no MCP re-registration, no verify call. Spawning three subagents without passing them down means paying the whole resolve-and-verify round three more times for values you already have.
+**Subagents are a fresh session — hand them the resolved values.** When you spawn a subagent to do board work, put the already-resolved credentials inline in its prompt (`token=… board=… org=… baseUrl=…`, plus `agent=…` when you have an `AGENT_ID` — a subagent's writes are still this agent's writes, and it cannot read your environment — and `session=…` when you have a `CHAT_SESSION_ID`, so its writes are traced back to the same chat). Its `connect` then satisfies everything at Step 0 and skips Steps 1–4 entirely: no config-file walk, no MCP re-registration, no verify call. Spawning three subagents without passing them down means paying the whole resolve-and-verify round three more times for values you already have.
 
 This skill also registers the **eventmodelers MCP server** for the project (Step 3.5) so other skills can call MCP tools (`mcp__eventmodelers__*`) instead of raw curl. MCP is the preferred transport; curl remains a fallback for hosts without MCP support, or for the one or two endpoints (documented in `learn-eventmodelers-api`) the MCP server doesn't expose.
 
@@ -26,12 +26,14 @@ After running, the following variables are available for the rest of the session
 | `ORG_ID` | — | Organization UUID (used in all board-scoped URLs) |
 | `BASE_URL` | — | Base URL, e.g. `http://localhost:3000` |
 | `AGENT_ID` | `x-agent-id` | This agent process's own id, when running as one (Step 0.5). Optional — skip the header when there is no value. |
+| `CHAT_SESSION_ID` | `x-chat-session-id` | The chat session the current work was made for — a prompt turn's `origin_session_id`, or an inline `session=`. Optional and **per turn**: unlike the values above it changes from one prompt to the next, is never persisted, and is absent for work that did not come from a chat — skip the header then. |
 
 Every curl-fallback call in every skill must include these headers:
 ```
 x-token: <TOKEN>
 x-user-id: <skill-name>   ← set by each skill individually
 x-agent-id: <AGENT_ID>    ← only when AGENT_ID resolved; omit the line entirely otherwise
+x-chat-session-id: <CHAT_SESSION_ID>    ← only on writes for work that came from a chat; omit otherwise
 ```
 
 `x-agent-id` is what makes the board say *which* agent did something: the platform stamps it on
@@ -39,9 +41,15 @@ every change the call writes, so the canvas shows this agent by name (rather tha
 robot standing in for every agent at once), and a prompt a user addressed to one preferred agent
 is only handed to the agent that claims it with that id.
 
+`x-chat-session-id` is what ties a change to the conversation that asked for it: the platform stores
+it on every board event the call writes, so the board's history can show which chat led to each
+change. Only an active session of the call's own board is stored — one that doesn't exist, was
+deleted or belongs to another board is silently dropped and the write goes ahead without it, so
+there is nothing to handle on your side.
+
 All board-scoped URLs follow the pattern: `<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/...`
 
-When calling MCP tools instead, no `x-*` headers are needed per call — the MCP server resolves `ORG_ID` from `TOKEN` itself and every tool takes `boardId` as an explicit argument. (`x-agent-id` rides along with the registered server config from Step 3.5, so MCP writes are attributed too.) See `learn-eventmodelers-api` for the full tool catalog.
+When calling MCP tools instead, no `x-*` headers are needed per call — the MCP server resolves `ORG_ID` from `TOKEN` itself and every tool takes `boardId` as an explicit argument. (`x-agent-id` rides along with the registered server config from Step 3.5, so MCP writes are attributed too.) The chat session can't ride along that way — the server config is fixed for the whole session while `CHAT_SESSION_ID` changes per prompt — so every MCP **write** tool takes an optional `sessionId` argument instead: pass `CHAT_SESSION_ID` there on every write call while you have one, same rules as the header. See `learn-eventmodelers-api` for the full tool catalog.
 
 ---
 
@@ -56,10 +64,11 @@ Before reading the config file, scan the prompt/arguments that invoked this skil
 | `org=<uuid>` | `org=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `baseUrl=<url>` | `baseUrl=http://localhost:3000` |
 | `agent=<uuid>` | `agent=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (the agent id a parent agent hands a subagent, so the subagent's board writes are attributed to the same agent) |
+| `session=<uuid>` | `session=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` (the chat session a parent agent hands a subagent, as `CHAT_SESSION_ID`, so the subagent's writes are traced back to the same chat) |
 
 If an inline `board=<uuid>` is found, use it as `BOARD_ID` — **it takes priority over the config file**. Same for `token`, `org`, `baseUrl`, and `agent` (as `AGENT_ID`, which then makes Step 0.5 a no-op). Record which values came from inline params so they are not overwritten in Step 3.
 
-(`agent=<uuid>` is not one of the four required values — it is optional, and its absence never makes this skill ask anything.)
+(`agent=<uuid>` and `session=<uuid>` are not among the four required values — both are optional, and their absence never makes this skill ask anything. Never persist `session=`: it belongs to the one piece of work it was handed with.)
 
 **`token=$EVENTMODELERS_TOKEN` is an inline token too.** The build and modeling loops pass the env var's *name*, not its value, so the secret never sits in the prompt. Treat it exactly like a literal inline token: `TOKEN` is `$EVENTMODELERS_TOKEN` (it counts toward "all four inline" below). Keep using the reference, never its value — write curl headers as `-H "x-token: $EVENTMODELERS_TOKEN"` (double quotes, so the shell expands it), don't `echo` or print it, and hand it to a subagent as `token=$EVENTMODELERS_TOKEN` (it inherits the same environment). MCP calls need nothing extra — `.mcp.json` already reads the same variable. Never write the reference into a file either: if a later step would persist `TOKEN` (Step 3's `config.json`, Step 3.5's `settings.local.json`), leave the token out — the process that launched you already set the variable, and a file holding the literal `$EVENTMODELERS_TOKEN` text breaks auth for the next session.
 

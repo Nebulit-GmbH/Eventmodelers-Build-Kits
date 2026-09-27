@@ -172,6 +172,8 @@ Every arrow is paired with a comment on the relevant node(s) from 4.1 — the ar
 
 A finding about a single element, or about a cluster, gets a comment only — don't manufacture an arrow for it just to add a drawing.
 
+**Hotspots.** When the user asks for hotspots, or says to mark something as one, that means a red feedback note, not an arrow: `create_drawing` with `kind: "sticky"`, `fill: "#ef4444"`, and `content` = the problem or question, placed right next to the element it concerns. Without `fill` a sticky renders yellow, which doesn't count as a hotspot.
+
 ---
 
 ## Step 5 — Report back to the user

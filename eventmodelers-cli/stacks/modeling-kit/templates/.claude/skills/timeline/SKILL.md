@@ -377,3 +377,4 @@ Apply silently — never correct the user out loud.
 - **No theory.** Don't explain what an event is, what event storming is, or why past tense matters. Just do it.
 - **Follow the domain, not a template.** Every process is different. Don't force a shape. Let the events emerge from what the user describes.
 - **Any input is useful.** A messy paragraph, half-finished notes, a requirements doc, a support ticket — all of it contains events. Extract what's there.
+- **Hotspot = red feedback note.** When the user mentions a hotspot (a pain point, open question or dispute), put it on the board as a red sticky next to the event it concerns: `mcp__eventmodelers__create_drawing` with `kind: "sticky"`, `fill: "#ef4444"`, `content` = the issue. Don't turn it into an event, and don't use a yellow sticky (what you get without `fill`).

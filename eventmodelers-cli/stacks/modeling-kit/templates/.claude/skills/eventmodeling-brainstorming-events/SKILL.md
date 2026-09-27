@@ -252,6 +252,8 @@ An event left without a chapter and cell reference will never appear in any time
 
 **The core move, in brief**: ask participants for any event they can think of, capture everything without filtering first, then gently introduce the state-changing test ("did this actually change something?") to separate real events from actions/notifications/internal checks — see the reference for the full example dialogue and phrasing tips.
 
+**Hotspots**: a "hotspot" (a pain point, open question or disagreement raised during the brainstorm) is a red feedback note, not an event. Place it as a red sticky next to the event it concerns: `mcp__eventmodelers__create_drawing` with `kind: "sticky"`, `fill: "#ef4444"`, `content` = the issue.
+
 ## Workflow
 
 When given domain requirements, perform the following analysis:
