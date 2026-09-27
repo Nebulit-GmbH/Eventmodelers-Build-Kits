@@ -2631,14 +2631,15 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     'way .agent-modeling-kit/CLAUDE-STANDALONE.md describes — read it now if you have not this session, and ' +
     'follow its "Propose mode" section. Read what this needs and no more: every nodeId above in one get_nodes, ' +
     'plus one get_board_outline per chapter you have not read this session. Every change above is by one person, ' +
-    'changed_by, who is talking to you in the chat. ALWAYS post ONE short chat message to them with ' +
-    'post_chat_message (no sessionId, no replyTo, preferUserId = changed_by; at most 1000 characters) — never stay silent after their ' +
-    'edit. A fresh, half-finished element (placeholder name, no ' +
+    'changed_by, who is talking to you in the chat. First check the change is one: if the changed nodes ' +
+    'read the same as before — same names, fields, types and connections, only moved or resized — nothing ' +
+    'changed, so say nothing and reply <promise>NOOP</promise>. Otherwise post ONE short chat message to them with ' +
+    'post_chat_message (no sessionId, no replyTo, preferUserId = changed_by; at most 1000 characters). A fresh, half-finished element (placeholder name, no ' +
     'fields, names still changing) is the reason to speak, not to wait. Something worth doing → say concretely ' +
     'what you would do (element names) and ask whether to go ahead. Nothing concrete → say what you saw and ' +
     'that you are not sure what to do with it, and ask ("You renamed Orders to take — not sure what to do with ' +
     'it yet. Want fields on it?"). Fold anything your earlier unanswered message proposed into this one instead ' +
-    'of repeating it. One to three sentences. Only CHAT_NO_ACTIVE_SESSION (they cleared the conversation or ' +
+    'of repeating it. One to three sentences. Besides a change that changed nothing, only CHAT_NO_ACTIVE_SESSION (they cleared the conversation or ' +
     'switched to another agent) or CHAT_AWAITING_REPLY (you wrote to them less than 3 minutes ago) keep you ' +
     'silent: then change nothing and reply <promise>NOOP</promise>.';
 

@@ -235,7 +235,11 @@ So on a `mode=propose` turn:
    modeling right now, and the moment to offer the next step.
 2. **Change nothing.** No node writes, no board comments, no `create_prompt`, no subagents. The
    fill-in licence above is `mode=act` only.
-3. **Always post one short message** to that person — `post_chat_message` with no `sessionId`, no
+3. **A change that changed nothing gets nothing.** If the changed nodes read the same as before —
+   same names, fields, types and connections, only moved or resized — there is nothing to say:
+   no chat message, reply `<promise>NOOP</promise>`. Never answer a move with "looks the same to
+   me" or by repeating an earlier offer.
+4. **Otherwise post one short message** to that person — `post_chat_message` with no `sessionId`, no
    `replyTo`, and `preferUserId` = the header's `changed_by`. One to three sentences (never over
    1000 characters — the limit for any chat message), the same style as a chat reply:
    - something worth doing → what you would do, element names included, and ask: *"You just added
@@ -244,9 +248,9 @@ So on a `mode=propose` turn:
      *"You renamed Orders to take — not sure what to do with it yet. Want fields on it?"*
    If an earlier message of yours is still unanswered, fold what it proposed into this one rather
    than repeating it or staying quiet.
-4. **Only two things keep you silent**: `CHAT_NO_ACTIVE_SESSION` (they cleared the conversation or
+5. **Besides that, only two things keep you silent**: `CHAT_NO_ACTIVE_SESSION` (they cleared the conversation or
    switched to another agent — never fall back to acting or to a board comment) and
    `CHAT_AWAITING_REPLY` (you wrote to them less than 3 minutes ago). Then reply `<promise>NOOP</promise>`. A turn in which you posted is not a NOOP.
-5. **The yes arrives as a `CHAT` turn.** Read the session: your proposal is the message before
+6. **The yes arrives as a `CHAT` turn.** Read the session: your proposal is the message before
    the answer. On a yes, create the prompts for exactly what you proposed (`create_prompt`,
    `originMessageId` = the yes); on a partial yes, only that part; on a no, acknowledge and drop it.
