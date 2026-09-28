@@ -14,20 +14,21 @@ import {PostgresEventStore} from "@event-driven-io/emmett-postgresql";
 async function startServer() {
 
     const eventStore = await findEventstore()
-    const slicesBase = join(__dirname, 'dist/src/slices');
-    const routesPattern = join(slicesBase, '**/routes{,-*}.js');
+    const toGlobPath = (p: string) => p.split('\\').join('/');
+    const slicesBase = toGlobPath(join(__dirname, 'dist/src/slices'));
+    const routesPattern = `${slicesBase}/**/routes{,-*}.js`;
 
     const routeFiles = await glob(routesPattern, {nodir: true});
     console.log('Found route files:', routeFiles);
 
-    const processorPattern = join(slicesBase, '**/processor{,-*}.js');
+    const processorPattern = `${slicesBase}/**/processor{,-*}.js`;
     const processorFiles = await glob(processorPattern, {nodir: true});
     console.log('Found processor files:', processorFiles);
 
     // Common routes (e.g. projection replay) are privileged/operational and are
     // only mounted when explicitly enabled via env.
     const commonRoutesEnabled = process.env.COMMON_ROUTES_ENABLED === 'true';
-    const commonPattern = join(__dirname, 'src/common/routes{,-*}.@(ts|js)');
+    const commonPattern = `${toGlobPath(join(__dirname, 'src/common'))}/routes{,-*}.@(ts|js)`;
     const commonRouteFiles = commonRoutesEnabled
         ? await glob(commonPattern, {nodir: true})
         : [];
