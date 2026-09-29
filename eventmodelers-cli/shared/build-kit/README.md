@@ -94,7 +94,7 @@ rewriting a full coding agent inside the kit, so it is left out on purpose.
 
 ```bash
 npx @eventmodelers/cli run --exec "codex exec --oss --json --full-auto"   # Codex on local Ollama
-npx @eventmodelers/cli run --exec "opencode run --auto --format json"     # OpenCode, with an Ollama/vLLM/LM Studio provider in its config
+npx @eventmodelers/cli run --exec "opencode run --standalone --auto --format json"     # OpenCode, with an Ollama/vLLM/LM Studio provider in its config
 ```
 
 Or keep Claude Code as the builder and point `anthropicBaseUrl` at a local endpoint that
@@ -126,20 +126,28 @@ known ones have a shortcut that fills in the command, JSON flag for agent tracin
 (bare `--agent` lists them):
 
 ```bash
-npx @eventmodelers/cli run --agent opencode   # = --exec "opencode run --auto --format json"
+npx @eventmodelers/cli run --agent opencode   # = --exec "opencode run --standalone --auto --format json"
 npx @eventmodelers/cli run --agent codex      # = --exec "codex exec --json --full-auto"
 npx @eventmodelers/cli run --agent gemini     # = --exec "gemini --yolo --output-format stream-json -p"
 ```
+
+Add `--model <id>` to pick the model — it becomes the harness's `-m <id>`
+(`run --agent opencode --model opencode/big-pickle`); on the default Claude runner it
+overrides `model` from config for that run.
 
 `--exec` is the manual fallback: any other harness, or one of these with other flags:
 
 ```bash
 npx @eventmodelers/cli run --exec "codex exec --full-auto"
-npx @eventmodelers/cli run --exec "opencode run"
+npx @eventmodelers/cli run --exec "opencode run --standalone --auto"   # --standalone: see below
 
 # …or persist it and use the bare flag
 RALPH_EXEC_CMD="codex exec --full-auto" node .build-kit/ralph-exec.js
 ```
+
+Run OpenCode with `--standalone`: a plain `opencode run` hands the turn to OpenCode's shared
+background service, which was started with another environment and never sees the variables
+this runner sets (`EVENTMODELERS_TOKEN`, `RALPH_PROMPT_FILE`, …).
 
 The prompt is appended to the command as one shell-quoted argument, and is also written
 to a temp file named by `RALPH_PROMPT_FILE` for commands that prefer to read it. The
@@ -154,7 +162,7 @@ so without the flag a turn is not traced (the runner logs a hint). Add the flag 
 
 ```bash
 npx @eventmodelers/cli run --exec "codex exec --json --full-auto"
-npx @eventmodelers/cli run --exec "opencode run --auto --format json"
+npx @eventmodelers/cli run --exec "opencode run --standalone --auto --format json"
 npx @eventmodelers/cli run --exec "gemini --yolo --output-format stream-json -p"
 ```
 

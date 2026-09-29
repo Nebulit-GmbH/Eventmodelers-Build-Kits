@@ -20,6 +20,7 @@
 import { startRalph, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
 import { createSliceTracer, usageFromHarnessEvent, sumUsage } from './lib/tracing.js';
 import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
+import { registerMcp, shellQuote } from './lib/mcp-register.js';
 import { spawn } from 'child_process';
 import { writeFileSync, mkdtempSync } from 'fs';
 import { tmpdir } from 'os';
@@ -33,9 +34,9 @@ const cfg = loadLocalConfig(kitDir);
 const localOnly = process.env.RALPH_LOCAL === '1';
 // Same as ralph-claude.js: childEnv is built at load time, before startRalph resolves identity.
 Object.assign(cfg, resolveAgentIdentity(kitDir, 'BUILD', cfg));
-const execCmd = process.env.RALPH_EXEC_CMD || cfg.localAi?.exec;
+const configuredCmd = process.env.RALPH_EXEC_CMD || cfg.localAi?.exec;
 
-if (!execCmd) {
+if (!configuredCmd) {
   console.error('[ralph-exec] No agent command configured.');
   console.error('  Set one for this run: eventmodelers run --exec "codex exec --full-auto"');
   console.error('  Or persist a default as localAi.exec in .eventmodelers/config.json');
@@ -68,12 +69,10 @@ const tracer = createSliceTracer({
 
 const promptDir = mkdtempSync(join(tmpdir(), 'ralph-exec-'));
 
-// POSIX single-quote escaping: close, insert an escaped quote, reopen. The prompt is
-// multi-line Markdown with backticks and $ in it, so it cannot go in unquoted.
-function shellQuote(s) {
-  return `'${String(s).replace(/'/g, `'\\''`)}'`;
-}
-
+// A known harness (OpenCode, Gemini, Codex) learns about the eventmodelers MCP server here, with the
+// platform URL from the config — rewritten every run so a changed baseUrl never goes stale. A local-only
+// run has no platform to register, and an unknown command is left to the skills' REST fallback.
+const execCmd = localOnly ? configuredCmd : registerMcp(configuredCmd, projectDir, cfg.baseUrl, (line) => console.log(`[ralph-exec] ${line}`)).command;
 console.log(`[ralph-exec] command: ${execCmd}`);
 
 // Parses a harness's stdout for usage while still passing it through. Most harnesses emit JSONL;

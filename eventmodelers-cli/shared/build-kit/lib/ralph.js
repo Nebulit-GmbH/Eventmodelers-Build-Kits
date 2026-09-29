@@ -89,6 +89,17 @@ function* configCandidates(kitDir) {
   yield join(homedir(), '.eventmodelers', 'config.json');
 }
 
+const ENV_CONFIG_MAP = {
+  EVENTMODELERS_ORGANIZATION_ID: 'organizationId',
+  EVENTMODELERS_BOARD_ID: 'boardId',
+  EVENTMODELERS_TOKEN: 'token',
+  EVENTMODELERS_BASE_URL: 'baseUrl',
+  EVENTMODELERS_ANTHROPIC_BASE_URL: 'anthropicBaseUrl',
+  EVENTMODELERS_MODEL: 'model',
+  EVENTMODELERS_SUBAGENT_MODEL: 'subagentModel',
+  EVENTMODELERS_AGENT_NAME: 'agentName',
+};
+
 function loadLocalConfig(kitDir) {
   const merged = {};
   const sources = [];
@@ -109,6 +120,11 @@ function loadLocalConfig(kitDir) {
     if (hasCredentials(merged)) break;
   }
 
+  // EVENTMODELERS_* env vars win over any config.json, as they do for the CLI's own commands —
+  // a container gets its credentials this way, and a stale file in a mounted project must not beat them.
+  for (const [envVar, field] of Object.entries(ENV_CONFIG_MAP)) {
+    if (process.env[envVar]) merged[field] = process.env[envVar];
+  }
   if (process.env.BASE_URL) merged.baseUrl = process.env.BASE_URL;
   else if (!merged.baseUrl) merged.baseUrl = 'https://api.eventmodelers.ai';
 

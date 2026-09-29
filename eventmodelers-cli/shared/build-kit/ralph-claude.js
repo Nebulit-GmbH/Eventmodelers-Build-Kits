@@ -40,7 +40,9 @@ const timeoutMs = turnTimeoutMs(cfg);
 const verbose = process.env.RALPH_VERBOSE === '1';
 
 const claudeArgs = ['--dangerously-skip-permissions', '--output-format', 'stream-json', '--verbose'];
-if (cfg.model) claudeArgs.push('--model', cfg.model);
+// RALPH_MODEL is `eventmodelers run --model` — one run's choice, over the configured `model`.
+const model = process.env.RALPH_MODEL || cfg.model;
+if (model) claudeArgs.push('--model', model);
 const claudeEnv = {
   ...process.env,
   ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),

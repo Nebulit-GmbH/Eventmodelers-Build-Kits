@@ -48,12 +48,17 @@ test('the harness is recognised by name, path or npx package', () => {
 test('opencode: the server is added to opencode.json, the rest of the file kept', () => {
   const dir = freshDir();
   writeFileSync(join(dir, 'opencode.json'), JSON.stringify({ model: 'x/y', mcp: { other: { type: 'local' } } }));
-  assert.deepEqual(registerMcp('opencode run', dir, BASE, () => {}), { command: 'opencode run', registered: true });
+  assert.deepEqual(registerMcp('opencode run', dir, BASE, () => {}), { command: 'opencode run --standalone', registered: true });
   const config = readJson(join(dir, 'opencode.json'));
   assert.equal(config.model, 'x/y');
   assert.deepEqual(config.mcp.other, { type: 'local' });
   assert.equal(config.mcp.eventmodelers.url, `${BASE}/mcp`);
   assert.equal(config.mcp.eventmodelers.headers['x-token'], '{env:EVENTMODELERS_TOKEN}');
+});
+
+test('opencode: a command that already picks its server is run as given', () => {
+  assert.equal(registerMcp('opencode run --standalone --auto', freshDir(), BASE, () => {}).command, 'opencode run --standalone --auto');
+  assert.equal(registerMcp('opencode run --server http://x', freshDir(), BASE, () => {}).command, 'opencode run --server http://x');
 });
 
 test('opencode: a file already in the mcp.servers form gets the server there', () => {

@@ -1,4 +1,5 @@
-.idea
-
-.eventmodelers/
 node_modules
+.idea
+.eventmodelers
+.eventmodelers/
+.claude/settings.local.json

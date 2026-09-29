@@ -129,6 +129,7 @@ npx @eventmodelers/cli re-init                      # refresh an already-install
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
 npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
@@ -199,19 +200,31 @@ instead of the warm Claude process — one process per turn, with the eventmodel
 registered for it (`opencode.json`, `.gemini/settings.json`, or `-c` flags for Codex):
 
 ```bash
-npx @eventmodelers/cli run --standalone --agent opencode   # = --exec "opencode run"
+npx @eventmodelers/cli run --standalone --agent opencode   # = --exec "opencode run --standalone --auto"
 npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exec --full-auto"
 npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
 npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
+npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
 npx @eventmodelers/cli run --agent                         # list the agents and the command each runs
 ```
 
 `--agent` is only a shortcut: to run a harness it does not know, or the same one with other
 flags, pass the command yourself with `--exec "<command>"`. Keep the harness in its plain-text
-output mode — its stdout is the turn's answer. For an unknown command the loop logs the MCP
+output mode — its stdout is the turn's answer. For OpenCode the loop adds `--standalone` if you
+leave it out — a plain `opencode run` goes to OpenCode's shared background service, which never
+sees `$EVENTMODELERS_TOKEN`, so every eventmodelers tool fails to authenticate. For an unknown command the loop logs the MCP
 server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELERS_TOKEN`).
 Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
 `.claude/skills`. There are no subagents: self-directed work is done inline.
+
+**In a container.** `docker/<agent>/Dockerfile` runs the modeling agent for one coding agent
+(so far `docker/opencode`). Build from this directory and pass the board's credentials as env vars:
+
+```bash
+docker build -f docker/opencode/Dockerfile -t eventmodelers-agent-opencode .
+docker run --rm -e EVENTMODELERS_TOKEN=... -e EVENTMODELERS_ORGANIZATION_ID=... -e EVENTMODELERS_BOARD_ID=... \
+  -e OPENCODE_API_KEY=... eventmodelers-agent-opencode --model opencode/big-pickle
+```
 
 `--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
 any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.

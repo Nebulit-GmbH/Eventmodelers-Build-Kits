@@ -76,7 +76,10 @@ function resolveLocalAiTarget(opts) {
 // --exec stays the fallback for any harness or flag set not listed here.
 const AGENT_PRESETS = {
   claude: null,
-  opencode: { modeling: 'opencode run', build: 'opencode run --auto --format json' },
+  // --standalone: a plain `opencode run` hands the turn to opencode's shared background service,
+  // started with some other env — so the MCP header's {env:EVENTMODELERS_TOKEN} resolves to nothing
+  // there and every eventmodelers tool fails to authenticate. A private server inherits ours.
+  opencode: { modeling: 'opencode run --standalone --auto', build: 'opencode run --standalone --auto --format json' },
   codex: { modeling: 'codex exec --full-auto', build: 'codex exec --json --full-auto' },
   gemini: { modeling: 'gemini --yolo -p', build: 'gemini --yolo --output-format stream-json -p' },
 };
@@ -1916,7 +1919,7 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null } = {}) {
+async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -1935,7 +1938,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // run (resolveModelingCredentials) and handed over whole. Walking the filesystem here
   // would also print loadLocalConfig's "no config found — platform sync disabled" note,
   // which is exactly backwards when a complete config was just passed in.
-  const local = overrides ? { ...overrides } : loadLocalConfig(kitDir);
+  const local = overrides ? { ...overrides } : applyEnvOverrides(loadLocalConfig(kitDir));
   // The global install's overrides carry their own agent id, kept per board in
   // ~/.eventmodelers/boards/<board>.json — one dir driving several boards must not have
   // them all upsert one shared alive row. A project install keeps its id in the project
@@ -1951,7 +1954,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
   // The identity flags go on last: the global install's `overrides` carry the agent id
   // resolveModelingCredentials just minted for this run, which would otherwise win back over
   // an explicit --id.
-  const cfg = { ...(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
+  const cfg = { ...applyEnvOverrides(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}), ...(model ? { model } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -3563,6 +3566,7 @@ credentialFlags(program
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
   .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec, --local-ai and --bash.`)
+  .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
@@ -3587,6 +3591,22 @@ credentialFlags(program
     // --agent is --exec with the command filled in for the loop this run picks.
     const agentExec = resolveAgentPreset(opts, (opts.modeling || opts.standalone || opts.worker || opts.global) ? 'modeling' : 'build');
     if (agentExec) opts.exec = agentExec;
+    // --model: one flag, spelled the way each runner takes it. A hand-written --exec command is
+    // the one place it can't go — where the model flag goes in an unknown command is the author's.
+    const model = opts.model === undefined ? null : String(opts.model).trim();
+    if (model === '') {
+      console.error('❌ --model needs a non-empty value.');
+      process.exit(1);
+    }
+    if (model && opts.exec && !agentExec) {
+      console.error('❌ --model does not apply to --exec — put the harness\'s own model flag in the command (e.g. --exec "opencode run --standalone -m <id>"), or use --agent.');
+      process.exit(1);
+    }
+    if (model && agentExec) opts.exec = `${agentExec} -m '${model.replace(/'/g, `'\\''`)}'`;
+    else if (model && resolveLocalAiTarget(opts) !== null) process.env.LOCAL_AI_MODEL = model;
+    // The default Claude runner: the build kit's ralph-claude.js reads RALPH_MODEL from the env it
+    // inherits; the modeling loop takes it as runModeling's `model`.
+    else if (model) process.env.RALPH_MODEL = model;
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
     }
@@ -3697,7 +3717,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null });
+        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

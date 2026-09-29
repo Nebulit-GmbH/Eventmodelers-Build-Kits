@@ -1,0 +1,11 @@
+# Credentials are passed at `docker run` time, never stored here.
+.env
+.env.*
+*.env
+.eventmodelers/
+opencode.json
+.npmrc
+.yarnrc*
+.netrc
+*.pem
+*.key
