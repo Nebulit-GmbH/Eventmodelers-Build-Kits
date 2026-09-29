@@ -1,9 +1,9 @@
 # Build agent for the node stack, driven by OpenCode: takes Planned slices from the board and builds them into /workspace.
 #
-#   docker build -f docker/build-with-node/Dockerfile -t nebulit/em-studio-buildkit-node .
+#   docker build -f docker/build-with-opencode-node/Dockerfile -t nebulit/em-studio-buildkit-opencode-node .
 #   docker run --rm -v "$PWD:/workspace" \
 #     -e EVENTMODELERS_TOKEN=... -e EVENTMODELERS_ORGANIZATION_ID=... -e EVENTMODELERS_BOARD_ID=... \
-#     nebulit/em-studio-buildkit-node --model opencode/big-pickle
+#     nebulit/em-studio-buildkit-opencode-node --model opencode/big-pickle
 #
 # /workspace is the project — mount your git checkout there, the code is built into it. The stack's
 # build kit is installed on first start when the checkout has none (STACK, default node).
@@ -16,7 +16,11 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g opencode-ai
+# OpenCode 2.x from its v2 installer, not npm or the v1 installer: `run --standalone` (which the CLI's
+# opencode preset passes) doesn't exist in the 1.x line that both of those still ship.
+RUN curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path \
+ && cp /root/.opencode/bin/opencode /usr/local/bin/opencode \
+ && opencode run --help | grep -q -- --standalone
 
 WORKDIR /opt/eventmodelers-cli
 COPY package.json package-lock.json ./
@@ -27,7 +31,7 @@ COPY shared ./shared
 COPY stacks ./stacks
 RUN npm link
 
-COPY docker/build-with-node/entrypoint.sh /usr/local/bin/build-agent-entrypoint
+COPY docker/build-with-opencode-node/entrypoint.sh /usr/local/bin/build-agent-entrypoint
 RUN chmod +x /usr/local/bin/build-agent-entrypoint \
  && mkdir /workspace && chown node:node /workspace
 USER node

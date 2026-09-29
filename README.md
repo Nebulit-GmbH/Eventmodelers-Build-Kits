@@ -1,34 +1,67 @@
-# Eventmodelers Build Kits
+# Node.js / TypeScript Event-Sourced Service
 
-[`eventmodelers-cli`](./eventmodelers-cli) connects an [Eventmodelers](https://eventmodelers.ai) board to an autonomous coding agent that picks up slice status changes, implements the code, and marks work done — for any of the stacks below.
+An event-sourced backend scaffolded by [`@eventmodelers/cli`](https://www.npmjs.com/package/@eventmodelers/cli).
+It uses [Emmett](https://event-driven-io.github.io/emmett/) over Postgres for the event store,
+Express for the HTTP layer, and Flyway for schema migrations.
 
-```bash
-npx @eventmodelers/cli init --stack node
-```
+Features are built as **vertical slices** under `src/slices/`, generated from the slices on your
+Eventmodelers board by the agent in `.build-kit/`.
 
-Add `--demo` to install a ready-made 16-slice example model alongside the scaffold, so the agent has something to build before you connect a board of your own.
+## Prerequisites
 
-## Official stacks
+- Node.js 20 or later (the dev/start scripts use `node --env-file`)
+- Docker and Docker Compose (for local Postgres)
+- Flyway CLI on your `PATH` (for `npm run flyway:migrate`)
+- [Claude Code](https://claude.com/claude-code) if you want to run the build agent
 
-| Stack key | Stack |
-|-----|-------|
-| `node` | Node.js / TypeScript |
-| `supabase` | Supabase |
-| `axon` | Axon Framework (Java/Kotlin) |
-| `umadb` | UmaDB (Java) |
+## Getting started
 
-Not a stack, but also built in: `npx @eventmodelers/cli init-modeling` installs skills + the agent loop only, with no backend scaffold.
+1. Start Postgres:
 
-Previously these shipped as separate npm packages (`build-kit-node`, `build-kit-axon`, `build-kit-supabase`, `agent-modeling-kit`) with near-duplicated installer code. They're now templates inside the single `eventmodelers-cli` package — see [`eventmodelers-cli/README.md`](./eventmodelers-cli/README.md).
+   ```bash
+   docker compose up -d
+   ```
 
-## Unofficial / community kits
+2. Create your `.env`:
 
-These are not maintained in this repo and follow no guaranteed structure — link only, use at your own judgment.
+   ```bash
+   cp .env.example .env
+   ```
 
-| Stack | Repo | Notes |
-|-------|------|-------|
-| .NET | [Powerworks/K9DatingApp](https://github.com/Powerworks/K9DatingApp/) | Community reference for event modeling in .NET; not adapted to the build-kit skill/installer pattern used by the official kits above. |
-| .NET / C# | [Cratis/Eventmodelers-Build-Kit-CSharp](https://github.com/Cratis/Eventmodelers-Build-Kit-CSharp) | Maintained by the Cratis team. Builds board slices as Cratis (Arc + Chronicle) vertical slices in a .NET/C# project; `dotnet build` / `dotnet test` as the check. Install: `npx @eventmodelers/cli init --stack cratis-csharp --git https://github.com/Cratis/Eventmodelers-Build-Kit-CSharp`. |
-| Java | [Cratis/Eventmodelers-Build-Kit-Java](https://github.com/Cratis/Eventmodelers-Build-Kit-Java) | Maintained by the Cratis team. Builds board slices as Cratis (Chronicle) vertical slices in a Java project; `./gradlew build` / `./gradlew test` as the check. Install: `npx @eventmodelers/cli init --stack cratis-java --git https://github.com/Cratis/Eventmodelers-Build-Kit-Java`. |
-| Kotlin | [Cratis/Eventmodelers-Build-Kit-Kotlin](https://github.com/Cratis/Eventmodelers-Build-Kit-Kotlin) | Maintained by the Cratis team. Builds board slices as Cratis (Arc + Chronicle) vertical slices in a Kotlin project; `./gradlew build` / `./gradlew test` as the check. Install: `npx @eventmodelers/cli init --stack cratis-kotlin --git https://github.com/Cratis/Eventmodelers-Build-Kit-Kotlin`. |
-| Rust | [gklijs/skilj-build-kit](https://github.com/gklijs/skilj-build-kit) | Built on [skilj](https://github.com/gklijs/skilj), the author's own Postgres-backed event-sourcing library using DCB (Dynamic Consistency Boundary) instead of classic aggregates. Follows the build-kit skill/installer pattern (four Claude Code skills for the usual slice shapes) — same approach as the official kits. Install: `npx @eventmodelers/cli init --stack skilj --git https://github.com/gklijs/skilj-build-kit`. |
+   Or run `./setup-env.sh` to be prompted for host, port, database, user and password.
+
+3. Activate the baseline migration and apply it:
+
+   ```bash
+   mv migrations/V1__schema.sql.example migrations/V1__schema.sql
+   npm install
+   npm run flyway:migrate
+   ```
+
+   `V1__schema.sql` creates the processor dead-letter queue table the runtime expects. Add your own
+   `V2__*.sql`, `V3__*.sql` and so on as slices introduce projections.
+
+4. Run the server:
+
+   ```bash
+   npm run build   # slice routes and processors are loaded from dist/
+   npm run dev
+   ```
+
+The API is on http://localhost:3000, with Swagger UI at http://localhost:3000/api-docs and the raw
+OpenAPI document at http://localhost:3000/swagger.json.
+
+## Scripts
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Start the server locally with `.env` loaded |
+| `npm run build` | Compile TypeScript to `dist/` |
+| `npm start` | Start in production mode |
+| `npm test` | Run `src/**/*.test.ts` via `tsx --test` |
+| `npm run flyway:migrate` | Apply pending migrations from `migrations/` |
+
+## Learn more
+
+- [Eventmodelers](https://eventmodelers.ai)
+- [Emmett documentation](https://event-driven-io.github.io/emmett/)
