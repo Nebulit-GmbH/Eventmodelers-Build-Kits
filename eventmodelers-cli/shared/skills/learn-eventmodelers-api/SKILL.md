@@ -124,7 +124,6 @@ MODEL_CONTEXT  // Context/domain modeling container
 CHAPTER        // Timeline/sequence container — a "chapter" IS a timeline (chapterId === timelineId); the terms are used interchangeably across the API
 ACTOR          // System participant (swimlane label)
 AUTOMATION     // Automated action
-API            // External service
 SCREEN         // UI screen
 COMMAND        // State-changing operation
 EVENT          // Domain event

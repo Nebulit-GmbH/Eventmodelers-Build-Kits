@@ -91,7 +91,7 @@ For each group, create a chapter on the board **before placing any events**. Reu
 
 **Prefer MCP — create a chapter:**
 ```
-mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "x": 0, "y": 1200, "columns": <numberOfEventsInGroup> }
+mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "columns": <numberOfEventsInGroup> }
 ```
 (`x`/`y` are optional — see the vertical-stacking note below. `columns` is optional too — the group's event count is already known at this point, so pass it here to create the chapter with exactly the columns this group needs, instead of the default 3 plus a follow-up `add_column` batch. Response includes the new `timelineId` and `columnIds` — one id per column, left to right, ready to use directly in Step A below.)
 
@@ -115,11 +115,11 @@ mcp__eventmodelers__submit_node_events {
 **Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Create one chapter per group — set its title".
 
 **Stack timelines vertically so they do not overlap, and in general place new chapters close to existing ones they relate to.**
-After creating each chapter, position it below the previous one. Use `y = index * 1200` (0-based creation order), `x = 0`. If existing chapters are already on the board, query their positions first. Prefer placing the new chapter directly below the existing chapter it is most closely related to (e.g. the same bounded context or an adjacent workflow), rather than mechanically appending below the lowest one — this keeps related chapters visually near each other on the canvas. Only fall back to `y = maxExistingY + 1200` when no related chapter exists yet. Pass this directly as `x`/`y` on `create_chapter` above, or reposition an existing chapter with:
+Omit `x`/`y` on `create_chapter`: the backend stacks the new chapter below the lowest existing one, using each chapter's real current size plus a generous gap, so titles never overlap. Do not use a fixed offset like `index * 1200` — chapters are taller than that. Only pass a position to put a chapter elsewhere; if the box overlaps an existing chapter the backend moves it below everything. Prefer placing the new chapter directly below the existing chapter it is most closely related to (e.g. the same bounded context or an adjacent workflow), rather than mechanically appending below the lowest one — this keeps related chapters visually near each other on the canvas. Otherwise leave the position to the backend. To place next to a related chapter, read `get_chapter_bounds` and use `y = related.y + related.height + 600`, or reposition an existing chapter with:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__move_timeline_position { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "x": 0, "y": 1200 }
+mcp__eventmodelers__move_timeline_position { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "x": 0, "y": <y> }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Reposition an existing chapter".
@@ -426,6 +426,6 @@ Include error and boundary conditions:
 - [ ] Events group into at least one recognizable business process flow
 - [ ] No overlapping event semantics — two events don't mean the same thing
 - [ ] Every event is placed into a **named chapter** — no event left in an untitled or default timeline
-- [ ] **Multiple chapters are stacked vertically** (y offset of 1200 per chapter) — no two chapters overlap on the canvas
+- [ ] **Multiple chapters are stacked vertically** (auto-stacked by the backend) — no two chapters overlap on the canvas
 - [ ] No unnecessary swimlanes created — a swimlane exists only to mark integration with another system; never added for a new actor, a new role, or visual grouping
 - [ ] **When a second (external-system) swimlane exists, events follow one continuous story from this chapter's own swimlane throughout** — the external swimlane only ever holds isolated single-column handovers, never a run of its own, and the story resumes in this chapter's swimlane immediately after each one
