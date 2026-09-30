@@ -2,7 +2,7 @@ name: Release CLI + agent images
 
 # Pushing a version tag (v1.2.3) publishes two things from the same commit:
 #   1. the @eventmodelers/cli npm package
-#   2. the agent docker images, to ghcr.io/nebulit-gmbh (multi-arch: amd64 + arm64)
+#   2. the agent docker images, to Docker Hub, docker.io/nebulit (multi-arch: amd64 + arm64)
 #
 # The tag must equal package.json's version (v1.0.98 <-> "1.0.98"), so the package, the images
 # and the git tag can never disagree. Bump the version and commit before tagging.
@@ -11,9 +11,8 @@ name: Release CLI + agent images
 #
 # Secrets (repo settings):
 #   NPM_TOKEN — an npm automation token allowed to publish @eventmodelers/cli
-# The images use the built-in GITHUB_TOKEN: this repo lives in the Nebulit-GmbH org, the same
-# namespace the images are pushed to. Packages are private on first push — flip them to public
-# in the org's package settings once if the images should be pullable without a login.
+#   DOCKERHUB_USERNAME / DOCKERHUB_TOKEN — a Docker Hub user and an access token with
+#     read/write on the nebulit namespace. Repositories are created public on first push.
 #
 # arm64 builds on the native ubuntu-24.04-arm runner, not under QEMU (see the platform repo's
 # publish-images.yml: emulated builds hang silently). Each image/platform pair is built, scanned
@@ -24,8 +23,8 @@ on:
       - "v*.*.*"
 
 env:
-  REGISTRY: ghcr.io
-  OWNER: nebulit-gmbh
+  REGISTRY: docker.io
+  OWNER: nebulit
 
 jobs:
   test:
@@ -95,7 +94,6 @@ jobs:
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
-      packages: write
     env:
       IMAGE: ${{ matrix.image.name }}
     steps:
@@ -111,8 +109,8 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Build into the local daemon first so the credential scan runs on exactly what gets pushed.
       # The push build below reuses every layer from the cache.
@@ -159,7 +157,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -180,8 +177,8 @@ jobs:
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v3
 

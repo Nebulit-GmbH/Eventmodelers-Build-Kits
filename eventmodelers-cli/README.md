@@ -734,7 +734,7 @@ The workflow then:
 | `images` | Builds the six agent images for `linux/amd64` and `linux/arm64`, **scans each for credentials** (`.github/scripts/scan-image.sh`), and only then pushes it |
 | `merge` | Combines the two architectures into one multi-arch image per name, tagged `:<tag>` and `:latest` |
 
-Images land in `ghcr.io/nebulit-gmbh/`: `eventmodelers-agent-claude`, `eventmodelers-agent-opencode`, and `em-studio-buildkit-{claude,opencode}-{node,java}`. They run the CLI from the tagged checkout, not from npm, so they don't wait on the npm publish.
+Images land in `docker.io/nebulit/`: `eventmodelers-agent-claude`, `eventmodelers-agent-opencode`, and `em-studio-buildkit-{claude,opencode}-{node,java}`. They run the CLI from the tagged checkout, not from npm, so they don't wait on the npm publish.
 
 **One-time setup:** an `NPM_TOKEN` repo secret (an npm automation token allowed to publish `@eventmodelers/cli`). The images push with the built-in `GITHUB_TOKEN`; new GHCR packages start private, so make them public in the org's package settings if they should be pullable without a login.
 
