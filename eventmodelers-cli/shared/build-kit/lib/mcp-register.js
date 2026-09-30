@@ -1,8 +1,9 @@
-// Registers the eventmodelers MCP server with an external agent harness (OpenCode, Gemini, Codex),
+// Registers the eventmodelers MCP server with an external agent harness (OpenCode, Gemini, Codex, Hermes),
 // for both loops that hand turns to one: the modeling loop (lib/modeling-exec.js) and the build
 // loop (ralph-exec.js).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { homedir } from 'os';
 import { dirname, join } from 'path';
 
 // POSIX single-quote escaping: close, insert an escaped quote, reopen. A turn is multi-line
@@ -60,6 +61,18 @@ const MCP_REGISTRATIONS = {
     });
     return { command, file: ok ? '.gemini/settings.json' : null, manual: ok ? null : `add mcpServers.eventmodelers = ${JSON.stringify(entry)} to .gemini/settings.json` };
   },
+  // Hermes reads MCP servers from ~/.hermes/config.yaml only (there is no project-level file), so
+  // this never writes it — a user-wide file is not ours to rewrite. It reports the server as
+  // registered when the file already names it (the docker images ship it), and says what to add otherwise.
+  hermes: (command, _projectDir, url) => {
+    const file = join(process.env.HERMES_HOME || join(homedir(), '.hermes'), 'config.yaml');
+    const has = existsSync(file) && /^\s+eventmodelers:/m.test(readFileSync(file, 'utf8'));
+    return {
+      command,
+      file: null,
+      manual: has ? null : `add to ${file}:\nmcp_servers:\n  eventmodelers:\n    url: "${url}"\n    headers:\n      x-token: "\${EVENTMODELERS_TOKEN}"`,
+    };
+  },
   codex: (command, _projectDir, url) => ({
     // -c values are TOML; env_http_headers names the env var each header is read from.
     command: `${command} -c ${shellQuote(`mcp_servers.eventmodelers.url="${url}"`)} -c ${shellQuote('mcp_servers.eventmodelers.env_http_headers={x-token="EVENTMODELERS_TOKEN",x-agent-id="EVENTMODELERS_AGENT_ID"}')}`,
@@ -89,7 +102,7 @@ export function registerMcp(command, projectDir, baseUrl, log) {
     return { command, registered: false };
   }
   const reg = MCP_REGISTRATIONS[harness](command, projectDir, url);
-  if (reg.manual) log(`MCP: could not update the ${harness} config (not plain JSON) — ${reg.manual}`);
+  if (reg.manual) log(`MCP: could not update the ${harness} config${harness === 'hermes' ? '' : ' (not plain JSON)'} — ${reg.manual}`);
   else log(`MCP: eventmodelers registered for ${harness}${reg.file ? ` in ${reg.file}` : ' via -c flags'}`);
   return { command: reg.command, registered: !reg.manual };
 }

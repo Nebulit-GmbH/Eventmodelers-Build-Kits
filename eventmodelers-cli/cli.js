@@ -82,6 +82,9 @@ const AGENT_PRESETS = {
   opencode: { modeling: 'opencode run --standalone --auto', build: 'opencode run --standalone --auto --format json' },
   codex: { modeling: 'codex exec --full-auto', build: 'codex exec --json --full-auto' },
   gemini: { modeling: 'gemini --yolo -p', build: 'gemini --yolo --output-format stream-json -p' },
+  // -q takes the prompt, so the preset ends with it (the --model flag is inserted before it, below).
+  // -Q is the plain-text mode a modeling turn reads its answer from; --format stream-json is the build kit's.
+  hermes: { modeling: 'hermes chat --yolo -Q -q', build: 'hermes chat --yolo --format stream-json -q' },
 };
 
 function printAgentPresets() {
@@ -3630,7 +3633,11 @@ credentialFlags(program
       console.error('❌ --model does not apply to --exec — put the harness\'s own model flag in the command (e.g. --exec "opencode run --standalone -m <id>"), or use --agent.');
       process.exit(1);
     }
-    if (model && agentExec) opts.exec = `${agentExec} -m '${model.replace(/'/g, `'\\''`)}'`;
+    if (model && agentExec) {
+      const modelFlag = `-m '${model.replace(/'/g, `'\\''`)}'`;
+      // A trailing -q takes the prompt as its value, so the model flag has to come before it.
+      opts.exec = agentExec.endsWith(' -q') ? `${agentExec.slice(0, -3)}${modelFlag} -q` : `${agentExec} ${modelFlag}`;
+    }
     else if (model && resolveLocalAiTarget(opts) !== null) process.env.LOCAL_AI_MODEL = model;
     // The default Claude runner: the build kit's ralph-claude.js reads RALPH_MODEL from the env it
     // inherits; the modeling loop takes it as runModeling's `model`.

@@ -217,8 +217,8 @@ server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELE
 Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
 `.claude/skills`. There are no subagents: self-directed work is done inline.
 
-**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode and Codex all installed;
-`AGENT` (`claude` by default, `opencode` or `codex`) picks which one runs. Build from this directory and pass the board's
+**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode, Codex, Gemini CLI and Hermes all installed;
+`AGENT` (`claude` by default, or `opencode`, `codex`, `gemini`, `hermes`) picks which one runs. Build from this directory and pass the board's
 credentials as env vars:
 
 ```bash
@@ -231,6 +231,10 @@ docker run --rm -e AGENT=codex -e OPENAI_API_KEY \
 Claude authenticates with `ANTHROPIC_API_KEY`, or with your subscription via `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token`
 once). The container is the sandbox, so the image sets `EVENTMODELERS_CODEX_NO_SANDBOX=1`, which makes the `codex` preset run
 `--dangerously-bypass-approvals-and-sandbox` instead of `--full-auto`.
+
+Keys: `OPENAI_API_KEY` (codex), `GEMINI_API_KEY` (gemini), and for Hermes a provider key such as `OPENROUTER_API_KEY`. Hermes reads MCP
+servers only from `~/.hermes/config.yaml`, so the images ship the eventmodelers server there (env references, no secret); outside
+Docker the CLI logs the snippet to add. Run `hermes` in a container as `-e AGENT=hermes --model <provider/model>`.
 
 `--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
 any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.

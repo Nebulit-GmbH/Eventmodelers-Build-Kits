@@ -101,3 +101,17 @@ test('an unknown command runs as given, with a hint to register by hand', () => 
   assert.deepEqual(registerMcp('my-agent go', freshDir(), BASE, (l) => lines.push(l)), { command: 'my-agent go', registered: false });
   assert.match(lines.join('\n'), /register the eventmodelers MCP server with it yourself: https:\/\/api\.example\.test\/mcp/);
 });
+
+test('hermes: never writes its user-wide config; registered only when it already names the server', () => {
+  const home = freshDir();
+  process.env.HERMES_HOME = home;
+  try {
+    const lines = [];
+    assert.equal(registerMcp('hermes chat --yolo -Q -q', freshDir(), BASE, (l) => lines.push(l)).registered, false);
+    assert.match(lines.join('\n'), /mcp_servers:\n  eventmodelers:/);
+    writeFileSync(join(home, 'config.yaml'), 'mcp_servers:\n  eventmodelers:\n    url: "x"\n');
+    assert.equal(registerMcp('hermes chat --yolo -Q -q', freshDir(), BASE, () => {}).registered, true);
+  } finally {
+    delete process.env.HERMES_HOME;
+  }
+});
