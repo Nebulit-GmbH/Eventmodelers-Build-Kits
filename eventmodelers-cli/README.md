@@ -217,14 +217,20 @@ server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELE
 Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
 `.claude/skills`. There are no subagents: self-directed work is done inline.
 
-**In a container.** `docker/<agent>/Dockerfile` runs the modeling agent for one coding agent
-(so far `docker/opencode`). Build from this directory and pass the board's credentials as env vars:
+**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode and Codex all installed;
+`AGENT` (`claude` by default, `opencode` or `codex`) picks which one runs. Build from this directory and pass the board's
+credentials as env vars:
 
 ```bash
-docker build -f docker/opencode/Dockerfile -t eventmodelers-agent-opencode .
-docker run --rm -e EVENTMODELERS_TOKEN=... -e EVENTMODELERS_ORGANIZATION_ID=... -e EVENTMODELERS_BOARD_ID=... \
-  -e OPENCODE_API_KEY=... eventmodelers-agent-opencode --model opencode/big-pickle
+docker build -f docker/agent/Dockerfile -t eventmodelers-agent .
+docker run --rm -e AGENT=codex -e OPENAI_API_KEY \
+  -e EVENTMODELERS_TOKEN=... -e EVENTMODELERS_ORGANIZATION_ID=... -e EVENTMODELERS_BOARD_ID=... \
+  eventmodelers-agent --model gpt-5-codex
 ```
+
+Claude authenticates with `ANTHROPIC_API_KEY`, or with your subscription via `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token`
+once). The container is the sandbox, so the image sets `EVENTMODELERS_CODEX_NO_SANDBOX=1`, which makes the `codex` preset run
+`--dangerously-bypass-approvals-and-sandbox` instead of `--full-auto`.
 
 `--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
 any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.
@@ -734,7 +740,7 @@ The workflow then:
 | `images` | Builds the six agent images for `linux/amd64` and `linux/arm64`, **scans each for credentials** (`.github/scripts/scan-image.sh`), and only then pushes it |
 | `merge` | Combines the two architectures into one multi-arch image per name, tagged `:<tag>` and `:latest` |
 
-Images land in `docker.io/nebulit/`: `eventmodelers-agent-claude`, `eventmodelers-agent-opencode`, and `em-studio-buildkit-{claude,opencode}-{node,java}`. They run the CLI from the tagged checkout, not from npm, so they don't wait on the npm publish.
+Images land in `docker.io/nebulit/`: `eventmodelers-agent` (modeling) and `em-studio-buildkit-{node,java,dotnet}` (building); each carries all three agent CLIs and `AGENT` selects one. They run the CLI from the tagged checkout, not from npm, so they don't wait on the npm publish.
 
 **One-time setup:** an `NPM_TOKEN` repo secret (an npm automation token allowed to publish `@eventmodelers/cli`). The images push with the built-in `GITHUB_TOKEN`; new GHCR packages start private, so make them public in the org's package settings if they should be pullable without a login.
 

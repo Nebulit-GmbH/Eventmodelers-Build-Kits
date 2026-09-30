@@ -85,12 +85,10 @@ jobs:
           - linux/amd64
           - linux/arm64
         image:
-          - { name: eventmodelers-agent-claude, dockerfile: claude }
-          - { name: eventmodelers-agent-opencode, dockerfile: opencode }
-          - { name: em-studio-buildkit-claude-node, dockerfile: build-with-claude-node }
-          - { name: em-studio-buildkit-claude-java, dockerfile: build-with-claude-java }
-          - { name: em-studio-buildkit-opencode-node, dockerfile: build-with-opencode-node }
-          - { name: em-studio-buildkit-opencode-java, dockerfile: build-with-opencode-java }
+          - { name: eventmodelers-agent, dockerfile: agent }
+          - { name: em-studio-buildkit-node, dockerfile: build-node }
+          - { name: em-studio-buildkit-java, dockerfile: build-java }
+          - { name: em-studio-buildkit-dotnet, dockerfile: build-dotnet }
     runs-on: ${{ matrix.platform == 'linux/arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -161,12 +159,10 @@ jobs:
       fail-fast: false
       matrix:
         image:
-          - eventmodelers-agent-claude
-          - eventmodelers-agent-opencode
-          - em-studio-buildkit-claude-node
-          - em-studio-buildkit-claude-java
-          - em-studio-buildkit-opencode-node
-          - em-studio-buildkit-opencode-java
+          - eventmodelers-agent
+          - em-studio-buildkit-node
+          - em-studio-buildkit-java
+          - em-studio-buildkit-dotnet
     steps:
       - uses: actions/download-artifact@v4
         with:

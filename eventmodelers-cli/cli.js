@@ -116,7 +116,13 @@ function resolveAgentPreset(opts, loop) {
     console.error('❌ --agent is mutually exclusive with --local-ai/--bash — pick one runner.');
     process.exit(1);
   }
-  return AGENT_PRESETS[name]?.[loop] ?? null;
+  const cmd = AGENT_PRESETS[name]?.[loop] ?? null;
+  // The docker images set this: Codex's own sandbox (landlock) can't start inside a container, and the
+  // container already is the sandbox — the flag Codex documents for externally sandboxed environments.
+  if (name === 'codex' && cmd && process.env.EVENTMODELERS_CODEX_NO_SANDBOX === '1') {
+    return cmd.replace('--full-auto', '--dangerously-bypass-approvals-and-sandbox');
+  }
+  return cmd;
 }
 
 const STACKS = {

@@ -17,7 +17,7 @@ flag() { echo "::error::$image: $1"; fail=1; }
 
 # Token-shaped strings. `_authToken` is deliberately not here: it only matters in an rc file
 # (checked by name below), and npm/yarn's own code mentions it.
-patterns='npm_[A-Za-z0-9]{36}|dckr_pat_|ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|BEGIN [A-Z ]*PRIVATE KEY'
+patterns='npm_[A-Za-z0-9]{36}|dckr_pat_[A-Za-z0-9_-]{20,}|(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{20,}|glpat-[A-Za-z0-9_-]{20}|sk-ant-[A-Za-z0-9_-]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[abprs]-[A-Za-z0-9-]{10,}|hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+|sk_live_[0-9a-zA-Z]{24}|SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}|eyJ[A-Za-z0-9_-]{15,}\.eyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}|(postgres|mysql|mongodb|amqp|redis)://[^:/[:space:]]+:[^@[:space:]]+@|BEGIN [A-Z ]*PRIVATE KEY'
 
 echo "== config + history"
 meta=$( { docker inspect "$image" --format '{{json .Config.Env}}{{json .Config.Cmd}}{{json .Config.Entrypoint}}'; \
