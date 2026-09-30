@@ -1179,6 +1179,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
       // placeholder, never the literal secret (see connect/SKILL.md's Security notes).
       ensureMcpRegistered(targetDir, config.baseUrl || DEFAULT_BASE_URL);
       ensureEnvToken(targetDir, config.token);
+      ensureMcpEnabled(targetDir);
       // Only build stacks trace (slice build cost); they are the ones running the shared runtime.
       if (stackCfg.useShared) await configureAgentTracing(configPath, options.print);
     }
@@ -1369,6 +1370,7 @@ async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
   });
   ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
   ensureEnvToken(targetDir, cfg.token);
+  ensureMcpEnabled(targetDir);
   await configureAgentTracing(configPath, globalOpts.print, true);
 }
 
@@ -1543,6 +1545,25 @@ function ensureMcpRegistered(projectDir, baseUrl) {
     headers: { 'x-token': '${EVENTMODELERS_TOKEN}', 'x-agent-id': '${EVENTMODELERS_AGENT_ID}' },
   };
   writeFileSync(mcpConfigPath, JSON.stringify(mcpConfig, null, 2));
+}
+
+// `.mcp.json` alone does not make Claude Code use a server: a project server also has to be
+// approved, and declining that prompt (or dismissing `/mcp`) in an interactive session writes
+// `disabledMcpjsonServers` into `.claude/settings.local.json`, after which every later `claude` in
+// the project — the runner's included — silently runs without the eventmodelers tools and the
+// agent falls back to curl. Whoever starts the runner wants the server on, so this clears that
+// entry and approves it explicitly. Only this project-local file is touched.
+function ensureMcpEnabled(projectDir) {
+  const settingsPath = join(projectDir, '.claude', 'settings.local.json');
+  const settings = readJsonSafe(settingsPath);
+  const disabled = settings.disabledMcpjsonServers ?? [];
+  const enabled = settings.enabledMcpjsonServers ?? [];
+  if (!disabled.includes('eventmodelers') && enabled.includes('eventmodelers')) return;
+  settings.disabledMcpjsonServers = disabled.filter((n) => n !== 'eventmodelers');
+  if (!settings.disabledMcpjsonServers.length) delete settings.disabledMcpjsonServers;
+  settings.enabledMcpjsonServers = [...enabled, 'eventmodelers'].filter((n, i, a) => a.indexOf(n) === i);
+  mkdirSync(dirname(settingsPath), { recursive: true });
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
 }
 
 // Companion to ensureMcpRegistered: that function deliberately never writes the
@@ -3555,6 +3576,7 @@ credentialFlags(program
       // (see the beta-api protected-resource-metadata incident this fixed).
       ensureMcpRegistered(targetDir, cfg.baseUrl || DEFAULT_BASE_URL);
       ensureEnvToken(targetDir, cfg.token);
+      ensureMcpEnabled(targetDir);
       if (existsSync(join(targetDir, STACKS.node.kitDirName))) {
         await configureAgentTracing(configPath, globalOpts.print, !Object.values(overrides).some(Boolean));
       }
@@ -3754,6 +3776,18 @@ credentialFlags(program
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
       process.exit(1);
+    }
+
+    // ralph-claude.js hands every turn to a `claude` that only discovers MCP servers from
+    // `.mcp.json` at its own startup, so it is rewritten on every run (see ensureMcpRegistered) —
+    // a file deleted, or written for another baseUrl, since `init` would otherwise leave the agent
+    // without its MCP tools. The token needs no file here: the runner puts it in claude's env.
+    if (runner === 'ralph-claude.js' && !opts.local) {
+      const runCfg = loadEffectiveConfig(cwd, kitDir, globalOpts.config).config;
+      if (runCfg.token) {
+        ensureMcpRegistered(dirname(kitDir), runCfg.baseUrl || DEFAULT_BASE_URL);
+        ensureMcpEnabled(dirname(kitDir));
+      }
     }
 
     console.log(`▶ Starting ${relative(cwd, runnerPath)}...\n`);

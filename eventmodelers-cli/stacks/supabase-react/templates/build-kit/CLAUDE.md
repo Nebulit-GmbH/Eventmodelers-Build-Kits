@@ -91,12 +91,7 @@ When starting to work on a slice, invoke the `update-slice-status` skill with `I
 **CRITICAL: You MUST always use the provided skills to build slices. NEVER implement a slice manually.**
 **ALL fields, event names, command names, and business rules MUST come exclusively from slice.json. Do NOT invent, assume, or guess any field or logic not present in the slice definition.**
 
-**If, at any point below, the slice's requirements are genuinely ambiguous, contradictory, or missing
-a decision you need in order to proceed — do not guess, and do not build anyway.** Invoke the
-`request-feedback` skill with the specific question; it posts the question as a comment on the slice
-and marks it `Blocked`, and you then stop work on this slice for this run. This is an escalation path,
-not a routine step — read `slice.json` and the matching build skill's own instructions fully first;
-most slices are fully specified and need none of this.
+**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line in `progress.txt` and as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
 
 **Exception: a missing `apiEndpoint`** (no backend endpoint/table decided yet) is a partial version of
 this — flag it, but don't fully stop. `build-state-change`/`build-state-view` Step 1 cover the exact

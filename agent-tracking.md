@@ -68,7 +68,7 @@ Each trace is also appended to `.eventmodelers/trace/slices.jsonl`; upload is be
 ## API
 
 ```
-POST /api/org/:orgId/agent-traces           {traces: [...]}  → {recorded}
+POST /api/org/:orgId/boards/:boardId/agent-traces {traces: [...]}  → {recorded}
      400  a trace without sliceId, a uuid agentId, or a valid sessionId (whole batch rejected)
      403  the agent is not a connected build agent: no /api/agent-alive heartbeat with
           agent_type BUILD within 45s under a token of this org

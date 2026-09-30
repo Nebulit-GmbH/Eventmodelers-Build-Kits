@@ -52,7 +52,7 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
    **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
 
-2. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json` (written by `/load-slice`).
+2. Run `/load-slice sliceId=<payload.sliceId>` to fetch the full slice, then read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`. The runner keeps a `slice.json` fresh from a summary endpoint, so a file holding only `id`, `title`, `status` and `sliceType` is that stub, not an empty slice — never conclude a slice has no elements from it. Only if the full fetch itself returns no commands/events/read models/fields is the slice actually empty.
 
 3. Determine the **slice type** from the slice.json:
    - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified
@@ -93,14 +93,7 @@ After completing a task, remove it from the array and write the updated array ba
 
 ## Escalating Ambiguity
 
-**If the slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need
-in order to proceed — do not guess, and do not build anyway.** Invoke `/request-feedback` with the
-specific question; it posts the question as a comment on the slice and marks it `Blocked` on the
-board (overriding the `InProgress` set earlier), then stop this iteration without finishing the
-build — reply `<promise>DONE</promise>` as if the iteration's work was to raise the question, not to
-implement the slice. This is an escalation path, not a routine step — read the slice.json and the
-matching build skill's own instructions fully first; most slices are fully specified and need none of
-this.
+**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line in `progress.txt` and as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
 
 ## Progress Report Format
 

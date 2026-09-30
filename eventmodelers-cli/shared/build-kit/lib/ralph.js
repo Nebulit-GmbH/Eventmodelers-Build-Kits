@@ -296,6 +296,37 @@ async function fetchAndPersistSlices(cfg, kitDir) {
   console.log(`[agent] Persisted ${slices.length} slice(s)`);
 }
 
+// The summary refresh above leaves slice.json as an id/title/status stub, and a build agent that
+// reads a stub reports the slice as empty. So before a slice is handed to an agent — a Planned
+// build or a queued task — its full definition (elements, fields, specifications) is fetched
+// here and merged in. Best effort: on failure the agent still has /load-slice to fall back on.
+async function fetchFullSlice(cfg, kitDir, sliceId) {
+  if (!sliceId) return;
+  const slicesDir = join(kitDir, '.slices');
+  try {
+    let entry = null;
+    for (const ctx of readdirSync(slicesDir, { withFileTypes: true })) {
+      if (!ctx.isDirectory()) continue;
+      const indexPath = join(slicesDir, ctx.name, 'index.json');
+      if (!existsSync(indexPath)) continue;
+      const found = (JSON.parse(readFileSync(indexPath, 'utf-8')).slices ?? []).find((e) => e.id === sliceId);
+      if (found) { entry = { ...found, contextSlug: found.contextSlug ?? ctx.name }; break; }
+    }
+    if (!entry) return;
+    const query = new URLSearchParams({ contextName: entry.contextName, sliceId });
+    const url = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?${query}`;
+    const { slices } = await fetchJSON(url, { headers: { 'x-token': cfg.token, ...agentHeaders(cfg) } });
+    const full = slices?.find((sl) => sl.id === sliceId);
+    if (!full) return;
+    const sliceJsonPath = join(slicesDir, entry.contextSlug, entry.folder, 'slice.json');
+    const existing = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
+    mkdirSync(dirname(sliceJsonPath), { recursive: true });
+    writeFileSync(sliceJsonPath, JSON.stringify({ ...existing, ...full }, null, 2), 'utf-8');
+  } catch (err) {
+    console.log(`[ralph] full slice fetch failed for ${sliceId} (${err.message}) — the agent will have to /load-slice it`);
+  }
+}
+
 // tasks.json has two writers: this process, queueing slice changes, and the agent, removing
 // the task it just handled (as each stack's prompt.md tells it to). An unlocked read-modify-
 // write from both sides at once lost whichever update landed first. So the two never overlap:
@@ -671,6 +702,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8');
+      for (const t of readTasks(join(kitDir, 'tasks.json'))) await fetchFullSlice(cfg, kitDir, t.payload?.sliceId);
       await runWithRetry('onTask: loading slice from board...', () => inTurn(kitDir, () => onTask(prompt)));
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
@@ -690,6 +722,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
+      if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
         sliceId: planned.id,
         sliceTitle: planned.title,

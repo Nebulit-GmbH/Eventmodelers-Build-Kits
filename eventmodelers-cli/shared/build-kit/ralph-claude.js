@@ -26,6 +26,7 @@ const tracer = createSliceTracer({
   baseUrl: cfg.baseUrl,
   token: cfg.token,
   organizationId: cfg.organizationId,
+  boardId: cfg.boardId,
   agentId: cfg.agentId,
   traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
   log: (line) => console.log(`[ralph] ${line}`),

@@ -712,6 +712,36 @@ Once your `init --build-kit` scaffold (see above) works against a real backend, 
 2. Add an entry for `<name>` to the `STACKS` object in `cli.js` (`label`, `kitSubdir: 'build-kit'`, `kitDirName: '.build-kit'`, `useShared: true`, `needsBoardId: true`).
 3. Add it to this README's stack list, the "What gets installed" section, and the `stacks` command's output (generated from `STACKS`, so nothing to add there beyond the entry itself).
 
+## Publishing a release
+
+Pushing a version tag publishes the npm package **and** the agent docker images from the same commit, via `.github/workflows/release.yml`.
+
+1. Write the release notes (`/release-notes` fills `RELEASE_NOTES.md` from the git history since the last release).
+2. Bump `version` in `package.json` (`npm version <patch|minor|major> --no-git-tag-version`), and commit it together with the notes.
+3. Tag that commit with the version, prefixed with `v`, and push the tag:
+
+   ```bash
+   git tag v1.0.98
+   git push origin main v1.0.98
+   ```
+
+The workflow then:
+
+| Job | What it does |
+|---|---|
+| `test` | Fails unless the tag equals `package.json`'s version (`v1.0.98` ↔ `1.0.98`), then runs `npm test` |
+| `npm` | `npm publish --access public --provenance` for `@eventmodelers/cli` |
+| `images` | Builds the six agent images for `linux/amd64` and `linux/arm64`, **scans each for credentials** (`.github/scripts/scan-image.sh`), and only then pushes it |
+| `merge` | Combines the two architectures into one multi-arch image per name, tagged `:<tag>` and `:latest` |
+
+Images land in `ghcr.io/nebulit-gmbh/`: `eventmodelers-agent-claude`, `eventmodelers-agent-opencode`, and `em-studio-buildkit-{claude,opencode}-{node,java}`. They run the CLI from the tagged checkout, not from npm, so they don't wait on the npm publish.
+
+**One-time setup:** an `NPM_TOKEN` repo secret (an npm automation token allowed to publish `@eventmodelers/cli`). The images push with the built-in `GITHUB_TOKEN`; new GHCR packages start private, so make them public in the org's package settings if they should be pullable without a login.
+
+A failed run can't be re-published under the same version — npm refuses to overwrite one. If `npm` succeeded but an image job failed, re-run just the failed jobs from the Actions tab. If the tag itself was wrong, delete it (`git push --delete origin v1.0.98`), fix, bump to a new version and tag again.
+
+To check an image locally before tagging: `docker build -f docker/<name>/Dockerfile -t scan/<name>:ci .` from this directory, then `../.github/scripts/scan-image.sh scan/<name>:ci`.
+
 ## Contributors
 
 | Contributor | Contribution |

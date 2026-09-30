@@ -1,6 +1,6 @@
 ---
 name: request-feedback
-description: Post a comment on a slice and mark it Blocked when the slice's requirements are genuinely ambiguous, contradictory, or missing something a decision depends on. This is an escalation path, not a routine step — reach for it only when you cannot proceed without guessing.
+description: Post a comment on a slice and mark it Blocked — ONLY when the slice literally cannot be built, even with reasonable assumptions. The absolute exception; for unclear or missing details, assume and build instead.
 ---
 
 # Request Feedback
@@ -11,41 +11,32 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 ---
 
-## When to use this skill — the exception, not the rule
+## When to use this skill — the absolute exception
 
-Building a slice is normally unambiguous: `slice.json` names every command field, event field, and
-GWT scenario, and the matching build skill (`build-state-change`, `build-state-view`,
-`build-automation`, ...) tells you exactly how to turn that into code. **Read `slice.json` fully, and
-read the build skill's own instructions and reference docs, before ever concluding something is
-missing.** Most slices need none of this.
+**The default is to assume and build.** A missing example value, an unclear field type, a status
+mapping, a referenced event that isn't modeled yet, a dependency slice that isn't built yet — none of
+these is a reason to stop. Pick the most sensible interpretation from `slice.json`, its
+`specifications[]` and the surrounding model, build the slice, and record each assumption in one line
+in `progress.txt` and as a code comment. **Read `slice.json` fully, and read the build skill's own
+instructions and reference docs, before concluding anything is missing.**
 
-Only invoke `request-feedback` when, after that reading, a decision the implementation depends on
-still cannot be made without guessing — for example:
-
-- A business rule mentioned in `description`/`comments`/`notes` isn't backed by any field, event, or
-  `specifications[]` scenario, so there's no way to encode it.
-- Two fields, or a field and an `idAttribute` flag, contradict each other about what the slice is
-  supposed to do.
-- A `specifications[]` scenario references a prior event or state that no command/event in this slice
-  (or its declared dependencies) actually produces.
-- The slice depends on another slice, screen, or read model that doesn't exist yet and it's unclear
-  whether one should be created, or the dependency was meant to point elsewhere.
+Invoke `request-feedback` **only if the slice literally cannot be built**: even with sensible
+assumptions, nothing runnable and tested can be produced. For example, the slice has no elements at
+all (no command/read model, no fields), or two parts of it contradict each other so that no single
+implementation satisfies both.
 
 **Do not use this skill for:**
-- Implementation-detail choices the build skill's own instructions already answer (e.g. package
-  naming, file layout, which annotation to use) — those aren't ambiguity in the slice, they're just
-  reading the skill more carefully.
-- Style or naming preferences with no functional consequence — pick the reasonable option and move on.
-- "This would be nice to confirm" — if you *can* proceed correctly from what `slice.json` says, proceed.
+- Missing examples, field types, names, or status values — assume, build, note the assumption.
+- A dependency (event, command, other slice) that isn't implemented yet — assume its definition from
+  the model and build against it.
+- Implementation-detail choices the build skill's own instructions already answer.
+- Style or naming preferences, or "this would be nice to confirm".
 
-When in doubt, prefer finishing the slice over escalating. Escalating on every minor uncertainty
-defeats the purpose — it should be rare enough that a `Blocked` slice reliably means "a human needs to
-look at this," not "the agent didn't feel like deciding."
+A `Blocked` slice must reliably mean "impossible without a human", never "the agent preferred to ask".
+When in doubt, build.
 
-**When this skill does apply: do not guess and build anyway.** Post the question and stop work on this
-slice for this run — do not implement your best interpretation first. A wrong guess encoded into
-working, tested, committed code is harder to catch and undo than an unbuilt slice waiting for an
-answer.
+**When this skill does apply:** post the question and stop work on this slice for this run — an
+impossible build can't be finished by guessing.
 
 ---
 

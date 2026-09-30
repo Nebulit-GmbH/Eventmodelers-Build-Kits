@@ -1,5 +1,5 @@
 // What a slice costs: one trace per build turn against one slice, posted to the platform's
-// /api/org/:orgId/agent-traces. Only the runner can see what a turn cost, so it reports it.
+// /api/org/:orgId/boards/:boardId/agent-traces. Only the runner can see what a turn cost, so it reports it.
 //
 // Best effort: each trace is appended to a local JSONL file, then POSTed once. No retries, no
 // buffering. A failed upload is logged and forgotten; the file is the record.
@@ -110,13 +110,14 @@ export function sumUsage(parts) {
 
 /** Records slice build turns. The agent id is the session: the platform requires one, and a
  *  restart of the same build agent is still the same agent building the same slices. */
-export function createSliceTracer({ baseUrl, token, organizationId, agentId, traceFile, log = () => {}, enabled = true } = {}) {
+export function createSliceTracer({ baseUrl, token, organizationId, boardId: defaultBoardId, agentId, traceFile, log = () => {}, enabled = true } = {}) {
   const canUpload = !!(enabled && baseUrl && token && organizationId && agentId);
 
   async function post(trace) {
-    if (!canUpload) return;
+    // The route is per board — a trace without a board has nowhere to go, so it stays local.
+    if (!canUpload || !trace.boardId) return;
     try {
-      const res = await fetch(`${baseUrl}/api/org/${organizationId}/agent-traces`, {
+      const res = await fetch(`${baseUrl}/api/org/${organizationId}/boards/${trace.boardId}/agent-traces`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-token': token, 'x-agent-id': agentId },
         body: JSON.stringify({ traces: [trace] }),
@@ -141,7 +142,7 @@ export function createSliceTracer({ baseUrl, token, organizationId, agentId, tra
   return {
     /** One build turn: `{sliceId, sliceTitle, context, ticketNumber, boardId, attempt, status}` plus its usage.
      *  ticketNumber is the slice's ticket at build time — it can change, so it travels with each turn. */
-    record({ sliceId, sliceTitle = null, context = null, ticketNumber = null, boardId = null, attempt = null, status = 'ok' }, usage) {
+    record({ sliceId, sliceTitle = null, context = null, ticketNumber = null, boardId = defaultBoardId ?? null, attempt = null, status = 'ok' }, usage) {
       if (!sliceId || !usage) return;
       const trace = {
         id: newId(), occurredAt: new Date().toISOString(),
