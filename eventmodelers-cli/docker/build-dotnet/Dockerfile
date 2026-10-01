@@ -45,7 +45,6 @@ COPY stacks ./stacks
 RUN npm link
 
 # Same entrypoint as the node image: git identity, git init, kit install, then `run --agent $AGENT`.
-COPY docker/model-endpoint.sh /usr/local/bin/model-endpoint.sh
 COPY docker/entrypoint-build.sh /usr/local/bin/build-agent-entrypoint
 RUN chmod +x /usr/local/bin/build-agent-entrypoint \
  && mkdir /workspace && chown node:node /workspace

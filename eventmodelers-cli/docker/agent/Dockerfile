@@ -57,7 +57,6 @@ ENV EVENTMODELERS_CODEX_NO_SANDBOX=1 EVENTMODELERS_NO_UPDATE_CHECK=1 AGENT=claud
 # Board access: EVENTMODELERS_TOKEN, _ORGANIZATION_ID, _BOARD_ID (and _BASE_URL for a self-hosted platform).
 # Agent auth: ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (claude), OPENAI_API_KEY (codex), or the key the
 # chosen OpenCode model needs (opencode). Extra args are passed to `run`, e.g. `--model gpt-5-codex` or `--worker`.
-COPY docker/model-endpoint.sh /usr/local/bin/model-endpoint.sh
 COPY docker/entrypoint-agent.sh /usr/local/bin/agent-entrypoint
 USER root
 RUN chmod +x /usr/local/bin/agent-entrypoint

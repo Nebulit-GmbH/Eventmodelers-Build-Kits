@@ -236,18 +236,18 @@ Keys: `OPENAI_API_KEY` (codex), `GEMINI_API_KEY` (gemini), and for Hermes a prov
 servers only from `~/.hermes/config.yaml`, so the images ship the eventmodelers server there (env references, no secret); outside
 Docker the CLI logs the snippet to add. Run `hermes` in a container as `-e AGENT=hermes --model <provider/model>`.
 
-**Custom model endpoint.** `-e MODEL_BASE_URL=<url> [-e MODEL_NAME=<id>] [-e MODEL_API_KEY=...]` points the container's harness at that
-endpoint (agent and build images); leave `MODEL_BASE_URL` empty and nothing changes. `docker/model-endpoint.sh` maps it per `AGENT`:
+**Custom model endpoint.** The images take no special variables for this: set the endpoint variable the harness itself reads, and
+pass `--model <id>` as usual.
 
-| AGENT | Endpoint protocol | What the URL becomes |
+| AGENT | Endpoint protocol | Env vars |
 |---|---|---|
-| `claude` | Anthropic API | `ANTHROPIC_BASE_URL` (key: `ANTHROPIC_AUTH_TOKEN`) |
-| `gemini` | Gemini API | `GOOGLE_GEMINI_BASE_URL` (key: `GEMINI_API_KEY`) |
-| `codex` | OpenAI Responses API | `model_provider` in `~/.codex/config.toml` (key: `MODEL_API_KEY`) |
-| `opencode` | OpenAI-compatible | provider `custom` via `OPENCODE_CONFIG_CONTENT`; `MODEL_NAME` required |
-| `hermes` | OpenAI-compatible | `OPENAI_BASE_URL` (key: `OPENAI_API_KEY`) |
+| `claude` | Anthropic API | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` |
+| `gemini` | Gemini API | `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_KEY` |
+| `codex` | OpenAI | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
+| `hermes` | OpenAI-compatible | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
+| `opencode` | OpenAI-compatible | a provider block in `OPENCODE_CONFIG_CONTENT` (JSON), then `--model <provider>/<model>` |
 
-`MODEL_NAME`, when set, becomes `--model`. Claude and Gemini need a gateway (e.g. LiteLLM) that speaks their own protocol.
+Claude and Gemini need a gateway (e.g. LiteLLM) in front of a non-native server, since they only speak their own protocol.
 
 `--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
 any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.

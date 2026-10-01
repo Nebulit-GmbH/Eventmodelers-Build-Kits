@@ -16,7 +16,7 @@ import {
 } from 'fs';
 import { execSync, execFileSync, spawn } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
-import { homedir } from 'os';
+import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
@@ -2372,7 +2372,37 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     }
   }
 
-  function buildChatTurn(m) {
+  // The files of a chat message, fetched once into the OS temp dir and handed to the turn as paths:
+  // the agent reads a local file as often as it likes, where get_chat_attachment would pull the bytes
+  // over the wire (and into its context) on every call. Keyed by session and attachment id, so a
+  // restart, a retry or a later turn of the same chat finds the file already there. Never fatal — a
+  // failed download just leaves the path out, and the agent falls back to get_chat_attachment.
+  async function cacheChatAttachments(m) {
+    const files = [];
+    for (const a of Array.isArray(m.attachments) ? m.attachments : []) {
+      if (a?.summary) continue; // already read once — the turn works from the summary, nothing to fetch
+      if (!/^[0-9a-f-]{36}$/i.test(a?.id ?? '') || !/^[a-z0-9]{1,8}$/i.test(a?.ending ?? '')) continue;
+      const dir = join(tmpdir(), 'eventmodelers-chat-attachments', m.sessionId);
+      const path = join(dir, `${a.id}.${a.ending}`);
+      try {
+        if (!existsSync(path)) {
+          const res = await fetch(
+            `${cfg.baseUrl}/api/org/${cfg.organizationId}/chat/sessions/${encodeURIComponent(m.sessionId)}/attachments/${a.id}?board_id=${encodeURIComponent(cfg.boardId)}`,
+            { headers: { 'x-token': cfg.token, ...agentHeaders(cfg) } },
+          );
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          mkdirSync(dir, { recursive: true });
+          writeFileSync(path, Buffer.from(await res.arrayBuffer()));
+        }
+        files.push({ id: a.id, path });
+      } catch (err) {
+        log(`chat attachment ${a.id} not cached: ${err.message}`);
+      }
+    }
+    return files;
+  }
+
+  function buildChatTurn(m, cachedFiles = []) {
     const after = chatCursor.get(m.sessionId);
     const fields = [
       `CHAT message_id=${m.id}`,
@@ -2382,6 +2412,9 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
       after ? `after_message_id=${after}` : 'first_read=true',
       m.nodeId ? `node_id=${m.nodeId}` : null,
       m.commentId ? `comment_id=${m.commentId}` : null,
+      // The file(s) the person attached — read with get_chat_attachment (see "Chat turns").
+      Array.isArray(m.attachments) && m.attachments.length ? `attachments=${JSON.stringify(m.attachments)}` : null,
+      cachedFiles.length ? `attachment_files=${JSON.stringify(cachedFiles)}` : null,
     ].filter(Boolean).join(' ');
     const context = m.context && typeof m.context === 'object' && Object.keys(m.context).length
       ? `\ncontext=${JSON.stringify(m.context)}`
@@ -2423,7 +2456,7 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
     let result = '';
     let failed = false;
     try {
-      result = await runTurn(buildChatTurn(m));
+      result = await runTurn(buildChatTurn(m, await cacheChatAttachments(m)));
     } catch (err) {
       failed = true;
       log(`chat turn failed: ${err.message}`);

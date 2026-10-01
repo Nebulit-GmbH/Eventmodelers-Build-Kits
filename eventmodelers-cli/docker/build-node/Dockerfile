@@ -35,7 +35,6 @@ COPY shared ./shared
 COPY stacks ./stacks
 RUN npm link
 
-COPY docker/model-endpoint.sh /usr/local/bin/model-endpoint.sh
 COPY docker/entrypoint-build.sh /usr/local/bin/build-agent-entrypoint
 RUN chmod +x /usr/local/bin/build-agent-entrypoint \
  && mkdir /workspace && chown node:node /workspace

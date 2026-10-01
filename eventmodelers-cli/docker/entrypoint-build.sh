@@ -17,7 +17,4 @@ if [ ! -d .build-kit ]; then
   [ "$AGENT" = claude ] || eventmodelers init-agents --hosts "$AGENT"
 fi
 
-# Optional custom model endpoint (MODEL_BASE_URL/MODEL_NAME/MODEL_API_KEY), mapped per harness.
-. /usr/local/bin/model-endpoint.sh
-
 exec eventmodelers run --agent "$AGENT" --non-interactive "$@"
