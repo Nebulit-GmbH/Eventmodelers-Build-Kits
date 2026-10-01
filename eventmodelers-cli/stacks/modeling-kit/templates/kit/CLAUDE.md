@@ -277,6 +277,7 @@ nothing to sanitize either, since a board change is not user text.
 | Design or update a single wireframe/sketch screen (explicit request only) | `/storyboard-screen` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
+| Turn a document or image (e.g. a tender/RFP) into a chaptered event model with screens, scenarios and a written blueprint summary | `/summarize` |
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
