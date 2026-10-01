@@ -53,6 +53,11 @@ These rules govern how every element is placed on the board. Enforce them throug
 ### Never stack read models at the end
 Placing all read models in new columns at the very end of the timeline severs the visual connection to the events they're derived from. The board must show a coherent left-to-right narrative where each slice is self-contained.
 
+### Place in narrative order, never type by type
+The steps below decide *what* exists (events, commands, read models, screens); they do not decide the *order of placement calls*. When you write elements to the board — in one `place_element` call or several — order them **left to right by the story**, one slice at a time: the screen, command and event of a state change, then the read model (and its view screen) that the event feeds, then the next state change. A read model's column goes right after its source event's column, so placing the next command after it is simply the next column.
+
+Never emit "all events, then all commands, then all read models" (or any other by-type batch). It forces every read model into a column inserted afterwards, shifts everything already placed, and produces the board shape this skill forbids: a row of commands across the timeline with the read models bunched in their own block. If your element list is grouped by `elementType`, re-sort it by column before the call.
+
 ### One read model per component, not one read model per screen
 A read model does not necessarily serve a whole screen — **one component in a screen resembles one read model.** Storyboarding (Step 3) only produces a plain screen per screen state; it does not decide components. That decision, and the work of breaking a multi-component screen apart into copies, happens in Step 5 (Identifying Outputs), because a component is defined by its read model.
 
