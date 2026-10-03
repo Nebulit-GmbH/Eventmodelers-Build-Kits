@@ -69,6 +69,8 @@ Every pass reads the code through the same four lenses; each produces *hypothese
 
    **With a URL, walk it via `discover-storyboard`** (URL already known — don't ask again; pass the flow as guidance and ask for screenshots). Its click path is the *proposed* order and its screens go into the chapter as evidence; confirm both against the API and persistence lenses. Submit forms only against a local or test system, or after the person agrees.
 
+If the code is a generic engine (templates, schemas, configurable entities), model one real case it handles, not the engine (see *Concrete Over Generic* in `eventmodeling-core-rules`).
+
 Where the lenses disagree (a route nobody calls, a table never written, a test for removed behaviour, a screen with no backend), that is a question for the person — not something to model.
 
 ---

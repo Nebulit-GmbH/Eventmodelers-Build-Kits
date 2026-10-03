@@ -165,6 +165,14 @@ Model the business process as it would work without any software first, then tra
 
 Question any step that exists only because of the system — a loading spinner, a cache refresh, a session check is not a business step and does not belong on the timeline. This is the discipline behind the Anti-Patterns below; the anti-patterns are what it looks like when this principle is skipped.
 
+## Concrete Over Generic
+
+Looking at the model, a reader must understand how the business works. Model one real flow with real examples and real data, not a generic model that covers every case. This applies to generic platforms too: model one real case the platform handles, not the platform's own structure.
+
+Example (a template-driven health record system):
+- ❌ `Commit Composition` with fields `content`, or `name`/`category`/`entries` — still says nothing about the business.
+- ✅ `Record Blood Pressure` → `Blood Pressure Recorded` with `systolic: 132`, `diastolic: 92`, `pulse: 113`, `composer: Dr. Marcus Johnson`.
+
 ## Anti-Patterns
 
 - **Data-loading commands**: `LoadOrders`/`FetchData` are queries, not business intent — model as a READMODEL, not a COMMAND.
@@ -209,5 +217,6 @@ Before treating a model as done, verify:
 - [ ] The timeline starts with a state-view or an automation reacting to an event — not a bare COMMAND
 - [ ] No two `state-change`/`state-change` slices are chained without a new trigger between them
 - [ ] No SCREEN is wired to more than one COMMAND (the bed — see Structural Shapes)
+- [ ] The model follows one real flow with real data, not a generic one (see Concrete Over Generic)
 
 This is the fast pass — the full, deeper check is `eventmodeling-validating-event-models-checklist`.
