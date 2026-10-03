@@ -19,6 +19,8 @@ If it does not (an empty folder, a modeling-only workspace holding just `.claude
 
 Then invoke `connect` (if not already connected). Prefer `mcp__eventmodelers__*` tools; if the MCP server is not connected, say so and continue over REST (see `learn-eventmodelers-api`) — never silently fall back to writing files.
 
+**One agent, one identity on the board.** The canvas shows one robot avatar per agent id, and a write without a valid `x-agent-id` is shown as a *second*, anonymous robot. So every board write of this run must carry the agent id `connect` resolved (`AGENT_ID`): MCP calls get it from `.mcp.json`, but every `curl` fallback, upload script (e.g. screenshots) and Playwright helper must send `x-agent-id` too, and any subagent that writes to the board must be handed `agent=<AGENT_ID>` inline (a subagent is a fresh session and resolves nothing). Do the board writes yourself where you can; use subagents only for reading code.
+
 ---
 
 ## The goal — a model business people *and* AI can both read
@@ -38,7 +40,8 @@ Therefore: never trade one reader for the other. No cryptic titles to save space
 - **What not to model:** databases, frameworks, caching/logging/monitoring, class structure, UI styling.
 - **Evidence, not elements.** Controllers, repositories, entities and `@Transactional` services tell you a business step exists — they are not the step. Model the *decision* it represents.
 - **Say it out loud test.** If you cannot say an element's name to a domain expert and be understood, you are modeling the implementation — rename it. Class names, packages and endpoints go in the element's `description` (the link back to the legacy source), never in its title.
-- **The user outranks the code.** On a conflict model what the person says and leave a QUESTION comment (`/wdyt`, `handle-comment`) on the node recording what the code does instead.
+- **The user outranks the code.** On a conflict, model what the person says and record what the code does instead as a decision row in the feedback lane (see *Recording decisions*). Leave a QUESTION comment (`/wdyt`, `handle-comment`) only if the conflict is still unresolved.
+- **Every decision leaves a trace.** Whatever you decided (mapping, order, naming, leaving something out) goes into the chapter's **Decisions** feedback lane with a file / class / method reference (see *Recording decisions*).
 - **Never invent to fill a gap.** Not in the sources and not said by the person → ask; if it stays open, leave a QUESTION comment, not a guess.
 - **Stop when they say stop**, at any depth. A shallow, correct model beats a deep, invented one.
 
@@ -125,14 +128,15 @@ Before proposing elements for a chapter, apply the rules of the skills that own 
 ### Pass 0 — all chapters, high level
 1. Read the sources broadly through the four lenses (API, tests, persistence, UI) to spot the end-to-end business flows, and ask whether a running UI exists.
 2. Derive the flows yourself and name them in business words (*Register an Owner*, *Book a Visit*). Ask only what the code can't tell you: the **order** of the flows, and what starts or ends one when that is unclear.
-3. Create **one chapter per high-level flow** (`/timeline`) straight away — no confirmation round — in the best-known business order (ask where it is unclear). Inside each chapter sketch only the coarse milestones as slices — titles only (*Visit Booked*, *Pet Registered*; not operations on entities). Connect the chapters' order, not their internals.
+3. Create **one chapter per high-level flow** (`/timeline`; omit `x`/`y` so the backend stacks them without overlap) straight away — no confirmation round — in the best-known business order (ask where it is unclear). Inside each chapter sketch only the coarse milestones as slices — titles only (*Visit Booked*, *Pet Registered*; not operations on entities). Connect the chapters' order, not their internals. Give each chapter its **Decisions** feedback lane and its `Legacy Sources` note in the first column (see *Recording decisions*): folders, packages and key classes of the flow, plus why it sits where it does in the order.
 4. Report the chapters back and **ask which chapter to start with**. Never pick for them.
 
 ### Pass N — detail the chosen chapter
 1. The person picks one existing chapter. Work **in that chapter** — do not create a new one. Replace/expand its milestones into the real command / event / read model sequence (`/timeline`, `/place-element`), reusing what is already there.
 2. Read the code behind each step (all four lenses) and build it directly. Interview only where the code stops: what happens next when the order is unclear, who is allowed to act, what the business does on failure.
-3. Add this layer's detail (budget below) as you derive it, and as answers land.
-4. Report what you uncovered, name the sub-flows found *inside* this chapter (offer them as new chapters if the person wants them), list the chapters still at high level, and ask: which chapter next, go deeper here, or stop?
+3. Add this layer's detail (budget below) as you derive it, and as answers land. Each placement batch carries its decision rows: column notes in the **Decisions** lane, and the chapter note updated with new source areas and anything not modeled.
+4. **The chapter grows — make room.** Expanding a chapter adds rows, columns and screenshots, so it gets bigger than when it was created and runs into the chapters below it. Run *Keeping chapters apart* (below) after every batch of placements, not only at the end.
+5. Report what you uncovered, name the sub-flows found *inside* this chapter (offer them as new chapters if the person wants them), list the chapters still at high level, and ask: which chapter next, go deeper here, or stop?
 
 Repeat until the person says stop. Each pass leaves the chapters not yet chosen untouched at high level.
 
@@ -145,6 +149,94 @@ Repeat until the person says stop. Each pass leaves the chapters not yet chosen 
 | **2+ — Deeper** | sub-flows, alternate paths, automations | full business field set incl. optional/list | realistic values from tests and fixtures | error cases and edge rules from the tests | sketches where a decision needs them |
 
 Never add detail that belongs to a deeper layer. Every element must trace to sources you read or an answer the person gave. **Deeper never means more technical** — it means more business: decisions, rules, failure modes.
+
+---
+
+## Keeping chapters apart
+
+Chapters are stacked vertically and the backend sizes the stack only at the moment a chapter is *created* — a Pass 0 chapter is small. Detailing it later makes it taller, so it overlaps the chapter below (the chapter's title, drawn under it, ends up on top of the next one). Placement never fixes this for you, so check it yourself:
+
+1. Read every chapter's position and size (`get_chapter_bounds`; over REST the CHAPTER nodes from `GET /nodes?type=CHAPTER`).
+2. Sort by `y`. For each chapter, the next one must start at least `y + height + 600` (room for the title and a gap).
+3. Where it doesn't, move that chapter **and every chapter below it** down by the missing distance, so the order is kept: `move_timeline_position { boardId, timelineId, x, y }` (REST: `PUT /timelines/$TL/position`). Move bottom-up or by the same offset, never one chapter on top of another.
+4. Re-read the bounds once to confirm nothing overlaps. Don't touch chapters that already have room.
+
+Do this after every batch of placements in a chapter and before the end-of-pass report; a pass is not done while two chapters overlap.
+
+---
+
+## Recording decisions — the feedback lane
+
+Every decision you make while turning code into the model is recorded **on the timeline, where it applies**, with a reference back to the code it came from. A later reader (the person, a colleague, an agent generating code) must be able to ask "why is this here, and where in the legacy code is it?" and find the answer on the board, not in your chat history.
+
+**What counts as a decision** — record every one of these, never only the hard ones:
+
+| Decision | Example |
+|----------|---------|
+| Code construct → element | `VisitController#processNewVisitForm` + `visits` insert → *Book Visit* / *Visit Booked* |
+| Order | *Owner Registered* before *Pet Added* — from the UI click path, confirmed by the person |
+| Code term → business term | `PetType` → *Species*, the person's word |
+| Person overrides the code | Code allows cancelling a visit; the person says it never happens → not modeled |
+| Merged / split | Two writes in `OwnerService#save` → one event; one endpoint → two commands |
+| Deliberately not modeled | `AuditLog` table, `CacheConfig` — technical, no business decision |
+| Reference data | `specialties` is only read, never written → external, asked where it comes from |
+| Assumption | No test covers the failure path; assumed the booking is rejected, marked *assumed* |
+
+**Where it goes**:
+
+1. Every chapter gets a `feedback` lane labelled **Decisions**. In Pass 0 pass it with the chapter's lanes when you create it (`lanes` on `/timeline`), otherwise add it with `add_lane { boardId, timelineId, lanes: [{ type: "feedback", label: "Decisions" }] }` (check `meta.timelineData.rows` for `type === "feedback"` first and reuse it).
+2. **First column: the chapter note**, titled `Legacy Sources — <Chapter Name>`. It records where the flow lives in the code and the decisions that affect the whole chapter (where it starts and ends, its order relative to other chapters, what was left out).
+3. **Every other column with a decision: one column note**, titled `Decisions — <column / step name>`. If a column already has one, **append** a row (`node:changed` on its `meta.description`) instead of adding a second note. Columns without a decision get no note.
+
+Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`, `cellId = "<feedbackLaneId>-<columnId>"`, markdown body in **`meta.description`**, not `meta.content`). Batch all notes of one placement round into one call. The REST fallback is in `eventmodeling-orchestrating-event-modeling/references/api-fallback.md` (Step 11).
+
+**Write it as you go**: record the decision in the same batch as the elements it explains, not in a write-up at the end. An answer from the person is a decision too, so record it when you apply it.
+
+**Use tables, not prose.** Each note is mostly markdown tables. Prose is allowed only for a one-line intro, never for something that fits in a row.
+
+**References must be precise and resolvable.** Paths are relative to the analysed code root, with a line number where one exists: `src/main/java/org/acme/visit/VisitController.java:57`, plus the class and method (`VisitController#processNewVisitForm`), table, endpoint (`POST /owners/{id}/pets/{petId}/visits/new`), test (`VisitControllerTests#testProcessNewVisitFormSuccess`) or template (`templates/pets/createOrUpdateVisitForm.html`). Use folders and packages for anything bigger than one class. Never "the visit code". Record the commit the analysis ran against (`git rev-parse --short HEAD`) in the chapter note, so the line numbers stay meaningful.
+
+**Chapter note** (first column):
+
+```markdown
+Analysed at commit `a1b2c3d`, code root `petclinic/`.
+
+## Where this flow lives
+| Area | Folder / package | Key classes |
+|------|------------------|-------------|
+| API | `src/main/java/org/acme/visit/` | `VisitController` |
+| Persistence | `src/main/resources/db/schema.sql` | `visits` table, `VisitRepository` |
+| Tests | `src/test/java/org/acme/visit/` | `VisitControllerTests` |
+| UI | `src/main/resources/templates/pets/` | `createOrUpdateVisitForm.html` |
+
+## Chapter decisions
+| # | Decision | Why | Source | Confirmed by |
+|---|----------|-----|--------|--------------|
+| 1 | Flow starts at *Pet Added* | A visit needs a pet (`Visit.petId` not null) | `Visit.java:34` | person |
+
+## Not modeled
+| Code | Reason |
+|------|--------|
+| `CacheConfiguration` | technical, no business decision |
+```
+
+**Column note** (each column with a decision):
+
+```markdown
+| # | Decision | Element(s) | Why | Source | Confirmed by |
+|---|----------|------------|-----|--------|--------------|
+| 1 | Insert into `visits` → event | *Visit Booked* | the only write of the booking | `VisitController.java:57` `#processNewVisitForm` | code |
+| 2 | Title *Book Visit*, not *New Visit Form* | *Book Visit* | the business word | person, 2nd answer | person |
+
+## Code vs. business terms
+| Code | Board |
+|------|-------|
+| `description` (Visit) | *Reason for Visit* |
+```
+
+The `Confirmed by` column shows how far to trust a decision: `code` (derived from the sources), `person` (they said so) or `assumed` (neither, still open). An `assumed` row whose question can't be settled from the model also gets a QUESTION comment on the node (see *Principles*); the row records the assumption, the comment asks the question.
+
+Element `description`s still carry their own short code reference (see *The goal*). The feedback notes add the *why* and the decisions that span several elements.
 
 ---
 
@@ -185,7 +277,8 @@ Naming, element types and edge rules: `eventmodeling-core-rules`. Fields can be 
 | Realistic example data from tests and fixtures | `/examples` |
 | A screen where a person decides | `/html-screen` (wireframe sketch only on explicit request: `/storyboard-screen`) |
 | Set a slice's status | `/update-slice-status` |
-| Questions, gaps, code-vs-user conflicts | `/wdyt`, `/handle-comment` |
+| Record a decision with its code reference | *Recording decisions* (MARKDOWN note in the **Decisions** feedback lane) |
+| Open questions, unresolved code-vs-user conflicts | `/wdyt`, `/handle-comment` |
 | Inspect what is already modelled | `/analyze-existing-model` |
 | Validate before reporting completion | `/eventmodeling-validating-event-models-checklist` |
 | Any endpoint or element type not covered above | `/learn-eventmodelers-api` |
@@ -196,7 +289,7 @@ Scenarios: only business rules found in tests and comments — not simple valida
 
 ## End every pass the same way
 
-Re-read the board (do not trust your memory) and check: layer discipline held, no duplicates, every element has an edge, descriptions carry the code reference, slice statuses set. Then report:
+Re-read the board (do not trust your memory) and check: layer discipline held, no chapters overlap, no duplicates, every element has an edge, descriptions carry the code reference, every decision of this pass is a row in the **Decisions** lane with a resolvable file / class reference, slice statuses set. Then report:
 
 1. what you put on the board — titles, node IDs, chapter;
 2. what is still open or unanswered;
