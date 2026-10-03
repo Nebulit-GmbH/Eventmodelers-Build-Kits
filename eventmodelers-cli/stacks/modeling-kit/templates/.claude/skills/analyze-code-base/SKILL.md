@@ -93,7 +93,7 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
 
 ### Pass 0 — all chapters, high level
 1. Read the sources broadly through the four lenses to spot the business workflows — walking the running UI from Step 1 via `discover-storyboard` if there is one.
-2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a workflow, never one endpoint or CRUD operation. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Add the **Decisions** lane, put the `Legacy Sources` note into **column 0** (see *The analysis log*), then sketch only the milestones (titles only) **from column 1 on**.
+2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a user journey, never one endpoint, controller or CRUD operation. Code is split by operation (`OwnerController#initCreationForm`, `#processFindForm`, `#showOwner`, `#processUpdateOwnerForm`); the story is not — registering, finding, viewing and updating an owner are **one** chapter. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Add the **Decisions** lane, put the `Legacy Sources` note into **column 0** (see *The analysis log*), then sketch only the milestones (titles only) **from column 1 on**.
 3. Report the chapters and **ask which chapter to start with**. Never pick for them.
 
 ### Pass N — detail the chosen chapter

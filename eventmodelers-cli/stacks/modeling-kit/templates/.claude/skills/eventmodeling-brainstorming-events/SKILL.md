@@ -78,6 +78,14 @@ After completing the analysis, partition the full event list into groups where e
 
 If all events belong to a single flow, one timeline is correct — do not split artificially.
 
+**A chapter tells a story — a user journey, not an operation.** Read the chapter titles aloud in order: each should be a journey someone lives through from start to outcome (*Owner & Pet Care*, *Visit Booking*), never a single action or screen (*Register Owner*, *Find Owner*, *Update Owner*, *View Owner*). Creating, finding, viewing and updating the same thing is **one** story — registering an owner, looking them up and correcting their address belong in one chapter. Signs a chapter is too fine-grained:
+
+- its title is one verb + one noun, or names one form/page;
+- it holds one or two slices;
+- the next chapter starts with the read model or entity this one just produced (*Owner Registered* → *Find and View an Owner*) — that is the same story continuing; merge them.
+
+When in doubt, merge: a chapter with a dozen slices that reads as one journey is right; five chapters of two slices each is not.
+
 **Divergent journey vs. a decision point — do not confuse the two.** A group of events sometimes contains a branch, and the branch's nature decides whether it gets its own chapter or stays inside this one:
 
 - **Divergent journey → its own chapter.** The actor makes a different choice *before* the process even starts, and everything downstream differs as a result (e.g. "Checkout with saved card" vs. "Checkout as guest" — different screens, different commands, arguably a different Role Catalog entry). Group these as separate workflows in Step 1, not as one group with a fork in it.
