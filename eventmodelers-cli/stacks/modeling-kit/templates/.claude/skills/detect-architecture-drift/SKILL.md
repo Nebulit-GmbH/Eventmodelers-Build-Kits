@@ -5,7 +5,19 @@ description: Compare the event model on the board with the code in this reposito
 
 # Detect Architecture Drift
 
-> **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
+## Step 0 — Is there a code base?
+
+Drift is the gap between the board and the code, so it can only be detected where code exists. **Before anything else — before `connect`, before reading the board — check that the current directory is a code base**: it contains source code (e.g. `src/`, `.build-kit/`, a `package.json`, `pom.xml`, `*.csproj`, `build.gradle`, or similar project files with slice/command/event/projection code).
+
+If it is not (an empty folder, a modeling-only workspace holding just `.claude/`, `.eventmodelers/` or `.agent-modeling-kit/`), **stop and answer in one or two plain sentences**, e.g.:
+
+> Architecture drift can't be detected here — there is no code to compare the board against. Run this in the code base that implements the model.
+
+Do not connect, do not read the board, do not produce a report or snippet, and do not offer other fixes.
+
+---
+
+> **Once Step 0 passes**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until the connect skill has completed.
 
 Prefer `mcp__eventmodelers__*` tools when available. See `learn-eventmodelers-api` for the curl fallback.
 
@@ -160,6 +172,7 @@ Omit empty sections. Say plainly when nothing drifted.
 
 ## Learnings
 
+- No code base in the working directory → drift can't be detected; say so in one line and stop (Step 0).
 - Read-only until confirmed — the report is the product; the fixes run as separate, ticked work.
 - A scoped run (timeline in focus) never reports "slice only in code" for code outside the scope.
 - One difference, one finding: follow a rename along the chain instead of listing it per element.
