@@ -199,6 +199,31 @@ Total: <n> slices
 <2–4 sentences: overall model maturity, the most important gap or risk, one concrete suggestion>
 ```
 
+### In a chat — answer with a pie chart
+
+When this run has a chat (`CHAT_SESSION_ID` is set — a prompt's `origin_session_id`, or a `CHAT` turn), the report goes
+to the chat as **one** `post_chat_message` (`sessionId` = `CHAT_SESSION_ID`; `replyTo` = this turn's `message_id` in a
+`CHAT` turn) carrying a **`report` snippet**: a pie of the slice status breakdown (5b). The text is the short summary
+(contexts, spec coverage, the most important gap) — that is also the fallback if the snippet cannot be shown. Skip the
+long format above; mention the structural gaps and shapes in a sentence or two, and offer the full list on request.
+
+```
+mcp__eventmodelers__post_chat_message {
+  "boardId": "$BOARD_ID",
+  "sessionId": "<CHAT_SESSION_ID>",
+  "text": "3 contexts, 24 slices. 18 of 24 have scenarios; Checkout has 4 slices without any.",
+  "snippet": {
+    "kind": "report", "chart": "pie", "title": "Slices by status", "unit": "slices",
+    "labels": ["Done", "InProgress", "Planned", "Blocked"],
+    "series": [{ "name": "Slices", "values": [12, 6, 4, 2] }]
+  }
+}
+```
+- Only statuses with at least one slice, one number per label — the chart draws exactly what you send, so count first.
+- One snippet per message: if the person asks for more diagrams (spec coverage, element inventory per type as a `bar`),
+  answer each in its own reply.
+- Still read-only: nothing is posted to the board.
+
 If a context was specified but not found, tell the user clearly and list the contexts that do exist.
 
 ---

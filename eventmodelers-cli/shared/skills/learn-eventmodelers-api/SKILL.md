@@ -30,7 +30,7 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `get_node` | `boardId`, `nodeId`, `projection?` (`"cells"` \| `"edges"`) | Get one node (no `cellName` — address it by `nodeId`; cell addresses come only from `get_board_outline`). `projection: "cells"` (CHAPTER nodes only) returns just `{rows, columns, cells}` instead of the full `timelineData` — use whenever only the grid/occupancy is needed, not the whole chapter; `projection: "edges"` returns just that node's inbound/outbound connections instead of `findNodeById`'s full record. Both are opt-in — omitting `projection` is the unchanged full response. An unknown id is a `NODE_NOT_FOUND` error | §3 `GET .../nodes/:nodeId` (REST returns the node as stored, without `cellName`; `404` carries `code: 'NODE_NOT_FOUND'`) |
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
 | `get_chat_attachment` | `boardId`, `sessionId`, `attachmentId` | The file a chat message came with — the message's `attachments` list `{id, type, ending}`. Images come back as images, a PDF as an embedded resource, csv / xml / txt / json as text. Only the agent the message was addressed to can read it (`CHAT_ATTACHMENT_NOT_FOUND`); needs the connection's `x-agent-id` (`CHAT_AGENT_REQUIRED`). Max 5 MB per file. | §15 `GET /api/org/:orgId/chat/sessions/:sessionId/attachments/:attachmentId` |
-| `post_chat_message` | `boardId`, `text`, `replyTo?`, `sessionId?`, `preferUserId?`, `snippet?` | Write into a person's chat — a reply (`replyTo` marks their message answered) or a question you start (`preferUserId`). `text` ≤ 1000 characters. `snippet` attaches one interactive element under the text (confirm, poll, tasks, changes, link, image, code); the person's choice comes back as their next chat message. See §16 | §16 `POST /api/org/:orgId/boards/:boardId/chat/agent-messages` |
+| `post_chat_message` | `boardId`, `text`, `replyTo?`, `sessionId?`, `preferUserId?`, `snippet?` | Write into a person's chat — a reply (`replyTo` marks their message answered) or a question you start (`preferUserId`). `text` ≤ 1000 characters. `snippet` attaches one interactive element under the text (confirm, poll, tasks, changes, link, image, code, report); the person's choice comes back as their next chat message. See §16 | §16 `POST /api/org/:orgId/boards/:boardId/chat/agent-messages` |
 | `get_board_events` | `boardId`, `since?`, `seq?` | A page of at most 300 board events, oldest first, as `{events, pageSize, hasMore}`. Not the whole log: while `hasMore` is true, page on by passing the last event's `seq` as `since`. `seq` returns only the event of exactly that seq | §1 `GET .../events` |
 | `submit_node_events` | `boardId`, `events[]`, `autoConnect?`, `compact?` | Create/update nodes (raw `NodeChangeEvent`/edge events). Every event property is described on the tool's own `events[]` schema — read that rather than this skill when all you need is the event shape. An event needs its own `id` (required — a fresh uuid per event, never the node id) and its `eventType`, plus the keys of its kind (`nodeId`/`meta`/`node`, or `edgeId`/`source`/`target`). The `id` keys the returned `hashes` map and makes a resubmit idempotent — the same event sent twice under one id writes a single board event. Don't send `boardId` or `timestamp` per event — the server takes the board from the call and stamps the time itself, and ignores both if sent. `autoConnect: false` places freshly-created nodes without wiring them to their own/previous-column neighbors (avoids a stray nearest-left edge); `compact: true` returns `{persisted: <count>}` instead of the per-node hash map | §3 `POST .../nodes/events` |
 | `delete_node` | `boardId`, `nodeIds[]` | Delete nodes, applied in order — one failure doesn't stop the rest; answers `{results}`. Deleting a chapter (timeline) cascades — every node placed in one of its cells, plus any node parented to it (e.g. SLICE_BORDER), is deleted too, along with all their edges | (via `node:deleted` event, §3) |
@@ -1099,8 +1099,9 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to point at an element | `link` | nothing — it pans the canvas |
 | to show a picture | `image` | nothing |
 | to show a command or payload | `code` | nothing |
+| to show numbers as a diagram (counts per slice, a trend, shares of a whole) | `report` | nothing |
 
-`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image` and `code` are display only and never wait for anything.
+`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code` and `report` are display only and never wait for anything.
 
 ### Shapes
 ```typescript
@@ -1118,6 +1119,9 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 { kind: 'link',    nodeId: string, label?: string }
 { kind: 'image',   url: string, alt?: string, caption?: string }                  // https or png/jpg/gif/webp data URL; no svg
 { kind: 'code',    code: string, language?: string, title?: string }              // monospaced, with a copy button
+{ kind: 'report',  chart: 'bar' | 'line' | 'pie', title?: string, unit?: string,
+  labels: string[],                                                               // 1–50 points: x axis, or the pie slices
+  series: Array<{ name: string, values: number[] }> }                             // one number per label; bar/line up to 6 series, pie uses only the first (no negatives)
 ```
 
 ### How to use them
@@ -1127,6 +1131,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **Name elements** with `nodeId` wherever you can (`tasks`, `changes`, `link`), so the person can click through to them — in a `tasks` list, put the element's name in `description` and its id in `nodeId`.
 - **Answers are text.** For a `tasks` answer, match the titles (or ids) back to your list; an element the person left unticked was declined, not forgotten. A `poll` option with a `message` of your own makes the answer unambiguous.
 - `get_chat_session` shows your snippet on the message as `snippet`, and the person's answer is the user message after it, carrying `context.snippetReply.messageId` (your message's id) — useful to tell an answer to a snippet from a new message.
+- **`report`** draws the numbers you send — it computes nothing, so aggregate first. A series whose length differs from `labels`, or a non-number, makes the whole snippet invisible. Keep `text` as a one-line summary of what the diagram shows.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ---
