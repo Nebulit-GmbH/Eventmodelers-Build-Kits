@@ -215,10 +215,12 @@ mcp__eventmodelers__post_chat_message {
   "snippet": {
     "kind": "report", "chart": "pie", "title": "Slices by status", "unit": "slices",
     "labels": ["Done", "InProgress", "Planned", "Blocked"],
-    "series": [{ "name": "Slices", "values": [12, 6, 4, 2] }]
+    "series": [{ "name": "Slices", "values": [12, 6, 4, 2] }],
+    "confirm": { "headline": "Want the full list of slices without scenarios?" }
   }
 }
 ```
+- `confirm` is optional: use it when you end on a follow-up question, instead of asking it in the text; the answer arrives as the person's next chat message.
 - Only statuses with at least one slice, one number per label — the chart draws exactly what you send, so count first.
 - One snippet per message: if the person asks for more diagrams (spec coverage, element inventory per type as a `bar`),
   answer each in its own reply.

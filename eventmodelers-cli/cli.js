@@ -1949,7 +1949,7 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null } = {}) {
+async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -2104,8 +2104,13 @@ async function runModeling(kitDir, projectDir, { verbose = false, standalone = f
 
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
+  // The global install runs in ~/.eventmodelers/kit, away from the code base the person started
+  // the agent in — hand that directory over so code-reading skills (detect-architecture-drift)
+  // can still see it.
+  if (codeDir) claudeArgs.push('--add-dir', codeDir);
   const claudeEnv = {
     ...process.env,
+    ...(codeDir ? { EVENTMODELERS_CODE_DIR: codeDir } : {}),
     ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
     EVENTMODELERS_TOKEN: cfg.token,
     // What the connect skill puts in `.mcp.json`'s x-agent-id header and every curl-fallback
@@ -3762,7 +3767,9 @@ credentialFlags(program
       }
       let projectDir = kitDir ? resolve(kitDir, '..') : null;
       let overrides = null;
+      let codeDir = null;
       if (!kitDir) {
+        codeDir = cwd;
         // The blob and the individual flags are both "explicit", so they share a
         // precedence tier — with a single --token/--board-id winning, since overriding one
         // field of a pasted blob is the only reason to pass both.
@@ -3785,7 +3792,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

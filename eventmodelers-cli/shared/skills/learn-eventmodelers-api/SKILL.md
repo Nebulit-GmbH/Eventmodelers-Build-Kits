@@ -1121,7 +1121,8 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 { kind: 'code',    code: string, language?: string, title?: string }              // monospaced, with a copy button
 { kind: 'report',  chart: 'bar' | 'line' | 'pie', title?: string, unit?: string,
   labels: string[],                                                               // 1–50 points: x axis, or the pie slices
-  series: Array<{ name: string, values: number[] }> }                             // one number per label; bar/line up to 6 series, pie uses only the first (no negatives)
+  series: Array<{ name: string, values: number[] }>,                             // one number per label; bar/line up to 6 series, pie uses only the first (no negatives)
+  confirm?: { headline: string, yesLabel?: string, noLabel?: string } }          // optional yes/no question under the diagram, like a confirm snippet
 ```
 
 ### How to use them
@@ -1131,7 +1132,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **Name elements** with `nodeId` wherever you can (`tasks`, `changes`, `link`), so the person can click through to them — in a `tasks` list, put the element's name in `description` and its id in `nodeId`.
 - **Answers are text.** For a `tasks` answer, match the titles (or ids) back to your list; an element the person left unticked was declined, not forgotten. A `poll` option with a `message` of your own makes the answer unambiguous.
 - `get_chat_session` shows your snippet on the message as `snippet`, and the person's answer is the user message after it, carrying `context.snippetReply.messageId` (your message's id) — useful to tell an answer to a snippet from a new message.
-- **`report`** draws the numbers you send — it computes nothing, so aggregate first. A series whose length differs from `labels`, or a non-number, makes the whole snippet invisible. Keep `text` as a one-line summary of what the diagram shows.
+- **`report`** draws the numbers you send — it computes nothing, so aggregate first. A series whose length differs from `labels`, or a non-number, makes the whole snippet invisible. Keep `text` as a one-line summary of what the diagram shows. Add `confirm` when the diagram leads to a follow-up question ("Want me to look into the backward arrows?"): the answer comes back like a `confirm` answer, and without it the report is display only.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ---

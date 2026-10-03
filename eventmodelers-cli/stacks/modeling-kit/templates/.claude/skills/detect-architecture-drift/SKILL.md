@@ -7,7 +7,7 @@ description: Compare the event model on the board with the code in this reposito
 
 ## Step 0 — Is there a code base?
 
-Drift is the gap between the board and the code, so it can only be detected where code exists. **Before anything else — before `connect`, before reading the board — check that the current directory is a code base**: it contains source code (e.g. `src/`, `.build-kit/`, a `package.json`, `pom.xml`, `*.csproj`, `build.gradle`, or similar project files with slice/command/event/projection code).
+Drift is the gap between the board and the code, so it can only be detected where code exists. **Before anything else — before `connect`, before reading the board — resolve the directory to check**: `$EVENTMODELERS_CODE_DIR` if it is set (the agent runs from the global install and was started inside that directory — treat it as the repository root for every step below, not the current directory), otherwise the current directory. Check that it is a code base: it contains source code (e.g. `src/`, `.build-kit/`, a `package.json`, `pom.xml`, `*.csproj`, `build.gradle`, or similar project files with slice/command/event/projection code).
 
 If it is not (an empty folder, a modeling-only workspace holding just `.claude/`, `.eventmodelers/` or `.agent-modeling-kit/`), **stop and answer in one or two plain sentences**, e.g.:
 
@@ -58,7 +58,7 @@ Index the result in memory: per slice → commands, events, read models, screens
 
 ## Step 3 — Understand the code
 
-You are in a repository that may hold any stack. Find out which, don't assume.
+The code base is the directory resolved in Step 0 (`$EVENTMODELERS_CODE_DIR`, else the current directory) — every path below is relative to it, and it may hold any stack. Find out which, don't assume.
 
 1. Read `.build-kit/CLAUDE.md` (and `.build-kit/AGENTS.md` if present) — its *Structure* section says where slices live and how they're named (e.g. `src/slices/{slice}/` for Node, `src/main/java/.../slices/{context}/{slice}/` for Axon).
 2. If `.build-kit/.slices/<context>/<slice>/slice.json` exists, it is the snapshot the code was **last built from** — useful for telling "the code changed" apart from "the model changed since the build" (see Step 5).
