@@ -21,6 +21,23 @@ Then invoke `connect` (if not already connected). Prefer `mcp__eventmodelers__*`
 
 **One agent, one identity on the board.** The canvas shows one robot avatar per agent id, and a write without a valid `x-agent-id` is shown as a *second*, anonymous robot. So every board write of this run must carry the agent id `connect` resolved (`AGENT_ID`): MCP calls get it from `.mcp.json`, but every `curl` fallback, upload script (e.g. screenshots) and Playwright helper must send `x-agent-id` too, and any subagent that writes to the board must be handed `agent=<AGENT_ID>` inline (a subagent is a fresh session and resolves nothing). Do the board writes yourself where you can; use subagents only for reading code.
 
+## Step 0b — Was this analysed before? Only read what changed
+
+Read the board's chapters and look for their `Legacy Sources — <Chapter>` notes (column 0 of each chapter, see *The analysis log*). Every chapter keeps its own history, so check each one separately: take the commit of the **last row** of its *Analysis history*. If the code root is a git repository (`git rev-parse --is-inside-work-tree`):
+
+```bash
+git cat-file -e <hash>^{commit}                   # still reachable? (rebased/squashed history → no)
+git log --oneline <hash>..HEAD -- <chapter folders> # which commits touched this chapter
+git diff --stat <hash>..HEAD -- <chapter folders>   # folders from the note's "Where this flow lives"
+git status --porcelain -- <chapter folders>         # uncommitted changes count too
+```
+
+- **Nothing changed** for a chapter → leave it alone; report it as *up to date since `<hash>` (<date>)*.
+- **Something changed** → re-analyse **only the changed files** through the lenses below, update the elements and decision rows they touch (refresh line numbers in references to those files), and ask about what the diff can't explain. Files changed outside every chapter's folders are candidates for a new chapter or for a chapter's `Where this flow lives` — ask.
+- **Hash not reachable**, `+dirty`, `no git`, or no history yet → say so and analyse the chapter fully (a `+dirty` row: at least the files the diff names plus those listed as dirty then).
+
+Either way, append a row to the chapter's *Analysis history* (see *The analysis log*), also for *no changes*. With no notes on the board at all, this is a fresh analysis — continue with Step 1.
+
 ## Step 1 — Is there a running UI? (once, when the analysis starts)
 
 Ask once, before reading the sources, and only when starting fresh (no chapters from this analysis yet): *"Is there a running instance I can inspect? URL, and a login or test account if needed."* Wait for the answer. Record it (URL or "no running UI") in each chapter's `Legacy Sources` note and reuse it on later passes. Skip it when the request already answers it.
@@ -76,7 +93,7 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
 
 ### Pass 0 — all chapters, high level
 1. Read the sources broadly through the four lenses to spot the business workflows — walking the running UI from Step 1 via `discover-storyboard` if there is one.
-2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a workflow, never one endpoint or CRUD operation. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Inside each chapter sketch only the milestones (titles only). Add the **Decisions** lane and the `Legacy Sources` note (see *Recording decisions*).
+2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a workflow, never one endpoint or CRUD operation. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Add the **Decisions** lane, put the `Legacy Sources` note into **column 0** (see *The analysis log*), then sketch only the milestones (titles only) **from column 1 on**.
 3. Report the chapters and **ask which chapter to start with**. Never pick for them.
 
 ### Pass N — detail the chosen chapter
@@ -89,7 +106,8 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
    Feed each skill what the lenses and the mapping table give you; ask only where the code stops (see *Step 1* when the order is unclear).
 2. Stay within the layer's detail budget (below). Every placement batch carries its decision rows (see *Recording decisions*).
 3. Re-space the chapters (see *Keeping chapters apart*) after every batch.
-4. Report, name the sub-flows found inside this chapter, and ask: which chapter next, go deeper here, or stop?
+4. Append this pass's row to the chapter's *Analysis history*.
+5. Report, name the sub-flows found inside this chapter, and ask: which chapter next, go deeper here, or stop?
 
 Repeat until the person says stop. Chapters not chosen stay at high level.
 
@@ -131,7 +149,7 @@ Every decision you make while turning code into the model is recorded **on the t
 **Where it goes**:
 
 1. Every chapter gets a `feedback` lane labelled **Decisions**. In Pass 0 pass it with the chapter's lanes when you create it (`lanes` on `/timeline`), otherwise add it with `add_lane { boardId, timelineId, lanes: [{ type: "feedback", label: "Decisions" }] }` (check `meta.timelineData.rows` for `type === "feedback"` first and reuse it).
-2. **First column: the chapter note**, titled `Legacy Sources — <Chapter Name>`. It records where the flow lives in the code and the decisions that affect the whole chapter (where it starts and ends, its order relative to other chapters, what was left out).
+2. **Column 0: the chapter note** — the analysis log, where the flow lives and the chapter-wide decisions; see *The analysis log* below.
 3. **Every other column with a decision: one column note**, titled `Decisions — <column / step name>`. If a column already has one, **append** a row (`node:changed` on its `meta.description`) instead of adding a second note. Columns without a decision get no note.
 
 Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`, `cellId = "<feedbackLaneId>-<columnId>"`, markdown body in **`meta.description`**, not `meta.content`). Batch all notes of one placement round into one call. The REST fallback is in `eventmodeling-orchestrating-event-modeling/references/api-fallback.md` (Step 11).
@@ -140,12 +158,28 @@ Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`,
 
 **Use tables, not prose.** Each note is mostly markdown tables. Prose is allowed only for a one-line intro, never for something that fits in a row.
 
-**References must be precise and resolvable.** Paths are relative to the analysed code root, with a line number where one exists: `src/main/java/org/acme/visit/VisitController.java:57`, plus the class and method (`VisitController#processNewVisitForm`), table, endpoint (`POST /owners/{id}/pets/{petId}/visits/new`), test (`VisitControllerTests#testProcessNewVisitFormSuccess`) or template (`templates/pets/createOrUpdateVisitForm.html`). Use folders and packages for anything bigger than one class. Never "the visit code". Record the commit the analysis ran against (`git rev-parse --short HEAD`) in the chapter note, so the line numbers stay meaningful.
+**References must be precise and resolvable.** Paths are relative to the analysed code root, with a line number where one exists: `src/main/java/org/acme/visit/VisitController.java:57`, plus the class and method (`VisitController#processNewVisitForm`), table, endpoint (`POST /owners/{id}/pets/{petId}/visits/new`), test (`VisitControllerTests#testProcessNewVisitFormSuccess`) or template (`templates/pets/createOrUpdateVisitForm.html`). Use folders and packages for anything bigger than one class. Never "the visit code". A line number is valid for the commit of the *Analysis history* row that wrote it; when a later pass re-reads a changed file, it updates the references into that file.
 
-**Chapter note** (first column):
+### The analysis log — column 0 of every chapter
+
+Column 0 of every chapter holds **only** the chapter note, titled `Legacy Sources — <Chapter Name>`, in the **Decisions** lane — no slice, no element, no screen, in any lane. It records when the chapter was analysed, against which commit, how deep, where the flow lives in the code, and the decisions that affect the whole chapter (where it starts and ends, its order relative to other chapters, what was left out). The next run starts from it (*Step 0b*).
+
+- **New chapter**: place the note first (`cellId = "<feedbackLaneId>-<firstColumnId>"`), then every element with `columnIndex ≥ 1`. If a skill or `/timeline` put an element into column 0 anyway, insert an empty column with `add_column { index: 0 }` and place the note there.
+- **Existing chapter without the note, or whose column 0 holds elements**: `add_column { index: 0 }` and place the note there; move a `Legacy Sources` note found elsewhere into it (`place_element` `action: "move"`).
+- **Every pass appends one row** to *Analysis history* (`node:changed` on `meta.description`) — never edit or drop earlier rows; the history is the record of what was analysed when. A Step 0b check that found nothing new gets a row too.
+- **Commit** (if git is available): `git rev-parse --short HEAD` in the code root; if `git status --porcelain` lists changes in the chapter's folders, write `<hash>+dirty`. Without git, write `no git` — the date is then the only marker, and the next run analyses the chapter fully.
+
+**Chapter note** (column 0):
 
 ```markdown
-Analysed at commit `a1b2c3d`, code root `petclinic/`.
+Code root `petclinic/` · running UI: http://localhost:8080 (test account `george`)
+
+## Analysis history
+| # | Date | Commit | Pass | Scope | Result |
+|---|------|--------|------|-------|--------|
+| 1 | 2026-09-28 | `a1b2c3d` | 0 — high level | whole code base | 4 milestones |
+| 2 | 2026-10-01 | `a1b2c3d` | 1 — flow | `visit/`, `pet/` | 9 elements, 2 questions open |
+| 3 | 2026-10-03 | `f4e5d6c` | diff since `a1b2c3d` | `VisitController.java`, `schema.sql` | *Visit Cancelled* added, refs updated |
 
 ## Where this flow lives
 | Area | Folder / package | Key classes |
@@ -229,7 +263,7 @@ Scenarios: only business rules found in tests and comments — not simple valida
 
 ## End every pass the same way
 
-Re-read the board (do not trust your memory) and run `eventmodeling-validating-event-models-checklist` on the chapter. On top of it, check what is specific to this skill: the chapter tells its workflow from trigger to outcome (not a single slice), layer discipline held, no chapters overlap, descriptions carry the code reference, every decision of this pass is a row in the **Decisions** lane. Then report:
+Re-read the board (do not trust your memory) and run `eventmodeling-validating-event-models-checklist` on the chapter. On top of it, check what is specific to this skill: the chapter tells its workflow from trigger to outcome (not a single slice), layer discipline held, no chapters overlap, descriptions carry the code reference, every decision of this pass is a row in the **Decisions** lane, column 0 holds only the `Legacy Sources` note and its *Analysis history* has this pass's row. Then report:
 
 1. what you put on the board — titles, node IDs, chapter;
 2. what is still open or unanswered;
