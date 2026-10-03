@@ -448,7 +448,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
 
    The note's body lives in **`meta.description`** as plain markdown source — headings, lists, bold, code fences, tables all render. **Not `meta.content`** — that field is accepted and stored without error but never rendered by the board UI, producing a visibly empty note; this was caught by comparing against a note authored directly in the UI, so treat it as confirmed, not a guess. There is no separate render/sketch call (unlike SCREEN/HTML_SCREEN) and no `fields[]` array on this element type.
 
-**What the note should actually contain** — write for the next person (or next session) who opens this board cold, not for whoever just built it:
+**What the note should actually contain** — write for the next person (or next session) who opens this board cold, not for whoever just built it. Wherever it names an element on the board, write `ref:<nodeId>`: it renders as the element's title and a click zooms the canvas to it (see `/learn-eventmodelers-api` *Linking to elements in markdown*):
 - **Scope**: what business process this chapter covers, and its entities (identity keys).
 - **Assumptions added beyond the literal brief** — anything invented to fill a gap the requirements left open, and why (e.g. adding a resolution event so a state isn't a one-way trap door).
 - **Business rules deliberately encoded as scenarios, not new events** — so a reader doesn't mistake a missing event for an oversight.

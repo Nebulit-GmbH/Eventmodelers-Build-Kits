@@ -171,7 +171,7 @@ The summary lives **on the board, not in a file**: one MARKDOWN note per chapter
 2. Take the leftmost entry of `meta.timelineData.columns` as the first column (re-read the chapter after modeling — columns may have been added or reordered).
 3. Create the note: `node:created`, `meta.type: "MARKDOWN"`, `cellId = "<feedbackLaneId>-<firstColumnId>"`, title `Summary — <Chapter Name>`, body as plain markdown in **`meta.description`** (not `meta.content` — it is stored but never rendered).
 
-Exactly one summary note per chapter; on a re-run, update the existing one. Write it **after** the chapter's model, scenarios and review are complete, so it describes the finished shape. Use the source document's language (or `language`). Each note must read standalone for someone who has not seen the source, and carry enough detail to start specifying and building that chapter. Tables over prose, no filler.
+Name every board element by link: `ref:<nodeId>` renders as the element's title and zooms the canvas to it on click (see `/learn-eventmodelers-api` *Linking to elements in markdown*). Exactly one summary note per chapter; on a re-run, update the existing one. Write it **after** the chapter's model, scenarios and review are complete, so it describes the finished shape. Use the source document's language (or `language`). Each note must read standalone for someone who has not seen the source, and carry enough detail to start specifying and building that chapter. Tables over prose, no filler.
 
 **Every chapter's note:**
 
@@ -183,7 +183,7 @@ Exactly one summary note per chapter; on a re-run, update the existing one. Writ
 | What | When | Source | Consequence of missing it |
 
 ## Business rules
-| Rule (verbatim thresholds) | Modeled in (command / read model) | Scenario | Source |
+| Rule (verbatim thresholds) | Modeled in (`ref:<nodeId>` of the command / read model) | Scenario | Source |
 
 ## Requirements & deliverables
 Mandatory vs. optional (Muss/Kann), each with the board element that tracks it.
@@ -192,7 +192,7 @@ Mandatory vs. optional (Muss/Kann), each with the board element that tracks it.
 Forms/documents exchanged and their fields, where known.
 
 ## Elements
-Counts and names of the key events, commands, read models, automations, screens, and the slice list (state-change / state-view / automation). Note external parties and their translated events.
+Counts and names of the key events, commands, read models, automations, screens, and the slice list (state-change / state-view / automation), each as `ref:<nodeId>`. Note external parties and their translated events.
 
 ## Open questions & risks
 | Question / risk | Source(s) | Why it matters |

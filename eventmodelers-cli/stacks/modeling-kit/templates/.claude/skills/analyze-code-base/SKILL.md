@@ -160,6 +160,8 @@ Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`,
 
 **Use tables, not prose.** Each note is mostly markdown tables. Prose is allowed only for a one-line intro, never for something that fits in a row.
 
+**Link elements, don't just name them.** Wherever a note mentions an element on the board, write `ref:<nodeId>`. It renders as the element's current title, and a click zooms the canvas to it (see `/learn-eventmodelers-api` *Linking to elements in markdown*). Use `[label](ref:<nodeId>)` only when the wording must differ. Take the id from your `node:created` or from a read. An element that isn't placed yet keeps its plain *italic* name until it is, and then the row is updated.
+
 **References must be precise and resolvable.** Paths are relative to the analysed code root, with a line number where one exists: `src/main/java/org/acme/visit/VisitController.java:57`, plus the class and method (`VisitController#processNewVisitForm`), table, endpoint (`POST /owners/{id}/pets/{petId}/visits/new`), test (`VisitControllerTests#testProcessNewVisitFormSuccess`) or template (`templates/pets/createOrUpdateVisitForm.html`). Use folders and packages for anything bigger than one class. Never "the visit code". A line number is valid for the commit of the *Analysis history* row that wrote it; when a later pass re-reads a changed file, it updates the references into that file.
 
 ### The analysis log — column 0 of every chapter
@@ -194,7 +196,7 @@ Code root `petclinic/` · running UI: http://localhost:8080 (test account `georg
 ## Chapter decisions
 | # | Decision | Why | Source | Confirmed by |
 |---|----------|-----|--------|--------------|
-| 1 | Flow starts at *Pet Added* | A visit needs a pet (`Visit.petId` not null) | `Visit.java:34` | person |
+| 1 | Flow starts at ref:<petAddedId> | A visit needs a pet (`Visit.petId` not null) | `Visit.java:34` | person |
 
 ## Not modeled
 | Code | Reason |
@@ -207,8 +209,8 @@ Code root `petclinic/` · running UI: http://localhost:8080 (test account `georg
 ```markdown
 | # | Decision | Element(s) | Why | Source | Confirmed by |
 |---|----------|------------|-----|--------|--------------|
-| 1 | Insert into `visits` → event | *Visit Booked* | the only write of the booking | `VisitController.java:57` `#processNewVisitForm` | code |
-| 2 | Title *Book Visit*, not *New Visit Form* | *Book Visit* | the business word | person, 2nd answer | person |
+| 1 | Insert into `visits` → event | ref:<visitBookedId> | the only write of the booking | `VisitController.java:57` `#processNewVisitForm` | code |
+| 2 | Title *Book Visit*, not *New Visit Form* | ref:<bookVisitId> | the business word | person, 2nd answer | person |
 
 ## Code vs. business terms
 | Code | Board |

@@ -377,6 +377,26 @@ Place a free-text markdown note in that lane the same way any other node is plac
 
 The node's content lives in `meta.description` (a plain string of markdown source) — **not** `meta.content`; that field is silently accepted and stored but never rendered, producing a visibly empty note. There is no `fields[]` array on this element type, and no separate render/sketch call is needed (unlike SCREEN/HTML_SCREEN). `node.type` comes back as `"markdown"` (lowercase) on read.
 
+### Linking to elements in markdown: `ref:<nodeId>`
+
+Any markdown the app renders can point at an element on the board. Clicking the link zooms the canvas to that element. This works in MARKDOWN notes, element `meta.description`s (doc view and slice view) and timeline info notes.
+
+| Write | Renders as |
+|-------|------------|
+| `ref:<nodeId>` | the element's **current** title, so it stays right after a rename. Use this one by default. |
+| `[Visit Booked](ref:<nodeId>)` | your own label, for a different wording or a phrase in a sentence |
+
+```markdown
+| # | Decision | Element(s) |
+|---|----------|------------|
+| 1 | Insert into `visits` → event | ref:3f2b8c1e-1a2b-4c3d-8e9f-0123456789ab |
+```
+
+- `<nodeId>` is the full node uuid, taken from a read or from your own `node:created`. Never make one up: an id that isn't on the open board renders as a greyed-out `ref:3f2b8c1e…` link.
+- A slice can be linked through its slice border's node id.
+- Write it as a separate word (`see ref:<id>`, not `xref:<id>`). Inside backticks or code blocks it stays plain text.
+- Use it only where the app renders markdown. Chat message `text` is plain text, so use a snippet's `nodeId` there (`link`, `tasks`, `changes`). Comments are plain text too.
+
 ---
 
 ## 3. Nodes

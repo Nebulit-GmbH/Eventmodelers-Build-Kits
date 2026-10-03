@@ -436,6 +436,21 @@ different thing, and `anthropicBaseUrl` below is that path — but note that it 
 speaking Anthropic's own `/v1/messages`, which Ollama does not serve. Pointing it straight at
 `localhost:11434` gets you a 404; a translating proxy has to sit in between.
 
+### Asking for credentials again
+
+A modeling kit installed in the project never asks on its own: `run --modeling` takes whatever
+the `.eventmodelers/config.json` walk turns up. To replace those credentials (another account,
+a rotated token, a different board) pass `--force`:
+
+```bash
+npx @eventmodelers/cli run --modeling --force
+```
+
+It re-runs the same credentials prompt as `init --modeling`, overwrites the project's
+`.eventmodelers/config.json`, and then starts the loop with the new values. With the global
+install, `--force` drops the "keep the stored credentials" choice so the board's credentials have
+to be answered afresh. `init-config` (no flags) does the same re-ask without starting a loop.
+
 ### Running headless, in a container
 
 `run` normally confirms which board it is about to drive and where that board's credentials

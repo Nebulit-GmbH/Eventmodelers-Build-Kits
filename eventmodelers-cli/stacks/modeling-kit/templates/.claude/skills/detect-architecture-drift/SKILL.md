@@ -147,16 +147,18 @@ The answer comes as a `CHAT` turn (`Please do these:` + ticked titles or ids). R
 
 Print the report below, with every finding as a `- [ ]` checkbox carrying its proposed fix, and ask which to apply. Wait for the answer.
 
+Name each slice and element as `[<title>](ref:<nodeId>)` (the slice border's id for a slice). The terminal shows the title, and once the report is in a board note or an element description, a click zooms the canvas to it (see `/learn-eventmodelers-api` *Linking to elements in markdown*). A slice that exists only in code has no node, so it stays plain text.
+
 ```
 ## Architecture Drift — <scope: board | timeline "<title>" | context "<name>">
 Compared: <n> slices on the board, <n> slice folders in code    Analysed: <ISO timestamp>
 
 ### Slices
 - [ ] <slice> — in code, not on the board → add it to the model
-- [ ] <slice> — board says Done, no code → set back to Planned
+- [ ] [<slice>](ref:<sliceBorderId>) — board says Done, no code → set back to Planned
 
 ### Fields
-- [ ] <slice> / <element>: model `customerId: String`, code `custoemrId` → fix model typo
+- [ ] [<slice>](ref:<sliceBorderId>) / [<element>](ref:<nodeId>): model `customerId: String`, code `custoemrId` → fix model typo
 
 ### Specifications / Screens / Edges
 - [ ] ...
