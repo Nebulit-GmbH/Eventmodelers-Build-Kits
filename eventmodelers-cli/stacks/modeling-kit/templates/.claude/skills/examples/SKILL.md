@@ -25,6 +25,14 @@ From `$ARGUMENTS`, extract:
 
 ---
 
+## Step 1a — Locked slices
+
+Only elements in a slice with status `Created` may be changed (no slice at all = not locked).
+`get_board_outline` reports `sliceStatus` per column; read it for the chapter before writing, and for
+any target in a column with another status (`Done`, `Review`, `InProgress`, …) **write nothing to it**
+unless the task says the person already confirmed changing that locked slice. Otherwise ask in the chat
+with a `confirm` snippet — `CLAUDE.md` § *Locked slices in a chat* — and post no `COMMENT` on the slice.
+
 ## Step 1b — Many targets at once
 
 `target` is singular, but the common real request is "fill in the examples across this chapter". When you have more than one target, **do not run this skill once per element and do not fetch context a node at a time.**

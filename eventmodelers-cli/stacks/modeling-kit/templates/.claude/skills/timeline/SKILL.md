@@ -15,6 +15,44 @@ A **domain event** is something that happened in the business domain. Past tense
 
 ---
 
+## Chat mode — the person selects what goes on the board
+
+**When this run has a chat** (`CHAT_SESSION_ID` is set — the request came from the board's chat), you do not place
+events as soon as you find them: you **offer** them as a snippet and place only what the person ticks. Without a chat
+(a terminal session) everything below Step 1 works as written — place immediately. Chat mode changes four things:
+
+1. **Which timeline** (Step 1a, several chapters exist): post a **`poll` snippet** — one option per chapter (its name)
+   plus *"A new timeline"* — instead of asking in prose, and end the turn. The pick arrives as the next chat message.
+2. **Candidate events** (Step 3a–3b): don't call Step 4 yet. Post **one** `post_chat_message` (`sessionId` =
+   `CHAT_SESSION_ID`) with a **`tasks` snippet** — every change you found this round, each a tickable line:
+   ```
+   mcp__eventmodelers__post_chat_message {
+     "boardId": "<BOARD_ID>", "sessionId": "<CHAT_SESSION_ID>",
+     "text": "From what you told me I found 4 events. Tick the ones that belong on the timeline.",
+     "snippet": { "kind": "tasks", "headline": "Add to the timeline?", "submitLabel": "Add to timeline", "tasks": [
+       { "id": "add:1:after:<eventNodeId>", "title": "Order Placed", "description": "After Cart Checked Out" },
+       { "id": "rename:<eventNodeId>", "title": "Payment Received", "description": "Renamed from Payment Done", "nodeId": "<eventNodeId>" },
+       { "id": "remove:<eventNodeId>", "title": "Remove Page Viewed", "description": "Not a business event", "nodeId": "<eventNodeId>" } ] } }
+   ```
+   - `title` is the event name (naming rules below), or for a removal `Remove <name>`. `description` says where it goes
+     or what changes; `nodeId` (existing events only) makes the description a link to it on the board.
+   - `id` carries the operation, because the turn that applies it remembers nothing: `add:<n>:after:<eventNodeId|start>`
+     (a new event right after that one, or first), `rename:<eventNodeId>`, `remove:<eventNodeId>`. Unique per task.
+   - Put **every** change of the round in the one snippet (it pages itself at 5). Then **end the turn** — nothing is
+     placed, renamed or removed while you wait. Nothing found: one line of text, no snippet.
+3. **Your one follow-up question** (Step 3d): if the answer is a pick — *"Can Payment fail?"* → a `confirm`, *"Which
+   comes first?"* → a `poll` — it is a snippet too; an open question stays text. The question goes in the same message
+   as the candidates, as its text, never as a second message.
+4. **Applying the answer.** It arrives as a `CHAT` turn (`Please do these:` + the ticked titles, or ids when the list was
+   long). Read your snippet back (`get_chat_session`), match the ticked tasks, and create **one prompt**: *"Apply these
+   /timeline changes in chapter `<CHAPTER_ID>`: `<id> | <title>` per line"*. Unticked ones were declined: drop them.
+   A prompt that starts with **"Apply these /timeline changes"** is the applying run: load the chapter (Step 1b) but
+   skip 3a–3b — for each line do Step 4 (`add` → 4a at the position after the named event, `rename` → 4b, `remove` →
+   4c), then post one short chat message: what went on the board, and the next question as in item 3. This is how the
+   timeline keeps growing: *tell me more → a snippet to tick → applied → the next snippet.*
+
+---
+
 ## Step 1 — Gather inputs and start immediately
 
 From `$ARGUMENTS` and the conversation, extract:
@@ -44,7 +82,7 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "pro
 
 **If `timelineId` was not provided:**
 
-- If one or more chapters exist, list them by name (falling back to ID if unnamed) and ask:
+- If one or more chapters exist (in a chat: a `poll` snippet, see *Chat mode*), list them by name (falling back to ID if unnamed) and ask:
   > "I found these timelines on the board: [list]. Which one do you want to continue, or should I create a new one?"
   Wait for the user's answer before proceeding.
 - If no chapters exist, proceed directly to [1c — Creating a new timeline](#1c--creating-a-new-timeline).
@@ -154,6 +192,8 @@ Scan for:
 Ignore implementation details, system internals, and technical steps.
 
 ### 3b — Decide what to do for each candidate
+
+*(In a chat, this decides what goes into the snippet — see *Chat mode* — instead of what you place now.)*
 
 Compare against the current `events` state:
 

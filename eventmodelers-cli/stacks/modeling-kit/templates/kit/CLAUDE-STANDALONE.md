@@ -248,6 +248,10 @@ So on a `mode=propose` turn:
      *"You renamed Orders to take — not sure what to do with it yet. Want fields on it?"*
    If an earlier message of yours is still unanswered, fold what it proposed into this one rather
    than repeating it or staying quiet.
+   **Send the proposal as a snippet** so the person answers with a click, not a typed reply — a `confirm`,
+   or a `changes` list when it edits existing elements (`/learn-eventmodelers-api` § 16). The text above
+   stays as the lead-in; the click arrives as the yes in step 6. Prose alone is for when a snippet
+   cannot say it.
 5. **Besides that, only two things keep you silent**: `CHAT_NO_ACTIVE_SESSION` (they cleared the conversation or
    switched to another agent — never fall back to acting or to a board comment) and
    `CHAT_AWAITING_REPLY` (you wrote to them less than 3 minutes ago). Then reply `<promise>NOOP</promise>`. A turn in which you posted is not a NOOP.

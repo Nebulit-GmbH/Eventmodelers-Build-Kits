@@ -114,6 +114,22 @@ Stop traversal when:
 
 ---
 
+## Step 3e — Check the slices first (before any write)
+
+Only elements in a slice with status `Created` may be changed — and an element in no slice at all is
+not locked. The chain you resolved does not carry that: `get_attribute_chain` and `get_node` do not
+report `sliceStatus`. Read it now, once: `mcp__eventmodelers__get_board_outline { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }`
+gives every column a `sliceStatus` when a slice spans it. Look up each chain node's column.
+
+- **Every node writable** (`Created`, or no `sliceStatus`) → continue with Step 4.
+- **Any node in a column with another status** (`Done`, `Review`, `InProgress`, `Blocked`, `Planned`, `Assigned`,
+  `Informational`) → **do not write that node.** If the task text says the person already confirmed changing
+  that locked slice (*"The person confirmed changing the locked slice '…'"*, with an `origin_message_id`), you may
+  change those elements and only those. Otherwise write **nothing** — not even the nodes that are writable, the
+  chain is one logical edit — and follow `CLAUDE.md` § *Locked slices in a chat*: ask in the chat with a
+  `confirm` snippet (or a `changes` snippet listing the elements) naming the slice and its status, post no
+  `COMMENT` on the slice, and end the turn. (No chat to ask in? Change nothing and post a `COMMENT` on the slice.)
+
 ## Step 4 — Apply the change to the whole chain in one write
 
 Compute the updated `fields` array for **every** node in the chain first, in order (TARGET_NODE first, then backwards to SOURCE_NODE), then submit them all in a **single** `submit_node_events` call. Do not write one node, check it, and move to the next — the chain is one logical edit and `events[]` takes the whole batch.
@@ -179,7 +195,7 @@ Tell the user:
 - **Operation**: add `"<name>"` / rename `"<old>"` → `"<new>"`
 - **Chain**: list each element in order (type + title + cell)
 - **Updated**: which nodes were changed
-- **Skipped**: which nodes were skipped and why (field already exists / field not found)
+- **Skipped**: which nodes were skipped and why (field already exists / field not found / slice not `Created` — asked to confirm)
 
 Example output:
 ```

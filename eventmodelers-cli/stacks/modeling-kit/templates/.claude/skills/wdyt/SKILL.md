@@ -1,6 +1,6 @@
 ---
 name: wdyt
-description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and posts questions/observations as comments on relevant nodes. Findings about a relationship between two elements are additionally drawn on the canvas as an arrow — comments carry every textual question, arrows carry the relational hints.
+description: Business analyst exploration of an event model board. Reads all slices, analyzes them from a business perspective, and shows its questions/observations to the person first and, once they say so, posts them as comments on relevant nodes. Findings about a relationship between two elements are additionally drawn on the canvas as an arrow — comments carry every textual question, arrows carry the relational hints.
 ---
 
 # WDYT — What Do You Think?
@@ -123,7 +123,57 @@ Whichever of these four you raise, its comment goes on the element at the centre
 
 ---
 
-## Step 4 — Comments carry every textual question; arrows carry relational hints
+## Step 4 — Show the findings first; comments only after the person says so
+
+**When this run has a chat** (`CHAT_SESSION_ID` is set — the request came from the board's chat, as a prompt's
+`origin_session_id` or as a `CHAT` turn), **nothing goes on the board yet.** Steps 4.1 and 4.2 below run only
+after the person has answered. Instead:
+
+### 4.0 Offer the findings in the chat — a snippet, then the question
+
+Post **one** `post_chat_message` (`sessionId` = `CHAT_SESSION_ID`, no `replyTo` in a prompt turn; `replyTo` =
+this turn's `message_id` in a `CHAT` turn) with a **`tasks` snippet** — it is the list of findings *and* the
+question whether they should become comments:
+
+```
+mcp__eventmodelers__post_chat_message {
+  "boardId": "$BOARD_ID",
+  "sessionId": "<CHAT_SESSION_ID>",
+  "text": "I have 7 questions about Registration. Tick the ones that should go on the board as comments.",
+  "snippet": {
+    "kind": "tasks",
+    "headline": "Post these as comments?",
+    "submitLabel": "Post as comments",
+    "tasks": [
+      { "id": "c:<nodeId>:1", "title": "What happens when a customer registers without a name?", "description": "Register Customer", "nodeId": "<nodeId>" },
+      { "id": "c:<nodeId>:2:to:<otherNodeId>", "title": "Does this always reach the shipping step?", "description": "Order Placed → Ship Order (also drawn as an arrow)", "nodeId": "<nodeId>" }
+    ]
+  }
+}
+```
+- **`title`** is the finding exactly as it would be posted — one sentence, plain business language (the language rule
+  applies). **`description`** names the element it is about (and, for a relational finding, both), and **`nodeId`**
+  is that element's id (the first one, for a relational finding): the person clicks the name to jump to it on the canvas.
+- **`id`** carries what you need later, because the turn that posts the comments remembers nothing:
+  `c:<nodeId>:<n>` for a comment on that node, and `c:<nodeId>:<n>:to:<otherNodeId>` when the finding is relational
+  and also gets an arrow (4.2). Unique per task.
+- The snippet pages itself at 5 per page — put **every** finding in the one snippet, never split them across messages.
+- Then **end the turn.** Post no comment and draw nothing while you wait; zero findings means a one-line text reply
+  and no snippet. The report of Step 5 is this message.
+
+**The answer arrives as a `CHAT` turn** — `Please do these:` followed by the titles of the ticked findings (or `(by id)`
+and the ids, when the list was long). Read your snippet back with `get_chat_session` (it is on your message as
+`snippet`), match the ticked titles/ids to its tasks, and create **one prompt** for the ticked ones: *"Post these
+/wdyt findings as comments (author wdyt) — skip Steps 1–3 and 4.0: `<id> | <title>` per line"*. Unticked findings were
+declined: drop them. Nothing ticked, or a "no": acknowledge in a line.
+
+**A prompt that starts with "Post these /wdyt findings"** is the posting run: do **not** load the model or analyse
+again — for each line, the id gives the node (and the arrow target), the title is the comment text — and go straight
+to 4.1 (and 4.2 for the `:to:` ones).
+
+**No chat** (run straight from a terminal session): skip 4.0 and post right away, as 4.1 and 4.2 say.
+
+## Posting — comments carry every textual question; arrows carry relational hints
 
 The two channels have a strict division of labor, always applied the same way — never swap them:
 
@@ -178,7 +228,9 @@ A finding about a single element, or about a cluster, gets a comment only — do
 
 ## Step 5 — Report back to the user
 
-After posting all comments, give the user a concise summary:
+**With a chat**, the report is the 4.0 message (a count in its text, the findings in the snippet) and the posting run
+ends with one short chat message: how many comments went up, and the arrows drawn. **Without one**, after posting
+all comments, give the user a concise summary:
 
 1. **Flows analysed**: count and list them by their business name
 2. **Total questions posted**: count (it is perfectly fine if this is 0 — don't force questions)

@@ -84,15 +84,21 @@ header's `standalone=on|off` tells you which mode they come in.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
-**Only touch elements in a slice whose status is `Created`.** Every other status — `Planned`,
+**Only touch elements in a slice whose status is `Created` — unless the person explicitly confirmed it.** Every other status — `Planned`,
 `Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
 on that slice: read it for context, but never change, move, rename or delete its elements, and
 never add scenarios, fields or examples to them. An element in no slice at all is not locked.
 `get_board_outline` returns `sliceStatus` per column (`get_nodes` does not carry it), so the
 outline read `/connect` Step 5 already makes answers this — no `list_slices`/`get_slice_data` call needed.
 If only part of what you were asked to do is locked, do the rest and name what you skipped and
-why; if all of it is, change nothing and post a `COMMENT` on that slice saying which status
-blocked it.
+why. **When the work came from a chat** (the prompt carries `origin_session_id=`, or you are in a
+`CHAT` turn), do not simply refuse and do not change it either: **ask the person to confirm**, in
+the chat, with a `confirm` snippet (see "Locked slices in a chat" below). Their yes is what unlocks
+exactly those elements — nothing else about the rule loosens. **No skill overrides this.** `/attributes`,
+`/examples`, `/place-element` and the rest write through their own steps; a skill that does not mention
+`sliceStatus` is not permission — check the outline before its first write, every time. A `COMMENT` on the slice is only for
+when there is no chat to ask in (a prompt that did not come from one, a standalone turn): then change
+nothing and comment which status blocked it. Where there is a chat, never comment — ask with the snippet.
 
 **One board read, shared by the whole turn.** Orientation first — `get_board_outline`, or `get_nodes` with
 `projection: "line"` — to establish where the work actually is, and only for the chapter this turn is about.
@@ -190,15 +196,41 @@ for it. Instead:
    `context` carries over from the message on its own):
    - **answer** — a question about the model: read what you need (cheapest read first), change
      nothing.
+   - **wdyt** — the message is "wdyt" (with or without a question mark, or `/wdyt`): **always** the `/wdyt`
+     skill, never an inline answer. Create one prompt for it (`create_prompt`, `originMessageId` = this
+     message) — *"Run /wdyt on `<context or chapter>`"*, the target resolved from `context=` like any other
+     (`timelineId` for the chapter, what they have selected). It sends its findings back as a snippet to tick
+     and posts nothing to the board until they answer (`/wdyt` Step 4.0). Your reply here is one line —
+     *"On it — looking at Registration."*
+   - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
+     writes these: `/analyze-existing-model`, `/add-next-slice`, `/examples`, `/timeline …`,
+     `/html-screen …`, `/storyboard …`): the person chose that skill, so it **is** the work — create one prompt,
+     *"Run /<name> <the rest of the message>"*, with the target resolved from `context=` like any other
+     (selected elements, chapter), and say so in one line. Don't re-interpret it as a question. A skill that
+     needs something the message lacks (which attribute? which screen?) is a **clarify**: ask, with a
+     snippet if the answer is a pick. A locked slice still needs the person's confirmation
+     ("Locked slices in a chat" below).
+   - **a review in other words** ("what do you think?", "any questions on this?", "what's missing here?") —
+     your call: a quick take is an **answer**, in prose; a thorough review of a whole context or chapter may
+     be the same prompt as above. If a reply ends in a question the person answers with a click ("Want me to
+     turn these into comments?"), that question is a snippet, not a sentence (step 4, Snippets).
    - **clarify** — too vague to act on even with the session behind it: do no work.
    - **work** — it asks for a change to the board: create the work now, as below — a request is its
-     own go-ahead, in every mode.
+     own go-ahead, in every mode — **except for a locked slice.** Before `create_prompt`, find out whether
+     the elements it names (and, for a change that follows connections, the ones it reaches) sit in a slice
+     that is not `Created`: `get_board_outline` for that chapter, `sliceStatus` per column. If so, no
+     prompt for those: ask first (see "Locked slices in a chat"). A request is not a go-ahead to reopen
+     finished work.
    - **confirm** — the message says yes to a proposal you started after a board change (`--modeling`
      proposes instead of acting on board changes; see "Propose mode" in CLAUDE-STANDALONE.md). Any
      form counts, typed or spoken ("yes", "sure", "go ahead", "do it", "ok, but only the
      scenarios"): create the work for exactly what you proposed — a partial yes, only that part; a
      no ("leave it"), nothing. A reply that changes the plan ("yes, but call it OrderSubmitted")
      confirms the changed plan. Not sure it is a yes? Treat it as a new message and ask.
+     The proposal may have been a **snippet** (step 4): the click arrives as an ordinary message —
+     `Yes – <question>` or `Apply changes – …` is a yes to exactly what that snippet showed; a `Please do
+     these:` list is a yes to only those items (unticked = declined); a poll pick is the chosen option.
+     The answer's `context.snippetReply.messageId` in `get_chat_session` names the message it answers.
    Creating work: **every board change goes through a prompt,
      however small** — never change the board in a chat turn. Create one `create_prompt` per
      independent piece of work, each with `originMessageId` = this turn's `message_id` (for a
@@ -215,16 +247,32 @@ for it. Instead:
    - no cell addresses, column letters or ids — element names are enough;
    - no hedging about what they might have meant — if you had to guess, say the guess in a few
      words ("as a dance-class booking");
-   - at most **one** follow-up suggestion, as a short question — never a menu of options.
+   - at most **one** follow-up suggestion, as a short question — never a menu of options in the text.
+     A choice the person makes with a click is not a menu in the text: it is a **snippet** (below).
    By kind:
    - answer → the answer; a longer one only when the question really needs it, and then a short
      list, not paragraphs;
    - clarify → your question — asking back is right here: someone is waiting, so do not guess and
      do not post a board comment instead;
+   - wdyt → one short line that you are running `/wdyt` — its findings come as a snippet; a review asked in other words → the quick take in prose, or the same line;
    - work or confirm → one short line on what you are about to do — *"On it — adding scenarios to
      Register User."* The person sees the work cards appear under their message, so don't
      describe the work beyond that.
    - a no to a proposal → acknowledge it in a line, nothing else.
+   **Snippets are the default for questions the person answers with a pick.** `post_chat_message` takes
+   an optional `snippet` — one interactive element under your text (`/learn-eventmodelers-api` § 16
+   *Chat snippets* has the shapes). **Use one — do not ask in prose and wait for a typed "yes" —
+   whenever you would otherwise write:**
+   - a **yes/no question or a proposal** ("Shall I…?", "Want me to…?") → `confirm`; when the proposal is
+     edits to existing elements, a `changes` list (names as links, before/after per field, one confirm);
+   - a **choice between alternatives** ("A or B?", "which one first?") → `poll`;
+   - a **list of things for the person to pick from** (findings, candidates, drifts, "which of these?") → `tasks`;
+   - a **pointer to an element, a picture or a command** → `link` / `image` / `code`, instead of describing it.
+   Plain text stays for answers, explanations and open questions that need words. `text` is still
+   required and stays short — it is the lead-in, the snippet carries the detail. A snippet changes
+   nothing on the board: the click comes back as the next `CHAT` turn, and only then do you
+   `create_prompt`. The CLI's fallback reply (below) is text only, so a snippet is only ever sent by
+   your own `post_chat_message`.
    If you skip `post_chat_message`, the CLI posts your turn's final text as the reply (cut at 1000
    characters) — so if you do
    post, end the turn with nothing but `<promise>DONE</promise>`.
@@ -246,6 +294,37 @@ same style as a chat reply (*"Added the read model Dancing Queen, fed by Dance C
 fields on it?"*). If the person has
 since switched to another agent (`CHAT_NOT_ADDRESSEE`), skip it; the work card already shows the
 result.
+
+**Say what you did not do, every time.** The message covers everything the request asked for — not
+only what got done. Anything you skipped, could not do or changed differently is named in it, with
+the reason: *"Added the fields to Register User. I left Order Placed alone — see my question below."*
+The work card shows "Done", which the person would otherwise read as everything went through. Never
+reply `DONE` to a chat-originated prompt without having posted a message.
+
+### Locked slices in a chat
+
+A request that touches an element in a slice that is not `Created` (e.g. `Done`) is not refused and
+not silently turned into a comment: **you ask, explicitly, and wait for the yes.** Whichever turn
+notices it — the `CHAT` turn (the outline you read already has `sliceStatus`) or the prompt turn —
+does the same:
+
+1. **Change nothing in the locked slice.** Do everything else the request asked for.
+2. **Post one `post_chat_message`** (`replyTo` = this turn's `message_id` in a `CHAT` turn; `sessionId`
+   = `origin_session_id` in a prompt turn) with a **`confirm` snippet**: the text names the slice, its
+   status and what you would change — *"Order Placed is in the slice 'Place order', which is Done.
+   Changing it reopens finished work."* — and the snippet's `headline` is the question, with a
+   `yesLabel` that says what happens (*"Yes, change it"*, `noLabel` *"No, leave it"*). When the change is
+   several edits, a `changes` snippet (title = element as link, slice, before/after, one confirm) shows
+   exactly what will be touched instead.
+3. **Reply `DONE`** — a turn that asked is finished; the question is the result. **No `COMMENT` on the
+   slice, not now and not instead of asking** — the snippet in the chat is the only thing you post.
+4. **The click arrives as a `CHAT` turn** (`Yes, change it – …` / `Apply changes – …` is a yes, `No, leave it
+   – …` a no). On a yes, create the prompt for exactly the elements you asked about
+   (`originMessageId` = the yes) and **write the confirmation into the prompt's text**: *"The person
+   confirmed changing the locked slice 'Place order' (status Done): …"*. A prompt turn whose text carries
+   that confirmation, with `origin_message_id` pointing at the yes, may change those elements — and only
+   those; any other locked slice still needs its own yes. On a no, acknowledge in a line and drop it.
+   Not clearly a yes? Ask again, don't change it.
 
 ## Standalone board-change turns — see `CLAUDE-STANDALONE.md`
 
