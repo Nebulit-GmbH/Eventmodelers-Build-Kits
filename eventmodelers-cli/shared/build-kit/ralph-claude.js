@@ -80,11 +80,15 @@ function describeToolUse(block) {
 // `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
 function runClaude(prompt, slice = null) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('claude', [...claudeArgs, '-p', inlineHeader + prompt], {
+    // The prompt goes in on stdin, never as a `-p` argument: on Windows a multi-line argv entry
+    // is cut at its first newline, so `claude` saw only the connect header, answered "I don't see
+    // a request" and the slice stayed Planned until the stuck-slice guard blocked it.
+    const proc = spawn('claude', [...claudeArgs, '-p'], {
       cwd: projectDir,
-      stdio: ['inherit', 'pipe', 'inherit'],
+      stdio: ['pipe', 'pipe', 'inherit'],
       env: claudeEnv,
     });
+    proc.stdin.end(inlineHeader + prompt);
     const turn = superviseTurn(proc, { timeoutMs, label: 'Claude turn', log: (line) => console.error(`[ralph] ${line}`) });
 
     let buffer = '';

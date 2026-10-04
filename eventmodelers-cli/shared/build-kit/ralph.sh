@@ -65,6 +65,13 @@ get_planned_slice_title() {
   done
 }
 
+# prompt.md and backend-prompt.md are instruction manuals with no request in them — handed one
+# alone, the agent may read it as background and ask what to do. Every turn ends with the concrete
+# request, the same one lib/ralph.js's taskRequest() appends.
+task_request() {
+  printf '\n\n---\n\nYour task now: %s, following the instructions above. Start immediately.\n' "$1"
+}
+
 # Runs agent.sh with the given prompt; retries on non-zero exit
 run_agent() {
   local label="$1"
@@ -82,13 +89,13 @@ while [[ "$ITERATIONS" -eq 0 || "$cycle" -lt "$ITERATIONS" ]]; do
   ran_something=false
 
   if [[ "$HAS_CREDENTIALS" == true ]] && has_pending_tasks; then
-    run_agent "onTask: loading slice from board..." "$(cat "$PROMPT_FILE")"
+    run_agent "onTask: loading slice from board..." "$(cat "$PROMPT_FILE"; task_request 'process the pending tasks in tasks.json')"
     ran_something=true
   fi
 
   if has_planned_slices; then
     slice_title=$(get_planned_slice_title)
-    run_agent "onPlannedSlice: building \"$slice_title\"..." "$(cat "$BACKEND_PROMPT_FILE")"
+    run_agent "onPlannedSlice: building \"$slice_title\"..." "$(cat "$BACKEND_PROMPT_FILE"; task_request "build the Planned slice \"$slice_title\"")"
     echo "[$(date -u +%H:%M:%S)] Slice \"$slice_title\" build complete — waiting for next slice"
     ran_something=true
   fi

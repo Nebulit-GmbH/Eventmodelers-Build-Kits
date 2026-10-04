@@ -1,6 +1,6 @@
 ---
 name: detect-model-drift
-description: Compare the event model on the board with the code in this repository and report where they have drifted apart — fields on commands/events/read models, specifications vs tests, screens, edges, slices missing in code, and slices in code that the model doesn't have. Read-only; every finding comes with a suggested fix the user confirms first.
+description: Compare the event model on the board with the code in this repository and report where they have drifted apart — fields on commands/events/read models, specifications vs tests, screens, edges, slices missing in code, and slices in code that the model doesn't have. `--branch <name>` compares against that branch's code (default: the current branch's working tree). Read-only; every finding comes with a suggested fix the user confirms first.
 ---
 
 # Detect Model Drift
@@ -14,6 +14,8 @@ If it is not (an empty folder, a modeling-only workspace holding just `.claude/`
 > Model drift can't be detected here — there is no code to compare the board against. Run this in the code base that implements the model.
 
 Do not connect, do not read the board, do not produce a report or snippet, and do not offer other fixes.
+
+**With `--branch <name>`** (see Step 1), also check that the branch exists in that code base: `git rev-parse --verify <name>`, else `git fetch origin <name>` and `git rev-parse --verify origin/<name>`. Use whichever resolves as `REF`. If neither does, stop the same way in one sentence (*"There is no branch `<name>` in this repository."*).
 
 ---
 
@@ -34,6 +36,7 @@ From `$ARGUMENTS` and the prompt context, extract:
 | `timelineId` | `context.timelineId` of the prompt (overrules the prompt's own `timeline_id`), or a timeline/chapter named in the text | whole board |
 | `contextName` | a bounded context named in the text | all contexts |
 | `sliceTitle` | a single slice named in the text | all slices in scope |
+| `branch` | `--branch <name>` in `$ARGUMENTS`, or a branch named in the text | the current branch's working tree |
 
 **If a timeline is in focus, only that timeline's slices are compared** — both on the board side and, through the slice → code mapping of Step 3, on the code side. Code that belongs to no slice in scope is not reported as "additional" in a scoped run; say so in the report footer instead of guessing.
 
@@ -61,6 +64,8 @@ Index the result in memory: per slice → commands, events, read models, screens
 ## Step 3 — Understand the code
 
 The code base is the directory resolved in Step 0 (`$EVENTMODELERS_CODE_DIR`, else the current directory) — every path below is relative to it, and it may hold any stack. Find out which, don't assume.
+
+**With a `branch` other than the one checked out, read the code from git, never from the working tree:** `git ls-tree -r --name-only $REF [<dir>]` lists the files, `git show $REF:<path>` reads one. That applies to everything below — `.build-kit/CLAUDE.md`, the `.build-kit/.slices` snapshot, the slice folders. Never `git checkout`/`git switch`: the working tree may hold someone's uncommitted work. Without `branch`, or when it is the current branch, read the working tree as usual.
 
 1. Read `.build-kit/CLAUDE.md` (and `.build-kit/AGENTS.md` if present) — its *Structure* section says where slices live and how they're named (e.g. `src/slices/{slice}/` for Node, `src/main/java/.../slices/{context}/{slice}/` for Axon).
 2. If `.build-kit/.slices/<context>/<slice>/slice.json` exists, it is the snapshot the code was **last built from** — useful for telling "the code changed" apart from "the model changed since the build" (see Step 5).
@@ -104,7 +109,7 @@ For every finding, pick who should move:
 
 | Evidence | Fix goes to | How it's done |
 |----------|-------------|---------------|
-| Code differs from `.build-kit/.slices` snapshot, board still equals the snapshot | **Model** — the code moved on deliberately | Skill that changes the board: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens — including updating every existing screen connected to a changed element, see below) |
+| Code differs from `.build-kit/.slices` snapshot (read from the same branch as the code), board still equals the snapshot | **Model** — the code moved on deliberately | Skill that changes the board: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens — including updating every existing screen connected to a changed element, see below) |
 | Board differs from the snapshot, code still equals it | **Code** — the model moved on | Set the slice back to `Planned` with `/update-slice-status` so the build kit picks it up again and diffs code against `slice.json` |
 | Both moved, or no snapshot | **Judgement call** — present both options, recommend one | Recommend by which side is more specific/complete |
 | Slice only in code | **Model** | Add the slice, via `/eventmodeling-slicing-event-models` after placing its elements |
@@ -155,7 +160,7 @@ Name each slice and element as `[<title>](ref:<nodeId>)` (the slice border's id 
 
 ```
 ## Model Drift — <scope: board | timeline "<title>" | context "<name>">
-Compared: <n> slices on the board, <n> slice folders in code    Analysed: <ISO timestamp>
+Compared: <n> slices on the board, <n> slice folders in code<, branch <name> @ <short sha>>    Analysed: <ISO timestamp>
 
 ### Slices
 - [ ] <slice> — in code, not on the board → add it to the model
@@ -183,4 +188,5 @@ Omit empty sections. Say plainly when nothing drifted.
 - A scoped run (timeline in focus) never reports "slice only in code" for code outside the scope.
 - One difference, one finding: follow a rename along the chain instead of listing it per element.
 - Fixing drift on the model side means updating the existing screens connected to the changed elements too (pages and `meta.fields`), in place — not just the command/event/read model.
+- `--branch` reads the code via `git ls-tree`/`git show` from that ref — never check it out, the working tree may hold someone's uncommitted work. No `--branch` = the working tree, as before.
 - Always read the MARKDOWN note in the feedback lane of each chapter's first column first — it is the chapter's context, and differences it explains are not drift.
