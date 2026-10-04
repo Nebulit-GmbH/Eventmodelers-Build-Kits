@@ -2106,7 +2106,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
   // The global install runs in ~/.eventmodelers/kit, away from the code base the person started
-  // the agent in — hand that directory over so code-reading skills (detect-architecture-drift)
+  // the agent in — hand that directory over so code-reading skills (detect-model-drift)
   // can still see it.
   if (codeDir) claudeArgs.push('--add-dir', codeDir);
   const claudeEnv = {

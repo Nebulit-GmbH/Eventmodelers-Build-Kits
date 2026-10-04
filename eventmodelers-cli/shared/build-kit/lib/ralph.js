@@ -689,6 +689,17 @@ async function runWithRetry(label, fn) {
   }
 }
 
+// prompt.md and backend-prompt.md are instruction manuals with no request in them. Handed one
+// alone, the agent read it as background, answered "what would you like me to help with?" with
+// no tool calls, and a Planned slice stayed Planned until the stuck-slice guard blocked it. So
+// every turn ends with the concrete request — here, once, for every runner.
+function taskRequest(planned = null) {
+  const task = planned
+    ? `build the Planned slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
+    : 'process the pending tasks in tasks.json';
+  return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n`;
+}
+
 async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
@@ -707,7 +718,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
     let didWork = false;
 
     if (credentialed && hasPendingTasks(kitDir)) {
-      const prompt = readFileSync(promptFile, 'utf-8');
+      const prompt = readFileSync(promptFile, 'utf-8') + taskRequest();
       for (const t of readTasks(join(kitDir, 'tasks.json'))) await fetchFullSlice(cfg, kitDir, t.payload?.sliceId);
       await runWithRetry('onTask: loading slice from board...', () => inTurn(kitDir, () => onTask(prompt)));
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
@@ -727,7 +738,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         continue;
       }
 
-      const prompt = readFileSync(backendPromptFile, 'utf-8');
+      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned);
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       lastReply = null;
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {

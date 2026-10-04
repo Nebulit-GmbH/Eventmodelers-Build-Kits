@@ -26,13 +26,11 @@ const claudeEnv = cfg.anthropicBaseUrl
 
 function runClaude(prompt) {
   return new Promise((resolve, reject) => {
-    // Prompt on stdin, not as a `-p` argument — Windows cuts a multi-line argv entry at its first newline.
-    const proc = spawn('claude', [...claudeArgs, '-p'], {
+    const proc = spawn('claude', [...claudeArgs, '-p', inlineHeader + prompt], {
       cwd: projectDir,
-      stdio: ['pipe', 'inherit', 'inherit'],
+      stdio: 'inherit',
       env: claudeEnv,
     });
-    proc.stdin.end(inlineHeader + prompt);
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`Claude exited ${code}`))));
     proc.on('error', reject);
   });

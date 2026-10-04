@@ -203,7 +203,7 @@ for it. Instead:
      and posts nothing to the board until they answer (`/wdyt` Step 4.0). Your reply here is one line —
      *"On it — looking at Registration."*
    - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
-     writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-architecture-drift`, `/add-next-slice`, `/examples`, `/timeline …`,
+     writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/add-next-slice`, `/examples`, `/timeline …`,
      `/html-screen …`, `/storyboard …`): the person chose that skill, so it **is** the work — create one prompt,
      *"Run /<name> <the rest of the message>"*, with the target resolved from `context=` like any other
      (selected elements, chapter), and say so in one line. Don't re-interpret it as a question. A skill that
@@ -357,7 +357,7 @@ nothing to sanitize either, since a board change is not user text.
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
 | Reverse-engineer the business process of an existing code base into the model, as an interview — all chapters first, then one chapter at a time | `/analyze-code-base` |
-| Find where the model and the code have drifted apart (fields, specs, screens, edges, missing/extra slices) and propose fixes | `/detect-architecture-drift` |
+| Find where the model and the code have drifted apart (fields, specs, screens, edges, missing/extra slices) and propose fixes | `/detect-model-drift` |
 | Turn a document or image (e.g. a tender/RFP) into a chaptered event model with screens, scenarios and a written blueprint summary | `/summarize` |
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |

@@ -1,9 +1,9 @@
 ---
-name: detect-architecture-drift
+name: detect-model-drift
 description: Compare the event model on the board with the code in this repository and report where they have drifted apart — fields on commands/events/read models, specifications vs tests, screens, edges, slices missing in code, and slices in code that the model doesn't have. Read-only; every finding comes with a suggested fix the user confirms first.
 ---
 
-# Detect Architecture Drift
+# Detect Model Drift
 
 ## Step 0 — Is there a code base?
 
@@ -11,7 +11,7 @@ Drift is the gap between the board and the code, so it can only be detected wher
 
 If it is not (an empty folder, a modeling-only workspace holding just `.claude/`, `.eventmodelers/` or `.agent-modeling-kit/`), **stop and answer in one or two plain sentences**, e.g.:
 
-> Architecture drift can't be detected here — there is no code to compare the board against. Run this in the code base that implements the model.
+> Model drift can't be detected here — there is no code to compare the board against. Run this in the code base that implements the model.
 
 Do not connect, do not read the board, do not produce a report or snippet, and do not offer other fixes.
 
@@ -150,7 +150,7 @@ Print the report below, with every finding as a `- [ ]` checkbox carrying its pr
 Name each slice and element as `[<title>](ref:<nodeId>)` (the slice border's id for a slice). The terminal shows the title, and once the report is in a board note or an element description, a click zooms the canvas to it (see `/learn-eventmodelers-api` *Linking to elements in markdown*). A slice that exists only in code has no node, so it stays plain text.
 
 ```
-## Architecture Drift — <scope: board | timeline "<title>" | context "<name>">
+## Model Drift — <scope: board | timeline "<title>" | context "<name>">
 Compared: <n> slices on the board, <n> slice folders in code    Analysed: <ISO timestamp>
 
 ### Slices
