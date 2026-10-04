@@ -52,6 +52,8 @@ Use the **full** slice data (no `projection`): you need fields with types and `i
 
 Call `validate_model { boardId, chapterId }` for a scoped timeline — it already lists structural gaps on the board side (zero/multi-issuer commands, sourceless read models, missing scenarios). Those are model problems, not drift: mention them in one line, don't duplicate them as findings.
 
+**Always read each chapter's context note before comparing.** The MARKDOWN note in the `feedback` lane of a chapter's **first column** holds the context for that chapter — architecture decisions, intended deviations, what the code is supposed to look like. For every chapter in scope, call `get_board_outline { boardId, chapterId }`, take the first column's node with `type: "MARKDOWN"` in a `feedback` lane, and read its `meta.description` with `get_node`. Judge every finding against it: a difference the note explains is intentional, not drift. A chapter without such a note is fine — carry on without it.
+
 Index the result in memory: per slice → commands, events, read models, screens, automations, specifications, dependencies.
 
 ---
@@ -91,7 +93,7 @@ Rules for judging, in order:
 - **Obvious typos and clearly wrong flags are one finding with a direct fix** (`custoemrId` in the code vs `customerId` on the board; `idAttribute: false` on the entity's own id) — name the correct side, don't ask which it is.
 - **Direction matters.** A mismatch with no earlier evidence has no "right" side: propose the fix in the direction the evidence points (see Step 5), and say when it is a judgement call.
 - Don't report framework noise: generated ids, metadata/envelope fields, serialization annotations, test fixtures' helper types, routes when the slice has no screen.
-- Don't flag what is clearly intentional (an internal slice with no screen; a read model used only by another read model).
+- Don't flag what is clearly intentional (an internal slice with no screen; a read model used only by another read model), or what the chapter's first-column feedback note (Step 2) describes as intended.
 - Report each underlying difference **once**, at the element where it starts; a renamed field shows up on the command and the event and the read model — that is one finding listing the chain, not three.
 
 ---
@@ -102,11 +104,13 @@ For every finding, pick who should move:
 
 | Evidence | Fix goes to | How it's done |
 |----------|-------------|---------------|
-| Code differs from `.build-kit/.slices` snapshot, board still equals the snapshot | **Model** — the code moved on deliberately | Skill that changes the board: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens) |
+| Code differs from `.build-kit/.slices` snapshot, board still equals the snapshot | **Model** — the code moved on deliberately | Skill that changes the board: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens — including updating every existing screen connected to a changed element, see below) |
 | Board differs from the snapshot, code still equals it | **Code** — the model moved on | Set the slice back to `Planned` with `/update-slice-status` so the build kit picks it up again and diffs code against `slice.json` |
 | Both moved, or no snapshot | **Judgement call** — present both options, recommend one | Recommend by which side is more specific/complete |
 | Slice only in code | **Model** | Add the slice, via `/eventmodeling-slicing-event-models` after placing its elements |
 | Slice missing in code, board says `Done` | **Model status** (it isn't done) | `/update-slice-status` → `Planned` |
+
+**A model fix always includes the existing screens.** When a field, command or read model changes on the board, every SCREEN/HTML_SCREEN that shows or submits it must change with it — otherwise the drift just moves from the code into the storyboard. List each affected screen in the same finding (follow the read model → screen and screen → command edges), and update it in place: `/html-screen` with its `nodeId` (loads the current pages and edits them, plus its `meta.fields`), `/storyboard-screen` for a wireframe sketch. Never create a new screen next to an outdated one.
 
 Never propose "fix the code" by editing it from this skill — code changes belong to the build kit (`/update-slice-status` → `Planned`).
 
@@ -178,3 +182,5 @@ Omit empty sections. Say plainly when nothing drifted.
 - Read-only until confirmed — the report is the product; the fixes run as separate, ticked work.
 - A scoped run (timeline in focus) never reports "slice only in code" for code outside the scope.
 - One difference, one finding: follow a rename along the chain instead of listing it per element.
+- Fixing drift on the model side means updating the existing screens connected to the changed elements too (pages and `meta.fields`), in place — not just the command/event/read model.
+- Always read the MARKDOWN note in the feedback lane of each chapter's first column first — it is the chapter's context, and differences it explains are not drift.
