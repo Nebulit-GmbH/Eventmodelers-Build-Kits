@@ -88,7 +88,8 @@ mcp__eventmodelers__place_element {
     "elementType": "READMODEL",
     "title": "NotificationsToSend",
     "columnIndex": <automationColumnIndex - 1>
-  }]
+  }],
+  "compact": true
 }
 ```
 Then set `meta.fields` and `meta.listElement: true` on the returned node id:
@@ -98,7 +99,8 @@ mcp__eventmodelers__submit_node_events {
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<returned-node-id>",
     "meta": {"type": "READMODEL", "title": "NotificationsToSend", "fields": [...], "listElement": true}
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -114,11 +116,11 @@ For a **translation-chain automation**, place its three columns left to right in
 
 1. **READMODEL → AUTOMATION first** — the automation reads its own todo list. The closing connection below is only accepted once this edge exists.
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }], "compact": true }
    ```
 2. **Every opening EVENT → READMODEL.**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<openingEventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<openingEventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }], "compact": true }
    ```
 3. **Every closing EVENT → READMODEL — worker-stage todo lists only.** Including the automation's own resulting event, even though that event is produced by the command this same automation issues. This is not a backward arrow: `EVENT → READMODEL` connections are exempt from column ordering when the read model already has a `READMODEL → AUTOMATION` edge (see `learn-eventmodelers-api` §3) — this todo-list read model qualifies because of the edge from step 1 above. A read model in this shape is a live projection, not a frozen snapshot — a later event closing an earlier-opened item is the normal case, not an exception to reach for only when convenient. **Do not add this edge for a translation automation's todo list** — it has no closing event at all (see the translation-chain rule above); wiring one back is a modeling error, not a convenience.
 

@@ -116,7 +116,8 @@ mcp__eventmodelers__submit_node_events {
     "eventType": "node:changed",
     "nodeId": "<chapterId>",
     "meta": {"type": "CHAPTER", "title": "Reservation & Lending"}
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -219,7 +220,8 @@ mcp__eventmodelers__submit_node_events {
         {"name": "reservedAt",    "type": "DateTime", "example": "2026-05-29T10:00:00Z"}
       ]
     }
-  }]
+  }],
+  "compact": true
 }
 ```
 

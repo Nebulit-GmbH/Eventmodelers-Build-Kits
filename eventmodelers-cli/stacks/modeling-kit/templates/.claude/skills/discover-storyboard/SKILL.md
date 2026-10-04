@@ -235,7 +235,8 @@ mcp__eventmodelers__submit_node_events {
     "changedAttributes": ["meta.title"],
     "meta": { "type": "CHAPTER", "title": "<flow name>" },
     "node": { "id": "<CHAPTER_ID>", "data": {} }
-  }]
+  }],
+  "compact": true
 }
 ```
 

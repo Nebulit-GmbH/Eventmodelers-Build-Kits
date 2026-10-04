@@ -230,7 +230,8 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<SCREEN_NODE_ID>",
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "HTML_SCREEN", "fields": [ /* planned fields */ ] }
-  }]
+  }],
+  "compact": true
 }
 ```
 

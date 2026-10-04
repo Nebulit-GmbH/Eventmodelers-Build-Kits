@@ -163,7 +163,7 @@ For a "what is on the board and how is it wired right now" check between steps �
 
 **Structural validation is one call, not a scan.** `validate_model` (`{boardId, chapterId}`) runs the whole structural checklist server-side — unplaced nodes, backward arrows (todo-list exception applied), zero/multi-issuer commands, sourceless read models, two-screens-in-a-column, missing scenarios — and returns only `findings`. Use it for the mandatory post-step unplaced check and as the first move in Step 9, instead of per-type `get_nodes` loops and `get_node` `projection: "edges"` spot-checks.
 
-**Ask echo-heavy write tools for less.** `add_scenario`, `add_storyline`, `set_connection` and `submit_node_events` each accept `compact: true`, which drops the full-object echo from the response (returning `{specNodeId, added, count, isNewNode}`, a `{connected, existed, removed, notFound, failed, errors}` tally, or `{persisted: <count>}` respectively). Pass it whenever you're not going to read individual fields back off the response — which is almost always for a large `set_connection` batch or a bulk scenario post.
+**Ask echo-heavy write tools for less.** `place_element`, `add_scenario`, `add_storyline`, `set_connection` and `submit_node_events` each accept `compact: true`, which drops the full-object echo from the response (returning `{nodeId, cellName, columnIndex}` per placed node, `{specNodeId, added, count, isNewNode}`, a `{connected, existed, removed, notFound, failed, errors}` tally, or `{persisted: <count>}` respectively). Pass it by default — every example in these skills does — and drop it only when a later step reads a field the compact form leaves out (e.g. `place_element`'s `autoConnected` edge list). Failures are still reported in full either way.
 
 ### Documenting decisions inline, at any step
 
@@ -440,7 +440,8 @@ Not delegated to a separate skill — performed directly by this orchestrating s
        "id": "<event-uuid>", "eventType": "node:created", "nodeId": "<node-uuid>",
        "chapterId": "$CHAPTER_ID", "cellId": "<feedbackLaneId>-<firstColumnId>",
        "meta": { "type": "MARKDOWN", "title": "Modeling Reasoning — <Chapter Name>", "description": "<full markdown body>" }
-     }]
+     }],
+     "compact": true
    }
    ```
 

@@ -290,7 +290,8 @@ mcp__eventmodelers__submit_node_events {
     "cellId": "<CELL_ID>",
     "meta": { "type": "EVENT", "title": "<EventName>" },
     "node": { "id": "<node-uuid>", "data": { "title": "<EventName>" } }
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -300,7 +301,7 @@ mcp__eventmodelers__submit_node_events {
 
 **Prefer MCP:** this whole "find/create a column, compute the cell, place the node" sequence collapses into one call:
 ```
-mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "elements": [{ "elementType": "EVENT", "title": "<EventName>", "columnIndex": <index> }] }
+mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "elements": [{ "elementType": "EVENT", "title": "<EventName>", "columnIndex": <index> }], "compact": true }
 ```
 Extract `nodeId` and `columnId` directly from the tool result.
 
@@ -343,7 +344,8 @@ mcp__eventmodelers__submit_node_events {
     "changedAttributes": ["meta.title"],
     "meta": { "type": "EVENT", "title": "<NewTitle>" },
     "node": { "id": "<eventNodeId>", "data": {} }
-  }]
+  }],
+  "compact": true
 }
 ```
 

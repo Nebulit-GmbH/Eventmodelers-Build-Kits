@@ -263,7 +263,8 @@ mcp__eventmodelers__submit_node_events {
     "chapterId": "<CHAPTER_ID>",
     "cellId": "<actorRowId>-<columnId>",
     "meta": {"type": "SCREEN", "title": "<Screen Title>", "fields": [...]}
-  }]
+  }],
+  "compact": true
 }
 ```
 

@@ -105,7 +105,8 @@ mcp__eventmodelers__submit_node_events {
     "nodeId": "<TARGET_NODE.id>",
     "changedAttributes": ["meta.fields"],
     "meta": { "fields": "<updated-fields-array>" }
-  }]
+  }],
+  "compact": true
 }
 ```
 

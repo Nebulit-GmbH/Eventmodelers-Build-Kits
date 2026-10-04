@@ -105,7 +105,8 @@ mcp__eventmodelers__submit_node_events {
       "marks": [{"id": "em-abc123", "color": "#e74c3c", "pageIndex": 0, "blurOutside": true, "whiteOutside": false}],
       "fields": [...]
     }
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -181,7 +182,8 @@ mcp__eventmodelers__submit_node_events {
     "meta": { "type": "HTML_SCREEN", "fields": [
       {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
     ] }
-  }]
+  }],
+  "compact": true
 }
 ```
 

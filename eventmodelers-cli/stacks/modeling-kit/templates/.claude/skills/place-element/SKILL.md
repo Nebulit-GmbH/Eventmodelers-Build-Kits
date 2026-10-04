@@ -50,7 +50,8 @@ mcp__eventmodelers__place_element {
     "columnIndex": <position,
     if given>,
     "fields": [{ "name": "orderId", "type": "String", "example": "ord-1" }]
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -132,7 +133,8 @@ mcp__eventmodelers__add_scenario {
   "boardId": "<BOARD_ID>",
   "timelineId": "<TL>",
   "columnId": "<COL>",
-  "scenarios": [ /* same scenario objects as the curl body below */ ]
+  "scenarios": [ /* same scenario objects as the curl body below */ ],
+  "compact": true
 }
 ```
 
@@ -335,7 +337,8 @@ mcp__eventmodelers__submit_node_events {
     "cellId": "<CELL_ID>",
     "meta": { "type": "<ELEMENT_TYPE>", "title": "<title>" },
     "node": { "data": { "title": "<title>" } }
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -356,7 +359,8 @@ mcp__eventmodelers__submit_node_events {
     "cellName": "<CELL_NAME>",
     "meta": { "type": "<ELEMENT_TYPE>", "title": "<title>" },
     "node": { "data": { "title": "<title>" } }
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -385,7 +389,7 @@ Take the inbound edges (`target === COMMAND_NODE_ID`) and resolve their source t
 - **2 or more** → keep the edge whose source sits in the COMMAND's own column (the deliberate, same-slice issuer) and remove every other one:
 
 ```
-mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }] }
+mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<extra-issuer-node-id>", "target": "<COMMAND_NODE_ID>", "action": "remove" }], "compact": true }
 ```
 
 If it's not clear which edge is the deliberate one (e.g. neither source sits in the COMMAND's own column), do not guess — leave both edges and post a comment on the COMMAND node via `handle-comment` instead, describing the ambiguity.
@@ -416,4 +420,4 @@ Timeline: <timelineId>
 
 ## Example — place an EVENT via curl
 
-A full worked example (add column → fetch chapter → create node) placing an EVENT called "Order Placed" at the end of a timeline lives in `references/api-fallback.md`'s "Full worked example" section. With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elements": [{ "elementType": "EVENT", "title": "Order Placed" }] }` (see "Prefer MCP" above).
+A full worked example (add column → fetch chapter → create node) placing an EVENT called "Order Placed" at the end of a timeline lives in `references/api-fallback.md`'s "Full worked example" section. With MCP connected, the same result is one call: `mcp__eventmodelers__place_element { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "elements": [{ "elementType": "EVENT", "title": "Order Placed" }], "compact": true }` (see "Prefer MCP" above).

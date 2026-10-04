@@ -65,11 +65,10 @@ Index the result in memory: per slice → commands, events, read models, screens
 
 The code base is the directory resolved in Step 0 (`$EVENTMODELERS_CODE_DIR`, else the current directory) — every path below is relative to it, and it may hold any stack. Find out which, don't assume.
 
-**With a `branch` other than the one checked out, read the code from git, never from the working tree:** `git ls-tree -r --name-only $REF [<dir>]` lists the files, `git show $REF:<path>` reads one. That applies to everything below — `.build-kit/CLAUDE.md`, the `.build-kit/.slices` snapshot, the slice folders. Never `git checkout`/`git switch`: the working tree may hold someone's uncommitted work. Without `branch`, or when it is the current branch, read the working tree as usual.
+**With a `branch` other than the one checked out, read the code from git, never from the working tree:** `git ls-tree -r --name-only $REF [<dir>]` lists the files, `git show $REF:<path>` reads one. That applies to everything below — `.build-kit/CLAUDE.md`, the slice folders. Never `git checkout`/`git switch`: the working tree may hold someone's uncommitted work. Without `branch`, or when it is the current branch, read the working tree as usual.
 
 1. Read `.build-kit/CLAUDE.md` (and `.build-kit/AGENTS.md` if present) — its *Structure* section says where slices live and how they're named (e.g. `src/slices/{slice}/` for Node, `src/main/java/.../slices/{context}/{slice}/` for Axon).
-2. If `.build-kit/.slices/<context>/<slice>/slice.json` exists, it is the snapshot the code was **last built from** — useful for telling "the code changed" apart from "the model changed since the build" (see Step 5).
-3. Without a build kit, infer the layout from the repo (folders named after slices, `*Command*`, `*Event*`, projection/read-model files, route/UI files). If you cannot find any slice structure, stop and tell the user what you looked at — do not fabricate a mapping.
+2. Without a build kit, infer the layout from the repo (folders named after slices, `*Command*`, `*Event*`, projection/read-model files, route/UI files). If you cannot find any slice structure, stop and tell the user what you looked at — do not fabricate a mapping.
 
 Build a **code inventory** per slice folder: the command type and its fields, the events it emits and their fields, read-model/projection types and fields, the screens/components/routes wired to it, tests and what they assert, and what each handler/projection/automation reads and writes.
 
@@ -109,9 +108,7 @@ For every finding, pick who should move:
 
 | Evidence | Fix goes to | How it's done |
 |----------|-------------|---------------|
-| Code differs from `.build-kit/.slices` snapshot (read from the same branch as the code), board still equals the snapshot | **Model** — the code moved on deliberately | Skill that changes the board: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens — including updating every existing screen connected to a changed element, see below) |
-| Board differs from the snapshot, code still equals it | **Code** — the model moved on | Set the slice back to `Planned` with `/update-slice-status` so the build kit picks it up again and diffs code against `slice.json` |
-| Both moved, or no snapshot | **Judgement call** — present both options, recommend one | Recommend by which side is more specific/complete |
+| A field, element, spec, screen or edge differs | **Judgement call** — present both options, recommend one | Recommend by which side is more specific/complete. Model fix: `/attributes` (fields), `/timeline` / `/place-element` (elements), `/eventmodeling-elaborating-scenarios` (specs), `/storyboard-screen` or `/html-screen` (screens — including updating every existing screen connected to a changed element, see below). Code fix: set the slice back to `Planned` with `/update-slice-status` so the build kit picks it up again |
 | Slice only in code | **Model** | Add the slice, via `/eventmodeling-slicing-event-models` after placing its elements |
 | Slice missing in code, board says `Done` | **Model status** (it isn't done) | `/update-slice-status` → `Planned` |
 
@@ -190,3 +187,4 @@ Omit empty sections. Say plainly when nothing drifted.
 - Fixing drift on the model side means updating the existing screens connected to the changed elements too (pages and `meta.fields`), in place — not just the command/event/read model.
 - `--branch` reads the code via `git ls-tree`/`git show` from that ref — never check it out, the working tree may hold someone's uncommitted work. No `--branch` = the working tree, as before.
 - Always read the MARKDOWN note in the feedback lane of each chapter's first column first — it is the chapter's context, and differences it explains are not drift.
+- `.build-kit/.slices` is no evidence for the direction of a fix: every fetch, `/load-slice` and runner loop rewrites it, so it holds the last fetch, not what the code was built from — reading it as "the build" recommends undoing board changes. The direction is a judgement call.

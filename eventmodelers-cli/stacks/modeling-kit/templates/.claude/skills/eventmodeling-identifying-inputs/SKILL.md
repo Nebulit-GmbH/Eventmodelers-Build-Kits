@@ -151,7 +151,8 @@ mcp__eventmodelers__place_element {
   "elements": [{
     "elementType": "COMMAND",
     "title": "ReserveBike"
-  }]
+  }],
+  "compact": true
 }
 ```
 `place_element` finds/creates the empty cell in the interaction lane in the correct column and places the node. Pass each entry's `fields` in the same call when the attributes are already known; otherwise follow up with `submit_node_events` (`node:changed`) to set `meta.fields` (with `mapping`/`generated`/`cardinality` per the rules above) on the node it returned:
@@ -171,7 +172,8 @@ mcp__eventmodelers__submit_node_events {
         {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
       ]
     }
-  }]
+  }],
+  "compact": true
 }
 ```
 
@@ -203,7 +205,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
    Read `cells["<actorRowId>-<columnId>"]` for the occupying node id (a cell id absent from that sparse array is empty — no SCREEN placed yet). Then connect with the type-checked edge tool, which auto-corrects direction and skips duplicates:
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<screenNodeId>", "target": "<commandNodeId>", "action": "connect" }], "compact": true }
    ```
    If wiring more than one COMMAND in the same pass, put every SCREEN→COMMAND and COMMAND→EVENT pair across all of them into one `set_connection` call's `connections` array (see step 2 below) instead of one call per pair.
 
@@ -219,7 +221,7 @@ After `place-element` returns the COMMAND node ID, create the arrows that comple
    ```
    Read `cells["<swimlaneRowId>-<columnId>"]` for the occupying node id, then:
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<commandNodeId>", "target": "<eventNodeId>", "action": "connect" }], "compact": true }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Wire connections — Step 2: COMMAND → EVENT".

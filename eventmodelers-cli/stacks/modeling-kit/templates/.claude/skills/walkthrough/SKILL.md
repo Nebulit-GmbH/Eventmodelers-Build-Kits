@@ -111,7 +111,7 @@ Per step:
 mcp__eventmodelers__post_chat_message {
   "boardId": "$BOARD_ID",
   "replyTo": "<message_id>",
-  "text": "Registration in 5 steps — pick a step to jump to it, or press Play.",
+  "text": "Registration in 5 steps — step through it here, or press Play.",
   "snippet": {
     "kind": "walkthrough",
     "title": "How registration works",

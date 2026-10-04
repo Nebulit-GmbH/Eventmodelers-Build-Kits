@@ -126,7 +126,8 @@ mcp__eventmodelers__submit_node_events {
     "meta": { "type": "SCREEN", "fields": [
       {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
     ] }
-  }]
+  }],
+  "compact": true
 }
 ```
 

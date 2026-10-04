@@ -260,7 +260,8 @@ mcp__eventmodelers__place_element {
     "elementType": "READMODEL",
     "title": "ActiveReservationView",
     "columnIndex": <consumerScreenColumnIndex>  // or <automationColumnIndex - 1> for an AUTOMATION consumer
-  }]
+  }],
+  "compact": true
 }
 ```
 Then set `meta.fields` (with `mapping`/`generated`/`cardinality`) — and `meta.listElement: true` if this read model is list-shaped — on the returned node id:
@@ -270,7 +271,8 @@ mcp__eventmodelers__submit_node_events {
   "events": [{
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<returned-node-id>",
     "meta": {"type": "READMODEL", "title": "ActiveReservationView", "fields": [...]}
-  }]
+  }],
+  "compact": true
 }
 ```
 To determine the consumer's column index beforehand, or to check whether a specific interaction cell is already occupied (`get_nodes` filters by `type`, `name`, `chapterId` and `nodeIds`, but has no `cellId` filter — see the note under "Wire connections" below), fetch the chapter and read its cell map — `projection: "cells"` returns just `{rows, columns, cells}`, not the whole chapter node:
@@ -327,7 +329,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
    ```
    mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<CHAPTER_ID>", "projection": "cells" }
    # → read cells["<swimlaneRowId>-<columnId>"] for the occupying node id
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<eventNodeId>", "target": "<readmodelNodeId>", "action": "connect" }], "compact": true }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.1 — Wire EVENT → READMODEL".
@@ -336,7 +338,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<screenNodeId>", "action": "connect" }], "compact": true }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.2 — Wire READMODEL → SCREEN".
@@ -347,7 +349,7 @@ After `place-element` returns the READMODEL node ID, create the arrows that comp
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }] }
+   mcp__eventmodelers__set_connection { "boardId": "<BOARD_ID>", "connections": [{ "source": "<readmodelNodeId>", "target": "<automationNodeId>", "action": "connect" }], "compact": true }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5h.3 — Wire READMODEL → AUTOMATION".
