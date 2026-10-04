@@ -37,7 +37,7 @@ with a `confirm` snippet — `CLAUDE.md` § *Locked slices in a chat* — and po
 
 `target` is singular, but the common real request is "fill in the examples across this chapter". When you have more than one target, **do not run this skill once per element and do not fetch context a node at a time.**
 
-1. Read the chapter **once**: `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID" }`. That single response carries every element's `meta.fields` *including the `example` values already filled in* — which is exactly the canonical-value pool Step 3c asks for, for the whole chapter, in one call.
+1. Read the chapter **once**: `mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "chapterId": "$CHAPTER_ID", "projection": "fields" }`. That single response carries every element's `fields` *including the `example` values already filled in*, without the html, descriptions and grid data a full read drags along — which is exactly the canonical-value pool Step 3c asks for, for the whole chapter, in one call.
 2. Pick the canonical value per field name from that pool (e.g. `customerId: "cust-123"`, `email: "jane@example.com"`) before writing anything, so every element ends up consistent.
 3. Then generate every target's values and write them all in a single `submit_node_events { events: [...] }` call — one `node:changed` event per element, never one call per element.
 

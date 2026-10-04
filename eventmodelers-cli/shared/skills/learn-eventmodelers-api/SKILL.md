@@ -26,7 +26,7 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | Tool | Args | Purpose | REST equivalent |
 |---|---|---|---|
 | `list_boards` | — | List boards for the org | §1 `GET /api/boards` (org-scoped) |
-| `get_nodes` | `boardId`, `type?`, `name?`, `chapterId?`, `nodeIds?`, `projection?` (`"line"`) | List nodes, optionally by type and/or a partial case-insensitive title match. **Unscoped with full `meta` it is expensive** — about 2 KB per node, ~1 MB on a 500-node board — so always pass a filter or `projection: "line"`. `chapterId` scopes to one timeline — prefer this over an unscoped board-wide call whenever the step is working within one chapter (the common case); `nodeIds` fetches a known, scattered subset in one call (e.g. re-verifying exactly the nodes just touched by a batch write) instead of a full `type` refetch; `projection: "line"` maps each match to `{id, type, title, fields}` — `fields` being just the attribute names. No `cellName` — an existing node is addressed by its `id`; when a cell address is needed (placing into a cell), read it from `get_board_outline`. No `sliceStatus` — take it per column from `get_board_outline` | §3 `GET .../nodes` (REST records carry no `cellName`, `projection=line` included) |
+| `get_nodes` | `boardId`, `type?`, `name?`, `chapterId?`, `nodeIds?`, `projection?` (`"line"` \| `"fields"`) | List nodes, optionally by type and/or a partial case-insensitive title match. **Unscoped with full `meta` it is expensive** — about 2 KB per node, ~1 MB on a 500-node board — so always pass a filter or a projection. `chapterId` scopes to one timeline — prefer this over an unscoped board-wide call whenever the step is working within one chapter (the common case); `nodeIds` fetches a known, scattered subset in one call (e.g. re-verifying exactly the nodes just touched by a batch write) instead of a full `type` refetch; `projection: "line"` maps each match to `{id, type, title, fields}` — `fields` being just the attribute names; `projection: "fields"` to `{id, type, title, parentId, fields}` with the full field definitions (type, example, idAttribute, …) but no html, description, sketch or grid data. No `cellName` — an existing node is addressed by its `id`; when a cell address is needed (placing into a cell), read it from `get_board_outline`. No `sliceStatus` — take it per column from `get_board_outline` | §3 `GET .../nodes` (REST records carry no `cellName`, `projection=line`/`fields` included) |
 | `get_node` | `boardId`, `nodeId`, `projection?` (`"cells"` \| `"edges"`) | Get one node (no `cellName` — address it by `nodeId`; cell addresses come only from `get_board_outline`). `projection: "cells"` (CHAPTER nodes only) returns just `{rows, columns, cells}` instead of the full `timelineData` — use whenever only the grid/occupancy is needed, not the whole chapter; `projection: "edges"` returns just that node's inbound/outbound connections instead of `findNodeById`'s full record. Both are opt-in — omitting `projection` is the unchanged full response. An unknown id is a `NODE_NOT_FOUND` error | §3 `GET .../nodes/:nodeId` (REST returns the node as stored, without `cellName`; `404` carries `code: 'NODE_NOT_FOUND'`) |
 | `get_node_comments` | `boardId`, `nodeId` | List comments on a node | §1 `GET .../nodes/:nodeId/comments` |
 | `get_chat_attachment` | `boardId`, `sessionId`, `attachmentId` | The file a chat message came with — the message's `attachments` list `{id, type, ending}`. Images come back as images, a PDF as an embedded resource, csv / xml / txt / json as text. Only the agent the message was addressed to can read it (`CHAT_ATTACHMENT_NOT_FOUND`); needs the connection's `x-agent-id` (`CHAT_AGENT_REQUIRED`). Max 5 MB per file. | §15 `GET /api/org/:orgId/chat/sessions/:sessionId/attachments/:attachmentId` |
@@ -83,13 +83,14 @@ Pick the cheapest read that answers the step's question, and name the reason in 
 | a chapter's grid / cell occupancy | `get_node { nodeId: <chapterId>, projection: "cells" }` |
 | one node's connections | `get_node { nodeId, projection: "edges" }` |
 | what is where in a chapter (incl. cell names for placement), plus `sliceStatus` per column | `get_board_outline` |
-| field types, examples, descriptions, positions, HTML | full `get_nodes`, scoped by `chapterId` or `nodeIds` — never board-wide when avoidable |
+| field types, examples, field descriptions | `get_nodes` with `projection: "fields"`, scoped by `chapterId` or `nodeIds` |
+| a node's description, position, HTML | full `get_nodes`, scoped by `chapterId` or `nodeIds` — never board-wide when avoidable |
 | finding slices / their elements / element counts | `get_slice_data` with `projection: "outline"` (format `json`/`yaml`/`toon`) |
 | attribute, field-flow or completeness work | `get_slice_data` with `projection: "fields"` |
 | scenario / spec review, spec coverage | `get_slice_data` with `projection: "specs"` (format `json`/`yaml`/`toon`) |
 | elements **and** specs **and** comments/prompts together (e.g. a business review) | full `get_slice_data` — say why |
 
-Two cheap projected calls (e.g. `outline` + `specs`) beat one full call when the step doesn't need comments, prompts or field bodies. `projection: "line"` never carries `sliceStatus`, `meta`, positions, field types or examples — if a later step reads any of those, use the full read. `get_nodes { type: "CHAPTER" }` without a projection returns every chapter's full grid; to just list or pick chapters, add `projection: "line"`.
+Two cheap projected calls (e.g. `outline` + `specs`) beat one full call when the step doesn't need comments, prompts or field bodies. `projection: "line"` never carries `sliceStatus`, `meta`, positions, field types or examples; `projection: "fields"` adds the full field definitions and `parentId`, still no `sliceStatus`, positions or node description — if a later step reads any of those, use the full read. `get_nodes { type: "CHAPTER" }` without a projection returns every chapter's full grid; to just list or pick chapters, add `projection: "line"`.
 
 ---
 
@@ -473,21 +474,21 @@ List all nodes on a board.
 - `type?: ElementType` — exact match.
 - `name?: string` — partial, case-insensitive title match.
 - `chapterId?: string` — only nodes placed in this chapter (timeline).
-- `projection?: "line"` — compact `{id, type, title, fields?}` per node (`fields` = attribute names only, absent on nodes without fields) instead of the full record. Neither form carries `cellName` — address existing nodes by `id`. Any other value is `400 PROJECTION_INVALID`.
+- `projection?: "line" | "fields"` — `line`: compact `{id, type, title, fields?}` per node (`fields` = attribute names only, absent on nodes without fields); `fields`: `{id, type, title, parentId, fields?}` with the full field definitions as stored, but no html, description, sketch or grid data. Either instead of the full record. Neither form carries `cellName` — address existing nodes by `id`. Any other value is `400 PROJECTION_INVALID`.
 - `cellId?: string` — return only the node occupying this timeline cell (format `<rowId>-<colId>`). Requires `timelineId`. Empty array if the cell is unoccupied.
 - `colId?: string` — return every node occupying this column, across *all* rows of the timeline (e.g. to check for an existing COMMAND/READMODEL/SCREEN/AUTOMATION before placing one, since the server caps those at one per column even across separate lane rows). Requires `timelineId`. Combine with `type` to narrow to one element type.
 - `timelineId?: string` — the CHAPTER node `cellId`/`colId` are resolved against. Required together with either of those two; `400` if omitted.
 
 Cell/column occupancy lives only in the CHAPTER node's `meta.timelineData.cells`, never on the node rows themselves — this endpoint resolves `cellId`/`colId` against that timeline internally so callers don't have to fetch and parse the whole chapter node just to check occupancy.
 
-**Response**: `200` — node record array (or `line` projections). `400` — `cellId`/`colId` given without `timelineId`, `PROJECTION_INVALID`, or `QUERY_PARAM_INVALID`. `404` — `timelineId` doesn't reference an existing CHAPTER node with grid data.
+**Response**: `200` — node record array (or `line`/`fields` projections). `400` — `cellId`/`colId` given without `timelineId`, `PROJECTION_INVALID`, or `QUERY_PARAM_INVALID`. `404` — `timelineId` doesn't reference an existing CHAPTER node with grid data.
 
 ---
 
 ### POST `/api/org/:orgId/boards/:boardId/nodes/query`
 Fetch a known set of nodes in one call.
 
-**Body**: `{ "ids": string[], "projection"?: "line" }` — `ids` non-empty. Missing ids are silently omitted. Without `projection`, full stored records; `line` gives the compact shape above. Neither carries `cellName`.
+**Body**: `{ "ids": string[], "projection"?: "line" | "fields" }` — `ids` non-empty. Missing ids are silently omitted. Without `projection`, full stored records; `line`/`fields` give the shapes above. Neither carries `cellName`.
 
 **Response**: `200` — node array. `400` — `ids` empty/not an array, or `PROJECTION_INVALID`.
 
