@@ -40,7 +40,9 @@ Either way, append a row to the chapter's *Analysis history* (see *The analysis 
 
 ## Step 1 — Is there a running UI? (once, when the analysis starts)
 
-Ask once, before reading the sources, and only when starting fresh (no chapters from this analysis yet): *"Is there a running instance I can inspect? URL, and a login or test account if needed."* This is a gate: it is the **first** message of the run, on its own, and the run **ends there** until the answer arrives — no chapter, no reading of the sources, no board write before it. Never assume "no running UI" because nobody said so, and never fold the question into a later report ("send a URL if there is one"). Record the answer (URL or "no running UI") in each chapter's `Legacy Sources` note and reuse it on later passes. Skip it when the request already answers it.
+Ask once, when starting fresh (no chapters from this analysis yet): *"Is there a running instance I can inspect? URL, and a login or test account if needed."* The question is **optional, not a gate**: post it at the start, then **continue straight away** with the code analysis (Pass 0) without waiting for the answer. Until an answer arrives, work from the code alone and record `running UI: not answered yet` in each chapter's `Legacy Sources` note. Skip the question when the request already answers it.
+
+When the answer arrives later: a URL (and login) → start the UI analysis then — walk it via `discover-storyboard` (see the *UI* lens), add its screens as evidence and use its click path to confirm or correct the order already derived from the code; "no running UI" → nothing to do. Either way, update the `Legacy Sources` note with the answer and reuse it on later passes.
 
 Ask again mid-way only when it helps — typically when the order isn't clear from the code: *"I can't tell the order of these steps from the code. Is there a running UI I can use to check? Otherwise, here are my questions: …"*
 
@@ -65,7 +67,7 @@ Every pass reads the code through the same four lenses; each produces *hypothese
 1. **API** (look hardest here) — REST controllers, routes, handlers, message listeners, scheduled jobs, outbound clients. Each entry point is a candidate **screen + command** (a person writes), **screen + read model** (a person reads) or **automation** (jobs, listeners, calls to other systems). Request/response payloads hint at fields; the caller hints at who triggers it.
 2. **Tests** — test names, fixtures, assertions. Names reveal the business vocabulary; arrange/act/assert is a *hint* for Given/When/Then, not its shape — which element goes into Given, When and Then is decided by `eventmodeling-elaborating-scenarios`, never by the test's structure (see *Scenarios* below); error cases reveal the rules that matter. Fixtures are the source of realistic example values.
 3. **Persistence** (look hardest here, too — *what gets saved*) — entities, tables, migrations, repositories. Every write is a candidate **event**. Writes show which state changes exist (→ events); relations show aggregate boundaries; status/enum columns show lifecycles; derived or joined queries show read models. Tables are evidence, never elements.
-4. **UI** — templates, views, components, forms, navigation. Forms and buttons are where a person triggers a command; list and detail pages are read models; the page order is the flow; visible labels are the business words. Whether a running UI exists is asked in **Step 1**. Without one, rely on the other three lenses and ask where the order stays unclear.
+4. **UI** — templates, views, components, forms, navigation. Forms and buttons are where a person triggers a command; list and detail pages are read models; the page order is the flow; visible labels are the business words. Whether a running UI exists is asked in **Step 1** — without waiting for the answer. Until there is a URL, rely on the other three lenses and ask where the order stays unclear.
 
    **With a URL, walk it via `discover-storyboard`** (URL already known — don't ask again; pass the flow as guidance and ask for screenshots). Its click path is the *proposed* order and its screens go into the chapter as evidence; confirm both against the API and persistence lenses. Submit forms only against a local or test system, or after the person agrees.
 
@@ -96,7 +98,7 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
 ## Progressive elaboration — all chapters first, then one chapter per pass
 
 ### Pass 0 — all chapters, high level
-1. Read the sources broadly through the four lenses to spot the business workflows — walking the running UI from Step 1 via `discover-storyboard` if there is one.
+1. Read the sources broadly through the four lenses to spot the business workflows — don't wait for the Step 1 answer; walk the running UI via `discover-storyboard` once a URL has been given (also when it arrives after Pass 0).
 2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a user journey, never one endpoint, controller or CRUD operation. Code is split by operation (`OwnerController#initCreationForm`, `#processFindForm`, `#showOwner`, `#processUpdateOwnerForm`); the story is not — registering, finding, viewing and updating an owner are **one** chapter. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Add the **Decisions** lane, put the `Legacy Sources` note into **column 0** (see *The analysis log*), then sketch only the milestones (titles only) **from column 1 on**.
 3. Report the chapters and **ask which chapter to start with**. Never pick for them.
 
@@ -230,7 +232,7 @@ Element `description`s still carry their own short code reference. The feedback 
 
 **When this run has a chat** (`CHAT_SESSION_ID` is set — the request came from the board's chat), a question the person answers with a pick is a **snippet** (`post_chat_message` with `snippet`; shapes in `/learn-eventmodelers-api` § 16 *Chat snippets*); an open question stays text. Without a chat, ask in prose.
 
-This overrides the `tasks`-snippet chat mode of `/timeline`. **Snippets are not a confirmation gate.** Never post a `tasks` snippet to let the person tick what you derived from the code — you build that directly (see *Principles*). Use a snippet only when you genuinely need the person (the Step 1 question about a running UI comes first, as plain text, as the only message of the first turn — then stop and wait; only when the analysis starts):
+This overrides the `tasks`-snippet chat mode of `/timeline`. **Snippets are not a confirmation gate.** Never post a `tasks` snippet to let the person tick what you derived from the code — you build that directly (see *Principles*). Use a snippet only when you genuinely need the person (the Step 1 question about a running UI comes first, as plain text, when the analysis starts — then continue with the code analysis without waiting for the answer):
 
 1. **Order** — *"Which comes first?"* → a `poll` with the candidate orders; *"I'd put A before B — right?"* → a `confirm`.
 2. **Unclear business requirement** — the code leaves it open or contradicts itself (*"Can a visit be cancelled?"*, *"Is the specialty optional?"*) → a `confirm` or `poll` with your hypothesis; an open answer stays text.

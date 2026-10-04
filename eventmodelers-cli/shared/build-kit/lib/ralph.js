@@ -5,6 +5,7 @@
 //   onTask(prompt) — called when tasks.json has entries
 //   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
 //     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
+//     May resolve with the agent's final reply — quoted in the note if the slice ends up auto-blocked.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
@@ -590,11 +591,14 @@ const MAX_PLANNED_ATTEMPTS = Number(process.env.RALPH_MAX_PLANNED_ATTEMPTS) || 2
 
 // Marks a stuck slice Blocked (locally, and on the board if credentialed) and
 // records why, so the loop can move on instead of looping or exiting.
-async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
+// `lastReply` is the build agent's final message on the last attempt (when the runner reports one),
+// so the note says what actually happened instead of only listing what might have.
+async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, lastReply) {
   const now = new Date().toISOString();
   const reason = `Ralph loop picked up this slice ${attempts} times in a row without its status ever leaving ` +
     `"Planned" — the build agent kept declining to build it, or kept building it but its own status change kept ` +
-    `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.`;
+    `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.` +
+    (lastReply ? ` Build agent's last reply: "${String(lastReply).replace(/\s+/g, ' ').trim().slice(0, 500)}"` : '');
 
   const indexPath = join(kitDir, '.slices', planned.ctx, 'index.json');
   let folder;
@@ -662,7 +666,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts) {
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
 }
 
-// Returns true once fn succeeds; false for a turn that timed out (see lib/turn.js). A timeout
+// Returns true once fn succeeds (fn's own result is the caller's to capture); false for a turn that timed out (see lib/turn.js). A timeout
 // is not retried in place: re-running the same hung turn every 60s would spin forever without
 // the stuck-slice guard ever seeing it, so it goes back to ralphLoop, which recounts the slice.
 // Any other failure is retried in place, with backoff (30s → 10min) so a harness that keeps
@@ -696,6 +700,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   // Tracks consecutive sightings of the same Planned slice id — see
   // MAX_PLANNED_ATTEMPTS above.
   let stuckSlice = { id: null, count: 0 };
+  // The build agent's final reply on the most recent planned-slice turn — quoted in the Blocked note.
+  let lastReply = null;
 
   while (true) {
     let didWork = false;
@@ -715,7 +721,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         : { id: planned.id, count: 1 };
 
       if (stuckSlice.count > MAX_PLANNED_ATTEMPTS) {
-        await blockStuckSlice(kitDir, cfg, credentialed, planned, stuckSlice.count);
+        await blockStuckSlice(kitDir, cfg, credentialed, planned, stuckSlice.count, lastReply);
         stuckSlice = { id: null, count: 0 };
         didWork = true;
         continue;
@@ -723,14 +729,15 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
       const prompt = readFileSync(backendPromptFile, 'utf-8');
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
-      const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, () => onPlannedSlice(prompt, {
+      lastReply = null;
+      const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {
         sliceId: planned.id,
         sliceTitle: planned.title,
         context: planned.ctx,
         ticketNumber: planned.ticketNumber,
         boardId: cfg.boardId ?? null,
         attempt: stuckSlice.count,
-      }));
+      }); });
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
