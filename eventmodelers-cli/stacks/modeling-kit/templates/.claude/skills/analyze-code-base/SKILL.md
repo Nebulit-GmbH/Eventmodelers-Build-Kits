@@ -40,7 +40,7 @@ Either way, append a row to the chapter's *Analysis history* (see *The analysis 
 
 ## Step 1 — Is there a running UI? (once, when the analysis starts)
 
-Ask once, before reading the sources, and only when starting fresh (no chapters from this analysis yet): *"Is there a running instance I can inspect? URL, and a login or test account if needed."* Wait for the answer. Record it (URL or "no running UI") in each chapter's `Legacy Sources` note and reuse it on later passes. Skip it when the request already answers it.
+Ask once, before reading the sources, and only when starting fresh (no chapters from this analysis yet): *"Is there a running instance I can inspect? URL, and a login or test account if needed."* This is a gate: it is the **first** message of the run, on its own, and the run **ends there** until the answer arrives — no chapter, no reading of the sources, no board write before it. Never assume "no running UI" because nobody said so, and never fold the question into a later report ("send a URL if there is one"). Record the answer (URL or "no running UI") in each chapter's `Legacy Sources` note and reuse it on later passes. Skip it when the request already answers it.
 
 Ask again mid-way only when it helps — typically when the order isn't clear from the code: *"I can't tell the order of these steps from the code. Is there a running UI I can use to check? Otherwise, here are my questions: …"*
 
@@ -63,11 +63,13 @@ Naming, what to model and the anti-patterns are in `eventmodeling-core-rules` (r
 Every pass reads the code through the same four lenses; each produces *hypotheses* to put to the person, never elements on its own. Read only as deep as the current layer needs.
 
 1. **API** (look hardest here) — REST controllers, routes, handlers, message listeners, scheduled jobs, outbound clients. Each entry point is a candidate **screen + command** (a person writes), **screen + read model** (a person reads) or **automation** (jobs, listeners, calls to other systems). Request/response payloads hint at fields; the caller hints at who triggers it.
-2. **Tests** — test names, fixtures, assertions. Names reveal the business vocabulary; arrange/act/assert becomes Given/When/Then; error cases reveal the rules that matter. Fixtures are the source of realistic example values.
+2. **Tests** — test names, fixtures, assertions. Names reveal the business vocabulary; arrange/act/assert is a *hint* for Given/When/Then, not its shape — which element goes into Given, When and Then is decided by `eventmodeling-elaborating-scenarios`, never by the test's structure (see *Scenarios* below); error cases reveal the rules that matter. Fixtures are the source of realistic example values.
 3. **Persistence** (look hardest here, too — *what gets saved*) — entities, tables, migrations, repositories. Every write is a candidate **event**. Writes show which state changes exist (→ events); relations show aggregate boundaries; status/enum columns show lifecycles; derived or joined queries show read models. Tables are evidence, never elements.
 4. **UI** — templates, views, components, forms, navigation. Forms and buttons are where a person triggers a command; list and detail pages are read models; the page order is the flow; visible labels are the business words. Whether a running UI exists is asked in **Step 1**. Without one, rely on the other three lenses and ask where the order stays unclear.
 
    **With a URL, walk it via `discover-storyboard`** (URL already known — don't ask again; pass the flow as guidance and ask for screenshots). Its click path is the *proposed* order and its screens go into the chapter as evidence; confirm both against the API and persistence lenses. Submit forms only against a local or test system, or after the person agrees.
+
+   **Screens: HTML, except real screenshots.** A plain `SCREEN` node is used for exactly one thing — a screenshot Playwright took of the running UI (`contentType: "image"`). Every other screen — built from the templates, views and controllers, or for a step the running UI didn't show — is an `HTML_SCREEN` via `/html-screen` (`create_screen` with `contentType: "html"` and real pages: the template's labels, fields and buttons). Never a sketch, never a plain `SCREEN` without a screenshot on it.
 
 If the code is a generic engine (templates, schemas, configurable entities), model one real case it handles, not the engine (see *Concrete Over Generic* in `eventmodeling-core-rules`).
 
@@ -101,10 +103,10 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
 ### Pass N — detail the chosen chapter
 1. Work **in the chapter the person picked**, reusing what is already there. Model the **whole workflow**, not its first slice, by running the step skills on it in order:
    - `eventmodeling-plotting-events` — the events in business order, start to outcome;
-   - `eventmodeling-storyboarding-events` — what the person sees after each event (e.g. *Owner Registered* → owner details page → add a pet);
+   - `eventmodeling-storyboarding-events` — what the person sees after each event (e.g. *Owner Registered* → owner details page → add a pet). Every screen it places is an `HTML_SCREEN` (see *Screens* in the *UI* lens): skip its interview (the code answers it) and never take its sketch path;
    - `eventmodeling-identifying-inputs` / `eventmodeling-identifying-outputs` — commands and read models;
    - `eventmodeling-designing-automation-chains` / `eventmodeling-translating-external-events` — jobs, listeners, webhooks, outbound calls;
-   - `eventmodeling-elaborating-scenarios` — rules from the tests (layer 1+ only).
+   - `eventmodeling-elaborating-scenarios` — rules from the tests (layer 1+ only), built exactly as that skill says (see *Scenarios* below).
    Feed each skill what the lenses and the mapping table give you; ask only where the code stops (see *Step 1* when the order is unclear).
 2. Stay within the layer's detail budget (below). Every placement batch carries its decision rows (see *Recording decisions*).
 3. Re-space the chapters (see *Keeping chapters apart*) after every batch.
@@ -119,7 +121,7 @@ Repeat until the person says stop. Chapters not chosen stay at high level.
 |-------|----------|--------|----------|-----------|---------|
 | **0 — High level** | one chapter per flow, business milestones as slices | none | none | none | none |
 | **1 — Flow** | real command / event / read model sequence of one flow | only identifying and business-critical | one per key element | happy path + the one or two rules that matter | only where a person decides |
-| **2+ — Deeper** | sub-flows, alternate paths, automations | full business field set incl. optional/list | realistic values from tests and fixtures | error cases and edge rules from the tests | sketches where a decision needs them |
+| **2+ — Deeper** | sub-flows, alternate paths, automations | full business field set incl. optional/list | realistic values from tests and fixtures | error cases and edge rules from the tests | HTML screens where a decision needs them (screenshots only from the running UI) |
 
 Never add detail that belongs to a deeper layer. Every element must trace to sources you read or an answer the person gave. **Deeper never means more technical** — it means more business: decisions, rules, failure modes.
 
@@ -228,7 +230,7 @@ Element `description`s still carry their own short code reference. The feedback 
 
 **When this run has a chat** (`CHAT_SESSION_ID` is set — the request came from the board's chat), a question the person answers with a pick is a **snippet** (`post_chat_message` with `snippet`; shapes in `/learn-eventmodelers-api` § 16 *Chat snippets*); an open question stays text. Without a chat, ask in prose.
 
-This overrides the `tasks`-snippet chat mode of `/timeline`. **Snippets are not a confirmation gate.** Never post a `tasks` snippet to let the person tick what you derived from the code — you build that directly (see *Principles*). Use a snippet only when you genuinely need the person (the Step 1 question about a running UI comes first, as plain text, and only when the analysis starts):
+This overrides the `tasks`-snippet chat mode of `/timeline`. **Snippets are not a confirmation gate.** Never post a `tasks` snippet to let the person tick what you derived from the code — you build that directly (see *Principles*). Use a snippet only when you genuinely need the person (the Step 1 question about a running UI comes first, as plain text, as the only message of the first turn — then stop and wait; only when the analysis starts):
 
 1. **Order** — *"Which comes first?"* → a `poll` with the candidate orders; *"I'd put A before B — right?"* → a `confirm`.
 2. **Unclear business requirement** — the code leaves it open or contradicts itself (*"Can a visit be cancelled?"*, *"Is the specialty optional?"*) → a `confirm` or `poll` with your hypothesis; an open answer stays text.
@@ -253,7 +255,7 @@ One question per message, with the best hypothesis attached. The answer arrives 
 | Given/When/Then scenarios from the tests | `/eventmodeling-elaborating-scenarios` |
 | Add or rename attributes along a chain | `/attributes` |
 | Realistic example data from tests and fixtures | `/examples` |
-| A screen where a person decides | `/html-screen` (wireframe sketch only on explicit request: `/storyboard-screen`) |
+| A screen where a person decides | `/html-screen` — always HTML; a plain SCREEN only for a Playwright screenshot of the running UI (see *UI* lens), never `/storyboard-screen` |
 | Set a slice's status | `/update-slice-status` |
 | Record a decision with its code reference | *Recording decisions* (MARKDOWN note in the **Decisions** feedback lane) |
 | Open questions, unresolved code-vs-user conflicts | `/wdyt`, `/handle-comment` |
@@ -261,7 +263,16 @@ One question per message, with the best hypothesis attached. The answer arrives 
 | Validate before reporting completion | `/eventmodeling-validating-event-models-checklist` |
 | Any endpoint or element type not covered above | `/learn-eventmodelers-api` |
 
-Scenarios: only business rules found in tests and comments — not simple validations ("must be a number"). Only create a storyline when the person explicitly asks.
+### Scenarios
+
+*Which* rules to write is specific to legacy code: only business rules found in tests and comments — not simple validations ("must be a number"). Only create a storyline when the person explicitly asks.
+
+*How* to write them is not — read `eventmodeling-elaborating-scenarios` before the first scenario and follow it; a test translated line by line is how wrong scenarios end up on the board. In particular:
+
+- **What goes into Given, When and Then** — per command and per read model: § *1. Command Scenarios*, § *2. Command Scenarios - State Validation*, § *3. View Scenarios*, § *3b. List-type Read Model Scenarios*, § *4. Error Path Scenarios* (worked examples in its `references/examples.md`).
+- **Which elements may appear in a step** — only those `get_spec_info` returns for the timeline: § *Post Scenarios to Board* → *Step 2 — Load valid step elements* and *Step 3 — Resolve step IDs*. A test's mocks, repositories or setup calls are never steps.
+- **Rejections** — § *Step 4c — Error/rejection scenarios*.
+- **Before reporting** — its § *Quality Checklist*.
 
 ---
 
