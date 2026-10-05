@@ -106,7 +106,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/connect` | Set up board connection |
 | `/timeline` | Live event storming facilitator |
 | `/wdyt` | Business analyst review of your event model |
-| `/walkthrough` | Step-by-step player through a process, or through everything a planned change touches |
+| `/walkthrough` | Slice-by-slice player through a feature, or through every slice a planned feature needs (existing, to adjust, new) |
 | `/storyboard` | Build a full visual storyboard |
 | `/html-screen` | Design individual real HTML/CSS screens (default) |
 | `/storyboard-screen` | Design individual wireframe/sketch screens (explicit request only) |

@@ -1121,7 +1121,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to show a picture | `image` | nothing |
 | to show a command or payload | `code` | nothing |
 | to show numbers as a diagram (counts per slice, a trend, shares of a whole) | `report` | nothing |
-| to explain how a process works, or walk through what a planned change touches, step by step ("how does registration work?", "we need to add an email — walk me through it") | `walkthrough` | nothing — selecting a step pans the canvas |
+| to explain how a feature works, or walk through what a planned feature takes, slice by slice ("how does registration work?", "we need to add an email — walk me through it") | `walkthrough` | nothing — selecting a step pans the canvas |
 
 `confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report` and `walkthrough` are display only and never wait for anything.
 
@@ -1145,13 +1145,17 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
   labels: string[],                                                               // 1–50 points: x axis, or the pie slices
   series: Array<{ name: string, values: number[] }>,                             // one number per label; bar/line up to 6 series, pie uses only the first (no negatives)
   confirm?: { headline: string, yesLabel?: string, noLabel?: string } }          // optional yes/no question under the diagram, like a confirm snippet
-{ kind: 'walkthrough', title: string, intro?: string,                             // a step-by-step player through a process
-  steps: Array<{ title: string,                                                   // 1+, in the order the process runs
-                 description?: string,                                            // what happens in this step, in business words
-                 nodeId?: string,                                                 // the element, slice (SLICE_BORDER) or scenario (SCENARIO) of this step — selecting the step zooms to it
-                 screenId?: string,                                               // the SCREEN / HTML_SCREEN the person sees in this step
-                 rules?: string[],                                                // business rules that apply in this step
-                 changes?: string[] }> }                                          // for a planned change: what has to change here
+{ kind: 'walkthrough', title: string,                                            // a slice-by-slice player through a feature
+  summary: string,                                                                // 1–3 sentences on how it works, shown on the first page under the slice count
+  steps: Array<{ title: string,                                                   // 1+, one per slice, in the order the feature runs
+                 description?: string,                                            // what happens in this slice, in business words
+                 nodeId?: string,                                                 // the slice's SLICE_BORDER — drawn in its lanes, selecting the step zooms to it; none for a new slice
+                 status?: 'existing' | 'changed' | 'new',                         // planned feature: used as is / needs adjustment / built from scratch
+                 elements?: Array<{ type: 'SCREEN' | 'COMMAND' | 'EVENT' | 'READMODEL' | 'AUTOMATION',
+                                    title: string, fields?: string[] }>,          // a new slice only: its sketch, drawn in lanes
+                 screenId?: string,                                               // a SCREEN / HTML_SCREEN outside the slice the person sees in this step
+                 rules?: string[],                                                // business rules of this slice
+                 changes?: string[] }> }                                          // planned feature: what has to change or be built here
 ```
 
 ### How to use them
@@ -1162,7 +1166,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **Answers are text.** For a `tasks` answer, match the titles (or ids) back to your list; an element the person left unticked was declined, not forgotten. A `poll` option with a `message` of your own makes the answer unambiguous.
 - `get_chat_session` shows your snippet on the message as `snippet`, and the person's answer is the user message after it, carrying `context.snippetReply.messageId` (your message's id) — useful to tell an answer to a snippet from a new message.
 - **`report`** draws the numbers you send — it computes nothing, so aggregate first. A series whose length differs from `labels`, or a non-number, makes the whole snippet invisible. Keep `text` as a one-line summary of what the diagram shows. Add `confirm` when the diagram leads to a follow-up question ("Want me to look into the backward arrows?"): the answer comes back like a `confirm` answer, and without it the report is display only.
-- **`walkthrough`** answers "how does X work?" and "walk me through what changes for Y": the person steps back and forth through the process in the chat, each step zooming the canvas to its element, and **Play** opens it full-screen as a movie strip of the steps' screens with description and rules underneath. Build it from the board, never from memory — the `walkthrough` skill (modeling kit) has the procedure. Every `nodeId`/`screenId` must be a real id from this board; a step without a screen just shows its element. Keep `text` to one line naming the process and the number of steps.
+- **`walkthrough`** answers "how does X work?" and "walk me through what changes for Y", **one step per slice**. It opens with a summary page — the slice count (with `status`: how many exist, need adjustment, are new) above your `summary` — then shows each slice in its lanes like Slice View (screen, command / read model, events), a `new` slice sketched from its `elements`; each step zooms the canvas to its slice, and **Play** opens it full-screen with description, changes and rules underneath. Build it from the board, never from memory — the `walkthrough` skill (modeling kit) has the procedure. Every `nodeId`/`screenId` must be a real id from this board. Keep `text` to one line naming the feature and the number of slices.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ---

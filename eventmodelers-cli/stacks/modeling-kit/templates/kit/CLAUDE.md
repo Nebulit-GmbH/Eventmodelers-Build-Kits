@@ -204,9 +204,9 @@ for it. Instead:
      *"On it — looking at Registration."*
    - **walkthrough** — "how does X work?", "walk me through …", "what does it take to add …?", or `/walkthrough …`:
      run the `/walkthrough` skill **in this turn** — it only reads the board, so no prompt is needed. It finds the
-     slices, elements and scenarios involved and its `walkthrough` snippet is your one reply (step 4). Without a
+     slices involved (one step per slice, after a summary page) and its `walkthrough` snippet is your one reply (step 4). Without a
      subject (a bare `/walkthrough`) it asks first — which flow, or which new feature — and that question is the reply. A planned change
-     ("we need to add an email") is its impact mode: the walkthrough is the proposal, and the changes become work only
+     ("we need to add an email") is its impact mode: every slice marked existing / needs adjustment / new, new ones sketched — the walkthrough is the proposal, and the changes become work only
      when the person asks for them afterwards.
    - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
      writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/add-next-slice`, `/examples`, `/timeline …`,
@@ -364,7 +364,7 @@ nothing to sanitize either, since a board change is not user text.
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
 | Reverse-engineer the business process of an existing code base into the model, as an interview — all chapters first, then one chapter at a time | `/analyze-code-base` |
 | Find where the model and the code have drifted apart (fields, specs, screens, edges, missing/extra slices) and propose fixes | `/detect-model-drift` |
-| Walk someone through a process step by step, or through every slice, element and scenario a planned change touches, as a player in the chat | `/walkthrough` |
+| Walk someone through a feature slice by slice, or through every slice a planned feature needs (existing, to adjust, new), as a player in the chat | `/walkthrough` |
 | Turn a document or image (e.g. a tender/RFP) into a chaptered event model with screens, scenarios and a written blueprint summary | `/summarize` |
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
