@@ -214,7 +214,7 @@ for it. Instead:
      with the field name there) is your one reply. Without a clear subject it asks first which information.
    - **stressor analysis** — "what breaks if …?", "stress-test this chapter", or `/stressor-analysis …`: run the
      `/stressor-analysis` skill **in this turn** — it only reads the board until the person says yes, so no prompt is needed
-     for its steps. It is a loop over several turns (stressors as `tasks`, the incidence matrix as a `table`, a redesign as
+     for its steps. It is a loop over several turns (stressors as `tasks` with a "More" `confirm` posted before each list, the incidence matrix as a `table`, a redesign as
      `confirm`); an answer to one of its snippets continues it at the next step. Only the confirmed new slices become prompts.
    - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
      writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/timeline …`,

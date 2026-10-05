@@ -9,7 +9,7 @@ description: Residuality-theory stressor analysis of one chapter, run as a chat 
 
 Prefer `mcp__eventmodelers__*` tools. See `learn-eventmodelers-api` for the curl fallback and §16 *Chat snippets* for the `tasks`, `table`, `poll` and `confirm` shapes.
 
-The analysis runs over several chat turns: each step ends with **one** `post_chat_message` carrying one snippet, and the person's click is the next turn. In a `CHAT` turn `replyTo` = this turn's `message_id`; in a prompt turn that came from a chat, `sessionId` = `CHAT_SESSION_ID` and no `replyTo`. Find where you are from the session (`get_chat_session`): the answer to your last snippet says which step comes next.
+The analysis runs over several chat turns: each step ends with **one** `post_chat_message` carrying one snippet (except Step 1b), and the person's click is the next turn. In a `CHAT` turn `replyTo` = this turn's `message_id`; in a prompt turn that came from a chat, `sessionId` = `CHAT_SESSION_ID` and no `replyTo`. Find where you are from the session (`get_chat_session`): the answer to your last snippet says which step comes next.
 
 **This skill never writes to the board** until the person says yes in Step 3 — and then only through `create_prompt`.
 
@@ -17,7 +17,7 @@ The analysis runs over several chat turns: each step ends with **one** `post_cha
 
 ## Concepts (get these right)
 
-- **Stressor**: anything that can happen to the system or its environment: technical, business, legal, market, people. Deliberately WIDE, far-fetched ones included. Not a risk list, not a prediction.
+- **Stressor**: anything that can happen to the system or its environment: technical, business, legal, market, people, nature. Deliberately WIDE, far-fetched ones included. Not a risk list, not a prediction — the theory holds that *which* stressors you pick barely matters, what matters is that they come from many directions. So most must come from **outside** the model: a power outage, a pandemic, a new law, the company being acquired, the key admin quitting, a competitor going free. Only loosely related to the chapter is fine.
 - **Residue**: what is LEFT of the system after the stressor hits: which slices still work, which state or data survives or is lost. You observe a residue; you don't build it. The fix is NOT the residue.
 - **Goal**: change the model until every residue is acceptable. The architecture becomes the sum of those residues, so it also survives stressors nobody listed.
 - **Incidence matrix**: stressors × elements. Elements hit by the SAME stressors are hidden-coupled.
@@ -28,32 +28,41 @@ The analysis runs over several chat turns: each step ends with **one** `post_cha
 
 The chapter comes from `$ARGUMENTS` / the message, else the turn's `context=` (`timelineId`, selection). None and more than one chapter on the board: ask with a `poll` of the chapters (each option's `message` a complete `/stressor-analysis <chapter>` request) and end the turn.
 
-Read once and reuse for the whole round: `get_board_outline` (gives `sliceStatus` per slice) and `get_slice_data { boardId, contextName, projection: "fields", format: "toon" }` for the chapter. Ground every statement in real element and field names; every `nodeId` you send is an id you read here.
+Read once and reuse for the whole round: `get_board_outline` (gives `sliceStatus` per slice) and `get_slice_data { boardId, contextName, projection: "fields", format: "toon" }` for the chapter. Residues name the real slices and elements they hit (field names only in the matrix step, never in a residue); every `nodeId` you send is an id you read here.
 
 ---
 
 ## Step 1 — Stressors and their residues (`tasks`)
 
-About **15** wide stressors. Per task: `title` = the stressor, `description` = `Residue: <what still works / what is lost>`, `nodeId` = the element most affected, `id` = `S1`, `S2`, …. `headline`: *"Tick the ones whose residue is unacceptable"*, `submitLabel`: *"These are unacceptable"*.
+About **15** wide stressors, mixed:
+
+- **at least 5 external** — things that happen to the business or the world, not to the model: power outage, office flooded, pandemic, new privacy law, company acquired, key person leaves, a competitor goes free, the main customer goes bankrupt, the cloud region is gone for a week;
+- the rest from the chapter's own business (a customer changes their mind, prices change, a partner stops delivering) — still at business level.
+
+Write them the way a business person would say them, short — **no** field names, attribute values, concurrency races, token or API mechanics. One stressor per task, no "(e.g. X, Y)" sub-lists. Order the list so external and internal stressors alternate, not grouped.
+
+Per task: `title` = the stressor (≤ 8 words), `description` = `Residue: <what still works / what is lost>` — **one short sentence** in plain language, naming slices or elements but not fields, `nodeId` = the element most affected, `id` = `S1`, `S2`, …. `headline`: *"Tick the ones whose residue is unacceptable"*, `submitLabel`: *"These are unacceptable"*.
 
 ```
 "snippet": { "kind": "tasks", "headline": "Tick the ones whose residue is unacceptable", "submitLabel": "These are unacceptable",
-  "tasks": [ { "id": "S1", "title": "Payment provider is down for a day", "description": "Residue: orders are placed, Order Paid never arrives — Shipping waits forever", "nodeId": "<Order Paid id>" }, … ] }
+  "tasks": [ { "id": "S1", "title": "Payment provider is down for a day", "description": "Residue: orders still come in, but nothing ships until payments return", "nodeId": "<Order Paid id>" },
+             { "id": "S2", "title": "Power outage in the warehouse", "description": "Residue: orders are paid, nobody can pick them — customers aren't told", "nodeId": "<Shipping List id>" }, … ] }
 ```
 
-### Step 1b — Add more? (`poll`), until done
+### Step 1b — "More" right before the list (`confirm`)
 
-When the ticks come back, don't jump to the matrix. Acknowledge the ticks in one line and ask whether to add more stressors with a `poll`:
+Every `tasks` list of stressors is preceded **in the same turn** by its own `post_chat_message` (same `replyTo` / `sessionId`) carrying this `confirm` — post it first, then the list, so the person can ask for more stressors before ticking or submitting anything:
 
 ```
-"snippet": { "kind": "poll", "question": "Should I add more stressors?",
-  "options": [ { "label": "Add more", "message": "Add more stressors" },
-               { "label": "Done — build the matrix", "message": "Done with stressors, build the matrix" } ] }
+"snippet": { "kind": "confirm", "headline": "Need more stressors?", "yesLabel": "More", "noLabel": "Done — build the matrix" }
 ```
 
-- **Add more**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, aimed at elements and categories (legal, people, market, data, …) the earlier rounds hit least. Ids continue the numbering (`S16`, `S17`, …). Then this poll again.
-- **Done**: go to Step 2 with every stressor ticked across all rounds.
-- Fewer than **5** ticked in total and the person picks Done: explain in the text that the matrix can't show coupling yet and send this poll again.
+This is the one exception to "one snippet per step". The lists stay open, so ticks are submitted per list whenever the person is ready:
+
+- **A `tasks` list is submitted**: note which stressors were ticked, reply in one line, **no** snippet — the open confirm still decides what comes next.
+- **More**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, same external/internal mix as Step 1, aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). Post this confirm again first, then the new list.
+- **Done**: go to Step 2 with every stressor ticked across all lists (read the session to collect them).
+- Fewer than **5** ticked in total at Done: explain in the text that the matrix can't show coupling yet and send this confirm again.
 
 ---
 
