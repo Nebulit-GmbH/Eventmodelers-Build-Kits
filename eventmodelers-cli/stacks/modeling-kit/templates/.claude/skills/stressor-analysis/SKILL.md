@@ -41,7 +41,19 @@ About **15** wide stressors. Per task: `title` = the stressor, `description` = `
   "tasks": [ { "id": "S1", "title": "Payment provider is down for a day", "description": "Residue: orders are placed, Order Paid never arrives — Shipping waits forever", "nodeId": "<Order Paid id>" }, … ] }
 ```
 
-If fewer than **5** come back ticked: explain that the matrix can't show coupling yet, and offer the list again (the same snippet, plus a few new stressors).
+### Step 1b — Add more? (`poll`), until done
+
+When the ticks come back, don't jump to the matrix. Acknowledge the ticks in one line and ask whether to add more stressors with a `poll`:
+
+```
+"snippet": { "kind": "poll", "question": "Should I add more stressors?",
+  "options": [ { "label": "Add more", "message": "Add more stressors" },
+               { "label": "Done — build the matrix", "message": "Done with stressors, build the matrix" } ] }
+```
+
+- **Add more**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, aimed at elements and categories (legal, people, market, data, …) the earlier rounds hit least. Ids continue the numbering (`S16`, `S17`, …). Then this poll again.
+- **Done**: go to Step 2 with every stressor ticked across all rounds.
+- Fewer than **5** ticked in total and the person picks Done: explain in the text that the matrix can't show coupling yet and send this poll again.
 
 ---
 
@@ -86,4 +98,4 @@ Generate a **fresh** set of stressors not used in rounds 1–3, and compare how 
 - Text ≤ 1000 characters; the detail goes in the snippet.
 - No ids or cell addresses in the text — element names are enough.
 
-**No chat** (run from a terminal): print the stressors with residues, ask which are unacceptable, and print the matrix as a table instead of posting.
+**No chat** (run from a terminal): print the stressors with residues, ask which are unacceptable, then whether to add more (repeat until done), and print the matrix as a table instead of posting.
