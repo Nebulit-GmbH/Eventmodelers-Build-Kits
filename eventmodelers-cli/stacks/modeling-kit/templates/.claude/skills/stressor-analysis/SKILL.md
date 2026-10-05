@@ -60,8 +60,8 @@ Every `tasks` list of stressors is followed **in the same turn** by its own `pos
 This is the one exception to "one snippet per step". The lists stay open, so ticks are submitted per list whenever the person is ready:
 
 - **A `tasks` list is submitted**: note which stressors were ticked, reply in one line, **no** snippet — the open confirm still decides what comes next.
-- **More**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, same external/internal mix as Step 1, aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). Post the new list first, then this confirm again after it.
-- **Done**: go to Step 2 with every stressor ticked across all lists (read the session to collect them).
+- **More**: a new `tasks` list (same `headline`/`submitLabel`) holding **every stressor offered so far plus** about 10 **fresh** ones — 15 + 10 = 25, then 35, … — never just the 10 new ones. Earlier stressors keep their id, title, description and `nodeId` unchanged and come first; the fresh ones follow, none already offered, same external/internal mix and the same plain business wording as Step 1 (no races, outages of a lookup, or other mechanics), aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). The `text` says how many are new ("10 new ones added below S15 — 25 in total") and names no elements or mechanics. Post the new list first, then this confirm again after it. The newest list is the one to tick; ticks already submitted on an earlier list still count.
+- **Done**: go to Step 2 with every stressor ticked across all lists — the union by id (read the session to collect them).
 - Fewer than **5** ticked in total at Done: explain in the text that the matrix can't show coupling yet and send this confirm again.
 
 ---
