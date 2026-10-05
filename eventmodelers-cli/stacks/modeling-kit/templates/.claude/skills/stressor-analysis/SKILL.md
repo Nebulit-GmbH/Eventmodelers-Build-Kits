@@ -49,9 +49,9 @@ Per task: `title` = the stressor (≤ 8 words), `description` = `Residue: <what 
              { "id": "S2", "title": "Power outage in the warehouse", "description": "Residue: orders are paid, nobody can pick them — customers aren't told", "nodeId": "<Shipping List id>" }, … ] }
 ```
 
-### Step 1b — "More" right before the list (`confirm`)
+### Step 1b — "More" right after the list (`confirm`)
 
-Every `tasks` list of stressors is preceded **in the same turn** by its own `post_chat_message` (same `replyTo` / `sessionId`) carrying this `confirm` — post it first, then the list, so the person can ask for more stressors before ticking or submitting anything:
+Every `tasks` list of stressors is followed **in the same turn** by its own `post_chat_message` (same `replyTo` / `sessionId`) carrying this `confirm`. Order matters: post the **full list first**, then the confirm — the person sees every stressor and residue before being asked whether they want more. Never post the confirm on its own or ahead of the list, and never describe the list in the confirm's text as something still to come ("15 stressors come next") — it is already above. The confirm's text is one short line, e.g. *"Tick the unacceptable ones above — or ask for more stressors first."*
 
 ```
 "snippet": { "kind": "confirm", "headline": "Need more stressors?", "yesLabel": "More", "noLabel": "Done — build the matrix" }
@@ -60,7 +60,7 @@ Every `tasks` list of stressors is preceded **in the same turn** by its own `pos
 This is the one exception to "one snippet per step". The lists stay open, so ticks are submitted per list whenever the person is ready:
 
 - **A `tasks` list is submitted**: note which stressors were ticked, reply in one line, **no** snippet — the open confirm still decides what comes next.
-- **More**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, same external/internal mix as Step 1, aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). Post this confirm again first, then the new list.
+- **More**: a new `tasks` list (same `headline`/`submitLabel`) of about 10 **fresh** stressors: none already offered, same external/internal mix as Step 1, aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). Post the new list first, then this confirm again after it.
 - **Done**: go to Step 2 with every stressor ticked across all lists (read the session to collect them).
 - Fewer than **5** ticked in total at Done: explain in the text that the matrix can't show coupling yet and send this confirm again.
 
