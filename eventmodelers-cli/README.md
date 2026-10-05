@@ -108,6 +108,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/wdyt` | Business analyst review of your event model |
 | `/walkthrough` | Slice-by-slice player through a feature, or through every slice a planned feature needs (existing, to adjust, new) |
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
+| `/stressor-analysis` | Residuality-theory stress test of one chapter: wide stressors and their residues, a stressor × element matrix that exposes hidden coupling, redesigns proposed as new slices |
 | `/storyboard` | Build a full visual storyboard |
 | `/html-screen` | Design individual real HTML/CSS screens (default) |
 | `/storyboard-screen` | Design individual wireframe/sketch screens (explicit request only) |

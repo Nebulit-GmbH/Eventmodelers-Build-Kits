@@ -212,9 +212,13 @@ for it. Instead:
      **one piece of information** (a field, "the customer email"): run the `/data-journey` skill **in this turn** — it only reads
      the board, so no prompt is needed. Its `dataJourney` snippet (a table: origin, stored, transformed, used, sent — per element,
      with the field name there) is your one reply. Without a clear subject it asks first which information.
+   - **stressor analysis** — "what breaks if …?", "stress-test this chapter", or `/stressor-analysis …`: run the
+     `/stressor-analysis` skill **in this turn** — it only reads the board until the person says yes, so no prompt is needed
+     for its steps. It is a loop over several turns (stressors as `tasks`, the incidence matrix as a `table`, a redesign as
+     `confirm`); an answer to one of its snippets continues it at the next step. Only the confirmed new slices become prompts.
    - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
-     writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/add-next-slice`, `/examples`, `/timeline …`,
-     `/html-screen …`, `/storyboard …`): the person chose that skill, so it **is** the work — create one prompt,
+     writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/timeline …`,
+     `/storyboard …`; `/add-next-slice`, `/examples`, `/html-screen …` can still be typed): the person chose that skill, so it **is** the work — create one prompt,
      *"Run /<name> <the rest of the message>"*, with the target resolved from `context=` like any other
      (selected elements, chapter), and say so in one line. Don't re-interpret it as a question. A skill that
      needs something the message lacks (which attribute? which screen?) is a **clarify**: ask, with a
@@ -279,7 +283,8 @@ for it. Instead:
    - a **list of things for the person to pick from** (findings, candidates, drifts, "which of these?") → `tasks`;
    - a **pointer to an element, a picture or a command** → `link` / `image` / `code`, instead of describing it.
    - a **screen idea** in the conversation ("what could that screen look like?") → `screen`, a sandboxed HTML mock-up in the chat; putting a screen on the board is `/html-screen` work;
-   - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill).
+   - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill);
+   - **rows and columns** — a comparison, a matrix, a short list with a few attributes per item → `table`.
    Plain text stays for answers, explanations and open questions that need words. `text` is still
    required and stays short — it is the lead-in, the snippet carries the detail. A snippet changes
    nothing on the board: the click comes back as the next `CHAT` turn, and only then do you

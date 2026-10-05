@@ -1124,8 +1124,9 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to explain how a feature works, or walk through what a planned feature takes, slice by slice ("how does registration work?", "we need to add an email — walk me through it") | `walkthrough` | nothing — selecting a step pans the canvas |
 | to show what a screen could look like, without putting it on the board | `screen` | nothing |
 | to answer where one piece of information comes from and where it ends up ("where is the customer email used?") | `dataJourney` | nothing — element names pan the canvas |
+| to lay out rows and columns — a comparison, a matrix (stressors × elements), a short list with a few attributes | `table` | nothing — linked cells pan the canvas |
 
-`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen` and `dataJourney` are display only and never wait for anything.
+`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen`, `dataJourney` and `table` are display only and never wait for anything.
 
 ### Shapes
 ```typescript
@@ -1170,6 +1171,11 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
                  field?: string,                                                  // the field holding it here — names change along the way (email → customerEmail)
                  slice?: string,
                  note?: string }> }                                               // how it is used or changed here, a few words
+{ kind: 'table', title?: string, caption?: string,
+  columns: Array<string | { label: string, nodeId?: string,                      // 1–12; nodeId makes the header a link (a matrix with one column per element)
+                            align?: 'left' | 'center' | 'right' }>,
+  rows: Array<Array<string | number | true | null                                // 1–200, one cell per column; true = check mark, null = empty
+                    | { text: string, nodeId?: string }>> }                      // a cell linking to an element; shown 5 rows per page
 ```
 
 ### How to use them
@@ -1183,6 +1189,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **`walkthrough`** answers "how does X work?" and "walk me through what changes for Y", **one step per slice**. It opens with a summary page — the slice count (with `status`: how many exist, need adjustment, are new) above your `summary` — then shows each slice in its lanes like Slice View (screen, command / read model, events), a `new` slice sketched from its `elements` (its SCREEN rendered from the `html` you write: a real, simple page — a form, a list, a table — with inline styles only; scripts and external resources are blocked; without `html` a plain form/table is generated from the fields); each step zooms the canvas to its slice, and **Play** opens it full-screen with description, changes and rules underneath. Build it from the board, never from memory — the `walkthrough` skill (modeling kit) has the procedure. Every `nodeId`/`screenId` must be a real id from this board. Keep `text` to one line naming the feature and the number of slices.
 - **`screen`** shows a mock-up in the chat — "what could the registration screen look like?", a variant to compare — without creating anything on the board (that is the `html-screen` skill's job). `html` follows the walkthrough's screen rules: body content, inline styles or one `<style>` block, no scripts, no external images, fonts or stylesheets (they are blocked), at most 16000 characters.
 - **`dataJourney`** answers "where does X come from / where is X used?" for **one piece of information**, as a table: one stop per element it passes through, in flow order, each with its `role`, the field name there and the slice. A headline counts the roles ("Originates in 1 place, stored in 2 elements and used in 3 places"). Build it from the board — the `data-journey` skill (modeling kit) has the procedure; every `nodeId` must be a real id from this board, and a field the board doesn't carry is not a stop. Keep `text` to one line naming the data and where it originates.
+- **`table`** is for anything that is rows and columns and not a chart: a comparison of options, an incidence matrix (rows = stressors, columns = elements, `true` where it hits), a short list with a few attributes per item. It computes nothing — totals are a row you add. Put element ids in `nodeId` (header or cell) so names are links; a row longer than the columns is cut, a shorter one padded, an empty one dropped. Prefer `report` for numbers you want *seen* as a trend or share, `dataJourney` for one piece of data's path.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ---
