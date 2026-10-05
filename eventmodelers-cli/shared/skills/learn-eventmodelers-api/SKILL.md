@@ -1122,8 +1122,10 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to show a command or payload | `code` | nothing |
 | to show numbers as a diagram (counts per slice, a trend, shares of a whole) | `report` | nothing |
 | to explain how a feature works, or walk through what a planned feature takes, slice by slice ("how does registration work?", "we need to add an email — walk me through it") | `walkthrough` | nothing — selecting a step pans the canvas |
+| to show what a screen could look like, without putting it on the board | `screen` | nothing |
+| to answer where one piece of information comes from and where it ends up ("where is the customer email used?") | `dataJourney` | nothing — element names pan the canvas |
 
-`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report` and `walkthrough` are display only and never wait for anything.
+`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen` and `dataJourney` are display only and never wait for anything.
 
 ### Shapes
 ```typescript
@@ -1157,6 +1159,17 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
                  screenId?: string,                                               // a SCREEN / HTML_SCREEN outside the slice the person sees in this step
                  rules?: string[],                                                // business rules of this slice
                  changes?: string[] }> }                                          // planned feature: what has to change or be built here
+{ kind: 'screen', html: string,                                                  // a screen mock-up as a small HTML page (≤ 16000 chars), shown sandboxed
+  title?: string, caption?: string }
+{ kind: 'dataJourney', subject: string,                                           // the piece of information followed, in the person's words ("Customer email")
+  summary?: string,                                                               // 1–2 sentences: where it comes from, where it goes
+  stops: Array<{ title: string,                                                   // 1+, in flow order: the element the data passes through
+                 nodeId?: string,                                                 // makes the title a link; the element's type is read from the board
+                 elementType?: string,                                            // SCREEN, COMMAND, EVENT, READMODEL, AUTOMATION … for an element not on the board
+                 role: 'origin' | 'stored' | 'transformed' | 'used' | 'sent',     // entered/imported here / kept in this event / renamed, derived, reformatted / read, shown, decided on / leaves the system
+                 field?: string,                                                  // the field holding it here — names change along the way (email → customerEmail)
+                 slice?: string,
+                 note?: string }> }                                               // how it is used or changed here, a few words
 ```
 
 ### How to use them
@@ -1168,6 +1181,8 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - `get_chat_session` shows your snippet on the message as `snippet`, and the person's answer is the user message after it, carrying `context.snippetReply.messageId` (your message's id) — useful to tell an answer to a snippet from a new message.
 - **`report`** draws the numbers you send — it computes nothing, so aggregate first. A series whose length differs from `labels`, or a non-number, makes the whole snippet invisible. Keep `text` as a one-line summary of what the diagram shows. Add `confirm` when the diagram leads to a follow-up question ("Want me to look into the backward arrows?"): the answer comes back like a `confirm` answer, and without it the report is display only.
 - **`walkthrough`** answers "how does X work?" and "walk me through what changes for Y", **one step per slice**. It opens with a summary page — the slice count (with `status`: how many exist, need adjustment, are new) above your `summary` — then shows each slice in its lanes like Slice View (screen, command / read model, events), a `new` slice sketched from its `elements` (its SCREEN rendered from the `html` you write: a real, simple page — a form, a list, a table — with inline styles only; scripts and external resources are blocked; without `html` a plain form/table is generated from the fields); each step zooms the canvas to its slice, and **Play** opens it full-screen with description, changes and rules underneath. Build it from the board, never from memory — the `walkthrough` skill (modeling kit) has the procedure. Every `nodeId`/`screenId` must be a real id from this board. Keep `text` to one line naming the feature and the number of slices.
+- **`screen`** shows a mock-up in the chat — "what could the registration screen look like?", a variant to compare — without creating anything on the board (that is the `html-screen` skill's job). `html` follows the walkthrough's screen rules: body content, inline styles or one `<style>` block, no scripts, no external images, fonts or stylesheets (they are blocked), at most 16000 characters.
+- **`dataJourney`** answers "where does X come from / where is X used?" for **one piece of information**, as a table: one stop per element it passes through, in flow order, each with its `role`, the field name there and the slice. A headline counts the roles ("Originates in 1 place, stored in 2 elements and used in 3 places"). Build it from the board — the `data-journey` skill (modeling kit) has the procedure; every `nodeId` must be a real id from this board, and a field the board doesn't carry is not a stop. Keep `text` to one line naming the data and where it originates.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ---

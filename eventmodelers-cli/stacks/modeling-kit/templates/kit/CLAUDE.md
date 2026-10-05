@@ -208,6 +208,10 @@ for it. Instead:
      subject (a bare `/walkthrough`) it asks first — which flow, or which new feature — and that question is the reply. A planned change
      ("we need to add an email") is its impact mode: every slice marked existing / needs adjustment / new, new ones sketched — the walkthrough is the proposal, and the changes become work only
      when the person asks for them afterwards.
+   - **data journey** — "where does X come from?", "where is X used?", "which events store X?", or `/data-journey …`, about
+     **one piece of information** (a field, "the customer email"): run the `/data-journey` skill **in this turn** — it only reads
+     the board, so no prompt is needed. Its `dataJourney` snippet (a table: origin, stored, transformed, used, sent — per element,
+     with the field name there) is your one reply. Without a clear subject it asks first which information.
    - **a skill by name** — the message starts with `/<name>` of one of your skills (the chat panel's menu
      writes these: `/analyze-existing-model`, `/analyze-code-base`, `/detect-model-drift`, `/add-next-slice`, `/examples`, `/timeline …`,
      `/html-screen …`, `/storyboard …`): the person chose that skill, so it **is** the work — create one prompt,
@@ -274,6 +278,8 @@ for it. Instead:
    - a **choice between alternatives** ("A or B?", "which one first?") → `poll`;
    - a **list of things for the person to pick from** (findings, candidates, drifts, "which of these?") → `tasks`;
    - a **pointer to an element, a picture or a command** → `link` / `image` / `code`, instead of describing it.
+   - a **screen idea** in the conversation ("what could that screen look like?") → `screen`, a sandboxed HTML mock-up in the chat; putting a screen on the board is `/html-screen` work;
+   - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill).
    Plain text stays for answers, explanations and open questions that need words. `text` is still
    required and stays short — it is the lead-in, the snippet carries the detail. A snippet changes
    nothing on the board: the click comes back as the next `CHAT` turn, and only then do you
