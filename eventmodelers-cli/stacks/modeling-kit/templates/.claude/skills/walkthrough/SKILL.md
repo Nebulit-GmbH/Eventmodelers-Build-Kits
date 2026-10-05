@@ -107,10 +107,12 @@ Per step:
 | `description` | 1–3 sentences: what happens in this slice and why it matters, in the board's language. No ids, no cell addresses. |
 | `nodeId` | the slice's `SLICE_BORDER` id from `list_slices` — the player draws the slice from it and zooms the canvas to it. Left out for a `new` slice |
 | `status` | **impact mode: required on every step** — `existing`, `changed` or `new` (table above). Omitted in explain mode |
-| `elements` | **`new` slices only**: the sketch — `[{ "type": "SCREEN" \| "COMMAND" \| "EVENT" \| "READMODEL" \| "AUTOMATION", "title": "…", "fields": ["…"] }]`, the elements the slice will have (a state change: screen → command → event; a state view: event(s) → read model → screen; an automation: read model → automation → command → event). Titles and fields in the board's style; reuse the names of existing events the slice reads from |
+| `elements` | **`new` slices only**: the sketch — `[{ "type": "SCREEN" \| "COMMAND" \| "EVENT" \| "READMODEL" \| "AUTOMATION", "title": "…", "fields": ["…"] }]`, the elements the slice will have (a state change: screen → command → event; a state view: event(s) → read model → screen; an automation: read model → automation → command → event). Titles and fields in the board's style; reuse the names of existing events the slice reads from. **Give the SCREEN an `html`** — see *Screen HTML* below |
 | `screenId` | only when the screen a person sees in this step is not part of the slice itself |
 | `rules` | the business rules of this slice, taken from its scenarios (and the context note); one line each, thresholds verbatim. Empty when there are none — never invent one |
 | `changes` | **impact mode only**: what has to change or be built in this slice, one line each — "add field `email` (String) to Register Customer", "new scenario: duplicate email is rejected" |
+
+**Screen HTML.** A new slice's SCREEN is shown as a real screen, so write it: `html` is a small HTML page of what the person sees there — a form for a state change (an input per command field, labelled in business words, a button named after the command), a list or table for a state view (columns from the read model's fields, 2–3 rows of plausible example data), whatever fits the screen otherwise (a checklist, a confirmation page). Keep it rough and simple: a heading and the content, no navigation, header or footer. Body content only (no `<html>`/`<head>` needed), inline `style` attributes or one `<style>` block, at most 16000 characters. It renders sandboxed: scripts, external images, fonts and stylesheets are blocked, so no `<script>`, no CDN, no `https://` images. Without `html` the player generates a plain form/table from the fields.
 
 **Faithfulness.** Existing slices come from the board. A rule nobody modelled is not a rule — if the walkthrough reveals a gap ("nothing says what happens when confirmation never arrives"), mention it in the step's `description` as an open question, not as a rule. A sketched new slice is a proposal, and the `description` should read like one.
 
@@ -152,7 +154,8 @@ Impact mode, same shape with `status` (and `changes`, or `elements` for a new sl
   { "title": "Confirm Email", "status": "new",
     "description": "Proposed: the customer opens the link and the email is marked as confirmed.",
     "elements": [
-      { "type": "SCREEN",  "title": "Confirm Email Page" },
+      { "type": "SCREEN",  "title": "Confirm Email Page",
+        "html": "<h3>Confirm your email</h3><p>We sent a link to <b>jane@example.com</b>.</p><label>Code<br><input value=\"8F3K-21\"></label><br><br><button>Confirm Email</button>" },
       { "type": "COMMAND", "title": "Confirm Email",   "fields": ["customerId", "token"] },
       { "type": "EVENT",   "title": "Email Confirmed", "fields": ["customerId", "confirmedAt"] }
     ],
@@ -163,7 +166,7 @@ Impact mode, same shape with `status` (and `changes`, or `elements` for a new sl
 ```
 
 - `text` is one line: the subject and the number of slices — in impact mode with the split ("Startup license in 8 slices: 3 new, 2 to adjust"). It is the fallback, so it must make sense alone.
-- Impact mode: before posting, check that every step has a `status`, every `changed` step has `changes` and every `new` step has `elements` and no `nodeId`.
+- Impact mode: before posting, check that every step has a `status`, every `changed` step has `changes` and every `new` step has `elements` (its SCREEN with `html`) and no `nodeId`.
 - `summary` is always there — the first page shows it under the slice count.
 - Every `nodeId` / `screenId` is an id you read in Steps 2–3 — never a guessed or remembered one. A `new` slice has no `nodeId`.
 - The snippet is at most 64 KB; keep descriptions short rather than dropping steps.
