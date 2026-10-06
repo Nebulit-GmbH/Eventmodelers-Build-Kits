@@ -54,15 +54,15 @@ Per task: `title` = the stressor (≤ 8 words), `description` = `Residue: <what 
 Every `tasks` list of stressors is followed **in the same turn** by its own `post_chat_message` (same `replyTo` / `sessionId`) carrying this `confirm`. Order matters: post the **full list first**, then the confirm — the person sees every stressor and residue before being asked whether they want more. Never post the confirm on its own or ahead of the list, and never describe the list in the confirm's text as something still to come ("15 stressors come next") — it is already above. The confirm's text is one short line, e.g. *"Tick the unacceptable ones above — or ask for more stressors first."*
 
 ```
-"snippet": { "kind": "confirm", "headline": "Need more stressors?", "yesLabel": "More", "noLabel": "Done — build the matrix" }
+"snippet": { "kind": "confirm", "headline": "Need more stressors?", "yesLabel": "More", "noLabel": "No, these are enough" }
 ```
 
-This is the one exception to "one snippet per step". The lists stay open, so ticks are submitted per list whenever the person is ready:
+This is the one exception to "one snippet per step". The confirm is only for asking for more **before** ticking — submitting a list is the go-ahead:
 
-- **A `tasks` list is submitted**: note which stressors were ticked, reply in one line, **no** snippet — the open confirm still decides what comes next.
-- **More**: a new `tasks` list (same `headline`/`submitLabel`) holding **every stressor offered so far plus** about 10 **fresh** ones — 15 + 10 = 25, then 35, … — never just the 10 new ones. Earlier stressors keep their id, title, description and `nodeId` unchanged and come first; the fresh ones follow, none already offered, same external/internal mix and the same plain business wording as Step 1 (no races, outages of a lookup, or other mechanics), aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). The `text` says how many are new ("10 new ones added below S15 — 25 in total") and names no elements or mechanics. Post the new list first, then this confirm again after it. The newest list is the one to tick; ticks already submitted on an earlier list still count.
-- **Done**: go to Step 2 with every stressor ticked across all lists — the union by id (read the session to collect them).
-- Fewer than **5** ticked in total at Done: explain in the text that the matrix can't show coupling yet and send this confirm again.
+- **A `tasks` list is submitted**: go **straight to Step 2** in this same turn with every stressor ticked across all lists — the union by id (read the session to collect them). Never ask again whether to build the matrix or offer more, and never send this confirm again after a submission; however few were ticked, build the matrix — with fewer than 5, say in the text that the coupling it shows is still thin.
+- **More** (before any list was submitted): a new `tasks` list (same `headline`/`submitLabel`) holding **every stressor offered so far plus** about 10 **fresh** ones — 15 + 10 = 25, then 35, … — never just the 10 new ones. Earlier stressors keep their id, title, description and `nodeId` unchanged and come first; the fresh ones follow, none already offered, same external/internal mix and the same plain business wording as Step 1 (no races, outages of a lookup, or other mechanics), aimed at elements and categories (nature, legal, people, market, data, …) the earlier lists hit least. Ids continue the numbering (`S16`, `S17`, …). The `text` says how many are new ("10 new ones added below S15 — 25 in total") and names no elements or mechanics. Post the new list first, then this confirm again after it. The newest list is the one to tick.
+- **No, these are enough**: one line pointing to the list above — the matrix comes once it is submitted. No snippet.
+- **More** or **No** clicked after the matrix was already built: ignore it with one line; the analysis has moved on.
 
 ---
 
@@ -107,4 +107,4 @@ Generate a **fresh** set of stressors not used in rounds 1–3, and compare how 
 - Text ≤ 1000 characters; the detail goes in the snippet.
 - No ids or cell addresses in the text — element names are enough.
 
-**No chat** (run from a terminal): print the stressors with residues, ask which are unacceptable, then whether to add more (repeat until done), and print the matrix as a table instead of posting.
+**No chat** (run from a terminal): print the stressors with residues and ask which are unacceptable (or whether to add more first); once they answer, print the matrix as a table straight away instead of posting.

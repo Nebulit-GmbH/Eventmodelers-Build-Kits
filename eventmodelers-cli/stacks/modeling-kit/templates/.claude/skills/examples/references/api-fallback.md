@@ -97,26 +97,24 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<NODE_ID>" \
 
 ## Step 5 — Write the update
 
-Build the payload with Python to avoid shell JSON-escaping issues, then POST it:
+Write the payload with the **Write tool** to `/tmp/examples_payload.json` — a plain JSON file, so nothing needs shell escaping (the agent's Bash allowlist refuses `python3 -` scripts). Give the event a fresh id (`uuidgen`):
 
-```bash
-python3 - <<EOF > /tmp/examples_payload.json
-import json, uuid
-payload = [{
-  "id": str(uuid.uuid4()),
+```json
+[{
+  "id": "<fresh uuid>",
   "eventType": "node:changed",
   "nodeId": "<TARGET_NODE.id>",
   "changedAttributes": ["meta.fields"],
-  "meta": {
-    "fields": <updated-fields-array as Python list>
-  }
+  "meta": { "fields": <updated-fields-array> }
 }]
-print(json.dumps(payload))
-EOF
+```
 
+Then POST it:
+
+```bash
 curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "Content-Type: application/json" \
-  -H "x-token: $TOKEN" \
+  -H "x-token: $EVENTMODELERS_TOKEN" \
   -H "x-user-id: examples-skill" \
   --data-binary @/tmp/examples_payload.json
 ```

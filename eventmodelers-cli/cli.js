@@ -22,6 +22,8 @@ import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
 import { latestPublishedVersion, updateHints } from './lib/update-check.js';
+import { guardSnippetReply } from './lib/snippet-guard.js';
+import { modelingPermissions } from './lib/agent-permissions.js';
 // Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
 // copy that every useShared:true stack also gets copied into its installed kit (see
 // copyDirContents in installStack) for ralph.js to import standalone — see
@@ -1950,7 +1952,7 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null } = {}) {
+async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null, skipPermissions = false } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -2103,7 +2105,23 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     return withSessionHeader(`${fields}${context}\n\n${p.prompt}`);
   }
 
-  const claudeArgs = ['--dangerously-skip-permissions', '-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose'];
+  // Locked down, not --dangerously-skip-permissions: this agent takes chat messages and snippet clicks from any
+  // collaborator on the board. Anything not explicitly allowed is refused without asking; the only MCP server is the
+  // platform's; Bash runs only the allowlisted commands, curl only to cfg.baseUrl (lib/agent-permissions.js,
+  // lib/bash-guard.js). The operator's own --dangerously-skip-permissions restores the old approve-everything mode.
+  const permissions = skipPermissions
+    ? { args: ['--dangerously-skip-permissions'] }
+    : modelingPermissions({
+      baseUrl: cfg.baseUrl,
+      projectDir,
+      codeDir,
+      tmpDir: tmpdir(),
+      hookCommand: `"${process.execPath}" "${fileURLToPath(new URL('./lib/bash-guard-hook.js', import.meta.url))}"`,
+    });
+  if (skipPermissions) {
+    console.warn('⚠️  --dangerously-skip-permissions: every tool call this agent makes is approved — any shell command, curl to anywhere, any file you can read or write. Anyone who can chat with it on this board can make it do that.\n');
+  }
+  const claudeArgs = ['-p', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose', ...permissions.args];
   if (cfg.model) claudeArgs.push('--model', cfg.model);
   // The global install runs in ~/.eventmodelers/kit, away from the code base the person started
   // the agent in — hand that directory over so code-reading skills (detect-model-drift)
@@ -2111,6 +2129,17 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   if (codeDir) claudeArgs.push('--add-dir', codeDir);
   const claudeEnv = {
     ...process.env,
+    // What the skills' curl fallback writes as $BASE_URL / $ORG_ID / $BOARD_ID. Set here, not inherited: the Bash guard
+    // treats $BASE_URL as the platform, so a BASE_URL from the operator's own shell must never reach the agent. The
+    // guard's own env is left out entirely with --dangerously-skip-permissions, which runs with the environment as before.
+    ...(skipPermissions ? {} : {
+      ...permissions.env,
+      BASE_URL: cfg.baseUrl,
+      ORG_ID: cfg.organizationId,
+      BOARD_ID: cfg.boardId,
+      // The skills' curl headers say "x-token: $TOKEN"; the guard lets the token expand only inside a curl -H value.
+      TOKEN: cfg.token,
+    }),
     ...(codeDir ? { EVENTMODELERS_CODE_DIR: codeDir } : {}),
     ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
     EVENTMODELERS_TOKEN: cfg.token,
@@ -2422,10 +2451,13 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       Array.isArray(m.attachments) && m.attachments.length ? `attachments=${JSON.stringify(m.attachments)}` : null,
       cachedFiles.length ? `attachment_files=${JSON.stringify(cachedFiles)}` : null,
     ].filter(Boolean).join(' ');
-    const context = m.context && typeof m.context === 'object' && Object.keys(m.context).length
-      ? `\ncontext=${JSON.stringify(m.context)}`
+    // A custom snippet type's `then` is a collaborator's text, not the person's or ours: it leaves the context JSON
+    // and follows the message in a fenced block with the rule for it (lib/snippet-guard.js).
+    const guarded = guardSnippetReply(m.context, randomUUID().slice(0, 8));
+    const context = guarded.context && typeof guarded.context === 'object' && Object.keys(guarded.context).length
+      ? `\ncontext=${JSON.stringify(guarded.context)}`
       : '';
-    return withSessionHeader(`${fields}${context}\n\n${m.text}`);
+    return withSessionHeader(`${fields}${context}\n\n${m.text}${guarded.block ? `\n\n${guarded.block}` : ''}`);
   }
 
   // The backend rejects a chat message over this many characters (CHAT_TEXT_TOO_LONG).
@@ -3648,6 +3680,7 @@ credentialFlags(program
   .option('--exclusive', 'Work only the prompts addressed to this agent\'s id — the board\'s "preferred agent" (the star in the prompts panel) — and hand every untargeted prompt straight back to the queue for another agent to take. Without it an agent also works everything nobody addressed to anyone, which is what you want for a single agent and exactly what you do not want for a dedicated one (a board with a general agent plus a specialist, or an agent a supervisor drives by id). Pair it with --id so the same agent is addressable across restarts — --global/--standalone otherwise mint a fresh id per run, and prompts addressed to the previous run\'s id are never claimed. Leaves --standalone alone: a self-directed turn is nobody\'s prompt, so an exclusive standalone agent still works the board on its own initiative.')
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
+  .option('--dangerously-skip-permissions', 'Run the modeling agent\'s Claude process with --dangerously-skip-permissions, as before the lockdown: every tool call is approved — any shell command, curl to anywhere, any file the user can read or write, every MCP server the machine configures. Off by default because the agent takes chat messages and snippet clicks from any collaborator on the board; pass it only for a board whose collaborators you trust with your shell. Default Claude runner of --modeling/--standalone/--worker/--global only — not with --agent, --exec or --local-ai, which bring their own permission flags.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3760,6 +3793,10 @@ credentialFlags(program
         console.error(`❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.`);
         process.exit(1);
       }
+      if (opts.dangerouslySkipPermissions && (opts.exec || modelingLocalAi !== null)) {
+        console.error('❌ --dangerously-skip-permissions only applies to the default Claude runner — --agent/--exec bring their own permission flags (put them in the command), and --local-ai has no shell or file tools to approve.');
+        process.exit(1);
+      }
       if (opts.local) {
         console.error(`❌ ${picked} has no local-only mode — it is always driven by the org-wide realtime prompt queue, so --local has no use for it.`);
         process.exit(1);
@@ -3824,7 +3861,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

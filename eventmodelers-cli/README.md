@@ -108,7 +108,9 @@ Use skills in Claude Code with `/skill-name`:
 | `/wdyt` | Business analyst review of your event model |
 | `/walkthrough` | Slice-by-slice player through a feature, or through every slice a planned feature needs (existing, to adjust, new) |
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
+| `/domain-story` | Retells chapters as Domain Storytelling — actors, work objects and numbered activities, drawn as a graph per chapter in the chat |
 | `/stressor-analysis` | Residuality-theory stress test of one chapter: wide stressors and their residues, a stressor × element matrix that exposes hidden coupling, redesigns proposed as new slices |
+| `/build-snippet-type` | Build a custom chat snippet type with the person — a card with their own fields and buttons — preview it in the chat, create it after a yes |
 | `/storyboard` | Build a full visual storyboard |
 | `/html-screen` | Design individual real HTML/CSS screens (default) |
 | `/storyboard-screen` | Design individual wireframe/sketch screens (explicit request only) |
@@ -788,3 +790,6 @@ To check an image locally before tagging: `docker build -f docker/<name>/Dockerf
 | Contributor | Contribution |
 |-------------|-------------|
 | [Yordis Pietro](https://github.com/TrogonStack/trogonai) | All `eventmodeling-*` skills |
+## License
+
+Licensed under [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) — see [LICENSE](LICENSE).

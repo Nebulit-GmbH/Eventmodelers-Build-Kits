@@ -65,3 +65,7 @@ OpenAPI document at http://localhost:3000/swagger.json.
 
 - [Eventmodelers](https://eventmodelers.ai)
 - [Emmett documentation](https://event-driven-io.github.io/emmett/)
+
+## License
+
+Licensed under [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](https://creativecommons.org/licenses/by-nc/4.0/) — see [LICENSE](LICENSE).

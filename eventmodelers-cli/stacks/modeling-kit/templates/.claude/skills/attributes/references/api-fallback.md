@@ -13,26 +13,24 @@ curl -s "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/$EDGE_SOURCE_ID?projec
 
 ## Step 4 — Apply the Change to Each Node in the Chain
 
-Build the payload with Python to avoid JSON escaping issues, then POST it:
+Write the payload with the **Write tool** to `/tmp/attributes_payload.json` — a plain JSON file, so nothing needs shell escaping (the agent's Bash allowlist refuses `python3 -` scripts). Give the event a fresh id (`uuidgen`):
 
-```bash
-python3 - <<EOF > /tmp/attributes_payload.json
-import json, uuid
-payload = [{
-  "id": str(uuid.uuid4()),
+```json
+[{
+  "id": "<fresh uuid>",
   "eventType": "node:changed",
   "nodeId": "<NODE_ID>",
   "changedAttributes": ["meta.fields"],
-  "meta": {
-    "fields": <updated_fields_as_python_list>
-  }
+  "meta": { "fields": <updated_fields> }
 }]
-print(json.dumps(payload))
-EOF
+```
 
+Then POST it:
+
+```bash
 curl -s -w "\n%{http_code}" -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
   -H "Content-Type: application/json" \
-  -H "x-token: $TOKEN" \
+  -H "x-token: $EVENTMODELERS_TOKEN" \
   -H "x-user-id: attributes-skill" \
   --data-binary @/tmp/attributes_payload.json
 ```
