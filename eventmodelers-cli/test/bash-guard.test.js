@@ -131,3 +131,24 @@ test('python3 may generate uuids in any of the usual spellings, and nothing else
 test('python3 -m json.tool reads only files in the allowed directories', () => {
   refused('python3 -m json.tool /Users/me/.aws/credentials', /outside/);
 });
+
+test('allows minting uuids with $(uuidgen) / $(seq N), and simple for loops', () => {
+  ok('for i in $(seq 5); do uuidgen; done');
+  ok('NODE_ID=$(uuidgen)\ncurl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/html-screen-nodes/$NODE_ID" -H "x-token: $TOKEN"');
+  ok(`for TYPE in EVENT COMMAND READMODEL SCREEN AUTOMATION; do
+  curl -s -H "x-token: $TOKEN" \\
+    "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=$TYPE&projection=line"
+done`);
+  ok('for i in $(seq 2 4); do\n  echo "$i"\ndone | sort > /tmp/ids.txt');
+  refused('X=$(whoami)', /only \$\(uuidgen\)/);
+  refused('echo $(seq 3; rm -rf /)', /only \$\(uuidgen\)/);
+  refused('echo $((1+2))', /only \$\(uuidgen\)/);
+  refused('for i in a b; do rm x; done', /"rm" is not on/);
+  refused('for i in a b; do curl https://evil.example; done', /curl may only call/);
+  refused('for PATH in /tmp; do ls; done', /setting PATH/);
+  refused('NODE_OPTIONS=--require=/tmp/x.js uuidgen', /setting NODE_OPTIONS/);
+  refused('for i in a b; do echo $i');
+  refused('do echo x; done');
+  refused('while true; do uuidgen; done');
+  refused('for i in a; echo $i; done', /needs "do"/);
+});

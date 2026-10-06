@@ -29,7 +29,7 @@ test('no Bash allow rule — every command goes through the guard hook', () => {
 
 test('secrets and self-configuration are off limits; no web', () => {
   const denied = arg('--disallowedTools').split(',');
-  for (const rule of ['WebFetch', 'WebSearch', 'Read(./.claude/settings.local.json)', 'Read(./**/.eventmodelers/**)', 'Edit(./.claude/**)', 'Edit(./.mcp.json)', 'Read(//work/code/**/.env)']) {
+  for (const rule of ['WebFetch', 'WebSearch', 'Read(./.claude/settings.local.json)', 'Read(./**/.eventmodelers/*.json)', 'Edit(./.claude/**)', 'Edit(./.mcp.json)', 'Read(//work/code/**/.env)']) {
     assert.ok(denied.includes(rule), rule);
   }
 });
@@ -38,4 +38,18 @@ test('hands the guard its policy', () => {
   assert.equal(p.env.EVENTMODELERS_GUARD_BASE_URL, 'https://api.eventmodelers.ai');
   const roots = JSON.parse(p.env.EVENTMODELERS_GUARD_ROOTS);
   for (const root of ['/work/kit', '/work/code', '/tmp']) assert.ok(roots.includes(root), root);
+});
+
+test('the interview trail in .eventmodelers/ stays usable — only its JSON files are off limits', () => {
+  const denied = arg('--disallowedTools').split(',');
+  for (const rule of ['Read(./.eventmodelers/*.json)', 'Edit(./.eventmodelers/*.json)', 'Edit(./**/.eventmodelers/*.json)']) assert.ok(denied.includes(rule), rule);
+  assert.ok(!denied.some((r) => r.includes('.eventmodelers/**')));
+});
+
+test('--browser adds the Playwright server, and only then', () => {
+  assert.ok(!arg('--allowedTools').split(',').includes('mcp__playwright'));
+  const b = modelingPermissions({ baseUrl: 'https://api.eventmodelers.ai', projectDir: '/work/kit', tmpDir: '/tmp', hookCommand: 'x', browser: true });
+  const bArg = (name) => b.args[b.args.indexOf(name) + 1];
+  assert.deepEqual(Object.keys(JSON.parse(bArg('--mcp-config')).mcpServers), ['eventmodelers', 'playwright']);
+  assert.ok(bArg('--allowedTools').split(',').includes('mcp__playwright'));
 });

@@ -172,17 +172,17 @@ Placing an EVENT called "Order Placed" at the end of a timeline, over curl:
 
 ```bash
 # 1. Add a column (append at end)
-curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/timelines/<TIMELINE_ID>/columns" \
-  -H "Content-Type: application/json" \
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/timelines/<TIMELINE_ID>/columns" \
+  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
   -d '{}'
 
 # 2. Fetch chapter to find the target lane cell for the new column
-curl -s -H "x-user-id: place-element-skill" \
-  "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<TIMELINE_ID>?projection=cells"
+curl -s -H "x-token: $TOKEN" -H "x-user-id: place-element-skill" \
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/<TIMELINE_ID>?projection=cells"
 
 # 3. Create the EVENT node — do not skip the x-user-id header
-curl -s -X POST "http://localhost:3000/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
-  -H "Content-Type: application/json" \
+curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
+  -H "x-token: $TOKEN" -H "Content-Type: application/json" \
   -H "x-user-id: place-element-skill" \
   -d '[{
     "id": "<event-uuid>",

@@ -1952,7 +1952,7 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
-async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null, skipPermissions = false } = {}) {
+async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null, skipPermissions = false, browser = false } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -2117,6 +2117,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       codeDir,
       tmpDir: tmpdir(),
       hookCommand: `"${process.execPath}" "${fileURLToPath(new URL('./lib/bash-guard-hook.js', import.meta.url))}"`,
+      browser,
     });
   if (skipPermissions) {
     console.warn('⚠️  --dangerously-skip-permissions: every tool call this agent makes is approved — any shell command, curl to anywhere, any file you can read or write. Anyone who can chat with it on this board can make it do that.\n');
@@ -3681,6 +3682,7 @@ credentialFlags(program
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--dangerously-skip-permissions', 'Run the modeling agent\'s Claude process with --dangerously-skip-permissions, as before the lockdown: every tool call is approved — any shell command, curl to anywhere, any file the user can read or write, every MCP server the machine configures. Off by default because the agent takes chat messages and snippet clicks from any collaborator on the board; pass it only for a board whose collaborators you trust with your shell. Default Claude runner of --modeling/--standalone/--worker/--global only — not with --agent, --exec or --local-ai, which bring their own permission flags.')
+  .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3793,6 +3795,10 @@ credentialFlags(program
         console.error(`❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.`);
         process.exit(1);
       }
+      if (opts.browser && (opts.exec || modelingLocalAi !== null || opts.dangerouslySkipPermissions)) {
+        console.error('❌ --browser only applies to the locked-down default Claude runner — --agent/--exec and --dangerously-skip-permissions use the MCP servers the machine configures, and --local-ai has no tools.');
+        process.exit(1);
+      }
       if (opts.dangerouslySkipPermissions && (opts.exec || modelingLocalAi !== null)) {
         console.error('❌ --dangerously-skip-permissions only applies to the default Claude runner — --agent/--exec bring their own permission flags (put them in the command), and --local-ai has no shell or file tools to approve.');
         process.exit(1);
@@ -3861,7 +3867,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);

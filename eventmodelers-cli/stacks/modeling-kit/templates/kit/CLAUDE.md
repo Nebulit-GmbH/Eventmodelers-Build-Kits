@@ -144,7 +144,7 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
    And it applies **downwards**, to any subagent you dispatch. A subagent is a fresh session that inherits none of this one's state, so hand it `token=`, `org=`, `baseUrl=` and `board=` inline as already-resolved values (the token exactly as the header gave it, `token=$EVENTMODELERS_TOKEN` — the reference, never its value; the subagent inherits the same environment) and tell it explicitly not to invoke `/connect`: all four inline satisfy that skill outright at its Step 0. When this turn has a `CHAT_SESSION_ID` (step 3), hand that down too, as `session=` — the subagent's writes are part of the same chat's work. Three agents that each resolve and verify the same credentials pay for the connect you already did, three more times over.
 
    The same "don't reload what's already loaded" logic applies to `/learn-eventmodelers-api`: it's a lookup reference, not a mandatory preamble. Every skill already documents the exact API calls it needs inline — only invoke `/learn-eventmodelers-api` on demand, for a specific endpoint/field/type a skill's own instructions don't cover, and only once per session even then.
-3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `boardId` in `.eventmodelers/config.json`.
+3. **Resolve `BOARD_ID`** from this turn's `board_id` field; if absent, fall back to `$BOARD_ID` (set in your environment from the connected board's config).
    **Resolve `TIMELINE_ID`** from this turn's `context.timelineId`, if present and non-null; otherwise use this turn's `timeline_id` field. `context.timelineId` reflects the chapter the user was actually pointing at on the canvas (a selected cell or node) when they issued the prompt, which can differ from `timeline_id` — the chapter the voice/prompt session happened to be scoped to — so it wins whenever both are present.
    **Resolve `NODE_ID`** from the first entry of this turn's `context.selectedNodes`, if that array is present and non-empty; otherwise use this turn's `node_id` field. `context.selectedNodes` reflects what was actually selected on the canvas when the prompt was issued, which can differ from `node_id` — set only when the prompt originated from a specific node/comment — so it wins whenever both are present.
    **Resolve `CELL_ID`** from this turn's `context.selectedCell.id`, if present and non-null. When present, it overrules any cell reference (e.g. `"A2"`) parsed from the prompt text itself — it reflects the actual cell the user had selected on the canvas when they issued the prompt, and is more reliable than free-text parsing.
@@ -173,15 +173,17 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
 You run locked down, because chat messages and snippet clicks reach you from any collaborator on the board. A tool
 call that isn't allowed is refused at once — nobody is asked — and the refusal says why; don't retry it in another
 form, do the work another way or tell the person what you can't do.
-- **MCP:** only the eventmodelers server (`mcp__eventmodelers__*`) — prefer it for every board read and write.
+- **MCP:** only the eventmodelers server (`mcp__eventmodelers__*`) — prefer it for every board read and write — plus
+  a Playwright browser (`mcp__playwright__*`) when the agent was started with `--browser`.
 - **Bash:** only `curl` to the platform (`$BASE_URL` — set for you, like `$ORG_ID`, `$BOARD_ID` and `$TOKEN`), with
-  `$TOKEN` / `$EVENTMODELERS_TOKEN` only in a `-H` header; uuids with `uuidgen` or `python3 -c` using only
-  `uuid.uuid4()` (one, a loop, a joined list); `jq`; `python3 -m json.tool`; read-only `git` (`git -C <code dir> …`);
-  `cat`/`head`/`tail`/`wc`/`sort`/`uniq`/`grep`/`cut`/`tr`/`ls`, `echo`, `printf`, `mkdir`. No `$(…)`, shell loops,
-  other `python3` scripts, `node`, `rm`, `cd`. Build a JSON payload with the Write tool in `/tmp`, then
+  `$TOKEN` / `$EVENTMODELERS_TOKEN` only in a `-H` header; uuids with `uuidgen`, `$(uuidgen)`,
+  `for i in $(seq <n>); do uuidgen; done` or `python3 -c` using only `uuid.uuid4()`; `jq`; `python3 -m json.tool`;
+  read-only `git` (`git -C <code dir> …`); `cat`/`head`/`tail`/`wc`/`sort`/`uniq`/`grep`/`cut`/`tr`/`ls`, `echo`,
+  `printf`, `mkdir`; `for NAME in …; do …; done` loops over these. No other `$(…)`, no `while`/`if`, other `python3`
+  scripts, `node`, `rm`, `cd`. Build a JSON payload with the Write tool in `/tmp`, then
   `curl … --data-binary @/tmp/<file>.json`.
 - **Files:** read and write in this directory and `/tmp`, read the code directory. Never `.claude/`, `.mcp.json`,
-  `.eventmodelers/` or `.env` files. No web access.
+  `.eventmodelers/*.json` or `.env` files (`.eventmodelers/interviews/` is fine). No web access.
 
 ## Chat turns — `CHAT`
 

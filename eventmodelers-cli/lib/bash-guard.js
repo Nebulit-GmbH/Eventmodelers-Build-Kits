@@ -9,8 +9,9 @@
 // - Programs: curl (only to the platform's baseUrl), python3 (two exact forms), uuidgen, jq, git (read-only
 //   subcommands), and read-only text tools (cat, head, tail, wc, sort, uniq, grep, cut, tr, ls), echo, printf,
 //   mkdir, sleep, date, true. Nothing else — no sh/bash/eval/env/xargs/find/sed/awk/node/npm/rm/mv/cp.
-// - No command substitution ($(…), `…`, $((…)), <(…)), subshells, brace groups, brace expansion, background jobs,
-//   control flow, or ~ paths.
+// - No command substitution ($(…), `…`, $((…)), <(…)) except exactly $(uuidgen) and $(seq N) / $(seq A B) — they mint
+//   ids and run nothing else. No subshells, brace groups, brace expansion, background jobs or ~ paths. The only control
+//   flow is `for NAME in …; do …; done` (its body checked like any other command; NAME counts as set).
 // - Variables: only BASE_URL, ORG_ID, BOARD_ID, AGENT_ID, CHAT_SESSION_ID, EVENTMODELERS_AGENT_ID, CLAUDE_CODE_SESSION_ID and names assigned in
 //   the same command. The token ($EVENTMODELERS_TOKEN / $TOKEN) only inside a curl -H value — never echoed, written or
 //   passed elsewhere. Assigning BASE_URL is fine only to the real baseUrl; PATH, proxies, LD_*/DYLD_*/GIT_* … never.
@@ -21,7 +22,7 @@ import { isAbsolute, resolve, sep } from 'path';
 
 const SAFE_VARS = new Set(['BASE_URL', 'ORG_ID', 'BOARD_ID', 'AGENT_ID', 'CHAT_SESSION_ID', 'EVENTMODELERS_AGENT_ID', 'CLAUDE_CODE_SESSION_ID']);
 const TOKEN_VARS = new Set(['TOKEN', 'EVENTMODELERS_TOKEN']);
-const PROTECTED_VAR = /^(PATH|HOME|IFS|ENV|BASH_ENV|SHELLOPTS|BASHOPTS|PS4|PROMPT_COMMAND|CDPATH|GLOBIGNORE|TMPDIR|SHELL|USER|LD_.*|DYLD_.*|GIT_.*|CURL.*|SSL_.*|NODE_.*|PYTHON.*|.*PROXY.*|EVENTMODELERS_.*|ANTHROPIC_.*|CLAUDE.*)$/i;
+const PROTECTED_VAR = /^(PATH|HOME|IFS|ENV|BASH_ENV|SHELLOPTS|BASHOPTS|PS4|PROMPT_COMMAND|CDPATH|GLOBIGNORE|TMPDIR|SHELL|USER|LD_.*|DYLD_.*|GIT_.*|CURL.*|SSL_.*|NODE_OPTIONS|NODE_PATH|NODE_TLS_.*|NODE_EXTRA_.*|PYTHON.*|.*PROXY.*|EVENTMODELERS_.*|ANTHROPIC_.*|CLAUDE.*)$/i;
 
 class Refused extends Error {}
 const refuse = (reason) => { throw new Refused(reason); };
@@ -39,7 +40,11 @@ function lex(command) {
   const readVar = (word) => {
     // at command[i] === '$'
     const next = command[i + 1];
-    if (next === '(') refuse('command substitution $(…) is not allowed');
+    if (next === '(') {
+      const sub = /^\$\((?:uuidgen|seq \d{1,4}(?: \d{1,4})?)\)/.exec(command.slice(i));
+      if (!sub) refuse('command substitution $(…) is not allowed — only $(uuidgen) and $(seq N)');
+      word.text += sub[0]; i += sub[0].length; return;
+    }
     if (next === '{') {
       const end = command.indexOf('}', i + 2);
       const name = end < 0 ? '' : command.slice(i + 2, end);
@@ -155,6 +160,8 @@ function lex(command) {
 
 // ─── Commands ───────────────────────────────────────────────────────────────────────────────────
 
+const ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
+
 /** Splits the tokens into simple commands: leading assignments, words, redirections, heredocs. */
 function simpleCommands(tokens) {
   const commands = [];
@@ -164,12 +171,52 @@ function simpleCommands(tokens) {
     if (!current) { current = { assignments: [], words: [], redirects: [], heredocs: [] }; commands.push(current); }
     if (t.type === 'redirect') current.redirects.push(t);
     else if (t.type === 'heredoc') current.heredocs.push(t);
-    else if (!current.words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(t.text) && !t.text.startsWith('=')) {
+    else if (!current.words.length && ASSIGNMENT.test(t.text)) {
       const eq = t.text.indexOf('=');
       current.assignments.push({ name: t.text.slice(0, eq), value: t.text.slice(eq + 1), word: t });
     } else current.words.push(t);
   }
   return commands;
+}
+
+/**
+ * Takes the `for NAME in …; do …; done` keywords out of the simple commands, leaving the loop items on the `for`
+ * command (as `loopItems`, checked like words) and each body command as a plain command. Returns the loop variables.
+ */
+function unwrapLoops(commands) {
+  const loopVars = [];
+  let open = 0;
+  let expectDo = false;
+  for (const cmd of commands) {
+    const first = cmd.words[0];
+    const keyword = first && !first.quoted && !first.refs.length ? first.text : null;
+    if (expectDo && keyword !== 'do') refuse('a for loop needs "do" after its list');
+    if (keyword === 'for') {
+      const [, name, inWord, ...items] = cmd.words;
+      if (cmd.assignments.length || cmd.redirects.length || cmd.heredocs.length || !name || name.quoted
+        || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name.text) || inWord?.text !== 'in' || inWord.quoted) {
+        refuse('only "for NAME in …; do …; done" loops are allowed');
+      }
+      if (PROTECTED_VAR.test(name.text) || TOKEN_VARS.has(name.text)) refuse(`setting ${name.text} is not allowed`);
+      loopVars.push(name.text);
+      cmd.loopItems = items; cmd.words = [];
+      open += 1; expectDo = true;
+    } else if (keyword === 'do') {
+      if (!expectDo) refuse('"do" outside a for loop');
+      expectDo = false;
+      cmd.words.shift();
+      while (cmd.words.length && ASSIGNMENT.test(cmd.words[0].text)) {
+        const w = cmd.words.shift();
+        const eq = w.text.indexOf('=');
+        cmd.assignments.push({ name: w.text.slice(0, eq), value: w.text.slice(eq + 1), word: w });
+      }
+    } else if (keyword === 'done') {
+      if (!open || cmd.words.length > 1 || cmd.assignments.length) refuse('"done" outside a for loop');
+      open -= 1; cmd.words = [];
+    }
+  }
+  if (open || expectDo) refuse('a for loop is never closed with "done"');
+  return loopVars;
 }
 
 function withinRoots(path, policy) {
@@ -373,7 +420,7 @@ export function checkBashCommand(command, policy) {
   try {
     if (typeof command !== 'string' || !command.trim()) refuse('empty command');
     const commands = simpleCommands(lex(command));
-    const assigned = new Set();
+    const assigned = new Set(unwrapLoops(commands));
     for (const cmd of commands) {
       for (const a of cmd.assignments) {
         if (PROTECTED_VAR.test(a.name) || TOKEN_VARS.has(a.name)) refuse(`setting ${a.name} is not allowed`);
@@ -386,7 +433,7 @@ export function checkBashCommand(command, policy) {
       for (const r of cmd.redirects) {
         if (r.op !== '<<<') checkPath(r.target.text, r.op === '<' ? 'input file' : 'output file', policy);
       }
-      const parts = [...cmd.words, ...cmd.assignments.map((a) => a.word), ...cmd.redirects.map((r) => r.target), ...cmd.heredocs];
+      const parts = [...cmd.words, ...(cmd.loopItems ?? []), ...cmd.assignments.map((a) => a.word), ...cmd.redirects.map((r) => r.target), ...cmd.heredocs];
       for (const w of parts) {
         if (w.braceOrTilde && w.type === 'word') refuse(`"${w.text}": brace expansion and ~ are not allowed — quote it or spell the path out`);
         for (const name of w.refs) {

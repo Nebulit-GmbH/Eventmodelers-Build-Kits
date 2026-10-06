@@ -43,6 +43,7 @@ Install a browser automation MCP and restart Claude Code. Options:
   • Playwright MCP: @playwright/mcp
 
 Once installed, run /discover-storyboard again.
+A board modeling agent (`run --modeling`) only gets one when started with --browser.
 ```
 
 Do NOT invoke `connect`. Do NOT proceed to Step 1.
