@@ -31,7 +31,7 @@ Do not connect, do not read the board, and do not produce a report when either c
 
 Prefer `mcp__eventmodelers__*` tools when available. See `learn-eventmodelers-api` for the curl fallback.
 
-**This skill never changes the code**, and it changes the board only for what the person confirms — plus the one *Analysis history* row of Step 7.
+**This skill never changes the code**, and it changes the board only for what the person confirms — plus the one *Analysis history* row of Step 7 that marks the drift resolved.
 
 ---
 
@@ -172,11 +172,17 @@ mcp__eventmodelers__post_chat_message {
 - `id` is `d:<model|code|decide>:<nodeId>:<kind>[:<detail>]` — the answering turn remembers nothing, so it must carry the direction and target. Put **every** finding in the one snippet (it pages itself at 5).
 - Zero findings: a one-line text reply, no snippet, then Step 7.
 
-The answer comes as a `CHAT` turn (`Please do these:` + ticked titles or ids). Read the snippet back with `get_chat_session`, match what was ticked, and create **one prompt** per direction: model fixes → *"Apply these model-drift fixes: `<id> | <title>` per line"*; code fixes → set each slice to `Planned`. Unticked fixes are declined — drop them. Then Step 7.
+The answer comes as a `CHAT` turn (`Please do these:` + ticked titles or ids). Read the snippet back with `get_chat_session`, match what was ticked, and deal with each finding:
+
+- **model fixes** → apply them (one prompt for all of them: *"Apply these model-drift fixes: `<id> | <title>` per line"*),
+- **code fixes** → set each slice to `Planned`; that is the whole fix from here — the rebuild is the build kit's job, the drift doesn't wait for it,
+- **unticked** → declined, nothing to do.
+
+Once every finding is dealt with this way, do Step 7 — that is what marks the drift resolved. If the model fixes go to a separate prompt, that prompt carries the range and the outcome (*"…then mark the drift `<BASE>`→`<REF>` resolved per /detect-model-drift Step 7: `<n> applied, <n> to rebuild, <n> declined`"*) and does Step 7 when its fixes are done.
 
 ### Without a chat
 
-Print the report below, every finding as a `- [ ]` checkbox carrying its proposed fix, and ask which to apply. Wait for the answer, act on it, then Step 7.
+Print the report below, every finding as a `- [ ]` checkbox carrying its proposed fix, and ask which to apply. Wait for the answer, deal with each finding (as in the chat case), then Step 7.
 
 Name each slice and element as `[<title>](ref:<nodeId>)` (the slice border's id for a slice); code that has no node stays plain text.
 
@@ -200,18 +206,21 @@ Omit empty sections. Say plainly when nothing drifted.
 
 ---
 
-## Step 7 — Move the baseline forward
+## Step 7 — Mark the drift resolved
 
-Once the person has answered (or there was nothing to report), append **one row** to the *Analysis history* of every chapter in scope (`node:changed` on that note's `meta.description` — never edit or drop earlier rows), so the next run starts from here:
+**When the drift has been dealt with** — every finding's fix applied, its slice set to `Planned`, or declined (or there was nothing to report) — mark it resolved **in the analysis only**: append **one row** to the *Analysis history* of every chapter in scope (`node:changed` on that note's `meta.description` — never edit or drop earlier rows). That row is the resolution and the next run's baseline:
 
 ```
-| 4 | 2026-10-07 | `9c1e2f0` | drift check since `a1b2c3d` | `Microchip.kt`, `RegisterMicrochipController.kt` | 2 findings: 1 model fix applied, 1 declined |
+| 4 | 2026-10-07 | `9c1e2f0` | drift check since `a1b2c3d` — resolved | `Microchip.kt`, `RegisterMicrochipController.kt` | 2 findings resolved: 1 model fix applied, 1 declined |
 ```
+
+- **Only the analysis note changes here.** Marking the drift resolved touches nothing else — no slice status, no comment, no other note, no code. A slice sent back to `Planned` is resolved for the analysis now; whether the rebuild succeeds is the build kit's business.
+- Mark it resolved only once **all** its findings are dealt with. If a fix couldn't be applied, write no row, say which finding is still open — the next run reports it again.
 
 - **Commit** is `REF`'s short sha; add `+dirty` when uncommitted changes were part of the check. With `--branch`, write `<sha> (<branch>)`.
 - A declined finding is accepted as intended — that is why the baseline still moves past it; record it in the row so it can be found later.
 - A chapter without a chapter note: don't create one here — say in the report that `/analyze-code-base` would add it, and that the next drift check needs `--since` until then.
-- If the person never answers, the baseline stays where it was — the same changes come up again next time.
+- If the person never answers, the drift isn't resolved and the baseline stays where it was — the same changes come up again next time.
 
 ---
 
@@ -225,5 +234,5 @@ Once the person has answered (or there was nothing to report), append **one row*
 - A build-kit commit (evidence note names its sha, else `feat: <Slice>`) is the as-built state; every later change to its files is a hand-made change.
 - No git history → no drift detection; say so in one line and stop (Step 0).
 - `--branch` reads the code via `git show <REF>:<path>` — never check it out, the working tree may hold someone's uncommitted work.
-- Every completed run appends one *Analysis history* row; an unanswered run doesn't move the baseline.
+- A drift is resolved once every finding is dealt with (model fix applied, slice set to `Planned`, or declined) — then mark it resolved with one *Analysis history* row and nothing else. An unanswered run or a failed fix doesn't move the baseline.
 - `.build-kit/.slices` is no evidence of what the code was built from: every fetch, `/load-slice` and runner loop rewrites it.
