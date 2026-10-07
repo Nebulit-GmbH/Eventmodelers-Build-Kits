@@ -54,7 +54,7 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 2. Run `/load-slice sliceId=<payload.sliceId>` to fetch the full slice, then read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`. The runner keeps a `slice.json` fresh from a summary endpoint, so a file holding only `id`, `title`, `status` and `sliceType` is that stub, not an empty slice — never conclude a slice has no elements from it. Only if the full fetch itself returns no commands/events/read models/fields is the slice actually empty.
 
-3. Make sure `.build-kit/ARCHITECTURE.md` exists — if it is missing, run `/learn-architecture` first. This kit installs into an existing codebase: that file records how *this* project is built (layers, persistence, naming, tests, build/test commands), and every `build-*` skill implements the slice the way the codebase already works.
+3. Make sure `.build-kit/ARCHITECTURE.md` exists — if it is missing, run `/learn-architecture` first; if a `Done` slice has no row in its Slice map, run `/learn-architecture slices`. This kit installs into an existing codebase — usually a legacy system whose event model was built from its code, so most `Done` slices already exist in it. That file records how *this* project is built (layers, persistence, naming, tests, build/test commands) and which code each existing slice maps to; every `build-*` skill implements the slice the way its closest existing slice is built, kept as isolated and deletable as the codebase allows.
 
 4. Determine the **slice type** from the slice.json:
    - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified

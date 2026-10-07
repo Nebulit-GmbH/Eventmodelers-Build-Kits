@@ -27,13 +27,22 @@ From the slice definition, extract:
 - **readmodels[]** / **projections[]** / **queries[]** — the read model(s) this slice serves, with their fields
 - the **events** feeding each read model — they tell you which persisted state the fields come from
 - **specifications[]** — test scenarios (given events → expected read model)
-- **storylines[]** (optional) — present only when the board author built an explicit walkthrough for this flow; most slices have none. See "Storyline-derived tests" under Step 5.
+- **storylines[]** (optional) — present only when the board author built an explicit walkthrough for this flow; most slices have none. See "Storyline-derived tests" under Step 6.
 
 > **Comments & description**: each element carries a `comments: string[]` array (board comments) and a `description` field — use them as implementation hints, and resolve consumed comments via `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
 
 ---
 
-## Step 2 — Locate the source data
+## Step 2 — Find the precedent slices
+
+This codebase is usually a legacy system whose event model was built from its code, so most neighbouring slices already exist in the code. Before writing anything:
+
+1. **Is this read already in the code?** Look the slice up in the **Slice map** of `ARCHITECTURE.md` and search for the read model name, its fields and the endpoint (also under the code names from *Code vs. board terms*). If it exists, this skill is a **diff** (see Step 3) — don't build a second query next to it.
+2. **Which existing slices are its neighbours?** Pick the closest `Done` slices — the state-change slices that produce this read model's events (they show where the data is persisted), and another state-view slice in the same context or over the same entity (it shows how reads are built here). Read their `slice.json` and the code the map lists for them side by side. If no Done state-view is close, fall back to the read reference implementation in `ARCHITECTURE.md`.
+
+If a Done slice in this context has no row in the Slice map, run `/learn-architecture slices` first.
+
+## Step 3 — Locate the source data
 
 For every read model field, find where the feeding event's data is persisted (the entity/table/column written by that event's state-change slice). Search by event name, entity and field names.
 
@@ -42,9 +51,9 @@ For every read model field, find where the feeding event's data is persisted (th
 
 If the slice reappears as `Planned` and a query for it already exists, treat this skill as a **diff** against slice.json: add missing fields, remove fields slice.json no longer has, add missing specifications.
 
-## Step 3 — Map the slice onto the reference read path
+## Step 4 — Map the slice the way its precedent is mapped
 
-Open the **read** reference implementation from `ARCHITECTURE.md` and build the same shape, in the same locations and with the same naming:
+Take the precedent state-view slice from Step 2 (or the **read** reference implementation from `ARCHITECTURE.md`) and build the same shape, with the same naming, placed as described in *New slices — isolation* of `ARCHITECTURE.md` — its own query class/DTO/endpoint files (own package/folder where the layout allows), not new methods appended to a shared repository or controller when a separate class works just as well. Shared files are touched only at the seams `ARCHITECTURE.md` names, and the query reads existing tables without changing them for other readers:
 
 | From slice.json | Becomes (per `ARCHITECTURE.md`) |
 |---|---|
@@ -55,11 +64,11 @@ Open the **read** reference implementation from `ARCHITECTURE.md` and build the 
 
 In an event-based codebase (per `ARCHITECTURE.md`), build the projection/read-model updater the existing way instead and register it like the reference does.
 
-## Step 4 — Expose it
+## Step 5 — Expose it
 
 Expose the read the way comparable reads are exposed (REST endpoint, RPC, UI loader, ...), including registration, routing, API documentation and permission config, mirroring the reference. If the read is only consumed internally (e.g. by an automation's todo list), a service/repository method is enough.
 
-## Step 5 — Write the tests
+## Step 6 — Write the tests
 
 Write one executable test per entry in `specifications[]`, in the test style and location of the reference test:
 
@@ -80,9 +89,13 @@ A storyline is `{ id, title, elements: [...] }`, where `elements` is an ordered 
 
 Group these separately, named after the storyline. Skip a beat pair when a COMMAND beat sits in between (that half belongs to build-state-change) or when the run includes a SCREEN/AUTOMATION beat with no traceable event — a one-line comment noting the storyline segment exists is enough.
 
-## Step 6 — Quality gate
+## Step 7 — Quality gate
 
 Run the build command and the single-test command from `ARCHITECTURE.md` for the tests this slice added or changed. Do not run the full suite.
+
+## Step 8 — Record the slice in the Slice map
+
+Add (or update) this slice's row in the **Slice map** of `ARCHITECTURE.md`, including every shared file it touched under `Shared seams`. Commit it with the slice.
 
 ---
 
@@ -93,5 +106,6 @@ Run the build command and the single-test command from `ARCHITECTURE.md` for the
 - [ ] No parallel data store was invented for data that already exists
 - [ ] Every specification has exactly one corresponding, passing test
 - [ ] If `storylines[]` is present, a storyline-derived test was added for every isolable read-model transition (adjacent READMODEL beats with only EVENT beats between them)
-- [ ] The new code mirrors the reference implementation's layout, naming and conventions; no new framework, library or architectural style was introduced
+- [ ] The new code mirrors its precedent slice (or the reference implementation): layout, naming and conventions; no new framework, library or architectural style was introduced
+- [ ] The slice lives in its own files; shared files were touched only at the seams in `ARCHITECTURE.md`, and its Slice map row lists them
 - [ ] Assumptions and data gaps are recorded in `progress.txt` and as code comments

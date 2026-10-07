@@ -43,7 +43,7 @@ If `storylines[]` includes a beat sequence running through this automation's tri
 
 ## Step 3 — Find the trigger point
 
-Locate where the trigger event's state change happens in the code (the service method / persistence of the event that feeds the processor), and pick the mechanism from `ARCHITECTURE.md`:
+Locate where the trigger event's state change happens in the code — the **Slice map** in `ARCHITECTURE.md` names the code of the Done slice that produces it. If the map has a Done automation slice, build this one the way that one is built (same mechanism, registration and test style); otherwise pick the mechanism from `ARCHITECTURE.md`:
 
 | Codebase has | Build the automation as |
 |---|---|
@@ -57,6 +57,7 @@ Rules:
 - The reaction must be **idempotent**: reprocessing the same trigger must not issue the command twice (check the resulting state, a processed-marker, or the todo-list query condition — whatever the codebase already uses).
 - Follow the codebase's transaction boundaries: the command must not run inside a transaction that can still roll back the trigger unless the reference does exactly that.
 - Never add a new messaging/scheduling library just for this slice.
+- **Isolated and deletable**: the listener/consumer/job is its own class in the slice's own place (see *New slices — isolation*). Prefer subscribing to an existing event or querying for pending work over editing the trigger's service method; if a hook in that method is unavoidable (no event mechanism exists), keep it to a single call and list it under `Shared seams`.
 
 ## Step 4 — Register it
 
@@ -70,12 +71,17 @@ Besides the command tests from Step 2, write one test per `specifications[]` ent
 
 Run the build command and the single-test command from `ARCHITECTURE.md` for the tests this slice added or changed. Do not run the full suite.
 
+## Step 7 — Record the slice in the Slice map
+
+Add (or update) this slice's row in the **Slice map** of `ARCHITECTURE.md`, with the trigger and every shared file it touched under `Shared seams`. Commit it with the slice.
+
 ---
 
 ## Checklist
 
 - [ ] The command was built (or reused) via build-state-change, with all its specifications tested
-- [ ] The trigger uses the codebase's existing reactive mechanism, registered like the reference
+- [ ] The trigger uses the codebase's existing reactive mechanism, registered like the precedent automation slice (or the reference)
+- [ ] The automation is its own class; any hook into existing code is listed under `Shared seams` in its Slice map row
 - [ ] Trigger → command field mapping matches slice.json exactly
 - [ ] Reprocessing the same trigger does not issue the command twice
 - [ ] Every specification has a passing test

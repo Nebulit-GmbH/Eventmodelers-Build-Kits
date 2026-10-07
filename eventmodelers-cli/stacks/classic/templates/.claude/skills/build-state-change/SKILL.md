@@ -33,15 +33,19 @@ From the slice definition, extract:
 
 ---
 
-## Step 2 — Check what already exists
+## Step 2 — Find the precedent slices
 
-Search the codebase for the command name, event names, the entity they act on, and the key fields. A slice that reappears as `Planned` may be partly or fully implemented already — then this skill is a **diff**: update the existing code to match slice.json field by field, add missing specifications, remove fields slice.json no longer has. Never dismiss a mismatch as harmless drift.
+This codebase is usually a legacy system whose event model was built from its code, so most neighbouring slices already exist in the code. Before writing anything, find out how they were built:
 
-Also find the entity/table the events write to. If it exists, extend it; if not, create it the way the reference implementation creates one (entity + migration, schema file, ...).
+1. **Is this slice itself already in the code?** Look it up in the **Slice map** of `ARCHITECTURE.md` and search for the command name, event names, the entity and the key fields (also under their code names from *Code vs. board terms*). If it exists — a slice that reappears as `Planned`, or one the analysis found but never marked `Done` — this skill is a **diff**: update the existing code to match slice.json field by field, add missing specifications, remove fields slice.json no longer has. Never dismiss a mismatch as harmless drift, and don't rebuild it next to the existing code.
+2. **Which existing slices are its neighbours?** From the Slice map and the context's `index.json`, pick the `Done` slices closest to this one — same context, same entity/aggregate, same events (e.g. the slice that produces this slice's `given` events, or another status transition on the same entity), same type. Read their `slice.json` and the code the map lists for them, **side by side**: that is exactly how a COMMAND, its EVENTs and its specifications from this board become code here. If no Done slice is close, fall back to the reference implementation in `ARCHITECTURE.md`.
+3. **What does the slice build on?** Events this slice reads in its `given`/specifications that other Done slices produce are already persisted somewhere — reuse that entity/table, never re-implement or duplicate it.
 
-## Step 3 — Map the slice onto the reference write path
+If a Done slice in this context has no row in the Slice map, run `/learn-architecture slices` first.
 
-Open the **write** reference implementation from `ARCHITECTURE.md` and build the same shape for this slice, file by file, in the same locations and with the same naming:
+## Step 3 — Map the slice the way its precedent is mapped
+
+Take the precedent slice from Step 2 (or the **write** reference implementation from `ARCHITECTURE.md`) and build the same shape for this slice — same layers, naming, validation, error mapping and test style — placed as described in *New slices — isolation* of `ARCHITECTURE.md`:
 
 | From slice.json | Becomes (per `ARCHITECTURE.md`) |
 |---|---|
@@ -51,6 +55,7 @@ Open the **write** reference implementation from `ARCHITECTURE.md` and build the
 | event that represents a status transition (`...Approved`, `...Cancelled`) | the field/status column update the codebase uses for such transitions |
 
 Rules:
+- **Isolated and deletable**: the slice's code lives in its own files (its own package/folder where the layout allows — see *New slices — isolation*), not as new methods appended to an existing shared service, controller or repository. Shared files are touched only at the seams `ARCHITECTURE.md` names (registration, routing, a new migration), each as one small, recognisable change. No other code may start depending on this slice's internals; it reaches shared state through the existing entity/repository. Removing the slice should mean deleting its files and reverting its seams.
 - Every command field, every event field ends up somewhere concrete — persisted, validated or returned. A field with no destination is a gap: record your assumption.
 - No fields that are not in slice.json. Technical columns the codebase always adds (ids, timestamps, version, audit) are fine if every comparable entity has them.
 - Schema changes go through the codebase's migration mechanism — add a new migration, never edit an existing one.
@@ -84,6 +89,10 @@ Group these separately (own test class/`describe`/region, named after the storyl
 
 Run the build command and the single-test command from `ARCHITECTURE.md` for the tests this slice added or changed. Do not run the full suite.
 
+## Step 7 — Record the slice in the Slice map
+
+Add (or update) this slice's row in the **Slice map** of `ARCHITECTURE.md`: entry point, persistence, tests, and every shared file it touched under `Shared seams` — that column is the checklist for deleting the slice later. Commit it with the slice.
+
 ---
 
 ## Final Verification: Does the Implementation Match slice.json?
@@ -94,5 +103,7 @@ Run the build command and the single-test command from `ARCHITECTURE.md` for the
 - [ ] If `storylines[]` is present, a storyline-derived test was added for every COMMAND beat
 - [ ] No business rules, defaults, or constraints were added that do not appear in slice.json `description`, `comments` or specifications
 - [ ] No field names were assumed or guessed — if a field is not in slice.json, it is not in the code
-- [ ] The new code mirrors the reference implementation's layout, naming and conventions; no new framework, library or architectural style was introduced
+- [ ] The new code mirrors its precedent slice (or the reference implementation): layout, naming and conventions; no new framework, library or architectural style was introduced
+- [ ] Data produced by existing slices was reused, not duplicated
+- [ ] The slice lives in its own files; shared files were touched only at the seams in `ARCHITECTURE.md`, and its Slice map row lists them
 - [ ] Assumptions are recorded in `progress.txt` and as code comments

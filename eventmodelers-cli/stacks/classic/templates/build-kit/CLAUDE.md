@@ -4,11 +4,14 @@ This build kit was installed into an **existing codebase** — it ships no scaff
 
 The codebase is typically a classic application (layered, CRUD, a relational database behind services/repositories) — but not necessarily: it may already use domain events, messaging, or event sourcing. Never assume; look.
 
+The usual situation is a **legacy system being extended**: a code base analysis built the event model from the existing code, so most slices on the board — typically those in status `Done` — already exist in the code, and their elements' descriptions reference it. Those slices are the map from board to code: every new slice is built the way its closest existing slice is built.
+
 ## Architecture First
 
-`.build-kit/ARCHITECTURE.md` describes how this codebase works: language, layers, where a feature's files go, persistence and migrations, how state changes are exposed (REST, RPC, UI actions), how reads are served, how background/reactive work is wired, the test style, and the exact build/test commands.
+`.build-kit/ARCHITECTURE.md` describes how this codebase works: language, layers, where a feature's files go, persistence and migrations, how state changes are exposed (REST, RPC, UI actions), how reads are served, how background/reactive work is wired, the test style, the exact build/test commands — and the **Slice map**: which code every existing slice corresponds to, plus where a new slice goes so it stays isolated.
 
 - If `.build-kit/ARCHITECTURE.md` does not exist, run `/learn-architecture` before building anything.
+- If a `Done` slice in the local `index.json` files has no row in the Slice map, run `/learn-architecture slices` before building.
 - Treat it as the authority for *how* to build. Treat `slice.json` as the authority for *what* to build.
 - If the code contradicts `ARCHITECTURE.md` (a moved folder, a renamed base class, a wrong command), fix `ARCHITECTURE.md` in the same iteration rather than working around it.
 
@@ -18,6 +21,7 @@ The codebase is typically a classic application (layered, CRUD, a relational dat
 - **No new architecture**: never introduce a new framework, library, persistence technology or architectural style (event store, CQRS bus, mediator, ...) to build a slice. If the codebase is CRUD, the slice is CRUD.
 - **No dependency changes**: do not add or upgrade dependencies unless slice.json or a slice prompt explicitly asks for it.
 - **Minimal footprint**: touch only the files the slice needs. Do not refactor, reformat or "clean up" unrelated code.
+- **Isolated and deletable**: build each new slice as self-contained as the codebase allows — its own files (its own package/folder where the layout permits), shared files touched only at the seams `ARCHITECTURE.md` names (registration, routing, a new migration), no other code depending on its internals. Deleting a slice should mean deleting its files and reverting the seams listed in its Slice map row. Conventions still come from the codebase; isolation decides *where* the code goes, not *how* it is written.
 
 Ignore case for files and slices in prompts. "CartItems" slice is the same as "cartitems".
 
@@ -37,7 +41,7 @@ When starting to work on a slice, invoke the `update-slice-status` skill with `I
 When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<context>/<slicename>/slice.json`.
-2. Make sure `.build-kit/ARCHITECTURE.md` exists — run `/learn-architecture` if it does not.
+2. Make sure `.build-kit/ARCHITECTURE.md` exists and its Slice map covers every `Done` slice — run `/learn-architecture` (or `/learn-architecture slices`) if not.
 3. Determine the slice type:
    - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
@@ -46,13 +50,13 @@ When asked to build a slice, always follow this flow:
 4. Invoke the matching skill and follow its instructions completely. Do not deviate.
 5. **Verify against slice.json**: After the skill completes, check that every command field, event field, read model field and specification in slice.json has its counterpart in the implementation. No invented fields — if it is not in slice.json, it must not be in the code. This applies even when the slice was previously `Done` and reappears as `Planned` — never dismiss a mismatch as "already implemented" or harmless drift; diff slice.json against the code field by field and update the code to match every change.
 6. Run the quality checks from `.build-kit/ARCHITECTURE.md` (build/compile, then only the tests this slice touched).
-7. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
+7. If checks pass, make sure the slice's row in the Slice map is added/updated, commit with `feat: [Slice Name]` and set slice status to `Done`.
 
 After you are done, automatically run the tests for the slice that was edited.
 
 ## How Event Modeling maps onto this codebase
 
-The board speaks Event Modeling; the codebase may not. `/learn-architecture` records the concrete mapping in `ARCHITECTURE.md` — the default for a CRUD codebase is:
+The board speaks Event Modeling; the codebase may not. `/learn-architecture` derives the concrete mapping from the existing slices and records it in `ARCHITECTURE.md` — that mapping, and the closest `Done` slice's code, always beat the defaults below. The default for a CRUD codebase, used only where no existing slice shows the way, is:
 
 | Board element | Typical CRUD counterpart |
 |---|---|
