@@ -138,7 +138,7 @@ mcp__eventmodelers__add_scenario {
 }
 ```
 
-Same rules apply (given=EVENTs only, when=at most one COMMAND or QUERY, then=EVENTs only or exactly one READMODEL, `expectError`+`errorDescription` for error cases). This auto-creates the spec node if the cell is empty, same as the curl endpoint.
+Same rules apply (context=READMODELs only, given=EVENTs only, when=at most one COMMAND or QUERY, then=EVENTs only or exactly one READMODEL, `expectError`+`errorDescription` for error cases). This auto-creates the spec node if the cell is empty, same as the curl endpoint.
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 4a — SCENARIO: append scenarios via the spec endpoint" for the full curl call and example payload.
 

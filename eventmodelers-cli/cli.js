@@ -197,6 +197,17 @@ const STACKS = {
     useShared: true,
     needsBoardId: true,
   },
+  // Installs into an existing codebase instead of scaffolding one — it ships no
+  // templates/root, so nothing is spread into the project root. Its learn-architecture
+  // skill analyzes the code once into .build-kit/ARCHITECTURE.md, and the build-* skills
+  // implement each slice the way that codebase already works (typically CRUD).
+  classic: {
+    label: 'Classic — existing codebase (any language, typically CRUD), slices built to match its architecture',
+    kitSubdir: 'build-kit',
+    kitDirName: '.build-kit',
+    useShared: true,
+    needsBoardId: true,
+  },
 };
 
 // Not a stack — no backend scaffold, just skills + the agent loop. Installed via

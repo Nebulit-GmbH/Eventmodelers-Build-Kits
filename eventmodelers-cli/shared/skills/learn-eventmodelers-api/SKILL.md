@@ -710,10 +710,12 @@ Append Given-When-Then scenario(s) to a column's spec node — the node is creat
 A step given as `{title, type}` is resolved server-side, so the names you already know need **no `get_spec_info`/`get_nodes` call first**. A title matching more than one element is rejected (`SCENARIO_ITEM_AMBIGUOUS`) with the candidates rather than guessed at, and resolution runs before anything is written — a bad name leaves no empty spec node behind.
 
 **Validation rules**:
+- `context`: only READMODELs (the state the command decides against)
 - `given`: only EVENTs from same timeline
 - `when`: max one COMMAND; must be empty when `then` contains a READMODEL (use an inline QUERY item for a state-view)
 - `then`: all EVENTs OR exactly one READMODEL — never mixed
 - All referenced nodes must belong to the same chapter/timeline
+- Each section is checked against the node's real type: a COMMAND lives only in `when`, a READMODEL only in `then`/`context`, an EVENT only in `given`/`then`. A step's `type`, when sent, must match the node (`SCENARIO_ITEM_TYPE_MISMATCH`); when omitted, the node's type is stored on the step
 
 **Response**:
 - `201` — `{ specNodeId, scenarios, added, isNewNode: boolean }`

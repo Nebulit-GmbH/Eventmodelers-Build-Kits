@@ -23,6 +23,7 @@ npx @eventmodelers/cli init --stack umadb            # UmaDB (Java)
 npx @eventmodelers/cli init --stack kurrent          # Kurrent (Java, KurrentDB)
 npx @eventmodelers/cli init --stack react            # React (frontend, board-polling sync) — TODO-marked, not yet filled in
 npx @eventmodelers/cli init --stack supabase-react   # React + Supabase (frontend, UI-only, realtime sync)
+npx @eventmodelers/cli init --stack classic          # Existing codebase (any language, typically CRUD) — no scaffold
 ```
 
 The installer prompts for your API token, Organization ID, and Board ID from [app.eventmodelers.ai/account](https://app.eventmodelers.ai/account), scaffolds the stack into your project, and writes `.eventmodelers/config.json` with your credentials.
@@ -65,6 +66,15 @@ npx @eventmodelers/cli fetch --context <name>
 
 This writes the current slice/event/command detail for that context to disk and prints a summary — no agent loop, no listener, just a one-shot pull.
 
+**Adding slices to an existing codebase (`classic`):**
+
+```bash
+cd my-existing-app
+npx @eventmodelers/cli init --stack classic
+```
+
+`classic` scaffolds nothing into your project root — it assumes the code is already there, in whatever language and architecture it uses (typically a layered CRUD app, but not necessarily). Before the first slice, the coding agent (Claude, Codex, or any `--agent`) runs `learn-architecture`: it traces one or two existing features end to end and writes `.build-kit/ARCHITECTURE.md` — layout, reference implementations, test style, build/test commands, and how Event Modeling maps onto this code (COMMAND → service method + endpoint, EVENT → the persisted state change, READMODEL → query + DTO, AUTOMATION → the existing listener/consumer/scheduler). The `build-*` skills then implement every slice by copying those reference features, never by introducing a new framework or event store. Review and commit `ARCHITECTURE.md` after the first run — it's the one file that steers every later slice.
+
 **Checking what's installed or which credentials are active:**
 
 ```bash
@@ -92,6 +102,8 @@ your-project/
 ```
 
 The six backend stacks (`node`, `supabase`, `axon`, `opencqrs`, `umadb`, `kurrent`) also scaffold a real project skeleton into your project root (`templates/root/`) — source layout, build files, migrations, etc.
+
+`classic` ships no `templates/root/` at all — it installs only `.build-kit/` and the skills into an existing codebase (see "Adding slices to an existing codebase" above).
 
 `react` and `supabase-react` are two more registered stacks (installable the same way). `supabase-react` is real, filled-in content — a Vite + React 19 + TypeScript scaffold that authenticates and issues command POSTs via a Supabase session (`src/lib/api.ts`/`src/lib/supabase.ts`), plus `init-style-guide`/`learn-styleguide` skills so generated UI stays on-brand. It's UI-only: `.build-kit/CLAUDE.md` only routes `STATE_CHANGE`/`STATE_VIEW` slices to `build-state-change`/`build-state-view` — an `AUTOMATION` slice has no UI counterpart and gets flagged via `request-feedback` instead, since it belongs to whichever backend stack is installed alongside this one. It needs no overrides at all and uses `shared/build-kit`'s realtime agent as-is.
 

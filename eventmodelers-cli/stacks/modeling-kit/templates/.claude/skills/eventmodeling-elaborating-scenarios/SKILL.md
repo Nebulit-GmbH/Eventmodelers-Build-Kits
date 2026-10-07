@@ -198,14 +198,18 @@ As scenarios are written, ensure each role checks:
 | # | Type | Question to ask |
 |---|------|----------------|
 | 1 | **Happy Path** | "What is the normal success case?" |
-| 2 | **Validation Failure** | "What invalid or missing inputs should be rejected?" |
+| 2 | **Validation Failure** | "What input does the *business* refuse?" (e.g. a booking date in the past) — not schema checks like missing/malformed fields |
 | 3 | **State Violation** | "What if the system is in a state that makes this command invalid?" |
-| 4 | **Duplicate Action** | "What if this command is issued again after it already succeeded?" |
+| 4 | **Duplicate Action** | "What if someone performs this business action again on something already in that state?" (e.g. resolving an already-resolved todo) — never a re-sent or colliding id |
 | 5 | **Alternative Path** | "Are there different valid outcomes depending on context?" |
 | 6 | **External Failure** | "What if an external system or scheduler fails during this command?" |
 | 7 | **Compensation** | "Can this be undone or reversed? What triggers the cleanup?" |
 
 Work through each question with the domain in mind. If the answer is "that situation cannot occur in this business" then no scenario is needed for that type — but that judgment must come from the domain, not from a desire to write fewer scenarios.
+
+**Scenarios specify business rules, not technical guarantees.** Every rejection must name a rule a domain expert would recognise and could argue about ("a closed day takes no new todos"). Do not write scenarios for: duplicate or colliding ids, retries/idempotency of the same request, missing or malformed required fields, type/format checks, or infrastructure failures — the implementation handles those and they say nothing about the domain. Rules the brief states explicitly (e.g. "adding on a closed day is rejected") are the core of the coverage and must all be present.
+
+**`errorDescription` is domain language** — the reason as a user would read it ("Day is already closed"), never an id, a placeholder or a truncated example value.
 
 ## Workflow
 
@@ -426,21 +430,21 @@ When a scenario represents a command being **rejected** (validation failure, sta
 
 **`expectError: true`** — signals that the command should be rejected and no event is produced. Set this for every failure/rejection scenario.
 
-**`errorDescription`** — a short human-readable description of the expected error or rejection reason (e.g. `"missing required field: date"`, `"reservation already confirmed"`). Do not leave this empty when `expectError` is `true`.
+**`errorDescription`** — a short human-readable description of the expected error or rejection reason (e.g. `"reservation date is in the past"`, `"reservation already confirmed"`). Do not leave this empty when `expectError` is `true`.
 
 When `expectError` is `true`:
 - `then` must be `[]` — no events are produced on rejection
 - `when` contains the COMMAND being rejected
-- `given` contains any prerequisite EVENTs needed to establish the wrong state (may be empty for pure input-validation rejections)
+- `given` contains any prerequisite EVENTs needed to establish the wrong state (may be empty for an input the business refuses)
 - Do **not** set `expectEmptyList` — that flag is only for list READMODELs
 
 Rejection scenario example:
 ```json
 {
   "id": "<uuid>",
-  "title": "Reject reservation with missing required date field",
+  "title": "Reject a reservation for a date in the past",
   "expectError": true,
-  "errorDescription": "missing required field: date",
+  "errorDescription": "reservation date is in the past",
   "given": [],
   "when": [{"id": "<commandNodeId>", "title": "Reservation Command", "type": "COMMAND"}],
   "then": [],

@@ -344,7 +344,7 @@ if Conway's Law boundaries are not relevant to the project.
 
 ### Step 7: Elaborate Scenarios
 
-Invoke `eventmodeling-elaborating-scenarios`.
+Invoke `eventmodeling-elaborating-scenarios` with the Skill tool **before the first `add_scenario` call** — its scenario types, business-rules-only rule and payload shape are not repeated here, so scenarios written from this file alone come out wrong.
 
 **Input**: Commands and read models.
 **Output to carry forward**: Given-When-Then specifications (or storylines, for
@@ -356,7 +356,7 @@ the elaborating-scenarios workflow — not just happy path + one error case —
 gate checklist below. A command-only pass is an incomplete Step 7, even if
 every command's coverage looks exhaustive.
 
-> **Do not reduce scenarios to a simple good-case / bad-case pair.** The `eventmodeling-elaborating-scenarios` skill defines a structured scenario workshop covering seven scenario types per command (Happy Path, Validation Failure, State Violation, Duplicate Action, Alternative Path, External Failure, Compensation — see that skill's own table for the question-form definition of each) — which apply is determined by the domain, not by a fixed rule. All applicable types must be written before this step is complete; do not decide based on brevity.
+> **Do not reduce scenarios to a simple good-case / bad-case pair** — but do not pad them with technical cases either. Which scenario types apply is defined in `eventmodeling-elaborating-scenarios` and decided by the domain.
 
 > **Read models need scenarios too — easy to forget since the seven types above are command-shaped.** Every READMODEL needs at least one view scenario (GWT or storyline); a read model with zero scenarios is as incomplete as a command with zero. `eventmodeling-elaborating-scenarios`'s own checklist covers the details — connectivity rules, GWT-vs-storyline judgment per read model, and avoiding redundancy between a storyline and its GWTs — don't re-derive those here, just enforce the gate.
 
