@@ -36,10 +36,11 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 12. Make sure to write the ui-prompt.md as defined if defined in the skill
 13. Run the quality checks listed in `.build-kit/ARCHITECTURE.md` — build/compile, then only the tests touched by this slice (do not run all tests).
 14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
-15. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
-16. Append your progress to `progress.txt` after each step in the iteration.
-17. Append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
-18. Finish the iteration.
+15. Invoke `/record-evidence` to write the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a note into the slice's column, in the chapter's `Implementation` feedback lane.
+16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
+17. Append your progress to `progress.txt` after each step in the iteration.
+18. Append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
+19. Finish the iteration.
 
 ## Escalating Ambiguity
 

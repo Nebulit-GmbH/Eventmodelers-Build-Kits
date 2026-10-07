@@ -93,6 +93,10 @@ Run the build command and the single-test command from `ARCHITECTURE.md` for the
 
 Add (or update) this slice's row in the **Slice map** of `ARCHITECTURE.md`: entry point, persistence, tests, and every shared file it touched under `Shared seams` — that column is the checklist for deleting the slice later. Commit it with the slice.
 
+## Step 8 — Record the evidence on the board
+
+After the commit, invoke `/record-evidence`: it writes this slice's element → code mapping, field mapping, specification → test mapping, files, seams, assumptions and commit as a markdown note into the slice's column (chapter lane `Implementation`). Only then is the slice set to `Done`.
+
 ---
 
 ## Final Verification: Does the Implementation Match slice.json?
@@ -107,3 +111,4 @@ Add (or update) this slice's row in the **Slice map** of `ARCHITECTURE.md`: entr
 - [ ] Data produced by existing slices was reused, not duplicated
 - [ ] The slice lives in its own files; shared files were touched only at the seams in `ARCHITECTURE.md`, and its Slice map row lists them
 - [ ] Assumptions are recorded in `progress.txt` and as code comments
+- [ ] The evidence note exists in the slice's column on the board (`/record-evidence`)

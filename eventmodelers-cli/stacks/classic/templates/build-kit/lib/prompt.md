@@ -70,7 +70,9 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 8. If checks pass, commit all changes with message: `feat: [Slice Name]`.
 
-9. Call `/update-slice-status` to set the slice to `Done` on the board.
+9. Call `/record-evidence` to write the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a note into the slice's column on the board.
+
+10. Call `/update-slice-status` to set the slice to `Done` on the board.
 
 #### `InProgress`
 Another agent is already building this slice. Log it and skip — do not build.
