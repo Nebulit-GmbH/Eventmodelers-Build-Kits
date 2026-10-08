@@ -196,6 +196,8 @@ Only post questions that are **genuinely unclear or missing** — don't post obs
 
 ### 4.2 Arrows (every relational finding, always)
 
+> **Arrows are for relational findings only.** Never use `create_drawing` (stickies, arrows, shapes) to draw a diagram the person asked for ("draw/sketch a UML diagram") — that is a snippet in the chat, not a board change.
+
 **Prefer MCP:** `mcp__eventmodelers__create_drawing` — one call per drawing, no auth headers needed.
 
 **Fallback (no MCP):** `POST /api/org/{orgId}/boards/{boardId}/drawing/draw` (auth headers same as every other call — `x-token`, `x-user-id: wdyt`). Same fields as the tool args below.

@@ -309,6 +309,9 @@ for it. Instead:
    - a **screen idea** in the conversation ("what could that screen look like?") → `screen`, a sandboxed HTML mock-up in the chat; putting a screen on the board is `/html-screen` work;
    - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill);
    - **who does what with which work object, per chapter** → an `svg` domain story (the `/domain-story` skill);
+   - **"draw" / "sketch" / "diagram" something** (a UML diagram, a flow, a class model) → a snippet in the chat (`svg`, or a
+     `code` block with Mermaid/PlantUML/ASCII), **never** drawn on the board with stickies, arrows or `create_drawing`.
+     Only an explicit request to put it on the board changes that, and then as an image (`/domain-story` § board), not rebuilt from shapes;
    - **rows and columns** — a comparison, a matrix, a short list with a few attributes per item → `table`.
    - anything the customer defined **their own snippet type** for → `custom` with its `ref`: `list_snippet_types`
      shows them with `instructions` on when to use each; prefer a fitting one over a built-in kind. A click on it arrives
