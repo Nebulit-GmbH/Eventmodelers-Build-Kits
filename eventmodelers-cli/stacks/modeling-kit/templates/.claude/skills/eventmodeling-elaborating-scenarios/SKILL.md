@@ -71,8 +71,11 @@ transition but not the lifecycle.
 - `layout`: `"horizontal"` or `"vertical"` — how the beats are laid out in the storyline editor.
 - Each beat has an `instanceId` (unique per beat, even when the same `refId` repeats — this is what
   lets the *same* element, like the Todos read model above, appear multiple times across the
-  walkthrough, once per state) and a `refId` (the board node this beat walks through — any element
-  type, not just EVENT/COMMAND/READMODEL — e.g. a SCREEN beat to show the resulting UI).
+  walkthrough, once per state) and a `refId` (the board node this beat walks through).
+- **Beat order rules** (the same ones the storyline editor enforces): the first beat is a
+  READMODEL; after a READMODEL comes an EVENT (or several); after an EVENT comes another EVENT or a
+  READMODEL. Beats are only READMODEL or EVENT — no COMMAND, SCREEN or other types. Every `refId`
+  must be on the same timeline.
 - `isError` marks a beat as an alternate/error branch off the previous beat.
 - `fields`, `expectEmptyList`, `exampleMode`, `examples` mirror the same fields GWT scenario steps
   use, letting a beat show concrete example data the same way a "then" readmodel step does.
