@@ -461,6 +461,7 @@ a rotated token, a different board) pass `--force`:
 
 ```bash
 npx @eventmodelers/cli run --modeling --force
+npx @eventmodelers/cli run --force          # build kit: same prompt, board id required
 ```
 
 It re-runs the same credentials prompt as `init --modeling`, overwrites the project's

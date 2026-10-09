@@ -3684,7 +3684,7 @@ credentialFlags(program
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
-  .option('-f, --force', 'Ask for credentials again before the modeling loop starts, even when a config already has everything required. With a modeling kit in this directory it re-runs the same prompt as `init --modeling`, overwriting the project\'s .eventmodelers/config.json; with the global install it drops the "keep the stored credentials" choice, so a board\'s credentials have to be answered afresh. Only affects the modeling loop (--modeling/--standalone/--worker/--global); cannot be combined with --non-interactive or --print.')
+  .option('-f, --force', 'Ask for credentials again before the modeling loop starts, even when a config already has everything required. With a modeling kit in this directory it re-runs the same prompt as `init --modeling`, overwriting the project\'s .eventmodelers/config.json; with the global install it drops the "keep the stored credentials" choice, so a board\'s credentials have to be answered afresh. Applies to build-kit runs too, where it re-asks against the project\'s .eventmodelers/config.json. Cannot be combined with --non-interactive, --print or --local.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
   .option('--standalone', 'Let the modeling agent act on board changes on its own initiative, without asking: it subscribes to the board\'s change channel and, whenever the board goes quiet after an edit — or has simply been idle for a while — it takes a turn nobody asked for, judges the model as a whole and fans the work out over parallel subagents, one per changed area (examples on a new node, specs for a new command or read model, a missing attribute along a chain, a screen, a question). Filling that detail in while the human keeps modeling is the point. A plain --modeling agent only proposes, and only to the people chatting with it: after their edits it says in the chat what it would do and waits for a yes; everyone else\'s edits are ignored. Implies --modeling.')
   .option('--max-agents <n>', 'Cap how many subagents a self-directed --standalone turn may dispatch at once, to bound what an unattended agent can spend per turn. The agent merges work that shares a slice or chain first, then takes the most valuable pieces up to this many and leaves the rest for a later turn. 1 makes it do the single most valuable piece itself, without spawning anything. Default 5. Ignored without --standalone — prompt turns are one piece of work by definition.', '5')
@@ -3731,11 +3731,8 @@ credentialFlags(program
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
     }
-    // The build-kit runners claim their work from the same queue but have no addressee
-    // filter, so the flag would silently do nothing there rather than half of what it says.
-    if (opts.force && !(opts.modeling || opts.standalone || opts.worker || opts.global)) {
-      console.log('ℹ️  --force only applies to the modeling loop (--modeling/--standalone/--worker/--global); for a build kit use `re-init --force` or `init-config`. Ignoring it here.');
-    }
+    // --exclusive is the one flag the build-kit runners can't honor: they claim their work from the
+    // same queue but have no addressee filter, so it would silently do nothing there.
     if (opts.exclusive && !(opts.modeling || opts.standalone || opts.worker || opts.global)) {
       console.log('ℹ️  --exclusive only applies to the modeling loop (--modeling/--standalone/--worker/--global); ignoring it here.');
     }
@@ -3915,6 +3912,35 @@ credentialFlags(program
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
       process.exit(1);
+    }
+
+    // --force on a build kit: same credentials step as `init-config`, against the project-root
+    // config the runner reads, so the loop below picks up the fresh answer.
+    if (opts.force) {
+      if (opts.nonInteractive || globalOpts.print) {
+        console.error('❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.');
+        process.exit(1);
+      }
+      if (opts.local) {
+        console.error('❌ --force asks for credentials, which --local (no platform config) never uses — pick one.');
+        process.exit(1);
+      }
+      const projectDir = dirname(kitDir);
+      const configPath = globalOpts.config
+        ? resolve(projectDir, globalOpts.config)
+        : join(projectDir, '.eventmodelers', 'config.json');
+      const cfg = await configureCredentials({
+        config: loadEffectiveConfig(cwd, kitDir, globalOpts.config).config,
+        configPath,
+        targetDir: projectDir,
+        requiredFields: ['organizationId', 'boardId', 'token'],
+        overrides: credentialOverridesFromOpts(opts),
+        print: false,
+        force: true,
+      });
+      ensureMcpRegistered(projectDir, cfg.baseUrl || DEFAULT_BASE_URL);
+      ensureEnvToken(projectDir, cfg.token);
+      ensureMcpEnabled(projectDir);
     }
 
     // ralph-claude.js hands every turn to a `claude` that only discovers MCP servers from
