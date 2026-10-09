@@ -3192,7 +3192,7 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run']);
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
@@ -4005,22 +4005,24 @@ program
 
 program
   .command('listen')
-  .description('Start the code-export listener (code-export.mjs) from the installed kit dir — receives slice/screen data pushed from the eventmodelers board UI and writes it into .slices/')
+  .description('Start the code-export listener (code-export.mjs) from the installed kit dir, or the bundled copy when no kit is installed — receives slice/screen data pushed from the eventmodelers board UI and writes it into .slices/')
   .option('--port <port>', 'Port to listen on (default 3001, or $PORT)')
   .action((opts) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
 
-    const serverPath = join(kitDir, 'code-export.mjs');
+    // With a kit installed, run its own code-export.mjs. Without one, run the copy bundled
+    // in this CLI, rooted at the current directory so .slices/ lands here, not in the npx cache.
+    const serverPath = kitDir ? join(kitDir, 'code-export.mjs') : join(__dirname, 'shared', 'build-kit', 'code-export.mjs');
     if (!existsSync(serverPath)) {
       console.error(`❌ ${relative(cwd, serverPath)} not found.`);
       process.exit(1);
     }
 
     console.log(`▶ Starting ${relative(cwd, serverPath)}...\n`);
-    const env = opts.port ? { ...process.env, PORT: opts.port } : process.env;
+    const env = { ...process.env, ...(opts.port && { PORT: opts.port }), ...(!kitDir && { SLICES_ROOT: cwd, WORKSPACE_PATH: cwd }) };
     try {
-      execSync(`node "${serverPath}"`, { cwd: kitDir, stdio: 'inherit', env });
+      execSync(`node "${serverPath}"`, { cwd: kitDir ?? cwd, stdio: 'inherit', env });
     } catch (err) {
       process.exit(err.status || 1);
     }

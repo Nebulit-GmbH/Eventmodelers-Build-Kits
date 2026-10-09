@@ -7,7 +7,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const ROOT = __dirname;
+// SLICES_ROOT lets `eventmodelers listen` run this bundled copy outside an installed kit,
+// writing .slices/ into the caller's directory instead of next to this file.
+const ROOT = process.env.SLICES_ROOT ?? __dirname;
 const CONFIG_PATH = join(ROOT, 'config.json');
 const SLICES_DIR = join(ROOT, '.slices');
 const repoPath = process.env.WORKSPACE_PATH ?? join(__dirname, '..');
