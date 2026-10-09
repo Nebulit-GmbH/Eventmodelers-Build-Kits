@@ -462,6 +462,14 @@ function getSharedRl() {
   if (!sharedRl) {
     sharedRl = createInterface({ input: process.stdin, output: process.stdout });
     sharedRlLines = sharedRl[Symbol.asyncIterator]();
+    // On a TTY readline puts stdin in raw mode, so Ctrl-C arrives as a keypress and the kernel
+    // never raises SIGINT — with no 'SIGINT' listener on the interface readline just pauses
+    // input and swallows it. The interface lives for the whole process (the loop included), so
+    // forward it as the real signal to whatever shutdown handlers are installed.
+    sharedRl.on('SIGINT', () => {
+      if (process.listenerCount('SIGINT') === 0) process.exit(130);
+      process.emit('SIGINT', 'SIGINT');
+    });
   }
   return sharedRl;
 }
