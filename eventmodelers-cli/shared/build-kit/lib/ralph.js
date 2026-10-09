@@ -232,9 +232,8 @@ async function fetchAndPersistSlices(cfg, kitDir) {
     contexts[contextSlug].slices.push(slice);
   }
 
-  // current_context.json is STICKY. We work within ONE context at a time and must
-  // not auto-jump to another context just because it happens to have planned work.
-  // Keep the existing context if it still exists; only seed it when absent or stale.
+  // current_context.json is the context being worked on. Keep it here while it exists; the
+  // run loop (getFirstPlannedSlice) advances it when that context has no planned work left.
   const ctxPath = join(slicesDir, 'current_context.json');
   let activeCtx = null;
   if (existsSync(ctxPath)) {
@@ -563,19 +562,32 @@ function readTicketNumber(kitDir, ctx, folder) {
   }
 }
 
-// Returns the first Planned slice IN THE CURRENT CONTEXT ONLY. If the current
-// context has no planned work, returns null so the loop waits — it must NEVER
-// cross into another context to find something to build.
+// Returns the first Planned slice, preferring the current context so a context is finished
+// before the next one starts. When the current context has no planned work, the first other
+// context that does becomes the current one (current_context.json is rewritten), so a slice
+// set to Planned in any context is eventually built.
 function getFirstPlannedSlice(kitDir) {
+  const slicesDir = join(kitDir, '.slices');
   const currentCtx = readCurrentContext(kitDir);
-  if (!currentCtx) return null;
-  const indexPath = join(kitDir, '.slices', currentCtx, 'index.json');
-  if (!existsSync(indexPath)) return null;
+  let others = [];
   try {
-    const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
-    if (planned) return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx: currentCtx, ticketNumber: readTicketNumber(kitDir, currentCtx, planned.folder) };
+    others = readdirSync(slicesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   } catch {}
+  const candidates = [...(currentCtx ? [currentCtx] : []), ...others.filter((c) => c !== currentCtx)];
+  for (const ctx of candidates) {
+    const indexPath = join(slicesDir, ctx, 'index.json');
+    if (!existsSync(indexPath)) continue;
+    try {
+      const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
+      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
+      if (!planned) continue;
+      if (ctx !== currentCtx) {
+        writeFileSync(join(slicesDir, 'current_context.json'), JSON.stringify({ name: ctx }, null, 2), 'utf-8');
+        console.log(`[ralph] No planned slices in context "${currentCtx}" — switching to "${ctx}".`);
+      }
+      return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx, ticketNumber: readTicketNumber(kitDir, ctx, planned.folder) };
+    } catch {}
+  }
   return null;
 }
 
@@ -755,10 +767,10 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
     }
 
     if (!didWork) {
-      // No planned work in the current context — wait, do NOT switch contexts.
+      // No planned work in any context — wait.
       const ctx = readCurrentContext(kitDir);
       if (ctx !== lastIdleCtx) {
-        console.log(`[ralph] No planned slices in current context "${ctx}" — waiting. Switch context on the board to continue.`);
+        console.log(`[ralph] No planned slices in any context — waiting.`);
         lastIdleCtx = ctx;
       }
       await sleep(10_000);

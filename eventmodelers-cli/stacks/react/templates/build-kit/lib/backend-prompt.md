@@ -6,12 +6,12 @@ The structure defined in the Project-Skills is relevant.
 
 ## Context Boundary (READ FIRST — NON-NEGOTIABLE)
 
-You work within **exactly ONE context at a time** — the one named in `.build-kit/.slices/current_context.json`.
+You work within **exactly ONE context at a time** — the one named in `.build-kit/.slices/current_context.json` (the runner picks it).
 
 - **ONLY** look for and build slices inside `.build-kit/.slices/<currentContext>/`.
 - **NEVER** read, scan, or build slices from any other context directory, even if it has "Planned" slices, and even if the current context has no work left.
 - A "Planned" slice in a *different* context is **NOT yours to build**. Ignore it completely.
-- If the current context has no "Planned" slice, you are **done for this iteration** — reply `<promise>NO_TASKS</promise>` and stop. Do not go looking elsewhere. The context is only ever changed on the board, never by you.
+- If the current context has no "Planned" slice, you are **done for this iteration** — reply `<promise>NO_TASKS</promise>` and stop. Do not go looking elsewhere. The runner moves `current_context.json` on to the next context with planned work between iterations — never change it yourself.
 
 ## Your Task
 

@@ -4101,7 +4101,7 @@ program
 
 program
   .command('activate-context')
-  .description('Choose which fetched context is active — writes .slices/current_context.json, which `run`/bridge/listen treat as sticky and never cross out of on their own')
+  .description('Choose which fetched context is active — writes .slices/current_context.json, which `run` works through first; once it has no planned slices left, `run` moves on to the next context that does')
   .action(async () => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
