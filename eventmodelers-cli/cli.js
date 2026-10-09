@@ -4289,7 +4289,7 @@ program
           eventType: 'node:changed',
           nodeId: slice.id,
           changedAttributes: ['sliceStatus'],
-          meta: { sliceStatus: newStatus },
+          meta: { type: 'SLICE_BORDER', sliceStatus: newStatus },
         }]),
       });
     }

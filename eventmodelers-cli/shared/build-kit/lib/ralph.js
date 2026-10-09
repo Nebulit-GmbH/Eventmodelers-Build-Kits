@@ -667,7 +667,7 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, las
           boardId: cfg.boardId,
           timestamp: Date.now(),
           changedAttributes: ['sliceStatus'],
-          meta: { sliceStatus: 'Blocked' },
+          meta: { type: 'SLICE_BORDER', sliceStatus: 'Blocked' },
         }]),
       });
     } catch (err) {

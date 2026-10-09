@@ -91,6 +91,7 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
     "nodeId": "<SLICE_NODE_ID>",
     "changedAttributes": ["sliceStatus"],
     "meta": {
+      "type": "SLICE_BORDER",
       "sliceStatus": "<newStatus>"
     }
   }]'
