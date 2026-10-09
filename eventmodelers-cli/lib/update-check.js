@@ -48,12 +48,38 @@ export async function latestPublishedVersion({ cachePath, now = Date.now(), fetc
   }
 }
 
+// A loud banner, so a stale CLI is not missed among the startup output — an old CLI can lack
+// features the board expects (e.g. chat), and npx happily reuses a cached copy. Bold yellow
+// when stderr is a terminal (NO_COLOR respected); plain box otherwise, so piped output stays clean.
+function updateBanner(currentVersion, latestVersion) {
+  const paint = process.stderr.isTTY && !process.env.NO_COLOR ? (t) => `\x1b[1;33m${t}\x1b[0m` : (t) => t;
+  const lines = [
+    '!!  UPDATE REQUIRED — YOUR EVENTMODELERS CLI IS OUT OF DATE  !!',
+    '',
+    `Installed: ${currentVersion}        Latest: ${latestVersion}`,
+    '',
+    'Update now:',
+    '',
+    '  npx @eventmodelers/cli@latest <command>',
+    '      (still old? clear the npx cache: rm -rf ~/.npm/_npx)',
+    '',
+    '  npm i -g @eventmodelers/cli@latest        (global install)',
+    '',
+    'Old versions miss features the board expects —',
+    'e.g. agents that do not reply in the board chat.',
+  ];
+  const width = Math.max(...lines.map((l) => l.length));
+  const bar = '█'.repeat(width + 6);
+  const body = lines.map((l) => `██ ${l.padEnd(width)} ██`);
+  return paint(['', bar, ...body, bar, ''].join('\n'));
+}
+
 // Hint lines for everything that's behind: this CLI against npm, and each installed kit
 // against the CLI running now (its install manifest records the version that wrote it).
 export function updateHints({ currentVersion, latestVersion, kitDirs = [], cwd = process.cwd() }) {
   const hints = [];
   if (latestVersion && compareVersions(currentVersion, latestVersion) < 0) {
-    hints.push(`💡 A new eventmodelers CLI is available: ${currentVersion} → ${latestVersion}. Update with: npm i -g @eventmodelers/cli@latest (or use npx @eventmodelers/cli@latest)`);
+    hints.push(updateBanner(currentVersion, latestVersion));
   }
   for (const kitDir of kitDirs) {
     const reinit = REINIT_COMMANDS[basename(kitDir)];
