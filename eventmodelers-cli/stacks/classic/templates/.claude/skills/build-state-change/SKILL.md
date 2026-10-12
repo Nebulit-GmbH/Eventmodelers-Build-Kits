@@ -77,6 +77,8 @@ Name each test after the specification title so it can be traced back to the boa
 
 ### Storyline-derived tests (optional)
 
+> **Note beats**: an entry with `type: STORYLINE_NOTE` is a note the board author placed in the walkthrough — its `description` is markdown context (an assumption, an external condition, a time gap), and its `id` is not a board node. Read it as background for the beats around it, but it is never a step: skip it when looking for COMMAND/EVENT/READMODEL beats or judging which beats are adjacent, and never turn it into test setup or an assertion on its own.
+
 `storylines[]` in slice.json (optional — only present when the board author built an explicit walkthrough) can supply additional tests. A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `commands[]` by id/title. Scan each storyline's ordered `elements` for a `type: COMMAND` beat followed by its EVENT beat(s):
 
 - `given` — the cumulative ordered events from the start of the storyline up to (not including) the command beat, set up as state as above

@@ -50,6 +50,21 @@ narrated lifecycle, GWT covers everything else about that read model.
 A storyline threads all three beats into one walkthrough; three separate GWTs could each assert one
 transition but not the lifecycle.
 
+## Notes — Last Resort Only
+
+A scenario can carry a `contextNote` (markdown), and a storyline can hold note beats
+(`{type: "STORYLINE_NOTE", refId: "", note: "…"}`). **Notes are only for what cannot be expressed
+with events and the other elements.** Before writing one, ask: could this be a `given` event, a
+`context` read model, a field example on the command, or a `then` outcome? If yes, model it that
+way — a scenario that tells its story in a note instead of in events is incomplete, and code
+generated from it can't test what's only in prose.
+
+Legit uses: a condition outside the system ("the payment provider is in maintenance"), a business
+assumption or regulation behind the case, why the case matters, a time gap between storyline beats
+("14 days later"). Not legit: "the customer has already ordered twice" (→ `given` events), "the
+cart total is 120 €" (→ field examples), "an email is sent" (→ a `then` event), restating the
+title. Most scenarios need no note; keep any note to a few lines.
+
 ### Storyline data shape
 
 ```json
@@ -77,6 +92,8 @@ transition but not the lifecycle.
   READMODEL. Beats are only READMODEL or EVENT — no COMMAND, SCREEN or other types. Every `refId`
   must be on the same timeline.
 - `isError` marks a beat as an alternate/error branch off the previous beat.
+- A note beat (`type: "STORYLINE_NOTE"`, `refId: ""`, markdown in `note`) may sit anywhere and is
+  skipped by the order rules — see "Notes — Last Resort Only" above before adding one.
 - `fields`, `expectEmptyList`, `exampleMode`, `examples` mirror the same fields GWT scenario steps
   use, letting a beat show concrete example data the same way a "then" readmodel step does.
 
@@ -494,6 +511,7 @@ After posting, tell the user:
 **No command has only 2 scenarios unless all other types were reviewed and found inapplicable.**
 
 **Per read model — this is a separate, equally mandatory pass, not an afterthought of the command pass above:**
+- [ ] **Notes carry nothing an element could** — every `contextNote` and note beat holds only background no event, command field or read model can express; anything else is moved into `given`/`when`/`then`/`context` and the note removed
 - [ ] **Every READMODEL on the board has at least one view scenario** — GWT (`given`: source EVENTs, `when`: empty, `then`: the READMODEL) or a storyline. A model with dozens of command scenarios and 0 read-model scenarios is not a complete Step 7 — it's easy to walk away thinking coverage is thorough because the command side looks exhaustive, so check the read-model side explicitly before reporting this step done.
 - [ ] **Population scenario** — the view shows correct data after its source event(s)
 - [ ] **Removal/update scenario, where applicable** — a row disappears or changes (`expectEmptyList: true` for list-type views) after an event that supersedes it (expiry, return, archival, withdrawal, status change, etc.). `EVENT → READMODEL` is exempt from column ordering **only when the read model already feeds an AUTOMATION** (`READMODEL → AUTOMATION` edge; see `learn-eventmodelers-api` §3 and `eventmodeling-orchestrating-event-modeling`'s "No backward arrows") — a later event connecting back to an earlier-placed todo-list read model is normal for that accumulator shape, so add the connection if it's missing rather than assuming the scenario is impossible. If the read model has no automation to feed, the backward connection is rejected — by Step 5 this should already have been modeled the forward way (see `eventmodeling-identifying-outputs` Step 5g's copy pattern: a new read model + screen copy in the later event's column, never a link back). If it wasn't, write the scenario against that forward-placed copy rather than the original. Only skip this scenario, with a documented gap (TASK comment), when the superseding event genuinely lives in a different chapter.

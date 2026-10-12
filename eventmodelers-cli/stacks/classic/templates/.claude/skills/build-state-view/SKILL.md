@@ -80,6 +80,8 @@ Name each test after the specification title.
 
 ### Storyline-derived tests (optional)
 
+> **Note beats**: an entry with `type: STORYLINE_NOTE` is a note the board author placed in the walkthrough — its `description` is markdown context (an assumption, an external condition, a time gap), and its `id` is not a board node. Read it as background for the beats around it, but it is never a step: skip it when looking for COMMAND/EVENT/READMODEL beats or judging which beats are adjacent, and never turn it into test setup or an assertion on its own.
+
 `storylines[]` in slice.json is optional — present only when the board author explicitly built a walkthrough for this flow. When present, mine it for **additional** tests, on top of (never instead of) the specification tests.
 
 A storyline is `{ id, title, elements: [...] }`, where `elements` is an ordered list of beats — the same element can repeat to show its state at different points in the flow. A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `readmodels[]` by id/title. Scan for a pair of adjacent beats that are both `type: READMODEL`, with only EVENT beat(s) between them and no COMMAND beat in that run. That pair is one self-contained test:

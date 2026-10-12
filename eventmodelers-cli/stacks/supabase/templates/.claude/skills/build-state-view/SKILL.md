@@ -309,6 +309,8 @@ Write one `it` block per specification in the slice.json. Use `given([events]).w
 
 ## Step 5b — Storyline-derived tests (optional)
 
+> **Note beats**: an entry with `type: STORYLINE_NOTE` is a note the board author placed in the walkthrough — its `description` is markdown context (an assumption, an external condition, a time gap), and its `id` is not a board node. Read it as background for the beats around it, but it is never a step: skip it when looking for COMMAND/EVENT/READMODEL beats or judging which beats are adjacent, and never turn it into test setup or an assertion on its own.
+
 Some slices also have a `storylines[]` array in slice.json — narrated walkthroughs where the *same* read model repeats across several beats in one ordered `elements[]` list, showing its state at different points in a single flow. Most slices have no storylines; skip this step silently when `storylines[]` is empty or absent.
 
 A storyline embedded in this slice's slice.json already belongs entirely to this slice — no need to match beats against `readmodels[]` by id/title. For each storyline, scan `elements[]` for pairs of adjacent `type: 'READMODEL'` beats with only EVENT beat(s) in between. Each such pair is a clean, self-contained projection test — the same shape as the specifications-derived tests above:

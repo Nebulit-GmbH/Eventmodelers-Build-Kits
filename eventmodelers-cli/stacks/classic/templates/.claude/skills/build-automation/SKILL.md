@@ -39,6 +39,8 @@ Follow `/build-state-change` for this slice's command and events — all of its 
 
 ### Storyline-derived tests
 
+> **Note beats**: an entry with `type: STORYLINE_NOTE` is a note the board author placed in the walkthrough — its `description` is markdown context (an assumption, an external condition, a time gap), and its `id` is not a board node. Read it as background for the beats around it, but it is never a step: skip it when looking for COMMAND/EVENT/READMODEL beats or judging which beats are adjacent, and never turn it into test setup or an assertion on its own.
+
 If `storylines[]` includes a beat sequence running through this automation's trigger → this slice's command, the command test for that segment is already covered by build-state-change's own "Storyline-derived tests" step.
 
 ## Step 3 — Find the trigger point

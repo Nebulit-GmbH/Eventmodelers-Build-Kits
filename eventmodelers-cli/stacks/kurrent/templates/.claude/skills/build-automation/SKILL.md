@@ -384,6 +384,8 @@ class {AutomationName}HandlingTest {
 
 ### Storyline-Derived Tests (Optional)
 
+> **Note beats**: an entry with `type: STORYLINE_NOTE` is a note the board author placed in the walkthrough — its `description` is markdown context (an assumption, an external condition, a time gap), and its `id` is not a board node. Read it as background for the beats around it, but it is never a step: skip it when looking for COMMAND/EVENT/READMODEL beats or judging which beats are adjacent, and never turn it into test setup or an assertion on its own.
+
 `slice.json` may also carry a `storylines[]` array — narrated walkthroughs with an ordered
 `elements[]` "beats" sequence (EVENT/COMMAND/READMODEL/...). This is a secondary, supplementary
 source; `specifications[]` above stays the primary and default source of test cases. Most slices

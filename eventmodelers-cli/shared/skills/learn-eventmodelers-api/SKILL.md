@@ -696,6 +696,8 @@ Append Given-When-Then scenario(s) to a column's spec node — the node is creat
   title: string
   vertical?: boolean
   examples?: unknown[]
+  context?: SpecStep[]  // READMODELs the command decides against
+  contextNote?: string  // markdown background — ONLY what events, commands and read models can't express
   given?: SpecStep[]  // EVENTs from this timeline
   when?: SpecStep[]   // at most one COMMAND, or one inline QUERY object; empty if then has a READMODEL
   then?: SpecStep[]   // EVENTs only OR exactly one READMODEL (not mixed)
@@ -711,6 +713,7 @@ A step given as `{title, type}` is resolved server-side, so the names you alread
 
 **Validation rules**:
 - `context`: only READMODELs (the state the command decides against)
+- `contextNote`: free markdown, last resort. State belongs in `given` events (or `context` read models), inputs in the `when` command's fields, outcomes in `then` — a note never replaces or repeats any of them. Use it only for background no element can carry: an external condition ("the payment provider is in maintenance"), a business assumption, the reason a case matters. Blank notes are dropped. Exported as `contextNote` on the scenario in slice data
 - `given`: only EVENTs from same timeline
 - `when`: max one COMMAND; must be empty when `then` contains a READMODEL (use an inline QUERY item for a state-view)
 - `then`: all EVENTs OR exactly one READMODEL — never mixed
@@ -765,7 +768,12 @@ Append one or more storylines to a column's spec node. The spec node is auto-cre
     examples?: unknown[]
   }>
 }
+
+// A note beat — free markdown anywhere in the sequence, referencing no element:
+{ instanceId: 'uuid', refId: '', type: 'STORYLINE_NOTE', title: 'Note', note: 'markdown' }
 ```
+
+A note beat is the storyline's `contextNote`: only for what the beats themselves can't express (an external condition, an assumption, a time gap like "two weeks later"). Never use one to stand in for an event, command or read model that should be a beat — model the element instead. It is exported as an element `{id: instanceId, type: 'STORYLINE_NOTE', description: note}`; an empty note is rejected (`STORYLINE_NOTE_EMPTY`).
 
 A beat is addressed either way, like a scenario step:
 ```typescript
