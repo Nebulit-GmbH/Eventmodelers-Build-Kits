@@ -131,7 +131,7 @@ Instead of writing a markdown document, **place each READMODEL (and any missing 
 
 This step proceeds as a sequence of lettered sub-steps: identify each screen's components (5a), break multi-component screens apart into copies (5c), then design and place one read model per component (5d onward). Every automation's todo-list read model and any translation chain is designed in **Step 4b** (`eventmodeling-designing-automation-chains`), immediately after Step 4 — not here. This step only ever designs screen-facing read models; Step 5i below re-checks automations defensively, not as this step's primary job.
 
-> **CRITICAL: Every READMODEL node MUST include `meta.fields` with a `mapping` on every field.** A read model without fields — or with fields that lack `mapping` — has no data lineage and cannot be traced back to its source events.
+> **CRITICAL: Every READMODEL node MUST include `meta.fields`, and every field must trace back to a connected source event (or be `generated`).** A read model without fields, or with fields of unknown origin, has no data lineage and cannot be traced back to its source events.
 
 ### The typical slice pattern
 
@@ -195,30 +195,15 @@ Before finalizing any read model, ask: "does this screen contain more than one c
 
 **Do not re-derive read model needs from a screen's title or description alone, and do not rely on the orchestrator's phase-summary handoff for this** — if you arrived here via `eventmodeling-orchestrating-event-modeling`, the handoff after Step 3 is a short hand-written prose summary (`.eventmodelers/interviews/.../EVENTMODELING.md`), not the actual field data. It will not reliably carry the per-field mappings forward. Go back to the board itself:
 
-For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields` — a full read on purpose (`projection: "line"` carries field names only, not the `mapping` this step groups by); scope it to the chapter, e.g. `get_nodes { "boardId": "<BOARD_ID>", "type": "SCREEN", "chapterId": "<CHAPTER_ID>" }`, rather than board-wide. Step 3 already required every field to carry a `mapping`, and for view fields that mapping is already in the exact form `"<ReadModelTitle>.<fieldName>"` — recorded specifically so this step doesn't have to re-guess it.
+For every SCREEN node, fetch it directly (`get_node`/`get_nodes`, never from memory) and read its `meta.fields` — a full read on purpose (`projection: "line"` carries field names only, not the `mapping` this step groups by); scope it to the chapter, e.g. `get_nodes { "boardId": "<BOARD_ID>", "type": "SCREEN", "chapterId": "<CHAPTER_ID>" }`, rather than board-wide. Step 3 already required every view field to name its read model, as `mapping: "<ReadModelTitle>"`. It was recorded so this step doesn't have to guess it again.
 
 - **Group the screen's fields by the `<ReadModelTitle>` already named in their `mapping`.** That grouping — not a fresh read of the screen's visuals — is the read model's title and field list. Build the READMODEL node from it directly.
-- If a field's `mapping` names a read model that isn't `"<CommandTitle>.<fieldName>"` or `"session:..."` or `"derived:..."`, it is a read-model reference — treat it as a requirement, not a suggestion.
+- A field whose `mapping` is a title that isn't on the board yet is a read-model reference. Treat it as a requirement, not a suggestion. (Fields marked `generated: true` are input or display-only values. They need no read model.)
 - A screen with no fields, or with fields that carry no read-model-shaped mapping, is **not** evidence that it needs no read model. Re-check it against the three rules above (view screen / automation / command screen showing prior state) before concluding it's the rare blank-form exception — and say explicitly why it qualifies.
 
 ### Step 5e — Field data lineage — the `mapping` attribute on READMODEL fields
 
-Every field on a READMODEL must carry a `mapping` that says exactly which event (or command) field it is projected from. Use one of these forms:
-
-| `mapping` format | Meaning | `generated` | Example |
-|---|---|---|---|
-| `"<EventTitle>.<fieldName>"` | Projected directly from an event field | `false` | `"BikeReserved.customerId"` |
-| `"latest:<EventTitle>.<fieldName>"` | Latest value from the most recent event of this type | `false` | `"latest:BikeStatusChanged.toStatus"` |
-| `"aggregate:<EventTitle>.<fieldName>"` | Aggregated across multiple events of this type | `true` | `"aggregate:RentalEnded.durationMinutes"` |
-| `"derived:<expression>"` | Calculated from other read model fields | `true` | `"derived:sum(lineItems.amount)"` |
-
-Set the field's `generated` property according to this table. Fields projected directly from events are not generated — they carry a real domain value. Fields that are aggregated or calculated by the system are generated.
-
-**Field traceability rule**: Every field in a read model must trace back to at least one source event. If a field cannot be mapped to any event in the timeline, it is either:
-- A calculated/derived field — document the derivation expression, or
-- A missing event field — add it to the source event before proceeding.
-
-> **Connected-element rule**: A read model's field `mapping` may only reference EVENTs that are connected to this READMODEL via a board `EVENT → READMODEL` arrow. If a field needs data from an event that is not connected, either add the connection or flag it as a gap. **If a mapping cannot be defined for a field, it signals missing data in the model, a missing event, or a modeling error.** Do not leave unmapped fields without a note.
+Apply `eventmodeling-information-completeness` to every READMODEL field as you add it. A read model's upstream is the EVENTs connected to it by `EVENT → READMODEL` arrows. A value the projection calculates itself (a count, a sum, a duration) is `generated: true`. A field no connected event supplies is a missing event field or a missing connection: add it before proceeding.
 
 Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely holds a list of values (e.g. line items, a collection projected from multiple events), in which case use `"List"`. Default to `"Single"` when unsure. Include only the fields the consuming SCREEN or AUTOMATION actually displays or needs — do not add speculative fields; enrich later via `/attributes`.
 
@@ -229,12 +214,13 @@ If the READMODEL itself represents a set of rows rather than a single record —
   "type": "READMODEL",
   "title": "ActiveReservationView",
   "fields": [
-    {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "BikeReserved.reservationId",          "generated": false},
-    {"name": "customerId",     "type": "String",   "example": "cust-42",               "mapping": "BikeReserved.customerId",              "generated": false},
-    {"name": "bikeId",         "type": "String",   "example": "bike-17",               "mapping": "BikeReserved.bikeId",                  "generated": false},
-    {"name": "stationId",      "type": "String",   "example": "stn-03",                "mapping": "BikeReserved.stationId",               "generated": false},
-    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ReservationConfirmed.expiresAt",       "generated": false},
-    {"name": "status",         "type": "String",   "example": "confirmed",             "mapping": "latest:ReservationConfirmed.status",   "generated": false}
+    {"name": "reservationId",  "type": "String",   "example": "res-001"},
+    {"name": "customerId",     "type": "String",   "example": "cust-42"},
+    {"name": "bikeId",         "type": "String",   "example": "bike-17"},
+    {"name": "stationId",      "type": "String",   "example": "stn-03"},
+    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ReservationConfirmed"},
+    {"name": "status",         "type": "String",   "example": "confirmed",             "mapping": "toStatus"},
+    {"name": "minutesLeft",    "type": "Integer",  "example": "25",                    "generated": true}
   ]
 }
 ```

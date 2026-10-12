@@ -69,7 +69,7 @@ When a worker automation *is* warranted, wire the todo lists differently for eac
 
 A todo-list read model's fields describe the pending item — the identity it's about (e.g. `customerId`) plus enough context to act on it (e.g. `email`, `notificationType`). Do not add a `status` field to mark items done — a todo list's "open" state is *membership in the list itself* (the row exists at all), not a status flag on a row that never leaves. If the same underlying data is also useful with an explicit status column for a different consumer, that is a different read model, not this one.
 
-Every field must set a `mapping` per `eventmodeling-identifying-outputs`'s field data lineage rules (`"<EventTitle>.<fieldName>"`, `"latest:..."`, `"aggregate:..."`, `"derived:..."`), and `"cardinality"` (`"Single"` unless the field genuinely holds a list).
+Every field needs a known source per `eventmodeling-information-completeness`, and `"cardinality"` (`"Single"` unless the field genuinely holds a list).
 
 A todo-list read model is always list-shaped — it's a queue of pending items, never a single record — so it always gets **`meta.listElement: true`** on the node itself (see `eventmodeling-core-rules`'s READMODEL section). This is a node-level flag separate from any field's own `cardinality`.
 

@@ -127,7 +127,7 @@ Older versions of this skill wrote the completeness check as a markdown report r
 ## Completeness Criteria
 
 The model is **complete** when:
- Every event field has a source (command or system or is marked as  generated)
+ Every field on every element has a source per `eventmodeling-information-completeness`
  Every command input becomes event/state data
  Every read model field has event source
  All state transitions are covered

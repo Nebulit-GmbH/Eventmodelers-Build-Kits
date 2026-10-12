@@ -35,7 +35,7 @@ curl -s -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "SCREEN", "fields": [
-      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
+      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView", "cardinality": "Single"}
     ] }
   }]'
 ```

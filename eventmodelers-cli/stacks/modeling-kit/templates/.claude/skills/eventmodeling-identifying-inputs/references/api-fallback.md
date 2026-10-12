@@ -40,9 +40,9 @@ curl -X POST "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes/events" \
       "type": "COMMAND",
       "title": "ReserveBike",
       "fields": [
-        {"name": "customerId", "type": "String",   "example": "cust-42",             "mapping": "session:customerId"},
-        {"name": "bikeId",     "type": "String",   "example": "bike-17",             "mapping": "user-input"},
-        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
+        {"name": "customerId", "type": "String",   "example": "cust-42",             "generated": true},
+        {"name": "bikeId",     "type": "String",   "example": "bike-17"},
+        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z"}
       ]
     }
   }]'

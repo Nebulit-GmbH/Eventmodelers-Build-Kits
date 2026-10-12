@@ -135,30 +135,9 @@ The result is a `{ roleName: actorRowId }` map, covering human roles only, used 
 
 ## Mandatory Field Definitions on Screen Nodes
 
-> **CRITICAL: Every screen node MUST include `meta.fields` with a `mapping` on every field.** A screen without fields cannot show data lineage — it becomes impossible to verify that all displayed data has a source event or command. This applies regardless of which content type the screen renders as (HTML_SCREEN by default, or SCREEN when a sketch was explicitly requested).
+> **CRITICAL: Every screen node MUST include `meta.fields`, and every field must have a known source.** A screen without fields cannot show data lineage — it becomes impossible to verify that all displayed data has a source event or command. This applies regardless of which content type the screen renders as (HTML_SCREEN by default, or SCREEN when a sketch was explicitly requested).
 
-There are two types of screens, and each type has a different `mapping` source:
-
-### Command screen (input/action screen)
-
-An **input screen** captures data that will be sent as a command. Its fields map to the command they feed into.
-
-| Field type | `mapping` | `generated` | Example |
-|---|---|---|---|
-| User types a value | `"<CommandTitle>.<fieldName>"` | `false` | `"ReserveBike.bikeId"` |
-| Read from session | `"session:<fieldName>"` | `false` | `"session:customerId"` |
-| Pre-populated from a previous event | `"<EventTitle>.<fieldName>"` | `false` | `"BikeReserved.stationId"` |
-| Calculated for display only (not sent to command) | `"derived:<expression>"` | `true` | `"derived:sum(items.price)"` |
-
-### View screen (output/read model screen)
-
-A **view screen** displays data read from a Read Model. Its fields map to the read model that serves the data. View screens are placed adjacent to their read model in Step 5 (Identifying Outputs) — during storyboarding, record the intended read model name as the source even if the read model hasn't been designed yet.
-
-| Field type | `mapping` | `generated` | Example |
-|---|---|---|---|
-| Displayed from a read model | `"<ReadModelTitle>.<fieldName>"` | `false` | `"ActiveReservationView.status"` |
-| Displayed from a direct event (no read model yet) | `"<EventTitle>.<fieldName>"` | `false` | `"BikeReserved.startTime"` |
-| Calculated/formatted on the client | `"derived:<expression>"` | `true` | `"derived:formatDuration(durationMinutes)"` |
+Apply `eventmodeling-information-completeness` to every screen field as you add it. In short: input the user enters, session values and display-only calculations are `generated: true`. Displayed data names its read model (`mapping: "<ReadModelTitle>"`), even when that read model isn't designed yet, which Step 5 then groups by. A screen field never maps to the command it submits.
 
 ### Example: command screen fields
 
@@ -167,12 +146,12 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
   "type": "HTML_SCREEN",
   "title": "Reserve a Bike",
   "fields": [
-    {"name": "bikeId",      "type": "String",   "example": "bike-17",               "mapping": "ReserveBike.bikeId"},
-    {"name": "stationId",   "type": "String",   "example": "stn-03",                "mapping": "ReserveBike.stationId"},
-    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "ReserveBike.startTime"},
-    {"name": "endTime",     "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "mapping": "ReserveBike.endTime"},
-    {"name": "bikeCategory","type": "String",   "example": "City Bike",             "mapping": "AvailableBikeView.category"},
-    {"name": "dailyRate",   "type": "Decimal",  "example": "0.10",                  "mapping": "AvailableBikeView.ratePerMinute"}
+    {"name": "bikeId",      "type": "String",   "example": "bike-17",               "generated": true},
+    {"name": "stationId",   "type": "String",   "example": "stn-03",                "generated": true},
+    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "generated": true},
+    {"name": "returnTime",  "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "generated": true},
+    {"name": "bikeCategory","type": "String",   "example": "City Bike",             "mapping": "AvailableBikeView"},
+    {"name": "dailyRate",   "type": "Decimal",  "example": "0.10",                  "mapping": "ratePerMinute"}
   ]
 }
 ```
@@ -184,27 +163,17 @@ A **view screen** displays data read from a Read Model. Its fields map to the re
   "type": "HTML_SCREEN",
   "title": "Reservation Confirmed",
   "fields": [
-    {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "ActiveReservationView.reservationId"},
-    {"name": "bikeName",       "type": "String",   "example": "City Bike — Gazelle",   "mapping": "ActiveReservationView.bikeName"},
-    {"name": "stationName",    "type": "String",   "example": "Central Park East",     "mapping": "ActiveReservationView.stationName"},
-    {"name": "startTime",      "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "ActiveReservationView.startTime"},
-    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ActiveReservationView.expiresAt"},
-    {"name": "estimatedCost",  "type": "Decimal",  "example": "48.00",                 "mapping": "derived:durationHours × AvailableBikeView.ratePerMinute × 60"}
+    {"name": "reservationId",  "type": "String",   "example": "res-001",               "mapping": "ActiveReservationView"},
+    {"name": "bikeName",       "type": "String",   "example": "City Bike — Gazelle",   "mapping": "ActiveReservationView"},
+    {"name": "stationName",    "type": "String",   "example": "Central Park East",     "mapping": "ActiveReservationView"},
+    {"name": "startTime",      "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "ActiveReservationView"},
+    {"name": "expiresAt",      "type": "DateTime", "example": "2026-06-01T09:30:00Z",  "mapping": "ActiveReservationView"},
+    {"name": "estimatedCost",  "type": "Decimal",  "example": "48.00",                 "generated": true}
   ]
 }
 ```
 
-### Connected-element rule (critical constraint)
-
-> **A field `mapping` may only reference an element that is connected to this SCREEN via a board connection arrow.**
->
-> - A command screen may only map to: the COMMAND it submits, the SCREEN's own input (user-input), or a READ MODEL whose `READMODEL → SCREEN` arrow points to this screen.
-> - A view screen may only map to: the READ MODEL connected to it via a `READMODEL → SCREEN` arrow, or derived expressions.
-> - If a mapping references an element that is not yet connected — for example, `AvailableBikeView.category` when no such read model exists on the board — that is a **gap**. It signals either:
->   1. A read model is missing and must be created in Step 5 (Identifying Outputs), or
->   2. The connection arrow is missing and must be added.
->
-> **When you encounter a mapping that cannot resolve to a connected element, write the mapping as-is but flag it as a gap in the completeness notes.** Do not invent connections that don't exist.
+A read model named in a `mapping` but not on the board (or not connected to this screen) is a **gap** for Step 5 (Identifying Outputs) to close. Flag it in the completeness notes, and don't invent connections that don't exist.
 
 Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely displays/collects a list of values (e.g. a repeated line-item row), in which case use `"List"`. Default to `"Single"` when unsure. Only add the fields the screen actually shows or captures — do not add speculative fields; enrich later via `/attributes`.
 

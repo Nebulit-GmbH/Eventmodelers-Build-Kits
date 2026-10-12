@@ -56,6 +56,7 @@ Slices are not placed directly — they're **derived** from a completed model. E
 ### COMMAND
 - Represents business intent — what an actor wants to do.
 - Can be rejected; only succeeds if its documented preconditions hold.
+- Carries every piece of information its validation needs that isn't in the stream's prior events. That includes context such as the current time or date, the acting user and the tenant. The decision never reads a clock or a session on its own. See `eventmodeling-identifying-inputs` → "Command input is self-contained".
 - Naming: imperative, business language.
   - Valid: `PlaceOrder`, `ConfirmPayment`, `CancelSubscription`
   - Invalid: `LoadOrders`, `FetchData`, `OpenDialog` — these are queries or UI-only actions, not business intent
@@ -100,11 +101,9 @@ Every event model needs one, established before brainstorming events (it's the f
 
 See `eventmodeling-brainstorming-events` for how the catalog is built, `eventmodeling-identifying-inputs` for attributing commands to it, and `eventmodeling-validating-event-models` for re-checking it holds once the model is complete.
 
-## Field Lineage
+## Field Lineage (Information Completeness)
 
-Every field on a COMMAND or READMODEL must carry a `mapping` that traces it back to where its value actually comes from — user input, the session, a prior event's field, a derived/computed value, or an external webhook payload. **A field with no mapping is a gap, not a detail to fill in later.**
-
-See `eventmodeling-identifying-inputs` for the full COMMAND mapping vocabulary and `eventmodeling-identifying-outputs` for the READMODEL equivalent — this rule only states that every field must have one, not the mapping syntax itself.
+Every field on every element has a known source: a same-named field on a connected upstream element, a `mapping` to a differently named field or a connected event, or `generated: true` where the information starts. Check it each time you add or rename a field. **A field with no source is a gap, not a detail to fill in later.** The full rule, per element type, is in `eventmodeling-information-completeness`.
 
 ## Connections Read Forward
 

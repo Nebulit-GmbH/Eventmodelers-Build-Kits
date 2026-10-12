@@ -161,18 +161,9 @@ Expect `204 No Content` on success from either curl call. A `HTML_SCREEN_PAGE_TO
 
 ## Step 5 — Define field data lineage (mandatory)
 
-Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even if the mockup itself looks complete.
+Every screen, new or updated, needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a known source per `eventmodeling-information-completeness`. Input, session values and display-only calculations are `generated: true`. Displayed data names its read model (`mapping: "<ReadModelTitle>"`), even if that read model isn't on the board yet. This skill doesn't create read models or connections, but naming the source is not optional. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even if the mockup itself looks complete.
 
 **For a brand-new screen** (Step 4's `create_screen` call), pass `fields` directly on that call instead of a separate `node:changed` here — one round trip instead of two. This step's separate `submit_node_events` call is still how you set/update fields on an **existing** screen (`render_screen` doesn't take `fields` either).
-
-| Field type | `mapping` | Example |
-|---|---|---|
-| User types a value, sent as a command | `"<CommandTitle>.<fieldName>"` | `"ReserveBike.bikeId"` |
-| Read from session | `"session:<fieldName>"` | `"session:customerId"` |
-| Displayed data, sourced from a read model | `"<ReadModelTitle>.<fieldName>"` | `"ActiveReservationView.status"` |
-| Calculated/formatted only for display | `"derived:<expression>"` | `"derived:formatDuration(durationMinutes)"` |
-
-Name the read model even if it doesn't exist as a board node yet — this skill only renders the screen, it does not create READMODEL nodes or connections (that's `eventmodeling-identifying-outputs` or `place-element`, if the model is taken that far). But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. If you can't say which read model a displayed field comes from, that's a sign the model is missing something — not a reason to skip the field.
 
 If this node is one of several sharing the same visual base with different marks/highlights (see "Marked screens and field scoping" above), only list the fields that fall inside *this* node's highlighted area — not every field the shared screen shows.
 
@@ -186,7 +177,7 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "HTML_SCREEN", "fields": [
-      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
+      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView", "cardinality": "Single"}
     ] }
   }],
   "compact": true

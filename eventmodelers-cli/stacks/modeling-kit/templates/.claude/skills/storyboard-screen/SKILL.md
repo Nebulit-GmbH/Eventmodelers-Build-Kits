@@ -110,7 +110,7 @@ mcp__eventmodelers__render_screen {
 
 ## Step 5 — Define field data lineage (mandatory)
 
-Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a `mapping` naming where that data comes from. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even once the wireframe is rendered. See the `html-screen` skill's "Step 5 — Define field data lineage" for the full `mapping`-format table (command/session/read-model/derived forms).
+Every screen — new or updated — needs `meta.fields`: one entry per piece of data the screen displays or captures, each with a known source per `eventmodeling-information-completeness`. A screen with only a title and no fields is an empty placeholder from a data-lineage standpoint, even once the wireframe is rendered.
 
 Name the read model even if it doesn't exist as a board node yet — this skill only renders the screen, it does not create READMODEL nodes or connections. But naming the source is **not optional**: a screen displaying data should almost never have a field with no mapping. If you can't say which read model a displayed field comes from, that's a sign the model is missing something — not a reason to skip the field.
 
@@ -124,7 +124,7 @@ mcp__eventmodelers__submit_node_events {
     "id": "<event-uuid>", "eventType": "node:changed", "nodeId": "<NODE_ID>",
     "changedAttributes": ["meta.fields"],
     "meta": { "type": "SCREEN", "fields": [
-      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView.status", "cardinality": "Single"}
+      {"name": "status", "type": "String", "example": "confirmed", "mapping": "ActiveReservationView", "cardinality": "Single"}
     ] }
   }],
   "compact": true

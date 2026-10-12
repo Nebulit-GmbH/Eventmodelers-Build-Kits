@@ -138,7 +138,7 @@ For each node, compute (don't write yet):
 
 ### If operation is `add`:
 - Check if a field with that name already exists in `meta.fields` — if so, skip this node (log it).
-- Otherwise append a new field:
+- Otherwise append a new field, with its source set per `eventmodeling-information-completeness`. Along the chain, the same name carries the value from hop to hop. The **source element** is where it starts (`generated: true`), unless one of its own inbound neighbours already carries it, in which case the chain stops too early: extend it to the real origin.
 ```json
 {
   "name": "<attributeName>",
@@ -157,6 +157,7 @@ For each node, compute (don't write yet):
 ### If operation is `rename`:
 - Find the field where `name === oldName` (case-insensitive). If not found in this node, skip it (log it).
 - Update only the `name` property to `newName`. Leave all other field properties unchanged.
+- Then fix the downstream fields outside the chain that lost their source through the rename (see `eventmodeling-information-completeness` → "Renames move the lineage too"), in the same batch.
 
 Collect one `node:changed` event per affected node, then send them together.
 
@@ -196,6 +197,7 @@ Tell the user:
 - **Chain**: list each element in order (type + title + cell)
 - **Updated**: which nodes were changed
 - **Skipped**: which nodes were skipped and why (field already exists / field not found / slice not `Created` — asked to confirm)
+- **Lineage**: where the attribute starts (`generated` on which element) and any `mapping` you set for a renamed hop
 
 Example output:
 ```

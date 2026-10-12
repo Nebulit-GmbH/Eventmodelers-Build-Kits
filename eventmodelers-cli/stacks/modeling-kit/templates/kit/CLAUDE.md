@@ -100,6 +100,9 @@ exactly those elements — nothing else about the rule loosens. **No skill overr
 when there is no chat to ask in (a prompt that did not come from one, a standalone turn): then change
 nothing and comment which status blocked it. Where there is a chat, never comment — ask with the snippet.
 
+**Every field you add or rename must have a known source. This holds in every skill and every turn, not only in a full modeling run.**
+Follow `eventmodeling-information-completeness` before writing any field. It defines the three valid sources: a same-named upstream field, a `mapping`, or `generated: true`. A field with none of these is a gap to close upstream, never one to place unmapped.
+
 **One board read, shared by the whole turn.** Orientation first — `get_board_outline`, or `get_nodes` with
 `projection: "line"` — to establish where the work actually is, and only for the chapter this turn is about.
 In a `standalone=on` session the `SESSION_START` warm-up gave you the chapter list but no chapter's contents,

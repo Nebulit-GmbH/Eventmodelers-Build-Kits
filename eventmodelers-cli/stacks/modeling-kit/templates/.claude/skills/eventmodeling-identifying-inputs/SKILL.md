@@ -67,6 +67,21 @@ Show which commands come from automation vs. user actions: catalog every command
 ### 3. Document Command Specifics
 For each command, define structure: its source, its typed input fields, the validation rules it enforces, the preconditions it checks against stream state, the success event it produces, and each distinct failure outcome. A full worked example (ConfirmOrder) is in `references/examples.md`.
 
+### 3b. Command input is self-contained
+
+A command must carry **everything needed to validate it**. For each validation rule and precondition, list every value the rule reads. Each value is either:
+- **a field on the command**, or
+- **stream state**: data from prior events of this entity (step 6).
+
+Nothing else. Watch for **contextual information** that is easy to overlook because "the system just knows it":
+- the current time or date (`now`, `today`), for deadlines, expiry, "must be in the future", opening hours, cut-off dates
+- the acting user, their role, and the tenant or organization, for "only the owner may…", limits per customer
+- the timezone or locale, when a rule depends on the local date ("before midnight", "on a business day")
+
+Each one becomes a command field, `generated: true` (it enters the model at the command, supplied when the command is issued, per `eventmodeling-information-completeness`). The decision then never reads a clock or session on its own, and the same command always gets the same outcome. That is also what lets a GWT scenario state it: *when `ReserveBike` with `requestedAt = 09:00`, then rejected, because `startTime` is in the past*.
+
+A timestamp the event records (`reservedAt`) comes from that command field, not from a clock read when the event is stored.
+
 ### 4. Create Command Catalog
 List all commands the system accepts, grouped into UI-issued and processor-issued sections, each with its source, input fields, and the event it produces. A full worked example is in `references/examples.md`.
 
@@ -80,60 +95,39 @@ Document what comes from stream state beyond the command's explicit input: the p
 
 Instead of writing a markdown document, **place each COMMAND on the board** using the `node:created` API.
 
-> **CRITICAL: Every COMMAND node MUST include `meta.fields` with a `mapping` on every field.** A command without fields — or with fields that lack `mapping` — is an incomplete model that cannot be traced, validated, or turned into code.
+> **CRITICAL: Every COMMAND node MUST include `meta.fields`, and every field must have a known source.** A command without fields — or with fields whose origin is unknown — is an incomplete model that cannot be traced, validated, or turned into code.
 
-### Field data lineage — the `mapping` attribute
+### Field data lineage — `mapping` and `generated`
 
-Every field on a COMMAND must carry a `mapping` that says exactly where its value comes from. Use one of these forms:
-
- | `mapping` format | Meaning | `generated` | Example |
-|---|---|---|---|
-| `"user-input"` | User types or selects this value directly | `false` | `startTime` picked from a date picker |
-| `"session:<fieldName>"` | Read from the authenticated session | `false` | `session:customerId` |
-| `"<EventTitle>.<fieldName>"` | Taken from a previously emitted event | `false` | `BikeReserved.bikeId` |
-| `"derived:<expression>"` | Computed by the system | `true` | `derived:uuid4()`, `derived:now()` |
-| `"webhook:<payloadField>"` | Comes from an external webhook payload | `false` | `webhook:gateway_transaction_id` |
-
-Set the field's `generated` property according to this table. Fields typed by the user (typically from a screen form) are never generated — the user supplies the value. Fields with a `derived:` mapping are always generated — the system produces the value automatically.
-
-The `mapping` traces the value all the way back to its origin. **If you cannot write a mapping for a field, that field has an unknown origin — treat it as a gap and resolve it.**
+Apply `eventmodeling-information-completeness` to every COMMAND field and every EVENT field as you add it. A command's upstream is the SCREEN or AUTOMATION issuing it. An event's upstream is the COMMAND producing it. User input is `generated` on the screen that captures it, not on the command. Contextual values the validation reads (current time, acting user, tenant) are `generated` on the command (see 3b). Only an id the system creates when recording the fact is `generated` on the event. **A field whose source you can't name is a gap. Resolve it before you place the field.**
 
 Every field must also set `"cardinality"` — use `"Single"` unless the field genuinely holds a list of values (e.g. multi-select), in which case use `"List"`. Default to `"Single"` when unsure. Only add fields the command actually needs to do its job — do not add speculative fields; enrich later via `/attributes`.
 
 ### Field traceability rule for events
 
-Every field in the resulting EVENT must either:
-- Appear in the command's `fields` (direct mapping — same name or documented rename), or
-- Be derivable from command fields + system state
-
-Example: `BikeReserved.reservedAt` is not in `ReserveBike` but derives from `derived:now()`. That is acceptable — document it. `BikeReserved.reservationId` is not in `ReserveBike` but derives from `derived:uuid4()`. Also acceptable.
-
-If an event field has **no** corresponding command field and **no** derivation rule, that is a gap — add it to the command or note it as a system-generated field.
-
-> **Connected-element rule**: A field `mapping` may only reference elements that are connected to this COMMAND via board arrows (`SCREEN → COMMAND`). If a field's value would come from something not yet connected, flag it as a gap. **If a mapping cannot be defined at all, it hints at missing data in the model or a modeling error** — a missing event field, a missing screen field, or a broken connection. Investigate before proceeding.
+Every EVENT field comes from its COMMAND (same name, or `mapping` for a rename) or is created by the system when the event is recorded (`generated: true`). Anything else means the command, or the screen behind it, is missing that field.
 
 ```json
 {
   "type": "COMMAND",
   "title": "ReserveBike",
   "fields": [
-    {"name": "customerId",  "type": "String",   "example": "cust-42",               "mapping": "session:customerId", "generated": false},
-    {"name": "bikeId",      "type": "String",   "example": "bike-17",               "mapping": "user-input",         "generated": false},
-    {"name": "stationId",   "type": "String",   "example": "stn-03",                "mapping": "user-input",         "generated": false},
-    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z",  "mapping": "user-input",         "generated": false},
-    {"name": "endTime",     "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "mapping": "user-input",         "generated": false}
+    {"name": "customerId",  "type": "String",   "example": "cust-42",               "generated": true},
+    {"name": "bikeId",      "type": "String",   "example": "bike-17"},
+    {"name": "stationId",   "type": "String",   "example": "stn-03"},
+    {"name": "startTime",   "type": "DateTime", "example": "2026-06-01T09:00:00Z"},
+    {"name": "endTime",     "type": "DateTime", "example": "2026-06-01T17:00:00Z",  "mapping": "returnTime"},
+    {"name": "requestedAt", "type": "DateTime", "example": "2026-06-01T08:45:00Z",  "generated": true}
   ]
 }
 ```
 
+`customerId` (from the session) and `requestedAt` (the current time) are contextual: the rules "a customer may hold one active reservation" and "`startTime` must be after `requestedAt`" read them, so they are on the command, `generated: true`. `bikeId`, `stationId` and `startTime` come from same-named fields on the `Reserve a Bike` screen. `endTime` is called `returnTime` on that screen.
+
 Event fields produced by this command:
-- `reservationId` → `derived:uuid4()` → `generated: true`
-- `customerId` → `ReserveBike.customerId` → `generated: false`
-- `bikeId` → `ReserveBike.bikeId` → `generated: false`
-- `stationId` → `ReserveBike.stationId` → `generated: false`
-- `startTime` → `ReserveBike.startTime` → `generated: false`
-- `endTime` → `ReserveBike.endTime` → `generated: false`
-- `reservedAt` → `derived:now()` → `generated: true`
+- `reservationId` → created by the system → `generated: true`
+- `customerId`, `bikeId`, `stationId`, `startTime`, `endTime` → same name on `ReserveBike` → no mapping
+- `reservedAt` → `mapping: "requestedAt"`, the command's current time, never a clock read when the event is stored
 
 Commands go in the `interaction` lane — same column as their resulting event.
 
@@ -167,9 +161,9 @@ mcp__eventmodelers__submit_node_events {
       "type": "COMMAND",
       "title": "ReserveBike",
       "fields": [
-        {"name": "customerId", "type": "String",   "example": "cust-42",             "mapping": "session:customerId"},
-        {"name": "bikeId",     "type": "String",   "example": "bike-17",             "mapping": "user-input"},
-        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z","mapping": "user-input"}
+        {"name": "customerId", "type": "String",   "example": "cust-42",             "generated": true},
+        {"name": "bikeId",     "type": "String",   "example": "bike-17"},
+        {"name": "startTime",  "type": "DateTime", "example": "2026-06-01T09:00:00Z"}
       ]
     }
   }],
@@ -251,6 +245,7 @@ Older versions of this skill wrote the command catalog as a markdown document ra
 - [ ] Preconditions from stream state are explicit
 - [ ] Success and failure outcomes documented
 - [ ] Implicit context from stream state is identified
+- [ ] **Every value a validation rule reads is a command field or stream state, including contextual information (current time/date, acting user, tenant)**
 - [ ] No undocumented commands exist
 - [ ] Command naming is consistent and clear
 - [ ] Processor triggers are explicit
@@ -262,7 +257,7 @@ Older versions of this skill wrote the command catalog as a markdown document ra
 ## Key Principles
 
 1. **Source Clarity**: Every command comes from UI or Processor
-2. **Input Completeness**: All needed data captured
+2. **Input Completeness**: All data needed to validate is on the command, including contextual information like the current time
 3. **Validation Explicit**: All rules documented
 4. **State Awareness**: Preconditions from stream state clear
 5. **Event Mapping**: Every input becomes event data
