@@ -164,7 +164,7 @@ UUID       // universally unique identifier
 Custom     // structured/nested value — use with `subfields` or `schema`
 ```
 
-Other `Field` properties: `name`, `example`, `subfields[]` (nested `Field`s), `mapping`, `optional`, `technicalAttribute`, `generated`, `idAttribute`, `pii`, `schema`, `cardinality` (`"List"` | `"Single"`).
+Other `Field` properties: `name`, `example`, `subfields[]` (nested `Field`s), `mapping`, `optional`, `technicalAttribute`, `generated`, `idAttribute`, `pii`, `tag` (the field's value tags the event for Dynamic Consistency Boundaries — DCB; see https://dcb.events), `schema`, `cardinality` (`"List"` | `"Single"`).
 
 Use exactly these type names (case-sensitive) — not lowercase (`string`), synonyms (`Number`, `Text`, `Integer`), or types outside this set.
 

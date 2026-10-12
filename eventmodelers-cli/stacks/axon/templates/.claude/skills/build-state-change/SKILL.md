@@ -28,8 +28,9 @@ Read `.build-kit/.slices/{context}/{slicename}/slice.json`. Extract, and use **o
 - `commands[].fields[]` → Command record fields, in order
 - `events[].fields[]` → Event record fields, in order
 - `specifications[]` (GWT scenarios) → one test method per scenario
-- Which command field(s) have `idAttribute: true` — these carry `@TargetEntityId` (see Step 1) and the
-  matching event field(s) carry `@EventTag`
+- Which command field(s) have `idAttribute: true` — these carry `@TargetEntityId` (see Step 1)
+- The event's DCB tags — **both** the field(s) matching the command's `idAttribute` field(s) **and**
+  every event field with `tag: true` carry `@EventTag` (see Step 2); each gets its own `EventTags` constant
 - `storylines[]` (optional, may be absent) → narrated walkthroughs with ordered `elements[]` "beats";
   see Step 7b for how a COMMAND beat in one of these can add a supplementary test
 

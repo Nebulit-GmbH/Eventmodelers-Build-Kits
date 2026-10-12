@@ -33,8 +33,8 @@ Read `.build-kit/.slices/{context}/{slicename}/slice.json`. Extract, and use **o
 - `commands[].fields[]` → Command record fields, in order
 - `events[].fields[]` → Event record fields, in order
 - `specifications[]` (GWT scenarios) → one test method per scenario
-- Which command field(s) have `idAttribute: true` — these become the tag(s) the command's Query and
-  the resulting event are both scoped to (see Step 1/Step 3)
+- The DCB tags — **both** the command field(s) with `idAttribute: true` **and** every field with
+  `tag: true` become tag(s) the command's Query and the resulting event are both scoped to (see Step 1/Step 3)
 - `storylines[]` (optional, may be absent) → narrated walkthroughs with ordered `elements[]`
   "beats"; see Step 7b for how a COMMAND beat in one of these can add a supplementary test
 
