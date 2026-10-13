@@ -2349,7 +2349,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   }
 
   if (!otherRunner) spawnProcess();
-  log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId}`);
+  log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId} — eventmodelers-cli v${CLI_VERSION}`);
   if (localRunner) log(`runner: local model — ${localRunner.describe()} (board tools over MCP; no skills, no subagents)`);
   if (execRunner) log(`runner: ${execRunner.describe()} — one process per turn (skills from the kit; no subagents)`);
   log(
