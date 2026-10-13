@@ -1,15 +1,11 @@
 /*
- * Event-sourced prototype runtime — copied verbatim into every prototype by the `prototype` skill.
- * Never edit the copy: everything model-specific lives in domain.js.
+ * Event-sourced prototype runtime — pasted verbatim into every prototype by the `prototype` skill.
+ * Never edit the copy: everything model-specific lives in the page's slice blocks.
  *
- * Browser: <script src="runtime.js"></script> exposes window.EMRuntime.
- * Node:    node runtime.js domain.js   — runs the domain's specs, exits 1 on any failure.
+ * Browser only, no build step: defines globalThis.EMRuntime. Each slice block registers its part of
+ * the model with EMRuntime.defineSlice(...); EMRuntime.domain is the union of all of them.
  */
-(function (root, factory) {
-  const api = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.EMRuntime = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+globalThis.EMRuntime = (function () {
   class DomainError extends Error {
     constructor(message) {
       super(message);
@@ -43,13 +39,21 @@
     return v === undefined ? undefined : JSON.parse(JSON.stringify(v));
   }
 
+  /** localStorage, or null where reading it throws (a sandboxed iframe) — events then live in memory. */
+  function browserStorage() {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ---------------------------------------------------------------------------------------------
   // Runtime — the in-browser event store, command bus and automation runner.
 
   function createRuntime(Domain, opts) {
-    const options = Object.assign({ automationDelay: 700, autoRun: true, storage: null }, opts);
-    const storage =
-      options.storage || (typeof localStorage !== 'undefined' ? localStorage : null);
+    const options = Object.assign({ automationDelay: 700, autoRun: false, storage: null }, opts);
+    const storage = options.storage || browserStorage();
     const KEY = 'em-prototype:' + Domain.context;
 
     let persisted = load();
@@ -64,6 +68,10 @@
     // A stuck item means the todo list never removes what its command records — re-issuing it
     // would append the same events every run, forever.
     const handled = new Map();
+    // Time travel: when set, read models only see events up to this position and nothing can be
+    // recorded — the screens show the system as it was then.
+    let cursor = null;
+    const visible = () => (cursor == null ? events : events.slice(0, cursor));
 
     function load() {
       try {
@@ -105,6 +113,7 @@
 
     /** Execute a command. Never throws for a business rule — returns { ok:false, error }. */
     function execute(type, data, metadata) {
+      if (cursor != null) return { ok: false, error: `Viewing the log as of event #${cursor} — return to now to record anything` };
       const command = Domain.commands[type];
       if (!command) return { ok: false, error: `Command "${type}" is not part of this model` };
       try {
@@ -124,7 +133,7 @@
     function query(name, params) {
       const rm = Domain.readModels[name];
       if (!rm) throw new Error(`Read model "${name}" is not part of this model`);
-      return project(rm, events, params, ctx());
+      return project(rm, visible(), params, ctx());
     }
 
     /** An event that originates outside this context (another context, an external system). */
@@ -135,7 +144,7 @@
     // --- automations -----------------------------------------------------------------------------
 
     function scheduleAutomations() {
-      if (!autoRun || timer) return;
+      if (!autoRun || timer || cursor != null) return;
       timer = setTimeout(() => {
         timer = null;
         runAutomations('auto');
@@ -146,15 +155,18 @@
      * Work every automation's todo list once. `trigger` = 'auto' (after events), 'manual' (button)
      * or 'clock' (time advanced). An automation with `trigger: 'schedule'` only runs on 'manual'/'clock'.
      * A todo whose command is rejected is logged and not retried until the log changes.
+     * `only` restricts the run to one automation (its Run button).
      */
-    function runAutomations(trigger) {
+    function runAutomations(trigger, only) {
       const ran = [];
+      if (cursor != null) return ran;
       const attempted = new Set();
       for (let round = 0; round < 50; round++) {
         let progressed = false;
         for (const [name, a] of Object.entries(Domain.automations || {})) {
+          if (only && name !== only) continue;
           if (a.trigger === 'schedule' && trigger === 'auto') continue;
-          const todos = a.todo(query(a.readModel), ctx()) || [];
+          const todos = todosOf(name);
           for (const item of todos) {
             const key = name + ':' + JSON.stringify(item) + ':' + events.length;
             if (attempted.has(key)) continue;
@@ -203,10 +215,18 @@
       return ran;
     }
 
+    /** The items an automation would act on right now — the open entries of its todo list. */
+    function todosOf(name) {
+      const a = Domain.automations[name];
+      return (a && a.todo(query(a.readModel), ctx())) || [];
+    }
+
     function advanceClock(ms) {
       clockOffset += ms;
       notify();
-      return runAutomations('clock');
+      // Items that fall due show up in the automations tab; they only run by themselves when
+      // automatic runs are switched on.
+      return autoRun ? runAutomations('clock') : [];
     }
 
     function setAutoRun(on) {
@@ -215,7 +235,14 @@
       if (autoRun) scheduleAutomations();
     }
 
+    function viewAsOf(position) {
+      cursor = position == null || position >= events.length ? null : Math.max(0, position);
+      notify();
+      if (cursor == null) scheduleAutomations();
+    }
+
     function reset() {
+      cursor = null;
       events = [];
       clockOffset = 0;
       automationLog.length = 0;
@@ -225,6 +252,7 @@
     }
 
     function importLog(log) {
+      cursor = null;
       events = (log || []).map((e, i) => Object.assign({}, e, { position: i + 1 }));
       handled.clear();
       notify();
@@ -232,18 +260,24 @@
 
     return {
       Domain,
+      persistent: !!storage,
       execute,
       query,
       simulate,
       runAutomations,
+      todosOf,
       advanceClock,
       setAutoRun,
       reset,
       importLog,
+      viewAsOf,
       now,
       uuid,
       get events() {
         return events;
+      },
+      get cursor() {
+        return cursor;
       },
       get autoRun() {
         return autoRun;
@@ -262,7 +296,7 @@
   }
 
   // ---------------------------------------------------------------------------------------------
-  // Spec runner — the board's GWT scenarios, executed against the domain. Pure, runs in node too.
+  // Spec runner — the board's GWT scenarios, executed against the domain. Pure — the page runs it on load.
 
   const SPEC_NOW = new Date('2026-01-01T09:00:00.000Z');
 
@@ -352,22 +386,49 @@
     return (Domain.specs || []).map((spec) => Object.assign({ spec }, runSpec(Domain, spec)));
   }
 
-  const api = { DomainError, reject, createRuntime, project, runSpecs, matches, uuid };
+  // ---------------------------------------------------------------------------------------------
+  // Slice registry — one defineSlice call per slice block; the domain is assembled from them.
 
-  // node runtime.js domain.js
-  if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
-    const path = require('path');
-    module.exports = api;
-    const Domain = require(path.resolve(process.argv[2] || 'domain.js'));
-    const results = runSpecs(Domain);
-    let failed = 0;
-    for (const r of results) {
-      if (!r.pass) failed++;
-      console.log(`${r.pass ? 'PASS' : 'FAIL'}  [${r.spec.slice || '-'}] ${r.spec.title}${r.pass ? '' : '\n      ' + r.detail}`);
+  const domain = {
+    context: '',
+    slices: [],
+    commands: {},
+    readModels: {},
+    automations: {},
+    externalEvents: [],
+    specs: [],
+    screens: [], // { title, actor, order, slice, part } — one per slice part, grouped into tabs by title
+  };
+
+  /**
+   * Register one slice: { id, title, order, commands?, readModels?, automations?, externalEvents?,
+   * specs?, screens?: { '<Screen Title>': { actor?, part: Component } } }. Throws on an element
+   * already defined by another slice — every command, read model and automation belongs to one slice.
+   */
+  function defineSlice(slice) {
+    const owned = (kind, entries) => {
+      for (const [name, def] of Object.entries(entries || {})) {
+        const existing = domain[kind][name];
+        if (existing && existing.slice !== slice.title) {
+          throw new Error(`${name} is defined by slice "${existing.slice}" and again by "${slice.title}"`);
+        }
+        domain[kind][name] = Object.assign({}, def, { slice: slice.title });
+      }
+    };
+    owned('commands', slice.commands);
+    owned('readModels', slice.readModels);
+    owned('automations', slice.automations);
+    for (const x of slice.externalEvents || []) {
+      if (!domain.externalEvents.some((e) => e.type === x.type)) domain.externalEvents.push(x);
     }
-    console.log(`\n${results.length - failed}/${results.length} specs pass`);
-    process.exit(failed ? 1 : 0);
+    for (const spec of slice.specs || []) domain.specs.push(Object.assign({ slice: slice.title }, spec));
+    for (const [title, def] of Object.entries(slice.screens || {})) {
+      domain.screens.push({ title, actor: def.actor, order: slice.order ?? 0, slice: slice.title, part: def.part });
+    }
+    domain.slices.push({ id: slice.id, title: slice.title, order: slice.order ?? 0 });
   }
 
+  const api = { DomainError, reject, createRuntime, project, runSpecs, matches, uuid, defineSlice, domain };
+
   return api;
-});
+})();

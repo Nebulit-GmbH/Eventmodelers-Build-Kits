@@ -1,0 +1,201 @@
+<!--
+  Example slice blocks — the contract for what the `prototype` skill generates, one block per slice,
+  pasted at @@SLICES@@ in index.html. One of each kind: state change, state view, automation.
+
+  Inside a block:
+  - JSX and modern JavaScript; React hooks via React.useState etc.
+  - useCommand, useReadModel, useNav, useNotModeled are globals (the kit defines them).
+  - EMRuntime.reject('<message>') rejects a command with a scenario's errorDescription.
+  - Never the text of a closing script tag, not even in a string or comment.
+  - Every element belongs to exactly one slice: a command to its state-change slice, a read model to
+    its state-view slice, a todo list and its automation to the automation slice.
+-->
+
+<script type="text/plain" data-em-slice="11111111-1111-4111-8111-111111111111" data-em-title="Register Customer" data-em-hash="0f3c9a1d2b4e5f60">
+// State change: the screen part is the form the command's inputs come from, plus its button.
+const ofType = (events, type) => events.filter((e) => e.type === type);
+
+function RegisterCustomerForm() {
+  const register = useCommand('RegisterCustomer');
+  const { go } = useNav();
+  const [form, setForm] = React.useState({ name: '', email: '' });
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  // Markup translated 1:1 from the screen's HTML page; inputs bound to the command's fields.
+  return (
+    <section className="section">
+      <div className="box" style={{ maxWidth: 420 }}>
+        <h1 className="title is-4">Register</h1>
+        <div className="field">
+          <label className="label" htmlFor="name">Name</label>
+          <input id="name" className="input" placeholder="Jane Doe" value={form.name} onChange={set('name')} />
+        </div>
+        <div className="field">
+          <label className="label" htmlFor="email">Email</label>
+          <input id="email" className="input" placeholder="jane@example.com" value={form.email} onChange={set('email')} />
+        </div>
+        {register.error && <p className="help is-danger">{register.error}</p>}
+        <button id="register" className="button is-primary" onClick={() => register.run(form).ok && go('Customers')}>
+          Register Customer
+        </button>
+      </div>
+    </section>
+  );
+}
+
+EMRuntime.defineSlice({
+  id: '11111111-1111-4111-8111-111111111111',
+  title: 'Register Customer',
+  order: 1,
+  commands: {
+    RegisterCustomer: {
+      decide(history, cmd, ctx) {
+        // Scenario "Email must be unique"
+        if (ofType(history, 'CustomerRegistered').some((e) => e.data.email === cmd.email)) {
+          EMRuntime.reject('Email is already registered');
+        }
+        return [{ type: 'CustomerRegistered', data: { customerId: ctx.uuid(), name: cmd.name, email: cmd.email } }];
+      },
+    },
+  },
+  specs: [
+    {
+      title: 'Customer registers',
+      kind: 'command',
+      given: [],
+      when: { type: 'RegisterCustomer', data: { name: 'Jane Doe', email: 'jane@example.com' } },
+      then: [{ type: 'CustomerRegistered', data: { name: 'Jane Doe', email: 'jane@example.com' } }],
+    },
+    {
+      title: 'Email must be unique',
+      kind: 'command',
+      given: [{ type: 'CustomerRegistered', data: { customerId: 'c-1', name: 'Jane Doe', email: 'jane@example.com' } }],
+      when: { type: 'RegisterCustomer', data: { name: 'John Doe', email: 'jane@example.com' } },
+      error: 'Email is already registered',
+    },
+  ],
+  screens: { Registration: { actor: 'Customer', part: RegisterCustomerForm } },
+});
+</script>
+
+<script type="text/plain" data-em-slice="22222222-2222-4222-8222-222222222222" data-em-title="Customer List" data-em-hash="7a1e44c09d2b3f81">
+// State view: the read model is one component — the region of the screen that shows its data.
+function CustomerTable() {
+  const customers = useReadModel('Customers');
+  const notModeled = useNotModeled();
+  return (
+    <section className="section">
+      <h1 className="title is-4">Customers</h1>
+      {customers.length === 0 ? (
+        <p>No customers yet.</p>
+      ) : (
+        <table className="table">
+          <tbody>
+            {customers.map((c) => (
+              <tr key={c.customerId}>
+                <td>{c.name}</td>
+                <td>{c.email}</td>
+                <td>{c.mailSent ? 'mail sent' : 'pending'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <button className="button" onClick={() => notModeled('Export')}>Export</button>
+    </section>
+  );
+}
+
+EMRuntime.defineSlice({
+  id: '22222222-2222-4222-8222-222222222222',
+  title: 'Customer List',
+  order: 2,
+  readModels: {
+    Customers: {
+      initial: () => [],
+      evolve(state, e) {
+        if (e.type === 'CustomerRegistered') return [...state, { customerId: e.data.customerId, name: e.data.name, email: e.data.email }];
+        if (e.type === 'ConfirmationMailSent') return state.map((c) => (c.customerId === e.data.customerId ? { ...c, mailSent: true } : c));
+        return state;
+      },
+    },
+  },
+  specs: [
+    {
+      title: 'Registered customers are listed',
+      kind: 'readmodel',
+      readModel: 'Customers',
+      given: [{ type: 'CustomerRegistered', data: { customerId: 'c-1', name: 'Jane Doe', email: 'jane@example.com' } }],
+      expect: [{ customerId: 'c-1', name: 'Jane Doe' }],
+    },
+  ],
+  screens: { Customers: { actor: 'Back Office', part: CustomerTable } },
+});
+</script>
+
+<script type="text/plain" data-em-slice="33333333-3333-4333-8333-333333333333" data-em-title="Send Confirmation Mail" data-em-hash="c5d2e8f1a0b39476">
+// Automation: its todo list, the automation and the command it issues. How an item gets onto the
+// list and off it comes from the todo list's scenarios: given CustomerRegistered → listed;
+// given CustomerRegistered + ConfirmationMailSent → empty.
+EMRuntime.defineSlice({
+  id: '33333333-3333-4333-8333-333333333333',
+  title: 'Send Confirmation Mail',
+  order: 3,
+  readModels: {
+    PendingConfirmationMails: {
+      initial: () => ({}),
+      evolve(state, e) {
+        if (e.type === 'CustomerRegistered') return { ...state, [e.data.customerId]: { customerId: e.data.customerId, email: e.data.email } };
+        if (e.type === 'ConfirmationMailSent') {
+          const { [e.data.customerId]: _done, ...rest } = state;
+          return rest;
+        }
+        return state;
+      },
+      query: (state) => Object.values(state),
+    },
+  },
+  commands: {
+    SendConfirmationMail: {
+      decide: (history, cmd, ctx) => [{ type: 'ConfirmationMailSent', data: { customerId: cmd.customerId, sentAt: ctx.now.toISOString() } }],
+    },
+  },
+  automations: {
+    SendConfirmationMail: {
+      readModel: 'PendingConfirmationMails',
+      trigger: 'auto',
+      external: true,
+      todo: (items) => items,
+      process: (item) => ({
+        effect: `E-mail with confirmation link to ${item.email}`,
+        command: { type: 'SendConfirmationMail', data: { customerId: item.customerId, email: item.email } },
+      }),
+    },
+  },
+  specs: [
+    {
+      title: 'A new registration is waiting for its mail',
+      kind: 'readmodel',
+      readModel: 'PendingConfirmationMails',
+      given: [{ type: 'CustomerRegistered', data: { customerId: 'c-1', name: 'Jane Doe', email: 'jane@example.com' } }],
+      expect: [{ customerId: 'c-1' }],
+    },
+    {
+      title: 'A sent mail leaves the list',
+      kind: 'readmodel',
+      readModel: 'PendingConfirmationMails',
+      given: [
+        { type: 'CustomerRegistered', data: { customerId: 'c-1', name: 'Jane Doe', email: 'jane@example.com' } },
+        { type: 'ConfirmationMailSent', data: { customerId: 'c-1' } },
+      ],
+      expect: [],
+    },
+    {
+      title: 'A new registration gets a confirmation mail',
+      kind: 'automation',
+      automation: 'SendConfirmationMail',
+      given: [{ type: 'CustomerRegistered', data: { customerId: 'c-1', name: 'Jane Doe', email: 'jane@example.com' } }],
+      expectCommands: [{ type: 'SendConfirmationMail', data: { customerId: 'c-1' } }],
+    },
+  ],
+});
+</script>

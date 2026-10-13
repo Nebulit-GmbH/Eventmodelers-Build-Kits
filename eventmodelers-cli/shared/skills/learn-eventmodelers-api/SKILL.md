@@ -707,7 +707,12 @@ Append Given-When-Then scenario(s) to a column's spec node — the node is creat
 // A step is addressed either way:
 { id: 'node-uuid' }                          // a board node
 { title: 'OrderPlaced', type: 'EVENT' }      // resolved against this timeline's own elements
+
+// Either form also carries the step's values for this scenario — the fields essential to it, each with its example:
+{ title: 'OrderPlaced', type: 'EVENT', fields: [{ name: 'orderId', example: 'o-42' }, { name: 'placedAt', example: '2026-10-12' }] }
 ```
+
+`fields` is what the board shows on the step and what generated tests use as the scenario's data. Fill the values the scenario depends on (what the rule decides on, linking ids, the asserted outcome) and leave the rest out, so it is clear which data is relevant — a value that only appears in `contextNote` is not part of the specification.
 
 A step given as `{title, type}` is resolved server-side, so the names you already know need **no `get_spec_info`/`get_nodes` call first**. A title matching more than one element is rejected (`SCENARIO_ITEM_AMBIGUOUS`) with the candidates rather than guessed at, and resolution runs before anything is written — a bad name leaves no empty spec node behind.
 
@@ -854,6 +859,26 @@ none is its own. Any other node type is rejected. Always scoped to one context; 
 avgChangesPerSlice }` — `firstTimeRightRate` is the share of the slices that reached Done and never came back, or
 `null` when none got there yet.
 `400` `CONTEXT_ID_REQUIRED` / `CONTEXT_NODE_INVALID` · `404` `CONTEXT_NOT_FOUND`
+
+---
+
+### POST `/api/org/:orgId/boards/:boardId/prototype/:contextId`
+**File**: `src/slices/change/api-prototypes/routes.ts`
+
+Store a context's generated prototype page (the `prototype` skill). REST only, no MCP tool — `prototype.mjs upload` calls it.
+
+**Request**: the page as the raw body, `Content-Type: text/html`, at most 5 MB. `contextId` is a MODEL_CONTEXT node or a
+timeline; a timeline resolves to its effective context (the rule `slicedata` uses), so every timeline of one context
+stores to the same place.
+
+The page is sanitized — inline scripts and the `text/plain` slice blocks stay byte for byte; removed are scripts and
+stylesheets from anywhere but `/vendor/`, module scripts, frames, objects, `base`, `<meta http-equiv>`, `on*` attributes,
+`javascript:` URLs and HTML comments — then gzipped and stored in the organization's bucket at
+`<boardId>/<effective context id>.gz`, replacing the previous version.
+
+**Response**: `201` — `{ contextId, contextName, path, bytes, gzippedBytes, removed: string[] }` (`removed`: what the
+sanitizer took out, one line each). `400` `PROTOTYPE_HTML_REQUIRED` (empty body / not `text/html`) /
+`PROTOTYPE_HTML_INVALID` (no `<body>`) · `404` `CONTEXT_NOT_FOUND` · `413` larger than 5 MB.
 
 ---
 
@@ -1148,9 +1173,10 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to answer where one piece of information comes from and where it ends up ("where is the customer email used?") | `dataJourney` | nothing — element names pan the canvas |
 | to show a diagram you drew yourself — a context map, a domain story, a sketch, any picture that isn't a chart | `svg` | nothing |
 | to lay out rows and columns — a comparison, a matrix (stressors × elements), a short list with a few attributes | `table` | nothing — linked cells pan the canvas |
+| to show a prototype you just built and uploaded (the `prototype` skill), running in the chat | `prototype` | nothing — **Full screen** opens the board's prototype player |
 | something the customer defined their own snippet type for (a risk card, a sign-off — see `list_snippet_types`) | `custom` | the clicked action's `answer`; `context.snippetReply.then` says what to do |
 
-`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen`, `dataJourney`, `svg` and `table` are display only and never wait for anything.
+`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen`, `dataJourney`, `svg`, `table` and `prototype` are display only and never wait for anything.
 
 ### Shapes
 ```typescript
@@ -1204,6 +1230,8 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
                             align?: 'left' | 'center' | 'right' }>,
   rows: Array<Array<string | number | true | null                                // 1–200, one cell per column; true = check mark, null = empty
                     | { text: string, nodeId?: string }>> }                      // a cell linking to an element; shown 5 rows per page
+{ kind: 'prototype', timelineId: string,                                          // the context the prototype was uploaded for: a MODEL_CONTEXT or timeline id
+  title?: string, caption?: string }                                              // (html: string ≤ 60000 chars instead of timelineId exists, but a built page never fits)
 ```
 
 ### How to use them
@@ -1220,6 +1248,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **`svg`** is for a picture you draw yourself: give the root a `viewBox` (and `width`/`height` for its natural size), inline colours and fonts — it is shown as an image, so scripts, `<a>` links and external resources do nothing. To make parts of it clickable, list them in `links`: a rectangle in the viewBox coordinates you drew in plus the element it stands for (only real ids from this board); the app lays a clickable area over each that zooms the canvas there. Prefer `report` for numbers. A domain story (who does what with which work object) is an `svg` you draw — the `domain-story` skill (modeling kit) has the procedure and the drawing style. Every SVG snippet has a download-as-PNG button.
   - **"Place it on the board" after you drew an SVG always means: put that picture on the board as an image** — never rebuild it from elements (stickies, lanes, a timeline), never a SCREEN, never a new snippet. `place_image` with `imageBase64` = the SVG document itself, base64-encoded, `mimeType: "image/svg+xml"`, `title` = the snippet's title: it becomes an OUTLINE (the drawing tools' image element), free-floating at `x`/`y`, in no chapter and connected to nothing. Place it where the person says, else in free space next to the chapter it is about (`get_chapter_bounds`: right of or below it). Add a white background `<rect>` first if the SVG has none, or it is unreadable on a dark board. One SVG = one image. The image on the board has no clickable areas — `links` stay in the chat.
 - **`table`** is for anything that is rows and columns and not a chart: a comparison of options, an incidence matrix (rows = stressors, columns = elements, `true` where it hits), a short list with a few attributes per item. It computes nothing — totals are a row you add. Put element ids in `nodeId` (header or cell) so names are links; a row longer than the columns is cut, a shorter one padded, an empty one dropped. Prefer `report` for numbers you want *seen* as a trend or share, `dataJourney` for one piece of data's path.
+- **`prototype`** runs a prototype in the chat: the page the platform stored for `timelineId` (the `contextId` the `prototype` skill uploaded under — any timeline of that context works too), in a sandboxed iframe with **Restart** (empty event log) and **Full screen** (the same player as the timeline's ▶). Send it only after `upload` succeeded — before that it shows "No prototype has been built for this yet". The `text` is the short report of what was built; the prototype itself is the snippet.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
 
 ### Custom snippet types

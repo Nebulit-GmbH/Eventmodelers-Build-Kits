@@ -1,176 +1,181 @@
 ---
 name: prototype
-description: Build a clickable, event-sourced prototype of one context (a MODEL_CONTEXT or a timeline's effective context) that runs straight from disk in the browser — React standalone, no build step. The board's HTML screens are rebuilt 1:1 (sketch screens redrawn from their sketch), every button issues the command it is wired to, read models are projected live from an in-browser event store, automations run on their own, the board's GWT scenarios are the business rules and run as an in-page spec suite. Read-only on the board. Use for "build a prototype of X", "make the Registration context clickable", "can we try this out in the browser?".
+description: Build a clickable, event-sourced prototype of one context (a MODEL_CONTEXT or a timeline's effective context) as a single HTML page the platform serves — React standalone, no build step, no server logic. Built slice by slice — one block per slice, each with a hash of its slice — so a re-run regenerates only the slices that changed on the board. Screens become tabs (one per screen name) rebuilt 1:1 from the board's HTML screens or sketches; each read model is one component, each command the inputs and button that fire it; events are recorded in an in-browser event store and can be browsed; logic and todo lists follow the GWT scenarios, which also run as an in-page check; automations appear in their own tab when their todo list has items. Read-only on the board. Use for "build a prototype of X", "make the Registration context clickable", "update the prototype".
 ---
 
-# Prototype — one context, runnable in the browser
+# Prototype — one context, clickable in the browser
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`. Do not proceed until it has completed.
 
-Prefer `mcp__eventmodelers__*` tools. The curl fallback for every read is in `references/api-fallback.md`.
+Prefer `mcp__eventmodelers__*` tools for reading. The curl fallback is in `references/api-fallback.md`.
 
-The result is a folder with three files that open with a double-click — no server, no `npm install` (plus a one-line `package.json` that only the node spec run needs, Step 4). `<skill-dir>` below is the folder this SKILL.md is in (usually `.claude/skills/prototype`):
+**The result is one file**, `<out>/index.html` (default `out` = `prototypes/<context-slug>/`, `context-slug` = kebab-case name). The board app shows it in a sandboxed iframe (the ▶ button on each timeline), and the libraries it loads come from the app's `public/vendor/` (React 18.3.1, ReactDOM, Babel standalone 7.24.7, the CSS frameworks the HTML screens use). Nothing else is needed at run time: the page compiles its own JSX, keeps its events in the browser, checks its own scenarios on load and shows any failure as a red banner.
 
-| File | What it is | Who writes it |
+It is put together from:
+
+| Part | What it is | Who writes it |
 |---|---|---|
-| `runtime.js` | event store (localStorage), command bus, automation runner, spec runner | **copied verbatim** from `assets/runtime.js` — never edited |
-| `domain.js` | the context's business logic: one decider per command, one projection per read model, one entry per automation, every scenario as a spec | generated (Step 4), contract in `assets/domain.example.js` |
-| `index.html` | React 18 + Babel standalone, the rebuilt screens and the fixed prototype chrome (event log, automations, simulated external events, specs, clock) | `assets/index.template.html`, with the screens filled in (Step 5) |
+| `assets/index.template.html` | the page: platform library tags, the prototype kit (hooks, tabs, event browser, automations tab, simulate/specs/clock panel) and the loader | fixed — never edited per prototype |
+| `assets/runtime.js` | event store, command bus, automation runner, scenario runner, slice registry | fixed — pasted in by `assemble` |
+| **one slice block per slice** | everything of one slice: its command / read model / automation, its scenarios, its part of the screen | **you**, only for new and changed slices — contract in `assets/slices.example.html` |
 
-**This skill never writes to the board.** It reads one context and turns it into code. Gaps it runs into (a button nothing is wired to, a rule with no scenario) go into the report, not onto the board.
+`assets/prototype.mjs` does the bookkeeping: `status` fetches the context, hashes every slice and says which slices are new, changed, unchanged or removed; `assemble` builds the page from the template, the runtime and the blocks; `upload` hands it to the platform (`POST …/prototype/<context id>`), which sanitizes it, gzips it and stores it per effective context at `<board id>/<context id>.gz` in the organization's storage. It runs where you run (the CLI agent), never in the page. `<skill-dir>` below is the folder this SKILL.md is in (usually `.claude/skills/prototype`).
 
-**Faithfulness is the point.** The prototype is how people check the model by using it, so it must behave exactly as the board says — no more. A rule nobody modelled is not enforced; a button the board doesn't wire to anything stays visible but tells the user it is not modeled. Never "improve" a screen or add validation the scenarios don't state.
+**Every run ends with an upload.** The ▶ player only plays what the platform stores — a page that exists only in `<out>` is invisible to everyone, and opening it from disk doesn't work either (its libraries come from the app's `/vendor/`). So a run is done when `upload` has printed where the platform stored the page, never before; there is no "open the local file instead".
+
+**This skill never writes to the board.** Gaps it runs into go into the report, not onto the board.
+
+**Faithfulness is the point.** People check the model by using the prototype, so it behaves as the board says. Implement as much of the logic as the board defines — from the scenarios first, then fields, names and descriptions — and nothing it doesn't: a rule nobody modelled is not enforced, and a button the board doesn't wire to anything stays visible but says it is not modeled.
 
 ---
 
 ## Step 1 — Which context
 
-From `$ARGUMENTS`: the context (a MODEL_CONTEXT title or a timeline title) and an optional `out=<dir>` (default `prototypes/<context-slug>/` in the working directory, `context-slug` = kebab-case title).
+From `$ARGUMENTS`: the context (a MODEL_CONTEXT name or a timeline name) and optionally `out=<dir>`.
 
-The unit is the **effective context**: a timeline assigned to or connected with a MODEL_CONTEXT belongs to that context, and a timeline with neither is its own context. Passing either name to `get_slice_data` returns the whole effective context — every timeline in it, each slice carrying its `chapter`.
+The unit is the **effective context**: a timeline assigned to or connected with a MODEL_CONTEXT belongs to that context; a timeline with neither is its own context. Either name returns the whole effective context — every timeline in it, each slice carrying its `chapter`.
 
-No context given, or a name that matches nothing: list the options once and ask —
+No context given, or a name that matches nothing: list the options once —
 
 ```
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "MODEL_CONTEXT", "projection": "line" }
 mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }
 ```
 
-In a chat turn ask with a `poll` snippet whose options are complete `/prototype <name>` messages; in a terminal ask in text. One context per run — a whole board is several prototypes.
+— and ask: in a chat turn with a `poll` snippet whose options are complete `/prototype <name>` messages, in a terminal in text. One context per run.
 
 ---
 
-## Step 2 — Read the context
+## Step 2 — What changed
 
-Two reads cover the model; run them in parallel:
-
-```
-mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "projection": "fields", "format": "json" }
-mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "projection": "specs",  "format": "json" }
+```bash
+EM_TOKEN="$TOKEN" node <skill-dir>/assets/prototype.mjs status \
+  --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --context "<CONTEXT>" --out <out>
 ```
 
-- `fields` → per slice: `sliceType`, `chapter`, `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), `actors[]`, each element with `fields[]` (type, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`) and `dependencies[]` (`INBOUND`/`OUTBOUND` with `elementType`/`title`) — the wiring: SCREEN → COMMAND → EVENT → READMODEL → SCREEN/AUTOMATION → COMMAND.
-- `specs` → per slice: `specifications[]` (GWT: `given`/`when`/`then` steps with field examples; a rejection is a `then` step of type `SPEC_ERROR` whose `description` is the rule's message; `expectEmptyList` on read-model steps) and `storylines[]`.
+(`TOKEN` from `connect` — when it is the `$EVENTMODELERS_TOKEN` reference, pass `EM_TOKEN="$EVENTMODELERS_TOKEN"`; never write the token on the command line itself.)
 
-**Copies.** An element with `elementCopy: true` is a linked copy: its `id` is the original's, `linkedId` its own node. Model each element **once**, by `id`; a copy only tells you where else it is used. An event whose original lives in another context is an external event (Step 3).
+Per slice, the hash covers its elements with their fields and dependencies, its scenarios and storylines, and the content of its screens (HTML pages and marks, or the sketch) — not its status, assignee, ticket or comments, so moving a slice to Done rebuilds nothing. The hashes are compared with those on the blocks of the prototype the platform stores for this context — the page itself is the memory, no other state is kept — so a run in another chat session, folder or machine still rebuilds only what changed. `status` downloads it itself; the page never passes through you. Only when the platform has none yet does it fall back to a local `<out>/index.html` (an earlier run whose upload failed); `baseline` in `status.json` says which it was (`platform` / `local` / `none`).
 
-**Order.** For each chapter in the response, `mcp__eventmodelers__get_board_outline { "boardId", "chapterId" }` gives the column order — the order screens appear in the navigation and the order the flow runs. The lane a screen sits in is its actor (`lane` on the element).
+`<out>/.work/status.json` carries the context's id (`contextId` — the MODEL_CONTEXT or timeline the name matched; the platform resolves a timeline to its effective context when storing) and lists every slice with `state` (`new` / `changed` / `unchanged`), its `hash`, `order` and `sliceType`, plus `removed` slices and the CSS framework the screens use. The blocks of unchanged slices are already copied to `<out>/.work/slices/<slice id>.html`.
 
-**Screens.** Collect every screen's node id — `linkedId` when set (a copy can carry its own marks), else `id` — and read the full records in one call:
+**Nothing new or changed and nothing removed** → the local page is up to date, but that says nothing about the platform's copy (an earlier run may have stopped before uploading). Skip writing blocks (Steps 3–5) but still run `assemble` and **Upload** in Step 6 — `assemble` takes the template and runtime fresh from the skill, so a kit fix to the harness reaches the page even when the board didn't change — then report.
 
-```
-mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "nodeIds": ["<screen ids>"] }
-```
-
-- `HTML_SCREEN` → `meta.pages` (one HTML fragment per page), `meta.marks`, `cssFrameworks` (`bulma` when empty), `meta.fields`.
-- `SCREEN` (sketch) → load its sketch: `mcp__eventmodelers__get_image_snapshot_description { "boardId", "nodeId" }` → `{ elements: [...] }` on the 50×40 grid (the vocabulary is in `storyboard-screen`). No description (an uploaded screenshot): use the node's image URL if the record carries one, plus a generated form/list from the screen's fields.
-
-Read nothing else. Element descriptions and comments are in the `fields` response already when present and are implementation hints (sort order, filtering, what a field means).
+A change in one slice can matter to another (a renamed event field that a read model in another slice reads): that slice's own JSON changes with it, so it is flagged too. Build only what is flagged.
 
 ---
 
-## Step 3 — Classify
+## Step 3 — Read the flagged slices
 
-Build these lists before writing code; they become the report's counts.
+For the new and changed slices only, run in parallel:
 
-| Kind | How to recognise it | In the prototype |
-|---|---|---|
-| **Command** | every COMMAND in the context | `Domain.commands[<Title>]`, issued by its screen's button or its automation |
-| **Read model** | every READMODEL | `Domain.readModels[<Title>]`, fed by its INBOUND events |
-| **Todo list** | a READMODEL with an OUTBOUND dependency to an AUTOMATION (or `todoList: true`) | a read model whose `query` returns the open items |
-| **Automation — internal** | AUTOMATION whose todo list and command are both in this context | `trigger: 'auto'`, runs as soon as its todo list has items |
-| **Automation — outside world** | the command calls something outside the system (send mail, charge card, call an API — title/description say so) | `trigger: 'auto'`, `process` returns an `effect` (shown in the outbox) and the command that records the outcome as if the call succeeded |
-| **Automation — scheduled** | description/scenarios tie it to time ("daily", "after 14 days", a deadline field) | `trigger: 'schedule'` — runs on *Run now* or when the clock is advanced; its todo list compares against `ctx.now` |
-| **External event** | an EVENT no COMMAND in this context produces (no INBOUND COMMAND dependency in scope), or whose original is in another context | `Domain.externalEvents[]` with its fields and examples — the *simulate* panel records it |
+```
+mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceId": "<id>", "projection": "fields", "format": "json" }
+mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceId": "<id>", "projection": "specs",  "format": "json" }
+```
 
-Translation automations (external event → todo list → internal command) are ordinary internal automations once the external event is simulated — that is how "running the automations as much as possible" covers the outside world.
+- `fields` → `sliceType`, `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
+- `specs` → `specifications[]` (`given` / `when` / `then` with example values; a rejection is a `then` step of type `SPEC_ERROR` whose `description` is the message; `expectEmptyList` on read-model steps) and `storylines[]`.
+
+**Screens.** For each of the slice's screens read its own node — `linkedId` when set (a copy can carry its own marks), else `id` — in one call: `mcp__eventmodelers__get_nodes { "boardId", "nodeIds": [...] }`. `HTML_SCREEN` → `meta.pages`, `meta.marks`, `meta.fields`. `SCREEN` → `mcp__eventmodelers__get_image_snapshot_description { "boardId", "nodeId" }` for its sketch `{ elements }` (grid vocabulary in `storyboard-screen`); none (an uploaded screenshot) → the screen's fields are all there is.
+
+**Copies.** An element with `elementCopy: true` is a linked copy (its `id` is the original's). It is defined by the slice that owns the original, never twice. An EVENT whose original lives in another context, or that no COMMAND in this context produces, is an **external event**.
 
 ---
 
-## Step 4 — Write `domain.js`
+## Step 4 — The logic, from the scenarios
 
-Follow `assets/domain.example.js` exactly — same wrapper, same keys. Names are the board's titles with spaces removed (`Register Customer` → `RegisterCustomer`); field names are the board's, verbatim.
+Write each flagged slice's logic before its UI. Names are the board's titles without spaces (`Register Customer` → `RegisterCustomer`); field names verbatim. Every element belongs to exactly one slice: a command to its state-change slice, a read model to its state-view slice, a todo list and its automation (and the automation's command, when it has no slice of its own) to the automation slice.
 
-**Commands** — `decide(history, cmd, ctx)` returns the events the board connects this command to (OUTBOUND EVENTs), or `reject('<message>')`.
-- Event data: each event field from the command field of the same name, or its `mapping`; a `generated` field is created here — ids with `ctx.uuid()`, timestamps with `ctx.now.toISOString()`; values the command doesn't carry but the history does (a customer's email looked up by `customerId`) come from the history.
-- **Every rule is a scenario.** For each `specifications[]` entry with a `SPEC_ERROR`, add the check that rejects exactly the `given` situation, with the scenario's `description` as the message. Scenarios producing different events from different histories are branches of `decide`. A command without rejection scenarios never rejects — not even for empty input.
-- `history` is the whole log. Filter it to what the rule is about (events with the same `idAttribute` value), as the scenario's `given` reads.
+**Analyse the scenarios first** — they are the logic. Line up all of the element's scenarios and read them together: what the `given` events have in common, what makes the `then` differ. Then implement what they show, as completely as they allow:
 
-**Read models** — `initial`, `evolve(state, event)` for each INBOUND event, optional `query(state, params)`.
-- Output fields are the read model's fields, verbatim. `cardinality: "List"` / `listElement` / a list-shaped scenario → an array of rows (`list: true`); otherwise one object, or `null` before its first event.
-- How an event changes the state comes from the read model's scenarios first, then field names and `description`. `params` scopes a query to what the screen selected (a `customerId` from the previous screen).
-- A todo list keeps the items still to be done: added by the triggering event, removed by the event its automation's command records.
+**Commands** — `decide(history, cmd, ctx)` returns the events or calls `EMRuntime.reject('<message>')`.
+- Each scenario with a `SPEC_ERROR` is a rule: reject exactly the `given` situation, with its `description` as the message. Scenarios producing different events from different histories are branches of `decide`. A command without rejection scenarios never rejects — not even empty input.
+- Event data: each event field from the command field of the same name or its `mapping`; `generated` values here — ids `ctx.uuid()`, timestamps `ctx.now.toISOString()`; values the command doesn't carry but the history does (the email of a `customerId`) from the history, filtered by the `idAttribute` the scenarios use.
 
-**Automations** — `readModel` (its todo list), `trigger`, `todo(result, ctx)` (the items to act on now — for scheduled ones, the items that are due at `ctx.now`), `process(item, ctx)` → `{ effect?, command: { type, data } }`.
+**Read models** — `initial`, `evolve(state, event)` per INBOUND event, optional `query(state, params)`.
+- The scenarios say which event adds, changes or removes what: compare their `given` sequences with the expected rows. Field names and the `description` fill in only what no scenario shows.
+- `cardinality: "List"` / list-shaped scenarios / `listElement` → an array of rows; otherwise one object, `null` before its first event. `params` scopes a query to what the screen selected.
 
-**External events** — `{ type, from, fields: [{ name, type, example }] }`; `from` is the original's context or the swimlane it comes from.
+**Todo lists and automations.** A todo list is the read model an automation works off. **How an item gets onto the list and off it comes from the todo list's scenarios** (given the triggering event → the item is listed; given the event the automation's command records as well → the list is empty) and, failing those, from the events the board connects: the INBOUND event that triggers the automation adds the item, the event its command records removes it.
+- Automation entry: `readModel`, `todo(result, ctx)` (the items to act on now — for a time-based one, those due at `ctx.now`), `process(item, ctx)` → `{ effect?, command: { type, data } }`, `trigger: 'auto'` or `'schedule'` (description or scenarios tie it to time), `external: true` when the command calls the outside world (send a mail, charge a card — the `effect` text appears in the outbox, the command records the outcome as if the call succeeded).
+- Automations run when someone presses **Run** in the Automations tab (or with *run automatically* switched on). They only appear there while their todo list has open items — so a todo list that never empties is a bug the prototype makes visible.
 
-**Specs — every scenario and every storyline**, one entry per scenario:
+**External events** — `externalEvents: [{ type, from, fields: [{ name, type, example }] }]` on the slice that consumes them; the simulate panel records them, which is how translation automations get triggered.
+
+**Specs — every scenario and every storyline of the slice**, one entry each:
 
 | Scenario | Spec entry |
 |---|---|
-| `when` is a COMMAND, `then` events | `kind: 'command'`, `given` = the given events' examples, `when` = command examples, `then` = expected events |
-| `then` is `SPEC_ERROR` | `kind: 'command'`, `error: '<description>'`, no `then` |
-| `then` is a READMODEL | `kind: 'readmodel'`, `readModel`, `given`, `expect` = the read model step's examples (`[]` when `expectEmptyList`) |
-| a todo list feeding an automation, with events given and the automation's command expected | `kind: 'automation'`, `automation`, `given`, `expectCommands` |
-| storyline | walk the beats in order, accumulating EVENT beats as `given`; each COMMAND beat followed by its events becomes a `command` spec, each READMODEL beat with examples a `readmodel` spec |
+| `when` COMMAND, `then` events | `kind: 'command'`, `given`, `when`, `then` |
+| `then` `SPEC_ERROR` | `kind: 'command'`, `error: '<description>'`, no `then` |
+| `then` READMODEL | `kind: 'readmodel'`, `readModel`, `given`, `expect` (`[]` when `expectEmptyList`) |
+| todo list with the automation's command expected | `kind: 'automation'`, `automation`, `given`, `expectCommands` |
+| storyline | walk the beats, accumulating EVENT beats as `given`; a COMMAND beat with its events → a `command` spec, a READMODEL beat with examples → a `readmodel` spec |
 
-Example values become typed data (`Int`/`Double` → numbers, `Boolean` → booleans, list fields → arrays of objects from `subfields`). Leave out of `then`/`expect` every value the domain generates (ids and timestamps not given by the scenario) — the runner only compares what an entry names.
-
-Run the specs now, before any UI:
-
-```bash
-cp <skill-dir>/assets/runtime.js <out>/runtime.js
-# Pins <out> to CommonJS: under a "type": "module" package.json further up, node would load
-# runtime.js as an ES module, run no specs and still exit 0.
-echo '{ "type": "commonjs" }' > <out>/package.json
-node <out>/runtime.js <out>/domain.js
-```
-
-The run must end with `N/N specs pass` — no such line means no spec ran, whatever the exit code. Every spec must pass. A failing spec means the domain is wrong — fix `domain.js`, never the spec. If two scenarios contradict each other so that no decider can satisfy both, keep the one that matches the rest of the model, drop the other from `specs`, and report the contradiction.
+Example values become typed data (`Int`/`Double` → numbers, `Boolean` → booleans, list fields → arrays of objects from `subfields`). Leave out of `then`/`expect` what the domain generates (ids, timestamps not named by the scenario) — only what an entry names is compared.
 
 ---
 
-## Step 5 — Rebuild the screens in `index.html`
+## Step 5 — The slice's part of the screen
 
-Copy `assets/index.template.html` to `<out>/index.html`, set `<title>` to the context name, replace the `@@CSS_FRAMEWORK@@` comment with the one stylesheet the screens use (if they mix frameworks, the most common one, and report it), and replace `const SCREENS = [];` in the `@@SCREENS@@` region with the screen components and the registry. Touch nothing else in the template — the chrome and the hooks are shared by every prototype.
+**Screens are tabs, one per screen name.** Slices whose screens share a name contribute to the same tab, in timeline order — so a screen shown in three slices with three different marks is one tab with three parts. A slice declares its part as `screens: { '<Screen Title>': { actor: '<lane>', part: Component } }`.
 
-**One component per distinct screen title.** A title is a page: several slices that show the same screen with different marks are one component, each marked part wired to its own slice. Registry entries `{ id, title, actor, slices, component }`, in timeline order; `actor` is the screen's lane.
+**Read the screen HTML for what belongs to this slice:**
+- **a read model is one component** — the region of the screen that shows its data (a table, a card, a summary). The mockup's example values are replaced by `useReadModel('<ReadModel>', params)`; repeated example rows become one row mapped over the result; an empty result shows an empty state, never the sample rows.
+- **a command is its inputs plus the button that fires it** — inputs bound to the command's fields (by the screen's `meta.fields`, else label ↔ field name; controlled state, examples as `placeholder`), the button named like the command (or the screen's only primary button) calling `useCommand('<Command>').run(form)`; on success `useNav().go('<next screen title>')` — the next screen of this actor in timeline order. Show `.error` next to the button.
+- **marks decide when the screen is shared**: the marked element is this slice's part. Unmarked and shared: this slice takes the elements bound to its own command or read model.
+- a button inside a list row navigates with the row's ids (`go('<title>', { orderId })`) or issues that row's command with them.
+- a button the model gives no meaning to: kept as designed, `onClick={() => notModeled('<label>')}` (`const notModeled = useNotModeled()`), and listed in the report.
 
-**HTML screens — 1:1.** Translate every page of `meta.pages` into JSX without redesigning it: `class` → `className`, `for` → `htmlFor`, `style` strings → objects, void elements closed, comments removed. Same headings, same labels, same buttons in the same places. A screen with several pages is a step-through: local `page` state, the buttons that advance (`Next`, `Continue`) move to the next page, the last page's button issues the command.
+**HTML screens — 1:1**: translate the slice's region of `meta.pages` into JSX without redesigning it (`class` → `className`, `for` → `htmlFor`, style strings → objects, void elements closed). Several pages → a step-through with local `page` state. **Sketch screens — redrawn**: a 1000×800 relative container, each element absolutely positioned at `gridX*20`/`gridY*20` (`gridWidth*20` × `gridHeight*20`) — `rectangle` → `div`, `headline`/`text` → text at its `fontSize`, `button` → `<button>`, `input` → `<input placeholder>`, `image` → a filled box, `line`/`circle` → inline SVG — then wired the same way.
 
-**Sketch screens — redrawn.** A sketch becomes a 1000×800 relative container scaled to fit, each element absolutely positioned at `gridX*20`/`gridY*20` (`gridWidth*20` × `gridHeight*20`): `rectangle` → `div` with fill/border, `headline`/`text` → text at its `fontSize`, `button` → a real `<button>`, `input` → a real `<input placeholder>`, `image` → a filled box, `line`/`circle` → an inline SVG overlay. Colors map to the sketch palette names as CSS colors. Then wire it like an HTML screen.
-
-**Wiring** — only through the template's hooks:
-
-| On the screen | Wired to |
-|---|---|
-| an input | the command field it captures — matched by the screen's `meta.fields` name, else by label ↔ field name; controlled `useState` initialised empty (the example values belong in `placeholder`) |
-| the button named like the command (or the only primary button on a screen with one OUTBOUND command) | `const register = useCommand('RegisterCustomer')`; `onClick` → `register.run(formData)`; on success navigate to the next screen in the flow (the next screen in timeline order for this actor); show `register.error` next to the button |
-| displayed data (a value, a table, a list) | `useReadModel('<ReadModel>', params)` — the read model whose title the field's `mapping` names, or the screen's INBOUND READMODEL. The mockup's example values are replaced by the read model's; repeated example rows become one row template mapped over the result; an empty result shows an empty state, never the mockup's sample rows |
-| a button inside a list row (Open, Edit, Confirm) | navigates with the row's id fields as `params` (`go('<screen id>', { orderId })`), or issues that row's command with them |
-| a button the model gives no meaning to | kept as designed; `onClick={() => notModeled('<label>')}` (`const notModeled = useNotModeled()`) — and listed in the report |
-
-Generated command fields (ids) are not inputs: the decider creates them. Values a screen got from the previous one come from `useNav().params`.
-
-**Syntax check** the screens before you hand it over — Babel only complains in the browser:
-
-```bash
-sed -n '/<script type="text\/babel"/,/<\/script>/p' <out>/index.html | sed '1d;$d' > <scratchpad>/app.jsx
-npx --yes esbuild@0.24.0 <scratchpad>/app.jsx --loader:.jsx=jsx --log-level=error > /dev/null
-```
-
-If a browser automation MCP (Playwright, Puppeteer, Chrome DevTools) is connected, also open `file://<out>/index.html`, click through the first screen's main command, and confirm the event appears in the log and the console has no errors.
+Automation slices usually have no screen part — the Automations tab shows them.
 
 ---
 
-## Step 6 — Report
+## Step 6 — Write the blocks, assemble, check
 
-Tell the person, in a few lines:
-- the path and how to run it — open `<out>/index.html` in a browser (it loads React and the CSS framework from a CDN, so it needs internet once); events persist in the browser per context, *Reset* in the event log clears them.
-- what is in it: screens (HTML / redrawn sketches), commands, read models, automations by kind (internal / outside world / scheduled), external events to simulate, and `N/N specs pass`.
-- the gaps found while building, each one line with the element: buttons not modeled, commands no screen or automation issues, read models nothing displays or that have no source events, screen fields with no read model, contradictory scenarios, a mixed CSS framework. These are findings about the model — offer `/wdyt` or the matching modeling skill to close them; don't fix the board from here.
+Write each new or changed slice to `<out>/.work/slices/<slice id>.html`, exactly in the shape of `assets/slices.example.html`:
 
-In a chat turn this report is the reply (`post_chat_message`, `replyTo` = this turn's `message_id`); the prototype itself stays on disk.
+- one `<script type="text/plain" data-em-slice="<slice id>" data-em-title="<slice title>" data-em-hash="<hash from status.json>">` element whose body ends with one `EMRuntime.defineSlice({ id, title, order, commands, readModels, automations, externalEvents, specs, screens })` call; `order` from `status.json`;
+- JSX and modern JavaScript; React hooks as `React.useState`; `useCommand`, `useReadModel`, `useNav`, `useNotModeled` are globals;
+- never the text of a closing script tag inside the block, not even in a string or comment.
 
-Re-running the skill on the same context regenerates `domain.js` and `index.html` from the board and recopies `runtime.js` — the board is the source, so never hand-edit a generated prototype and expect the change to survive.
+Then:
+
+```bash
+node <skill-dir>/assets/prototype.mjs assemble --out <out>
+```
+
+It refuses to write the page while a flagged slice has no block, a block's hash doesn't match, or a block contains a closing script tag. Removed slices simply drop out. The template and the runtime are always taken fresh from the skill, so kit fixes reach every prototype on its next run.
+
+**Upload — always, right after `assemble`** (the check below runs against the uploaded page):
+
+```bash
+EM_TOKEN="$TOKEN" node <skill-dir>/assets/prototype.mjs upload \
+  --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --out <out>
+```
+
+It prints where the platform stored the page and anything its sanitizer removed. If it fails, read the error and fix the cause (an expired token → run `connect` again; a 4xx naming the page → fix the block) and upload again. Only when it still fails, report the failure with the platform's error as the outcome of the run — not the local file as a substitute. A generated page loads scripts and stylesheets only from `/vendor/` and has no inline event handlers, so normally nothing is removed — if something is, a block broke the contract (a CDN link, an `onclick` attribute instead of a JSX `onClick`); fix that block, assemble and upload again.
+
+**Check in the browser.** Every check runs in the page: the scenarios on load (red banner listing each failing scenario with expected vs. actual), each slice block compiling on its own (a broken block shows a banner naming its slice; the rest keeps working), and each part rendering inside its own error boundary. If a browser automation MCP (Playwright, Puppeteer, Chrome DevTools) is connected, open the page where the platform serves it (or any server that provides `/vendor/…`), confirm there is no banner, and fire the first tab's main command. A failing scenario means the logic is wrong — fix the block, never the scenario. Two scenarios that contradict each other: keep the one that fits the rest of the model, drop the other from `specs` and report it. Without a browser you cannot see the banner — say in the report that the scenarios were not run.
+
+---
+
+## Step 7 — Report
+
+In a few lines:
+- that it is uploaded — where the platform stored it (`upload` prints the path) — and that it plays with the ▶ button on any of the context's timelines (the player sandboxes the page without storage, so the event log lives until the player closes — *Copy log* / *Paste log* keep or move a session, *Reset* clears it).
+- what this run did: `N` slices built (new / changed), `M` unchanged and kept, `K` removed — and the totals: tabs, commands, read models, automations by kind, external events to simulate, scenarios and whether they pass.
+- the gaps found, one line each with the element: buttons not modeled, commands nothing issues, read models nothing shows or nothing feeds, screen fields without a read model, todo lists whose scenarios never remove an item, contradictory scenarios, mixed CSS frameworks (`mixedFrameworks` in `status.json`). These are findings about the model — offer `/wdyt` or the matching modeling skill; don't fix the board from here.
+
+In a chat turn this report is the reply (`post_chat_message`, `replyTo` = this turn's `message_id`) **and always carries the prototype as a `prototype` snippet**, so the person can try it right there — with Restart, and Full screen for the board's player:
+
+```json
+{ "kind": "prototype", "timelineId": "<contextId from status.json>", "title": "Prototype · <CONTEXT>", "caption": "<N> tabs · <S> scenarios" }
+```
+
+Only after `upload` succeeded — without a stored page the snippet shows "No prototype has been built for this yet". Never send the page itself as `html`: an assembled prototype is far over the snippet's 60000 characters. In a terminal there is no snippet: name the ▶ button on the context's timelines instead.
+
+Never hand-edit a block in the assembled page and expect it to survive: the board is the source, and the next run regenerates any slice whose hash changed.

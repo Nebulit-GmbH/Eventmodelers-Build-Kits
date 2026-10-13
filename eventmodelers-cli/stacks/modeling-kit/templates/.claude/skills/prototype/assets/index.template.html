@@ -3,57 +3,71 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{TITLE}}</title>
-  <!-- @@CSS_FRAMEWORK@@ — exactly one, the one the context's screens use (see SKILL.md Step 5):
-       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
-       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
-       <script src="https://cdn.tailwindcss.com/3.4.16"></script> -->
-  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
-  <script src="runtime.js"></script>
-  <script src="domain.js"></script>
+  <title>{{CONTEXT}}</title>
+  <!-- Libraries come from the board app's public/vendor — the page loads nothing from a public CDN. -->
+  <!-- @@CSS_FRAMEWORK@@ — exactly one, the one the context's screens use (see SKILL.md Step 6):
+       <link rel="stylesheet" href="/vendor/bulma-0.9.4.css" />
+       <link rel="stylesheet" href="/vendor/bootstrap-5.3.3.css" />
+       <script src="/vendor/tailwind-play-3.4.16.js"></script> -->
+  <script src="/vendor/react-18.3.1.production.min.js"></script>
+  <script src="/vendor/react-dom-18.3.1.production.min.js"></script>
+  <script src="/vendor/babel-standalone-7.24.7.min.js"></script>
   <style>
     /* Prototype chrome only — screens keep their own framework styling. Prefixed so nothing leaks. */
     body { margin: 0; background: #f3f4f6; }
-    .em-shell { display: grid; grid-template-columns: 240px 1fr 380px; min-height: 100vh; font: 14px/1.4 system-ui, sans-serif; }
-    .em-nav, .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; }
-    .em-nav h1 { font-size: 15px; margin: 0 0 12px; color: #fff; }
-    .em-nav h2, .em-panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
-    .em-nav button.em-link { display: block; width: 100%; text-align: left; background: none; border: 0; color: #e5e7eb; padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
-    .em-nav button.em-link:hover { background: #1f2937; }
-    .em-nav button.em-link.em-active { background: #f97316; color: #111827; }
-    .em-stage { padding: 24px; min-width: 0; }
-    .em-screen-title { font: 600 12px system-ui; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .06em; }
-    .em-panel .em-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-    .em-panel .em-tabs button, .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
-    .em-panel .em-tabs button.em-active { background: #f97316; color: #111827; }
-    .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; }
+    .em-shell { display: grid; grid-template-columns: 1fr 380px; min-height: 100vh; font: 14px/1.4 system-ui, sans-serif; }
+    .em-main { min-width: 0; display: flex; flex-direction: column; }
+    .em-bar { background: #111827; color: #e5e7eb; padding: 10px 16px 0; position: sticky; top: 0; z-index: 10; }
+    .em-bar h1 { font-size: 15px; margin: 0 0 8px; color: #fff; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .em-bar select { background: #1f2937; color: #e5e7eb; border: 1px solid #374151; border-radius: 6px; padding: 2px 6px; font: 12px system-ui; }
+    .em-tabbar { display: flex; gap: 2px; overflow-x: auto; }
+    .em-tabbar button { background: #1f2937; color: #e5e7eb; border: 0; border-radius: 6px 6px 0 0; padding: 7px 12px; cursor: pointer; font: 13px system-ui; white-space: nowrap; }
+    .em-tabbar button.em-active { background: #f3f4f6; color: #111827; font-weight: 600; }
+    .em-tabbar .em-count { background: #f97316; color: #111827; border-radius: 9px; padding: 0 6px; margin-left: 6px; font-size: 11px; }
+    .em-stage { padding: 24px; }
+    .em-part { margin-bottom: 24px; }
+    .em-part-label { font: 600 11px system-ui; color: #6b7280; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
+    .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 14px/1.4 system-ui, sans-serif; }
+    .em-panel h2, .em-auto h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
+    .em-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+    .em-tabs button, .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
+    .em-tabs button.em-active, .em-btn.em-on { background: #f97316; color: #111827; }
+    .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: #e5e7eb; }
     .em-ev b { color: #fdba74; }
-    .em-ev pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; }
+    .em-ev pre { margin: 4px 0 0; padding: 0; background: transparent; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; } /* background set explicitly: a screen framework (Bulma) styles bare <pre> light, which left this text unreadable */
     .em-ev.em-cmd { border-left-color: #3b82f6; } .em-ev.em-cmd b { color: #93c5fd; }
     .em-ev.em-fail { border-left-color: #ef4444; } .em-ev.em-pass { border-left-color: #22c55e; }
     .em-ev.em-out { border-left-color: #14b8a6; }
-    .em-panel input { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 4px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #fff; }
+    .em-panel input, .em-panel textarea { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 4px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #fff; }
+    .em-auto { max-width: 760px; }
+    .em-auto .em-ev { font-size: 13px; }
+    .em-auto h2 { color: #6b7280; }
     .em-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 8px; font: 14px system-ui; z-index: 1000; }
     .em-toast.em-error { background: #b91c1c; }
-    @media (max-width: 1100px) { .em-shell { grid-template-columns: 1fr; } .em-nav, .em-panel { position: static; max-height: none; } }
+    .em-banner { padding: 10px 16px; font: 14px system-ui; color: #fff; background: #b91c1c; }
+    .em-banner pre { margin: 6px 0 0; white-space: pre-wrap; font-size: 12px; }
+    @media (max-width: 1100px) { .em-shell { grid-template-columns: 1fr; } .em-panel { position: static; max-height: none; } }
   </style>
 </head>
-<body>
+<body data-em-context="{{CONTEXT}}">
+<div id="em-banner"></div>
 <div id="root"></div>
-<script type="text/babel" data-presets="react">
-const { useState, useEffect, useMemo, useContext, createContext, useSyncExternalStore } = React;
 
-const rt = EMRuntime.createRuntime(Domain);
+<!-- @@RUNTIME@@ — runtime.js from the skill's assets, pasted verbatim. -->
+<script>
+/* @@RUNTIME@@ */
+</script>
+
+<!-- The prototype kit — hooks for the slice blocks and the chrome. Fixed, never generated. -->
+<script type="text/plain" id="em-kit">
+const { useState, useContext, createContext, useSyncExternalStore, Component } = React;
+const Domain = EMRuntime.domain;
+Domain.context = document.body.dataset.emContext;
+let rt = null; // created once every slice has registered
 const Proto = createContext(null);
 
-// ---------------------------------------------------------------------------------------------
-// Hooks the generated screens use — the only way a screen touches the model.
-
-// Bumped on every change (events, clock, automation runs) — registered before any component subscribes.
+// Bumped on every change (events, clock, automation runs, time travel).
 let version = 0;
-rt.subscribe(() => version++);
 
 /** Re-render on every change to the runtime. */
 function useLog() {
@@ -61,7 +75,7 @@ function useLog() {
   return rt.events;
 }
 
-/** The current result of a read model (folded from the in-browser event log). */
+/** The current result of a read model, folded from the in-browser event log. */
 function useReadModel(name, params) {
   useLog();
   return rt.query(name, params);
@@ -80,7 +94,7 @@ function useCommand(type) {
   return { run, error };
 }
 
-/** Navigation between screens; params carry selected ids from one screen into the next. */
+/** Navigation between tabs (screen titles); params carry selected ids from one screen into the next. */
 function useNav() {
   const { go, params } = useContext(Proto);
   return { go, params };
@@ -92,101 +106,184 @@ function useNotModeled() {
   return (label) => toast(`"${label}" is not modeled on the board`, true);
 }
 
-// ---------------------------------------------------------------------------------------------
-// @@SCREENS@@ — generated: one component per distinct screen title (SKILL.md Step 5), then
-// const SCREENS = [{ id, title, actor, slices: [...], component }] in timeline order.
-
-const SCREENS = [];
+// The slice blocks use these as globals.
+Object.assign(globalThis, { useReadModel, useCommand, useNav, useNotModeled });
 
 // ---------------------------------------------------------------------------------------------
-// Prototype chrome — fixed, not generated.
+// Chrome
 
-function Panel() {
-  const events = useLog();
-  const [tab, setTab] = useState('events');
-  const [specResults, setSpecResults] = useState(null);
-  const tabs = ['events', 'automations', 'simulate', 'specs', 'clock'];
+/** A slice part that throws while rendering shows its error instead of taking the tab down. */
+class PartBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (!this.state.error) return this.props.children;
+    return (
+      <div className="em-banner">
+        Slice "{this.props.slice}" failed to render
+        <pre>{String((this.state.error && this.state.error.stack) || this.state.error)}</pre>
+      </div>
+    );
+  }
+}
+
+/** Screen tabs: one per screen title, holding every slice's part for that screen in timeline order. */
+function screenTabs() {
+  const tabs = new Map();
+  for (const s of [...Domain.screens].sort((a, b) => a.order - b.order)) {
+    if (!tabs.has(s.title)) tabs.set(s.title, { title: s.title, actors: new Set(), parts: [] });
+    const tab = tabs.get(s.title);
+    if (s.actor) tab.actors.add(s.actor);
+    tab.parts.push(s);
+  }
+  return [...tabs.values()];
+}
+
+/** The automations tab: only automations whose todo list has open items show up. */
+function AutomationsTab() {
+  useLog();
+  const due = Object.keys(Domain.automations).map((name) => ({ name, a: Domain.automations[name], todos: rt.todosOf(name) }));
+  const open = due.filter((d) => d.todos.length);
   return (
-    <aside className="em-panel">
-      <div className="em-tabs">
-        {tabs.map((t) => (
-          <button key={t} className={tab === t ? 'em-active' : ''} onClick={() => setTab(t)}>{t}</button>
+    <div className="em-auto">
+      <label>
+        <input type="checkbox" checked={rt.autoRun} onChange={(e) => rt.setAutoRun(e.target.checked)} /> run automatically when items appear
+      </label>
+      {open.length === 0 && <p>Nothing to do — no automation has an open item on its todo list.</p>}
+      {open.map(({ name, a, todos }) => (
+        <div key={name} className="em-ev em-cmd">
+          <b>{name}</b> <span>· {todos.length} open on {a.readModel}{a.external ? ' · calls the outside world' : ''}{a.trigger === 'schedule' ? ' · scheduled' : ''}</span>{' '}
+          <button className="em-btn em-on" onClick={() => rt.runAutomations('manual', name)}>Run</button>
+          <pre>{JSON.stringify(todos, null, 1)}</pre>
+        </div>
+      ))}
+      {rt.outbox.length > 0 && <h2>Outbox — stubbed calls to the outside world</h2>}
+      {rt.outbox.map((o, i) => (
+        <div key={i} className="em-ev em-out"><b>{o.automation}</b><pre>{o.effect}</pre></div>
+      ))}
+      {rt.automationLog.length > 0 && <h2>Runs</h2>}
+      {rt.automationLog.map((r, i) => (
+        <div key={i} className={'em-ev ' + (r.ok ? 'em-pass' : 'em-fail')}>
+          <b>{r.automation}</b> → {r.command} {r.ok ? '✓' : '✗ ' + r.error}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** True when the event carries `value` anywhere in its data (e.g. every event of one order). */
+function carries(e, value) {
+  return Object.values(e.data || {}).some((v) =>
+    v != null && typeof v === 'object' ? JSON.stringify(v).includes(JSON.stringify(value)) : String(v) === String(value),
+  );
+}
+
+/**
+ * The log, browsable: filter by event type, search, follow one value (click it) through every event
+ * carrying it, open an event for its details, and view the screens as of any event.
+ */
+function EventBrowser({ events }) {
+  const [types, setTypes] = useState([]);
+  const [search, setSearch] = useState('');
+  const [follow, setFollow] = useState(null);
+  const [open, setOpen] = useState(null);
+  const counts = events.reduce((m, e) => ((m[e.type] = (m[e.type] || 0) + 1), m), {});
+  const toggle = (t) => setTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
+  const needle = search.trim().toLowerCase();
+  const shown = events.filter(
+    (e) =>
+      (!types.length || types.includes(e.type)) &&
+      (!follow || carries(e, follow.value)) &&
+      (!needle || (e.type + ' ' + JSON.stringify(e.data) + ' ' + JSON.stringify(e.metadata)).toLowerCase().includes(needle)),
+  );
+  const cursor = rt.cursor;
+
+  return (
+    <>
+      {cursor != null && (
+        <div className="em-ev em-cmd">
+          <b>Viewing as of event #{cursor}</b> — screens show the state then; nothing can be recorded.{' '}
+          <button className="em-btn" onClick={() => rt.viewAsOf(null)}>Back to now</button>
+        </div>
+      )}
+      <input placeholder="Search events, data, commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {Object.entries(counts).map(([t, n]) => (
+          <button key={t} className={'em-btn' + (types.includes(t) ? ' em-on' : '')} onClick={() => toggle(t)}>{t} · {n}</button>
         ))}
       </div>
-
-      {tab === 'events' && (
-        <>
-          <h2>Event log ({events.length})</h2>
-          <button className="em-btn" onClick={() => confirm('Delete every event?') && rt.reset()}>Reset</button>{' '}
-          <button className="em-btn" onClick={() => navigator.clipboard.writeText(JSON.stringify(rt.events, null, 2))}>Copy log</button>
-          {[...events].reverse().map((e) => (
-            <div key={e.id} className="em-ev">
+      {follow && (
+        <div className="em-ev em-out">
+          Following <b>{follow.field} = {String(follow.value)}</b>{' '}
+          <button className="em-btn" onClick={() => setFollow(null)}>×</button>
+        </div>
+      )}
+      <h2>{shown.length === events.length ? `${events.length} events` : `${shown.length} of ${events.length} events`}</h2>
+      {[...shown].reverse().map((e) => {
+        const isOpen = open === e.id;
+        const future = cursor != null && e.position > cursor;
+        return (
+          <div key={e.id} className="em-ev" style={future ? { opacity: 0.4 } : null}>
+            <div style={{ cursor: 'pointer' }} onClick={() => setOpen(isOpen ? null : e.id)}>
               <b>#{e.position} {e.type}</b>
               {e.metadata.command && <span> ← {e.metadata.command}</span>}
-              {e.metadata.automation && <span> (automation {e.metadata.automation})</span>}
+              {e.metadata.automation && <span> (automation)</span>}
               {e.metadata.simulated && <span> (simulated)</span>}
-              <pre>{JSON.stringify(e.data, null, 1)}</pre>
+              <span style={{ float: 'right', color: '#9ca3af' }}>{new Date(e.metadata.at).toLocaleTimeString()}</span>
             </div>
-          ))}
-        </>
-      )}
-
-      {tab === 'automations' && (
-        <>
-          <h2>Automations</h2>
-          <label><input type="checkbox" style={{ width: 'auto' }} checked={rt.autoRun} onChange={(e) => rt.setAutoRun(e.target.checked)} /> run automatically</label>{' '}
-          <button className="em-btn" onClick={() => rt.runAutomations('manual')}>Run now</button>
-          {Object.entries(Domain.automations || {}).map(([name, a]) => (
-            <div key={name} className="em-ev em-cmd">
-              <b>{name}</b> <span>({a.trigger}{a.external ? ', calls outside world' : ''})</span>
-              <pre>todo: {JSON.stringify(a.todo(rt.query(a.readModel), { now: rt.now(), uuid: rt.uuid }), null, 1)}</pre>
+            <div style={{ marginTop: 4 }}>
+              {Object.entries(e.data || {}).map(([k, v]) => (
+                <div key={k}>
+                  <span style={{ color: '#9ca3af' }}>{k}: </span>
+                  {v != null && typeof v === 'object' ? (
+                    <code>{JSON.stringify(v)}</code>
+                  ) : (
+                    <a href="#" title="Show every event carrying this value" style={{ color: '#e5e7eb' }}
+                       onClick={(ev) => { ev.preventDefault(); setFollow({ field: k, value: v }); }}>
+                      {String(v)}
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
-          <h2>Outbox (stubbed calls to the outside world)</h2>
-          {rt.outbox.map((o, i) => (
-            <div key={i} className="em-ev em-out"><b>{o.automation}</b><pre>{o.effect}</pre></div>
-          ))}
-          <h2>Runs</h2>
-          {rt.automationLog.map((r, i) => (
-            <div key={i} className={'em-ev ' + (r.ok ? 'em-pass' : 'em-fail')}>
-              <b>{r.automation}</b> → {r.command} {r.ok ? '✓' : '✗ ' + r.error}
-            </div>
-          ))}
-        </>
-      )}
+            {isOpen && (
+              <pre>{JSON.stringify(
+                Object.assign({ id: e.id, at: e.metadata.at }, e.metadata.command && { command: e.metadata.command },
+                  e.metadata.actor && { actor: e.metadata.actor }, e.metadata.automation && { automation: e.metadata.automation },
+                  e.metadata.simulated && { simulated: true }), null, 1)}</pre>
+            )}
+            <button className="em-btn" style={{ marginTop: 4 }} onClick={() => rt.viewAsOf(e.position)}>View as of here</button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
-      {tab === 'simulate' && (
-        <>
-          <h2>Events from outside this context</h2>
-          {(Domain.externalEvents || []).length === 0 && <p>None — everything this context reads, it records itself.</p>}
-          {(Domain.externalEvents || []).map((x) => <SimulateForm key={x.type} spec={x} />)}
-        </>
-      )}
-
-      {tab === 'specs' && (
-        <>
-          <h2>Scenarios from the board</h2>
-          <button className="em-btn" onClick={() => setSpecResults(EMRuntime.runSpecs(Domain))}>Run all</button>
-          {(specResults || []).map((r, i) => (
-            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')}>
-              <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
-              {!r.pass && <pre>{r.detail}</pre>}
-            </div>
-          ))}
-        </>
-      )}
-
-      {tab === 'clock' && (
-        <>
-          <h2>Clock</h2>
-          <p>{rt.now().toLocaleString()}</p>
-          {[['+1 hour', 3600e3], ['+1 day', 864e5], ['+7 days', 7 * 864e5], ['+30 days', 30 * 864e5]].map(([l, ms]) => (
-            <button key={l} className="em-btn" style={{ marginRight: 4 }} onClick={() => rt.advanceClock(ms)}>{l}</button>
-          ))}
-          <p style={{ color: '#9ca3af' }}>Advancing the clock runs scheduled automations.</p>
-        </>
-      )}
-    </aside>
+/** Replace the log with one copied earlier (from this prototype or another browser). */
+function PasteLog({ onDone }) {
+  const [text, setText] = useState('');
+  const [error, setError] = useState(null);
+  const apply = () => {
+    try {
+      rt.importLog(JSON.parse(text));
+      onDone();
+    } catch (err) {
+      setError('That is not an event log: ' + err.message);
+    }
+  };
+  return (
+    <div className="em-ev em-cmd">
+      <textarea rows={6} placeholder='Paste a log copied with "Copy log"' value={text} onChange={(e) => setText(e.target.value)} />
+      {error && <pre>{error}</pre>}
+      <button className="em-btn" onClick={apply}>Replace log</button>{' '}
+      <button className="em-btn" onClick={onDone}>Cancel</button>
+    </div>
   );
 }
 
@@ -205,50 +302,128 @@ function SimulateForm({ spec }) {
   );
 }
 
+function Panel() {
+  const events = useLog();
+  const [tab, setTab] = useState('events');
+  const [specResults, setSpecResults] = useState(() => EMRuntime.runSpecs(Domain));
+  const [pasting, setPasting] = useState(false);
+  return (
+    <aside className="em-panel">
+      <div className="em-tabs">
+        {['events', 'simulate', 'specs', 'clock'].map((t) => (
+          <button key={t} className={tab === t ? 'em-active' : ''} onClick={() => setTab(t)}>{t}</button>
+        ))}
+      </div>
+
+      {tab === 'events' && (
+        <>
+          <h2>Event log</h2>
+          <button className="em-btn" onClick={() => rt.reset()}>Reset</button>{' '}
+          <button className="em-btn" onClick={() => navigator.clipboard.writeText(JSON.stringify(rt.events, null, 2))}>Copy log</button>{' '}
+          <button className="em-btn" onClick={() => setPasting(true)}>Paste log</button>
+          {pasting && <PasteLog onDone={() => setPasting(false)} />}
+          {!rt.persistent && <p style={{ color: '#fbbf24' }}>This browser blocks storage here — the log lives until the page closes. Copy it to keep it.</p>}
+          <EventBrowser events={events} />
+        </>
+      )}
+
+      {tab === 'simulate' && (
+        <>
+          <h2>Events from outside this context</h2>
+          {Domain.externalEvents.length === 0 && <p>None — everything this context reads, it records itself.</p>}
+          {Domain.externalEvents.map((x) => <SimulateForm key={x.type} spec={x} />)}
+        </>
+      )}
+
+      {tab === 'specs' && (
+        <>
+          <h2>Scenarios from the board</h2>
+          <button className="em-btn" onClick={() => setSpecResults(EMRuntime.runSpecs(Domain))}>Run all</button>
+          {specResults.map((r, i) => (
+            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')}>
+              <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+              {!r.pass && <pre>{r.detail}</pre>}
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === 'clock' && (
+        <>
+          <h2>Clock</h2>
+          <p>{rt.now().toLocaleString()}</p>
+          {[['+1 hour', 3600e3], ['+1 day', 864e5], ['+7 days', 7 * 864e5], ['+30 days', 30 * 864e5]].map(([l, ms]) => (
+            <button key={l} className="em-btn" style={{ marginRight: 4 }} onClick={() => rt.advanceClock(ms)}>{l}</button>
+          ))}
+          <p style={{ color: '#9ca3af' }}>Items that fall due appear in the Automations tab.</p>
+        </>
+      )}
+    </aside>
+  );
+}
+
+const AUTOMATIONS = '__automations__';
+
 function App() {
-  const [current, setCurrent] = useState(() => ({ id: (SCREENS[0] || {}).id, params: {} }));
-  const [actor, setActor] = useState(null);
+  useLog();
+  const tabs = screenTabs();
+  const [current, setCurrent] = useState(() => ({ title: (tabs[0] || {}).title || AUTOMATIONS, params: {} }));
+  const [actor, setActor] = useState('');
   const [toastMsg, setToastMsg] = useState(null);
   const toast = (text, error) => {
     setToastMsg({ text, error });
     clearTimeout(toast.t);
     toast.t = setTimeout(() => setToastMsg(null), 2800);
   };
-  const go = (id, params) => setCurrent({ id, params: params || {} });
-  const actors = [...new Set(SCREENS.map((s) => s.actor).filter(Boolean))];
-  const visible = SCREENS.filter((s) => !actor || s.actor === actor);
-  const screen = SCREENS.find((s) => s.id === current.id);
-  const Screen = screen && screen.component;
+  const go = (title, params) => setCurrent({ title, params: params || {} });
+  const actors = [...new Set(tabs.flatMap((t) => [...t.actors]))];
+  const visible = tabs.filter((t) => !actor || t.actors.has(actor));
+  const tab = tabs.find((t) => t.title === current.title);
+  const openTodos = Object.keys(Domain.automations).reduce((n, name) => n + rt.todosOf(name).length, 0);
 
   return (
-    <Proto.Provider value={{ go, params: current.params, toast, actor }}>
+    <Proto.Provider value={{ go, params: current.params, toast, actor: actor || null }}>
       <div className="em-shell">
-        <nav className="em-nav">
-          <h1>{Domain.context}</h1>
-          {actors.length > 1 && (
-            <>
-              <h2>Acting as</h2>
-              <button className={'em-link' + (!actor ? ' em-active' : '')} onClick={() => setActor(null)}>everyone</button>
-              {actors.map((a) => (
-                <button key={a} className={'em-link' + (actor === a ? ' em-active' : '')} onClick={() => setActor(a)}>{a}</button>
+        <div className="em-main">
+          <header className="em-bar">
+            <h1>
+              {Domain.context}
+              {actors.length > 1 && (
+                <select value={actor} onChange={(e) => setActor(e.target.value)} title="Acting as">
+                  <option value="">every role</option>
+                  {actors.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              )}
+              {rt.cursor != null && <span style={{ color: '#93c5fd', fontSize: 12 }}>viewing as of event #{rt.cursor}</span>}
+            </h1>
+            <nav className="em-tabbar">
+              {visible.map((t) => (
+                <button key={t.title} className={t.title === current.title ? 'em-active' : ''} onClick={() => go(t.title)}>{t.title}</button>
               ))}
-            </>
-          )}
-          <h2>Screens</h2>
-          {visible.map((s) => (
-            <button key={s.id} className={'em-link' + (s.id === current.id ? ' em-active' : '')} onClick={() => go(s.id)}>{s.title}</button>
-          ))}
-        </nav>
-        <main className="em-stage">
-          {screen ? (
-            <>
-              <div className="em-screen-title">{screen.title}{screen.actor ? ` · ${screen.actor}` : ''}</div>
-              <Screen key={screen.id + JSON.stringify(current.params)} params={current.params} />
-            </>
-          ) : (
-            <p>This context has no screens — drive it from the simulate and automations panels.</p>
-          )}
-        </main>
+              {Object.keys(Domain.automations).length > 0 && (
+                <button className={current.title === AUTOMATIONS ? 'em-active' : ''} onClick={() => go(AUTOMATIONS)}>
+                  Automations{openTodos > 0 && <span className="em-count">{openTodos}</span>}
+                </button>
+              )}
+            </nav>
+          </header>
+          <main className="em-stage">
+            {current.title === AUTOMATIONS ? (
+              <AutomationsTab />
+            ) : tab ? (
+              tab.parts.map((p) => (
+                <div key={p.slice} className="em-part">
+                  {tab.parts.length > 1 && <div className="em-part-label">{p.slice}</div>}
+                  <PartBoundary key={JSON.stringify(current.params)} slice={p.slice}>
+                    <p.part params={current.params} />
+                  </PartBoundary>
+                </div>
+              ))
+            ) : (
+              <p>This context has no screens — drive it from the Automations tab and the simulate panel.</p>
+            )}
+          </main>
+        </div>
         <Panel />
       </div>
       {toastMsg && <div className={'em-toast' + (toastMsg.error ? ' em-error' : '')}>{toastMsg.text}</div>}
@@ -256,7 +431,60 @@ function App() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+globalThis.emMount = () => {
+  rt = EMRuntime.createRuntime(Domain);
+  rt.subscribe(() => version++);
+  ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+};
+</script>
+
+<!-- ============================================================================================
+     @@SLICES@@ — one block per slice, inserted by `prototype.mjs assemble`: a text/plain script
+     carrying the slice's id, title and hash as data attributes, whose body calls EMRuntime.defineSlice.
+     A block is regenerated only when its slice's hash changed — the hash on the block is how the next
+     run knows. Contract: assets/slices.example.html.
+     ============================================================================================ -->
+
+<!-- Load: compile the kit, then every slice block on its own, run the scenarios, mount. A failure shows
+     as a red banner naming the slice, never as a blank page. -->
+<script>
+(function () {
+  const banner = document.getElementById('em-banner');
+  const show = (title, detail) => {
+    const box = document.createElement('div');
+    box.className = 'em-banner';
+    box.textContent = title;
+    if (detail) {
+      const pre = document.createElement('pre');
+      pre.textContent = detail;
+      box.appendChild(pre);
+    }
+    banner.appendChild(box);
+  };
+  const run = (src) => new Function(Babel.transform(src, { presets: ['react'] }).code)();
+
+  if (!globalThis.EMRuntime) return show('The prototype did not load', 'The runtime block failed to run — see the browser console.');
+  try {
+    run(document.getElementById('em-kit').textContent);
+  } catch (err) {
+    return show('The prototype kit failed to start', err.message);
+  }
+  for (const block of document.querySelectorAll('script[data-em-slice]')) {
+    try {
+      run(block.textContent);
+    } catch (err) {
+      show(`Slice "${block.dataset.emTitle}" does not load — the rest of the prototype works without it`, err.message);
+    }
+  }
+  const failed = EMRuntime.runSpecs(EMRuntime.domain).filter((r) => !r.pass);
+  if (failed.length) {
+    show(
+      `${failed.length} scenario${failed.length === 1 ? '' : 's'} from the board fail`,
+      failed.map((r) => `✗ [${r.spec.slice || '-'}] ${r.spec.title}\n   ${r.detail}`).join('\n'),
+    );
+  }
+  emMount();
+})();
 </script>
 </body>
 </html>

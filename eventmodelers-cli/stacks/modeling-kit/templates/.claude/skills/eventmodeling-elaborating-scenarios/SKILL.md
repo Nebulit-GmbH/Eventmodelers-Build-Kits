@@ -15,6 +15,19 @@ This step applies the shared element rules in **`eventmodeling-core-rules`** —
 
 Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect` skill) — the curl blocks below are the fallback for sessions without MCP connected.
 
+## Examples Are the Scenario — Non-Negotiable
+
+**A scenario without concrete example values is not a scenario.** The element names in
+`given`/`when`/`then` only say *which* facts are involved; the example values say *what* happened
+and *why* the outcome follows — they are the actual specification, and the only thing a generated
+test can assert against. Every value **essential to the scenario** — the ones the rule decides on
+and the ones that tie the steps together — is filled in as `fields: [{name, example}]` on the
+step it belongs to (`given` events, the `when` command, `then` events, `context`/`then` read
+models, storyline beats), and list read models carry their expected rows in `examples` (or
+`expectEmptyList: true`). Never post a scenario, never report one done, and never mark this step
+complete while an essential value is missing. Details: "Fill the values essential to the scenario"
+below.
+
 ## GWT vs. Storyline — Decision Rule
 
 A GWT scenario asserts one isolated transition (one precondition → one action → one outcome). A
@@ -64,6 +77,37 @@ assumption or regulation behind the case, why the case matters, a time gap betwe
 ("14 days later"). Not legit: "the customer has already ordered twice" (→ `given` events), "the
 cart total is 120 €" (→ field examples), "an email is sent" (→ a `then` event), restating the
 title. Most scenarios need no note; keep any note to a few lines.
+
+### Fill the values essential to the scenario — mandatory
+
+The goal is not to fill every field, but every value **the scenario depends on**: change one of
+them and the outcome changes, or the steps no longer belong together. Essential are:
+
+- **the values the rule decides on** — the dates of an expiry rule, the wrong token, the outcome
+  `Unclear` that routes a check into review, the second registration's duplicate email;
+- **the ids linking the steps** — the same `customerId` in the given events, the command and the
+  outcome, so it is clear they are about the same thing;
+- **the asserted outcome** — the `then` event's or read model's values that the scenario expects
+  (the `status: Rejected` and its reason, the row that appears in the list).
+
+**Leave every other field empty — that is best practice, not laziness.** The empty fields are
+what make it clear which data is relevant: a reader sees at a glance that this case turns on the
+dates and the token, not on the name, address or phone number. Padding every step with every field
+buries the values that carry the rule. The test for the result: someone reading only the filled
+values can tell why the outcome follows. A
+scenario whose essential values are missing is incomplete, even when a note explains the
+situation: the fields are the specification, the note is not.
+
+The values are what make the rule visible and testable. For an expiry rule, the dates go into the
+fields — `CustomerRegistered.registeredAt: 2026-10-12`, `ConfirmEmail.confirmedAt: 2026-10-13` —
+not into a note saying "registered on 2026-10-12, confirms on 2026-10-13". Keep ids consistent
+across the steps of one scenario (the same `customerId` in every given event, the command and the
+outcome), and pick values that sit on the interesting side of the rule (one day past the limit, not
+a vague "long ago").
+
+Read the elements' field names once (`get_nodes` with `projection: "fields"`, scoped by
+`chapterId`) and pick the essential ones per scenario from that. If a value the rule depends on has no field on any element (e.g. the expiry rule needs a
+timestamp no event carries), add that field to the element — don't move the value into the note.
 
 ### Storyline data shape
 
@@ -466,7 +510,8 @@ Rejection scenario example:
   "expectError": true,
   "errorDescription": "reservation date is in the past",
   "given": [],
-  "when": [{"id": "<commandNodeId>", "title": "Reservation Command", "type": "COMMAND"}],
+  "when": [{"id": "<commandNodeId>", "title": "Reservation Command", "type": "COMMAND",
+            "fields": [{"name": "reservationId", "example": "r-123"}, {"name": "date", "example": "2026-10-12"}]}],
   "then": [],
   "examples": [],
   "expectEmptyList": false
@@ -480,8 +525,10 @@ State-violation rejection (given events establish the wrong state):
   "title": "Reject confirming an already-confirmed reservation",
   "expectError": true,
   "errorDescription": "reservation already confirmed",
-  "given": [{"id": "<eventNodeId>", "title": "ReservationConfirmed", "type": "EVENT"}],
-  "when": [{"id": "<commandNodeId>", "title": "Confirm Reservation", "type": "COMMAND"}],
+  "given": [{"id": "<eventNodeId>", "title": "ReservationConfirmed", "type": "EVENT",
+             "fields": [{"name": "reservationId", "example": "r-123"}, {"name": "confirmedAt", "example": "2026-10-12"}]}],
+  "when": [{"id": "<commandNodeId>", "title": "Confirm Reservation", "type": "COMMAND",
+            "fields": [{"name": "reservationId", "example": "r-123"}]}],
   "then": [],
   "examples": [],
   "expectEmptyList": false
@@ -511,6 +558,7 @@ After posting, tell the user:
 **No command has only 2 scenarios unless all other types were reviewed and found inapplicable.**
 
 **Per read model — this is a separate, equally mandatory pass, not an afterthought of the command pass above:**
+- [ ] **Essential example values filled (blocking — no exceptions)** — every value the rule decides on, the ids linking the steps and the asserted outcome carry a concrete `example` on their step; every other field left empty, so it is clear which data is relevant; a scenario whose values only appear in its note is not done
 - [ ] **Notes carry nothing an element could** — every `contextNote` and note beat holds only background no event, command field or read model can express; anything else is moved into `given`/`when`/`then`/`context` and the note removed
 - [ ] **Every READMODEL on the board has at least one view scenario** — GWT (`given`: source EVENTs, `when`: empty, `then`: the READMODEL) or a storyline. A model with dozens of command scenarios and 0 read-model scenarios is not a complete Step 7 — it's easy to walk away thinking coverage is thorough because the command side looks exhaustive, so check the read-model side explicitly before reporting this step done.
 - [ ] **Population scenario** — the view shows correct data after its source event(s)

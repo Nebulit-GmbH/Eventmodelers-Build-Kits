@@ -316,6 +316,7 @@ for it. Instead:
      `code` block with Mermaid/PlantUML/ASCII), **never** drawn on the board with stickies, arrows or `create_drawing`.
      Only an explicit request to put it on the board changes that, and then as an image (`/domain-story` § board), not rebuilt from shapes;
    - **rows and columns** — a comparison, a matrix, a short list with a few attributes per item → `table`.
+   - **a prototype you just built** (the `/prototype` skill) → `prototype`, the uploaded page running in the chat with a Full screen button;
    - anything the customer defined **their own snippet type** for → `custom` with its `ref`: `list_snippet_types`
      shows them with `instructions` on when to use each; prefer a fitting one over a built-in kind. A click on it arrives
      with the button's `then` — what the type's author meant the click to do, after the message as a fenced
@@ -422,7 +423,7 @@ nothing to sanitize either, since a board change is not user text.
 | Find what changed in the code since the last analysis (git history from the chapter note's baseline) that the model doesn't reflect, and propose fixes | `/detect-model-drift` |
 | Walk someone through a feature slice by slice, or through every slice a planned feature needs (existing, to adjust, new), as a player in the chat | `/walkthrough` |
 | Turn a document or image (e.g. a tender/RFP) into a chaptered event model with screens, scenarios and a written blueprint summary | `/summarize` |
-| Build a clickable prototype of one context that runs in the browser — screens rebuilt 1:1, in-browser event sourcing, the scenarios as business rules, automations running (read-only on the board) | `/prototype` |
+| Build or update a clickable prototype of one context — one page uploaded to the platform and played with the timeline ▶ button, built slice by slice (only changed slices are rebuilt), screens as tabs, in-browser event sourcing, logic from the scenarios, automations runnable (read-only on the board) | `/prototype` |
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |
