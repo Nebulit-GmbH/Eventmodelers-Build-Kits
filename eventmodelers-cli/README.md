@@ -119,6 +119,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/timeline` | Live event storming facilitator |
 | `/wdyt` | Business analyst review of your event model |
 | `/walkthrough` | Slice-by-slice player through a feature, or through every slice a planned feature needs (existing, to adjust, new) |
+| `/prototype` | Clickable prototype of one context, runnable straight from disk: React standalone, the board's screens rebuilt 1:1, in-browser event sourcing with the scenarios as business rules, automations running |
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
 | `/domain-story` | Retells chapters as Domain Storytelling — actors, work objects and numbered activities, drawn as a graph per chapter in the chat |
 | `/stressor-analysis` | Residuality-theory stress test of one chapter: wide stressors and their residues, a stressor × element matrix that exposes hidden coupling, redesigns proposed as new slices |

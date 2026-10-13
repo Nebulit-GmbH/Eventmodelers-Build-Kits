@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{TITLE}}</title>
+  <!-- @@CSS_FRAMEWORK@@ — exactly one, the one the context's screens use (see SKILL.md Step 5):
+       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css" />
+       <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+       <script src="https://cdn.tailwindcss.com/3.4.16"></script> -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  <script src="runtime.js"></script>
+  <script src="domain.js"></script>
+  <style>
+    /* Prototype chrome only — screens keep their own framework styling. Prefixed so nothing leaks. */
+    body { margin: 0; background: #f3f4f6; }
+    .em-shell { display: grid; grid-template-columns: 240px 1fr 380px; min-height: 100vh; font: 14px/1.4 system-ui, sans-serif; }
+    .em-nav, .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; }
+    .em-nav h1 { font-size: 15px; margin: 0 0 12px; color: #fff; }
+    .em-nav h2, .em-panel h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
+    .em-nav button.em-link { display: block; width: 100%; text-align: left; background: none; border: 0; color: #e5e7eb; padding: 6px 8px; border-radius: 6px; cursor: pointer; font: inherit; }
+    .em-nav button.em-link:hover { background: #1f2937; }
+    .em-nav button.em-link.em-active { background: #f97316; color: #111827; }
+    .em-stage { padding: 24px; min-width: 0; }
+    .em-screen-title { font: 600 12px system-ui; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .06em; }
+    .em-panel .em-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+    .em-panel .em-tabs button, .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
+    .em-panel .em-tabs button.em-active { background: #f97316; color: #111827; }
+    .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; }
+    .em-ev b { color: #fdba74; }
+    .em-ev pre { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; }
+    .em-ev.em-cmd { border-left-color: #3b82f6; } .em-ev.em-cmd b { color: #93c5fd; }
+    .em-ev.em-fail { border-left-color: #ef4444; } .em-ev.em-pass { border-left-color: #22c55e; }
+    .em-ev.em-out { border-left-color: #14b8a6; }
+    .em-panel input { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 4px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #fff; }
+    .em-toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 8px; font: 14px system-ui; z-index: 1000; }
+    .em-toast.em-error { background: #b91c1c; }
+    @media (max-width: 1100px) { .em-shell { grid-template-columns: 1fr; } .em-nav, .em-panel { position: static; max-height: none; } }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useMemo, useContext, createContext, useSyncExternalStore } = React;
+
+const rt = EMRuntime.createRuntime(Domain);
+const Proto = createContext(null);
+
+// ---------------------------------------------------------------------------------------------
+// Hooks the generated screens use — the only way a screen touches the model.
+
+// Bumped on every change (events, clock, automation runs) — registered before any component subscribes.
+let version = 0;
+rt.subscribe(() => version++);
+
+/** Re-render on every change to the runtime. */
+function useLog() {
+  useSyncExternalStore(rt.subscribe, () => version);
+  return rt.events;
+}
+
+/** The current result of a read model (folded from the in-browser event log). */
+function useReadModel(name, params) {
+  useLog();
+  return rt.query(name, params);
+}
+
+/** A command bound to a button: run(data) appends its events or shows the rule that rejected it. */
+function useCommand(type) {
+  const { toast, actor } = useContext(Proto);
+  const [error, setError] = useState(null);
+  const run = (data) => {
+    const result = rt.execute(type, data, { actor });
+    setError(result.ok ? null : result.error);
+    toast(result.ok ? `${type} → ${result.events.map((e) => e.type).join(', ')}` : result.error, !result.ok);
+    return result;
+  };
+  return { run, error };
+}
+
+/** Navigation between screens; params carry selected ids from one screen into the next. */
+function useNav() {
+  const { go, params } = useContext(Proto);
+  return { go, params };
+}
+
+/** For a button the model gives no meaning to — kept, so the screen looks as designed, and flagged. */
+function useNotModeled() {
+  const { toast } = useContext(Proto);
+  return (label) => toast(`"${label}" is not modeled on the board`, true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// @@SCREENS@@ — generated: one component per distinct screen title (SKILL.md Step 5), then
+// const SCREENS = [{ id, title, actor, slices: [...], component }] in timeline order.
+
+const SCREENS = [];
+
+// ---------------------------------------------------------------------------------------------
+// Prototype chrome — fixed, not generated.
+
+function Panel() {
+  const events = useLog();
+  const [tab, setTab] = useState('events');
+  const [specResults, setSpecResults] = useState(null);
+  const tabs = ['events', 'automations', 'simulate', 'specs', 'clock'];
+  return (
+    <aside className="em-panel">
+      <div className="em-tabs">
+        {tabs.map((t) => (
+          <button key={t} className={tab === t ? 'em-active' : ''} onClick={() => setTab(t)}>{t}</button>
+        ))}
+      </div>
+
+      {tab === 'events' && (
+        <>
+          <h2>Event log ({events.length})</h2>
+          <button className="em-btn" onClick={() => confirm('Delete every event?') && rt.reset()}>Reset</button>{' '}
+          <button className="em-btn" onClick={() => navigator.clipboard.writeText(JSON.stringify(rt.events, null, 2))}>Copy log</button>
+          {[...events].reverse().map((e) => (
+            <div key={e.id} className="em-ev">
+              <b>#{e.position} {e.type}</b>
+              {e.metadata.command && <span> ← {e.metadata.command}</span>}
+              {e.metadata.automation && <span> (automation {e.metadata.automation})</span>}
+              {e.metadata.simulated && <span> (simulated)</span>}
+              <pre>{JSON.stringify(e.data, null, 1)}</pre>
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === 'automations' && (
+        <>
+          <h2>Automations</h2>
+          <label><input type="checkbox" style={{ width: 'auto' }} checked={rt.autoRun} onChange={(e) => rt.setAutoRun(e.target.checked)} /> run automatically</label>{' '}
+          <button className="em-btn" onClick={() => rt.runAutomations('manual')}>Run now</button>
+          {Object.entries(Domain.automations || {}).map(([name, a]) => (
+            <div key={name} className="em-ev em-cmd">
+              <b>{name}</b> <span>({a.trigger}{a.external ? ', calls outside world' : ''})</span>
+              <pre>todo: {JSON.stringify(a.todo(rt.query(a.readModel), { now: rt.now(), uuid: rt.uuid }), null, 1)}</pre>
+            </div>
+          ))}
+          <h2>Outbox (stubbed calls to the outside world)</h2>
+          {rt.outbox.map((o, i) => (
+            <div key={i} className="em-ev em-out"><b>{o.automation}</b><pre>{o.effect}</pre></div>
+          ))}
+          <h2>Runs</h2>
+          {rt.automationLog.map((r, i) => (
+            <div key={i} className={'em-ev ' + (r.ok ? 'em-pass' : 'em-fail')}>
+              <b>{r.automation}</b> → {r.command} {r.ok ? '✓' : '✗ ' + r.error}
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === 'simulate' && (
+        <>
+          <h2>Events from outside this context</h2>
+          {(Domain.externalEvents || []).length === 0 && <p>None — everything this context reads, it records itself.</p>}
+          {(Domain.externalEvents || []).map((x) => <SimulateForm key={x.type} spec={x} />)}
+        </>
+      )}
+
+      {tab === 'specs' && (
+        <>
+          <h2>Scenarios from the board</h2>
+          <button className="em-btn" onClick={() => setSpecResults(EMRuntime.runSpecs(Domain))}>Run all</button>
+          {(specResults || []).map((r, i) => (
+            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')}>
+              <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+              {!r.pass && <pre>{r.detail}</pre>}
+            </div>
+          ))}
+        </>
+      )}
+
+      {tab === 'clock' && (
+        <>
+          <h2>Clock</h2>
+          <p>{rt.now().toLocaleString()}</p>
+          {[['+1 hour', 3600e3], ['+1 day', 864e5], ['+7 days', 7 * 864e5], ['+30 days', 30 * 864e5]].map(([l, ms]) => (
+            <button key={l} className="em-btn" style={{ marginRight: 4 }} onClick={() => rt.advanceClock(ms)}>{l}</button>
+          ))}
+          <p style={{ color: '#9ca3af' }}>Advancing the clock runs scheduled automations.</p>
+        </>
+      )}
+    </aside>
+  );
+}
+
+function SimulateForm({ spec }) {
+  const [data, setData] = useState(() => Object.fromEntries((spec.fields || []).map((f) => [f.name, f.example ?? ''])));
+  return (
+    <div className="em-ev em-out">
+      <b>{spec.type}</b> {spec.from && <span>from {spec.from}</span>}
+      {(spec.fields || []).map((f) => (
+        <label key={f.name} style={{ display: 'block' }}>{f.name}
+          <input value={data[f.name]} onChange={(e) => setData({ ...data, [f.name]: e.target.value })} />
+        </label>
+      ))}
+      <button className="em-btn" onClick={() => rt.simulate(spec.type, data)}>Simulate</button>
+    </div>
+  );
+}
+
+function App() {
+  const [current, setCurrent] = useState(() => ({ id: (SCREENS[0] || {}).id, params: {} }));
+  const [actor, setActor] = useState(null);
+  const [toastMsg, setToastMsg] = useState(null);
+  const toast = (text, error) => {
+    setToastMsg({ text, error });
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => setToastMsg(null), 2800);
+  };
+  const go = (id, params) => setCurrent({ id, params: params || {} });
+  const actors = [...new Set(SCREENS.map((s) => s.actor).filter(Boolean))];
+  const visible = SCREENS.filter((s) => !actor || s.actor === actor);
+  const screen = SCREENS.find((s) => s.id === current.id);
+  const Screen = screen && screen.component;
+
+  return (
+    <Proto.Provider value={{ go, params: current.params, toast, actor }}>
+      <div className="em-shell">
+        <nav className="em-nav">
+          <h1>{Domain.context}</h1>
+          {actors.length > 1 && (
+            <>
+              <h2>Acting as</h2>
+              <button className={'em-link' + (!actor ? ' em-active' : '')} onClick={() => setActor(null)}>everyone</button>
+              {actors.map((a) => (
+                <button key={a} className={'em-link' + (actor === a ? ' em-active' : '')} onClick={() => setActor(a)}>{a}</button>
+              ))}
+            </>
+          )}
+          <h2>Screens</h2>
+          {visible.map((s) => (
+            <button key={s.id} className={'em-link' + (s.id === current.id ? ' em-active' : '')} onClick={() => go(s.id)}>{s.title}</button>
+          ))}
+        </nav>
+        <main className="em-stage">
+          {screen ? (
+            <>
+              <div className="em-screen-title">{screen.title}{screen.actor ? ` · ${screen.actor}` : ''}</div>
+              <Screen key={screen.id + JSON.stringify(current.params)} params={current.params} />
+            </>
+          ) : (
+            <p>This context has no screens — drive it from the simulate and automations panels.</p>
+          )}
+        </main>
+        <Panel />
+      </div>
+      {toastMsg && <div className={'em-toast' + (toastMsg.error ? ' em-error' : '')}>{toastMsg.text}</div>}
+    </Proto.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

@@ -24,21 +24,25 @@ export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = 
   const pb = new PocketBase(cfg.pocketbaseUrl);
   pb.authStore.save(initialToken, null);
 
-  // subscribe() replaces the previous listener (see realtime-adapter.js).
-  let unsubscribe = null;
+  // One listener per topic; subscribe() replaces the topic's previous one (see realtime-adapter.js).
+  const listeners = new Map();
+  const remove = async (topic) => {
+    const unsubscribe = listeners.get(topic);
+    if (!unsubscribe) return;
+    listeners.delete(topic);
+    await unsubscribe().catch(() => {});
+  };
 
   return {
     async subscribe(topic, handlers, onStatus) {
-      if (unsubscribe) {
-        await unsubscribe().catch(() => {});
-        unsubscribe = null;
-      }
+      await remove(topic);
       for (let attempt = 0; ; attempt++) {
         try {
-          unsubscribe = await pb.collection(REALTIME_EVENTS_COLLECTION).subscribe('*', (e) => {
+          const unsubscribe = await pb.collection(REALTIME_EVENTS_COLLECTION).subscribe('*', (e) => {
             if (e.action !== 'create' || e.record.topic !== topic) return;
             handlers[e.record.event]?.(e.record.payload);
           });
+          listeners.set(topic, unsubscribe);
           onStatus?.('SUBSCRIBED');
           return;
         } catch (err) {
@@ -47,6 +51,9 @@ export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = 
           await new Promise((resolve) => setTimeout(resolve, RECONNECT_INTERVALS_MS[attempt]));
         }
       }
+    },
+    unsubscribe(topic) {
+      return remove(topic);
     },
     setAuth(token) {
       pb.authStore.save(token, null);

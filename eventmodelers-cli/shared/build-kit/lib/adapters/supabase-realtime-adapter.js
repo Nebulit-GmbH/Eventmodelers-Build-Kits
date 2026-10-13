@@ -10,23 +10,32 @@ export async function createSupabaseRealtimeAdapter(cfg, initialToken, deps = {}
   });
   await supabase.realtime.setAuth(initialToken);
 
-  // supabase.channel(topic) hands back the existing channel for a topic it already knows, so
-  // re-subscribing on it would stack another set of handlers — the old channel is removed first.
-  let current = null;
+  // One live channel per topic. supabase.channel(topic) hands back the existing channel for a
+  // topic it already knows, so re-subscribing on it would stack another set of handlers — the
+  // old channel is removed first.
+  const channels = new Map();
+  const remove = async (topic) => {
+    const channel = channels.get(topic);
+    if (!channel) return;
+    // Detach before removing: the removal itself makes the old channel report CLOSED, and a
+    // late status from a removed channel must not count as the topic's current subscription's.
+    channels.delete(topic);
+    await supabase.removeChannel(channel).catch(() => {});
+  };
 
   return {
     async subscribe(topic, handlers, onStatus) {
-      // Detach before removing: the removal itself makes the old channel report CLOSED, and a
-      // late status from a replaced channel must not count as this subscription's.
-      const previous = current;
-      current = null;
-      if (previous) await supabase.removeChannel(previous).catch(() => {});
+      await remove(topic);
       let channel = supabase.channel(topic, { config: { private: true } });
       for (const [event, handler] of Object.entries(handlers)) {
         channel = channel.on('broadcast', { event }, (msg) => handler(msg.payload));
       }
-      current = channel;
-      channel.subscribe((status) => { if (channel === current) onStatus?.(status); });
+      channels.set(topic, channel);
+      channel.subscribe((status) => { if (channels.get(topic) === channel) onStatus?.(status); });
+    },
+    // Also stops realtime-js's own rejoin loop for an errored channel.
+    unsubscribe(topic) {
+      return remove(topic);
     },
     setAuth(token) {
       return supabase.realtime.setAuth(token);

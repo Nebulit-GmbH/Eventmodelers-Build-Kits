@@ -422,6 +422,7 @@ nothing to sanitize either, since a board change is not user text.
 | Find what changed in the code since the last analysis (git history from the chapter note's baseline) that the model doesn't reflect, and propose fixes | `/detect-model-drift` |
 | Walk someone through a feature slice by slice, or through every slice a planned feature needs (existing, to adjust, new), as a player in the chat | `/walkthrough` |
 | Turn a document or image (e.g. a tender/RFP) into a chaptered event model with screens, scenarios and a written blueprint summary | `/summarize` |
+| Build a clickable prototype of one context that runs in the browser — screens rebuilt 1:1, in-browser event sourcing, the scenarios as business rules, automations running (read-only on the board) | `/prototype` |
 | Look up any API endpoint or element type not already covered by the skill you're executing | `/learn-eventmodelers-api` |
 | Add or rename an attribute across a chain of elements | `/attributes` |
 | Add or improve example data on element fields | `/examples` |

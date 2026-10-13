@@ -10,6 +10,7 @@ const flush = async () => { for (let i = 0; i < 5; i++) await new Promise((r) =>
 // A realtime transport whose every subscribe() ends the way `script` says, in order.
 function fakeAdapter(script) {
   const subscribes = [];
+  const unsubscribes = [];
   const create = async () => ({
     async subscribe(topic, handlers, onStatus) {
       const step = script.shift() ?? 'SUBSCRIBED';
@@ -18,9 +19,10 @@ function fakeAdapter(script) {
       if (step === 'DOUBLE_ERROR') { onStatus('CHANNEL_ERROR'); onStatus('CHANNEL_ERROR'); return; }
       onStatus(step);
     },
+    async unsubscribe(topic) { unsubscribes.push(topic); },
     setAuth() {},
   });
-  return { create, subscribes };
+  return { create, subscribes, unsubscribes };
 }
 
 function stubPlatform(t) {
@@ -43,7 +45,7 @@ async function start(t, script) {
   const cfg = { baseUrl: 'http://platform', organizationId: 'org', boardId: 'board', token: 'tok', agentId: 'agent' };
   await startRealtimeAgent(cfg, kitDir, { createAdapter: adapter.create });
   await flush();
-  return { platform, subscribes: adapter.subscribes };
+  return { platform, subscribes: adapter.subscribes, unsubscribes: adapter.unsubscribes };
 }
 
 async function tick(t, ms) {
@@ -89,4 +91,40 @@ test('re-fetches the slices once after recovering from a failure', async (t) => 
   assert.equal(platform.sliceFetches, 1);
   await tick(t, 1_000);
   assert.equal(platform.sliceFetches, 2);
+});
+
+test('a channel that flaps keeps backing off instead of retrying at the shortest delay', async (t) => {
+  // SUBSCRIBED alone doesn't forgive the earlier failures — each join here fails again right
+  // after, so the delays must keep doubling: 1s, 2s, 4s.
+  const script = ['CHANNEL_ERROR', 'FLAP', 'FLAP', 'SUBSCRIBED'];
+  quiet(t);
+  t.mock.method(Math, 'random', () => 0);
+  t.mock.timers.enable({ apis: ['setTimeout', 'setInterval'] });
+  stubPlatform(t);
+  const subscribes = [];
+  const create = async () => ({
+    async subscribe(topic, handlers, onStatus) {
+      const step = script.shift() ?? 'SUBSCRIBED';
+      subscribes.push(step);
+      if (step === 'FLAP') { onStatus('SUBSCRIBED'); onStatus('CHANNEL_ERROR'); return; }
+      onStatus(step);
+    },
+    async unsubscribe() {},
+    setAuth() {},
+  });
+  const cfg = { baseUrl: 'http://platform', organizationId: 'org', boardId: 'board', token: 'tok', agentId: 'agent' };
+  await startRealtimeAgent(cfg, tempKit(t), { createAdapter: create });
+  await flush();
+
+  for (const [delay, expected] of [[1_000, 2], [2_000, 3], [4_000, 4]]) {
+    await tick(t, delay - 1);
+    assert.equal(subscribes.length, expected - 1, `not yet resubscribed ${delay - 1}ms in`);
+    await tick(t, 1);
+    assert.equal(subscribes.length, expected, `resubscribed after ${delay}ms`);
+  }
+});
+
+test('a failed channel is removed right away, so realtime-js does not keep rejoining it', async (t) => {
+  const { unsubscribes } = await start(t, ['CHANNEL_ERROR', 'SUBSCRIBED']);
+  assert.deepEqual(unsubscribes, ['board:board-slicechanged']);
 });

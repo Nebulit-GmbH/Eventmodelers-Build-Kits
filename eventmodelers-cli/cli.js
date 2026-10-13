@@ -28,7 +28,7 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // copy that every useShared:true stack also gets copied into its installed kit (see
 // copyDirContents in installStack) for ralph.js to import standalone — see
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
-import { createRealtimeAdapter } from './shared/build-kit/lib/adapters/realtime-adapter.js';
+import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -3076,8 +3076,8 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   let lastTokenRefreshAt = 0;
   async function refreshRealtimeToken(reason) {
-    // Guard against hammering the token endpoint: a rejected channel retries every
-    // ~14s on its own, so without this a bad token would trigger a refresh call per retry.
+    // Guard against hammering the token endpoint: the three channels below usually fail
+    // together, and each asks for a refresh before rejoining.
     if (Date.now() - lastTokenRefreshAt < 5000) return;
     lastTokenRefreshAt = Date.now();
     try {
@@ -3100,18 +3100,20 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     process.exit(0);
   };
 
+  // Each channel is rejoined after a failure with exponential backoff and a fresh token
+  // (see keepSubscribed) — never left to realtime-js's own fixed-interval rejoin loop.
+  const keep = (topic, handlers, onSubscribed) => keepSubscribed(realtime, topic, handlers, {
+    log,
+    refreshToken: refreshRealtimeToken,
+    onSubscribed,
+  });
+
   // The kill signal is broadcast on the BOARD channel (see the platform's agent-kill /
   // backoffice/killagent slices), not on the org channel this agent uses for prompts — without
   // this second subscription a modeling agent can only be stopped with a kill(1).
-  realtime.subscribe(
-    `board:${cfg.boardId}-slicechanged`,
-    {message: exitIfAddressed},
-    (status) => log(`channel "board:${cfg.boardId}-slicechanged": ${status}`),
-  ).catch((err) => {
-    log(`board channel subscribe failed, remote kill won't reach this agent: ${err.message}`);
-  });
+  keep(`board:${cfg.boardId}-slicechanged`, {message: exitIfAddressed});
 
-  realtime.subscribe(
+  keep(
     channelName,
     {
       message: exitIfAddressed,
@@ -3125,33 +3127,15 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         drain().catch((err) => log(`drain error: ${err.message}`));
       },
     },
-    (status) => {
-      log(`channel "${channelName}": ${status}`);
-      if (status === 'SUBSCRIBED') drain().catch((err) => log(`initial drain error: ${err.message}`));
-      // A bad/stale token otherwise sits in realtime-js's own rejoin-retry loop until the
-      // next scheduled refresh below — up to 10 minutes of failed joins. Refresh immediately
-      // instead of waiting on the clock.
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        refreshRealtimeToken(status).catch(() => {});
-      }
-    },
-  ).catch((err) => {
-    log(`realtime subscribe failed, prompts won't be pushed live: ${err.message}`);
-  });
+    // Also after a reconnect: prompts created while the channel was down were never pushed.
+    () => drain().catch((err) => log(`initial drain error: ${err.message}`)),
+  );
 
-  const boardChannelName = `board:${cfg.boardId}`;
-  realtime.subscribe(
-    boardChannelName,
+  if (!boardLane) log(`channel "board:${cfg.boardId}": events dropped — --worker`);
+  keep(
+    `board:${cfg.boardId}`,
     Object.fromEntries(BOARD_CHANGE_EVENTS.map((event) => [event, (payload) => onBoardEvent(event, payload)])),
-    (status) => {
-      log(`channel "${boardChannelName}": ${status}${boardLane ? '' : ' (events dropped — --worker)'}`);
-      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        refreshRealtimeToken(status).catch(() => {});
-      }
-    },
-  ).catch((err) => {
-    log(`board subscribe failed, board changes won't be seen live: ${err.message}`);
-  });
+  );
 
   setInterval(() => {
     refreshRealtimeToken('scheduled').catch(() => {});

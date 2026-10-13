@@ -38,6 +38,17 @@ test('supabase: status from a replaced channel is not reported', async (t) => {
   assert.ok(!first.includes('CLOSED'), `first subscription still reported: ${first.join(', ')}`);
 });
 
+test('supabase: different topics are kept side by side', async (t) => {
+  const { adapter, client } = await supabaseAdapter(t);
+
+  await adapter.subscribe('board:b-slicechanged', handlers, () => {});
+  await adapter.subscribe('org:o', handlers, () => {});
+  assert.equal(client.getChannels().length, 2);
+
+  await adapter.unsubscribe('org:o');
+  assert.deepEqual(client.getChannels().map((c) => c.subTopic), ['board:b-slicechanged']);
+});
+
 test('pocketbase: resubscribing unsubscribes the previous listener first', async () => {
   const listeners = new Set();
   class FakePocketBase {

@@ -11,11 +11,11 @@ import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, rename
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
-import { createRealtimeAdapter } from './adapters/realtime-adapter.js';
+import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
 import { redactConsole } from './redact.js';
 
-// Backoff for calls to the platform that failed for a reason on its side (startup, the channel).
+// Backoff for calls to the platform that failed for a reason on its side (startup).
 const PLATFORM_BACKOFF = { baseMs: 2_000, capMs: 5 * 60_000 };
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
@@ -446,66 +446,34 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
     return refreshing;
   };
 
-  // A subscribe that errors on a stale token needs a fresh token AND a new join
-  // attempt — setAuth alone doesn't re-join a channel that already errored out, and nothing
-  // else ever re-joins it, so this retries for as long as it takes, with backoff so a
-  // lasting failure doesn't hammer the platform. (A revoked token ends the process anyway:
-  // refreshToken's fetch gets the 401.)
-  let channelErrorStreak = 0;
-  let resubscribePending = false;
-  const onChannelFailure = (reason) => {
-    // One failure can be reported more than once (a channel erroring while its retry is
-    // already scheduled); a second resubscribe on top would join the channel twice.
-    if (resubscribePending) return;
-    resubscribePending = true;
-    channelErrorStreak += 1;
-    const delay = backoffMs(channelErrorStreak, PLATFORM_BACKOFF);
-    console.warn(`[agent] ${ts()} Channel "${channelName}": ${reason} (attempt ${channelErrorStreak}) — resubscribing in ${Math.round(delay / 1000)}s`);
-    setTimeout(async () => {
-      try {
-        await refreshToken(`channel ${reason}`);
-      } catch {
-        // Logged by refreshToken. Rejoining on the old token is still worth a try —
-        // if it fails too, that's just the next failure, with a longer delay.
-      }
-      resubscribePending = false;
-      subscribeChannel();
-    }, delay);
-  };
-  const subscribeChannel = () => {
-    realtime.subscribe(
-      channelName,
-      {
-        // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}.
-        // Anything that doesn't name this agent is ignored — a broadcast reaches every agent on
-        // the board, and the older signal (the bare string "Exit") took all of them down at once.
-        // That string form is gone for good, not just unhandled: Supabase's broadcast API rejects
-        // a non-object payload with 422, so it never actually arrived here.
-        message: (payload) => {
-          if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
-          console.log(`[agent] ${ts()} Received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
-          process.exit(0);
-        },
-        'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
-      },
-      (status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') return onChannelFailure(status);
-        if (status !== 'SUBSCRIBED' || channelErrorStreak === 0) {
-          console.log(`[agent] ${ts()} Channel "${channelName}": ${status}`);
-          return;
-        }
-        console.log(`[agent] ${ts()} Channel "${channelName}": ${status} — recovered after ${channelErrorStreak} failed attempt(s)`);
-        channelErrorStreak = 0;
-        // Broadcasts sent while the channel was down are gone. Re-read the slices once so a
-        // slice set to Planned during the gap still gets built — .slices/ is what ralphLoop
-        // picks Planned work from.
-        fetchAndPersistSlices(cfg, kitDir).catch((err) =>
-          console.error(`[agent] ${ts()} Slice re-fetch after reconnect failed:`, err),
-        );
-      },
-    ).catch((err) => onChannelFailure(`subscribe failed: ${err.message}`));
-  };
-  subscribeChannel();
+  // A channel that errors (often a stale token) needs a fresh token AND a new join —
+  // keepSubscribed does both, with backoff, for as long as it takes. (A revoked token ends
+  // the process anyway: refreshToken's fetch gets the 401.)
+  keepSubscribed(realtime, channelName, {
+    // A kill names exactly one agent: {type: 'kill', id: '<agentId>', instruction: 'exit'}.
+    // Anything that doesn't name this agent is ignored — a broadcast reaches every agent on
+    // the board, and the older signal (the bare string "Exit") took all of them down at once.
+    // That string form is gone for good, not just unhandled: Supabase's broadcast API rejects
+    // a non-object payload with 422, so it never actually arrived here.
+    message: (payload) => {
+      if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
+      console.log(`[agent] ${ts()} Received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
+      process.exit(0);
+    },
+    'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
+  }, {
+    log: (msg) => console.log(`[agent] ${ts()} ${msg}`),
+    refreshToken,
+    onSubscribed: ({ recovered }) => {
+      if (!recovered) return;
+      // Broadcasts sent while the channel was down are gone. Re-read the slices once so a
+      // slice set to Planned during the gap still gets built — .slices/ is what ralphLoop
+      // picks Planned work from.
+      fetchAndPersistSlices(cfg, kitDir).catch((err) =>
+        console.error(`[agent] ${ts()} Slice re-fetch after reconnect failed:`, err),
+      );
+    },
+  });
 
   setInterval(() => {
     refreshToken('scheduled 10min refresh').catch((err) => console.error(`[agent] ${ts()} Scheduled token refresh failed:`, err));
