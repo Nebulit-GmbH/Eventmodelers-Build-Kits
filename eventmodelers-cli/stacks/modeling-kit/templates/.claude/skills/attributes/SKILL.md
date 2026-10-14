@@ -122,7 +122,7 @@ report `sliceStatus`. Read it now, once: `mcp__eventmodelers__get_board_outline 
 gives every column a `sliceStatus` when a slice spans it. Look up each chain node's column.
 
 - **Every node writable** (`Created`, or no `sliceStatus`) → continue with Step 4.
-- **Any node in a column with another status** (`Done`, `Review`, `InProgress`, `Blocked`, `Planned`, `Assigned`,
+- **Any node in a column with another status** (`Done`, `Review`, `Handover`, `InProgress`, `Blocked`, `Ready`, `Planned`, `Assigned`,
   `Informational`) → **do not write that node.** If the task text says the person already confirmed changing
   that locked slice (*"The person confirmed changing the locked slice '…'"*, with an `origin_message_id`), you may
   change those elements and only those. Otherwise write **nothing** — not even the nodes that are writable, the

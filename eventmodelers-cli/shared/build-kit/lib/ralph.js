@@ -242,7 +242,8 @@ async function fetchAndPersistSlices(cfg, kitDir) {
   if (!activeCtx || !contexts[activeCtx]) {
     // First run (or the current context disappeared): seed with a context that
     // has planned work, else the first one. This is the ONLY place we choose it.
-    const plannedCtx = Object.keys(contexts).find(c => contexts[c].slices.some(s => (s.status || '').toLowerCase() === 'planned'));
+    const pickup = readPickupStatus(kitDir).toLowerCase();
+    const plannedCtx = Object.keys(contexts).find(c => contexts[c].slices.some(s => (s.status || '').toLowerCase() === pickup));
     activeCtx = plannedCtx || Object.keys(contexts)[0] || 'default';
     writeFileSync(ctxPath, JSON.stringify({ name: activeCtx }, null, 2), 'utf-8');
   }
@@ -400,11 +401,12 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
     console.error('[agent] Slice persist error:', err),
   );
-  // Planned slices are handled by onPlannedSlice directly — no task needed.
+  // Slices in the kit's pickup status (Planned, or Handover for UI kits) are handled by
+  // onPlannedSlice directly — no task needed.
   // queueAllStatuses opts out of that split entirely (e.g. bridge has no
   // onPlannedSlice consumer, so a lingering Planned slice would otherwise
   // never naturally clear its own trigger — see lib/ralph.js callers).
-  if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== 'planned') {
+  if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== readPickupStatus(kitDir).toLowerCase()) {
     await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
   }
 }
@@ -513,6 +515,17 @@ function hasPendingTasks(kitDir) {
   return readTasks(join(kitDir, 'tasks.json')).length > 0;
 }
 
+// The slice status this kit claims work from. A stack declares it in `lib/kit.json`
+// ({ "pickupStatus": "Handover" } for the UI kits, which build what a backend kit handed over);
+// absent means "Planned", the backend default.
+export function readPickupStatus(kitDir) {
+  try {
+    const s = JSON.parse(readFileSync(join(kitDir, 'lib', 'kit.json'), 'utf-8')).pickupStatus;
+    if (typeof s === 'string' && s.trim()) return s.trim();
+  } catch {}
+  return 'Planned';
+}
+
 function readCurrentContext(kitDir) {
   const ctxPath = join(kitDir, '.slices', 'current_context.json');
   if (!existsSync(ctxPath)) return null;
@@ -541,13 +554,14 @@ function getFirstPlannedSlice(kitDir) {
   try {
     others = readdirSync(slicesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   } catch {}
+  const pickup = readPickupStatus(kitDir).toLowerCase();
   const candidates = [...(currentCtx ? [currentCtx] : []), ...others.filter((c) => c !== currentCtx)];
   for (const ctx of candidates) {
     const indexPath = join(slicesDir, ctx, 'index.json');
     if (!existsSync(indexPath)) continue;
     try {
       const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === 'planned');
+      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === pickup);
       if (!planned) continue;
       if (ctx !== currentCtx) {
         writeFileSync(join(slicesDir, 'current_context.json'), JSON.stringify({ name: ctx }, null, 2), 'utf-8');
@@ -673,11 +687,20 @@ async function runWithRetry(label, fn) {
 // alone, the agent read it as background, answered "what would you like me to help with?" with
 // no tool calls, and a Planned slice stayed Planned until the stuck-slice guard blocked it. So
 // every turn ends with the concrete request — here, once, for every runner.
-function taskRequest(planned = null) {
+// Whether a backend kit finishes UI-bearing slices at `Handover` instead of `Done`: this run's
+// `run --handover` (RALPH_HANDOVER) over the project's `handover` setting in config.json.
+export function resolveHandover(cfg) {
+  return process.env.RALPH_HANDOVER === '1' || cfg?.handover === true;
+}
+
+function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
   const task = planned
-    ? `build the Planned slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
+    ? `build the ${pickupStatus} slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
     : 'process the pending tasks in tasks.json';
-  return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n`;
+  // Stated explicitly so the agent never has to work it out from config.json: this run's effective
+  // value, which is what the `ui-contract` skill (Step 4) follows. UI kits (pickup Handover) ignore it.
+  const handover = planned && pickupStatus === 'Planned' ? `\nHandover: ${resolveHandover(cfg) ? 'on' : 'off'}\n` : '';
+  return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}`;
 }
 
 async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
@@ -718,7 +741,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         continue;
       }
 
-      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned);
+      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       lastReply = null;
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {

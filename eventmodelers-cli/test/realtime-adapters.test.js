@@ -68,3 +68,24 @@ test('pocketbase: resubscribing unsubscribes the previous listener first', async
 
   assert.equal(listeners.size, 1);
 });
+
+test('pocketbase: concurrent subscribes to different topics share one SDK listener', async () => {
+  const listeners = new Set();
+  class FakePocketBase {
+    authStore = { save() {} };
+    collection() {
+      return {
+        async subscribe(_topic, cb) {
+          await new Promise((r) => setTimeout(r, 10)); // the handshake is in flight while the others subscribe
+          listeners.add(cb);
+          return async () => { listeners.delete(cb); };
+        },
+      };
+    }
+  }
+  const adapter = await createPocketBaseRealtimeAdapter({ pocketbaseUrl: 'http://pb' }, 'token', { PocketBase: FakePocketBase });
+
+  await Promise.all(['board:a-slicechanged', 'board:b-slicechanged', 'org:o'].map((t) => adapter.subscribe(t, handlers, () => {})));
+
+  assert.equal(listeners.size, 1);
+});

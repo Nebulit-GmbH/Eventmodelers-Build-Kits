@@ -30,10 +30,10 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 9. Analyze and Implement that single slice, making use of the skills in the skills directory plus your previously collected knowledge. Make a TODO list for what needs to be done, and adjust the implementation according to the JSON definition. Carefully inspect events, fields and compare against the implemented slice. JSON is the desired state. ATTENTION: a "planned" task can also be just added specifications. So always look at the slice itself, but also the specifications. If specifications were added in json which are not on code, you need to add them in code.
 10. The slice in the json is always true, the code follows what is defined in the json
 11. Slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in JSON are implemented in code and it fulfills the slice.json. There must be no specification in json that has no equivalent in code.
-12. Make sure to write the ui-prompt.md as defined if defined in the skill
+12. Invoke the `ui-contract` skill for STATE_VIEW / STATE_CHANGE slices (publishes the UI Contract section to the slice's feedback-lane markdown node)
 13. Run quality checks — TODO: your stack's build command, TODO: your stack's test command (slice-scoped only; do not run all tests).
 14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
-15. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
+15. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available). For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to set is `Handover`, not `Done` — see the `ui-contract` skill, Step 4.
 16. Append your progress to `progress.txt` after each step in the iteration.
 17. Append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 18. Finish the iteration.

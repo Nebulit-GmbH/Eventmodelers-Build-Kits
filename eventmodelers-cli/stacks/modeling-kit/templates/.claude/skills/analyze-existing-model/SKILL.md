@@ -39,7 +39,7 @@ Save the full slice list. Count total slices and group by status:
 
 | Status values |
 |---------------|
-| `Created`, `Planned`, `InProgress`, `Review`, `Done`, `Blocked`, `Assigned`, `Informational` |
+| `Created`, `Ready`, `Planned`, `InProgress`, `Handover`, `Review`, `Done`, `Blocked`, `Assigned`, `Informational` |
 
 ---
 

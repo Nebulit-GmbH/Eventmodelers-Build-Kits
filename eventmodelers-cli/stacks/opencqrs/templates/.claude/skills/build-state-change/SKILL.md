@@ -399,6 +399,12 @@ EVENT→READMODEL beats) belongs to `build-state-view`'s own storyline step, sin
 touches a projector. If the beat immediately after the command isn't an EVENT, don't force a test —
 leave it undocumented rather than fabricating an assertion.
 
+## UI Contract
+
+Once the command endpoint is built, invoke the `ui-contract` skill (write contract, `POST`): it publishes
+the endpoint's contract as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it
+(a build kit may override it).
+
 ## Final Verification
 
 Before considering the slice done:

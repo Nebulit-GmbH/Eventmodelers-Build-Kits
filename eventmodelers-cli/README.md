@@ -155,6 +155,8 @@ npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude 
 npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
 npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
 npx @eventmodelers/cli run --id <id> --name <label>  # override this run's agent identity (id + display name); `init --name` persists a name instead
+npx @eventmodelers/cli run --handover               # backend kit, this run only: finish slices that have a UI at `Handover` instead of `Done` (see Backend → UI handover)
+npx @eventmodelers/cli config --handover on|off      # persist that choice for the project (`handover` in .eventmodelers/config.json)
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
@@ -197,6 +199,10 @@ npx @eventmodelers/cli run --local
 ```
 
 and the agent starts building — `--local` skips platform config and credential lookup entirely, so it works straight out of `init` with nothing connected. Every TODO you fill in gets exercised on the next iteration against real slice data covering all four slice types (state change, state view, automation, translation), which is exactly the coverage a new stack's `build-*` skills need before it's worth promoting.
+
+**Backend → UI handover.** Besides the usual statuses a slice can be `Ready` (modeling done, waiting to be planned) and `Handover` (backend built, UI contract published, waiting for the UI kit). The flow is `Ready → Planned → InProgress → Handover → InProgress → Done`. Install with `init --handover` (or `re-init --handover`; switch later with `eventmodelers config --handover on|off`; for a single run `run --handover` overrides the setting without saving anything), which saves `"handover": true` in `.eventmodelers/config.json` — then a backend kit ends STATE_VIEW / STATE_CHANGE slices at `Handover` instead of `Done` (the `ui-contract` skill, Step 4, owns that rule); without the flag nothing changes: slices end at `Done`, exactly as before. A kit claims work from the status named in its `lib/kit.json` — `{ "pickupStatus": "Handover" }` for the `react` / `supabase-react` UI kits, absent (= `Planned`) for backend kits. A new UI kit ships that file and sets `Done` when its half is built; a new backend kit just invokes `ui-contract`. Needs a platform with the `Ready` / `Handover` statuses.
+
+**UI contract.** The scaffolded `build-state-view` / `build-state-change` skills already end by invoking the shared `ui-contract` skill, which publishes each slice's read (`GET`) or write (`POST`) contract as a `## UI Contract` section in the slice's feedback-lane markdown node (exported in `slice.json` `notes[]`, so a UI build kit can look it up directly). Two things are yours to decide: *where the contract is derived from* (point the `UI Contract` section of those skills at your stack's machine-readable API description, if it has one — the `node`/`supabase` stacks use their `@openapi` blocks via a `ui-contract-from-openapi.md` reference — otherwise the skill reads the route code), and, if you need a different shape or location, a whole-skill override: ship `.claude/skills/ui-contract/SKILL.md` in the stack's templates and it replaces the shared one (stack templates are applied after `shared/skills/`).
 
 Installing both a build stack and `init-modeling` into the same project reuses this one `.eventmodelers/config.json` — run whichever `init` command second and it finds the existing config already satisfies the required fields and skips straight past the credential prompt.
 
@@ -649,6 +655,34 @@ Only prompts carrying this agent's id are worked. Anything untargeted is handed 
 
 Pair it with `--id`: a `--standalone`/`--global` run mints a fresh id per run, so prompts addressed to the previous run's id are never claimed. `--exclusive` applies to the prompt queue only — a `--standalone` agent's self-directed turns are nobody's prompt, and it keeps taking them.
 
+### Backend → UI handover (`--handover`)
+
+A slice with a UI is only finished once two kits have each built their half: the backend kit builds the endpoint and publishes its contract, the UI kit builds the frontend against it. `--handover` makes the first kit stop at `Handover` instead of `Done`, so the second one can claim the slice.
+
+```bash
+npx @eventmodelers/cli init --stack node --handover   # persisted: "handover": true in .eventmodelers/config.json (also re-init)
+npx @eventmodelers/cli config --handover on           # switch it on later…
+npx @eventmodelers/cli config --handover off          # …or back off
+npx @eventmodelers/cli run --handover                 # this run only — writes nothing
+```
+
+| | Handover off (default) | Handover on |
+|---|---|---|
+| Backend kit, STATE_VIEW / STATE_CHANGE slice | ends at `Done` | publishes the UI contract, ends at `Handover` |
+| Backend kit, automation / translation | `Done` | `Done` — no UI counterpart |
+| UI kit (`react`, `supabase-react`) | claims `Handover` only | claims `Handover` only, sets `Done` when its UI is built |
+
+Flow: `Ready → Planned → InProgress → Handover → InProgress → Done`. Precedence for a run is `run --handover` over the project's `handover` setting; the runner states the effective value to the agent as a `Handover: on|off` line in its task, so the agent never has to work it out from `config.json`. `config --handover` writes to the project's config (the installed kit's project, else the nearest `.eventmodelers/config.json` up the tree — never the account-wide one in `~/`).
+
+**What to know before relying on it**
+
+- **UI kits only ever claim `Handover`.** Against a board whose backend finished slices at `Done`, a `react` / `supabase-react` kit has nothing to do and replies `NO_TASKS` — the backend side must run with handover on.
+- **Both sides need the new kit.** An already-installed backend kit keeps its old `ralph.js` and prompts and silently ignores `--handover` (slices still end at `Done`); `re-init` it to pick the feature up.
+- **The platform must know the `Ready` / `Handover` statuses.**
+- A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Handover" }`; absent means `Planned`.
+
+The contract itself is the shared `ui-contract` skill's job (see above); it also owns the rule for which status a slice ends at.
+
 ### Env vars and `--config` (scripted/CI installs)
 
 Every config field can be set via an `EVENTMODELERS_*` env var instead of the interactive prompts — these always win over whatever's in `config.json`, so a fully env-driven install never prompts for credentials or Claude execution settings:
@@ -759,7 +793,7 @@ npx @eventmodelers/cli uninstall --modeling-kit      # remove .agent-modeling-ki
 
 ### Adding a stack
 
-Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`, `request-feedback`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork.
+Each stack lives under `stacks/<name>/templates/` with `.claude/` (skills), `root/` (spread into the project root), and either `build-kit/` (backend stacks) or `kit/` (modeling-only) for the agent runner. Files identical across all backend stacks live once in `shared/build-kit/` and get layered in automatically — only put stack-specific overrides under `stacks/<name>/templates/build-kit/`. Skills with no stack-specific content (`connect`, `learn-eventmodelers-api`, `update-slice-status`, `request-feedback`, `ui-contract`) work the same way via `shared/skills/` — a new stack gets them for free without copying anything; add a skill there only once it needs a stack-specific fork. A stack overrides a shared skill by shipping one of the same name under its own `.claude/skills/` (e.g. a custom `ui-contract`).
 
 The demo model `init --demo` installs is shared the same way, in `shared/demo-slices/` — a verbatim `fetch --format json` tree (`current_context.json` plus `<context>/{context,index,config}.json` and `<slice>/slice.json`), copied as-is into the kit's `.slices/`. It's stack-agnostic board data, so a new stack gets `--demo` for free. To replace or extend it, `fetch` a context into an empty directory and copy the result in, then update `DEMO_CONTEXT_NAME`/`DEMO_SLICE_COUNT` in `cli.js` (used only for the line `init` prints).
 

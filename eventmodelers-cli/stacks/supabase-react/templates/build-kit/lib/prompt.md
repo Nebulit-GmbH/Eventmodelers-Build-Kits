@@ -44,13 +44,13 @@ Run `/load-slice sliceId=<payload.sliceId>` to fetch full slice details (title, 
 
 Inspect the `sliceStatus` in the payload:
 
-#### `Planned` — build the slice
+#### `Handover` — build the slice
 
 This is the build trigger. Setting `InProgress` and building are one atomic step:
 
 1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
 
-   **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
+   **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Handover`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
 
 2. Run `/load-slice sliceId=<payload.sliceId>` to fetch the full slice, then read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`. The runner keeps a `slice.json` fresh from a summary endpoint, so a file holding only `id`, `title`, `status` and `sliceType` is that stub, not an empty slice — never conclude a slice has no elements from it. Only if the full fetch itself returns no commands/events/read models/fields is the slice actually empty.
 

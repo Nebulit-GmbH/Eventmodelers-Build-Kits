@@ -101,6 +101,12 @@ After the commit, invoke `/record-evidence`: it writes this slice's element → 
 
 ---
 
+## UI Contract
+
+Once the command endpoint is built, invoke the `ui-contract` skill (write contract, `POST`): it publishes
+the endpoint's contract as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it
+(a build kit may override it).
+
 ## Final Verification: Does the Implementation Match slice.json?
 
 - [ ] Every command field is received and used (validated, persisted or passed on)

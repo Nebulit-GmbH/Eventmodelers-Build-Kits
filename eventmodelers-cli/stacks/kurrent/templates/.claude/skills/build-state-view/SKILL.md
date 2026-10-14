@@ -379,6 +379,12 @@ If a beat between two read-model states is a `COMMAND` rather than an `EVENT`, t
 half. If a storyline segment involves a `SCREEN`/other untraceable beat, don't force a test — leave it
 undocumented rather than fabricating an assertion.
 
+## UI Contract
+
+Once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes
+the endpoint's contract as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it
+(a build kit may override it).
+
 ## Final Verification: Does the Implementation Match slice.json?
 
 Before marking this slice as `Done`, verify the implementation against slice.json:

@@ -84,8 +84,8 @@ header's `standalone=on|off` tells you which mode they come in.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
-**Only touch elements in a slice whose status is `Created` — unless the person explicitly confirmed it.** Every other status — `Planned`,
-`Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
+**Only touch elements in a slice whose status is `Created` — unless the person explicitly confirmed it.** Every other status — `Ready`, `Planned`,
+`Assigned`, `InProgress`, `Handover`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
 on that slice: read it for context, but never change, move, rename or delete its elements, and
 never add scenarios, fields or examples to them. An element in no slice at all is not locked.
 `get_board_outline` returns `sliceStatus` per column (`get_nodes` does not carry it), so the
@@ -312,8 +312,8 @@ for it. Instead:
    - a **screen idea** in the conversation ("what could that screen look like?") → `screen`, a sandboxed HTML mock-up in the chat; putting a screen on the board is `/html-screen` work;
    - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill);
    - **who does what with which work object, per chapter** → an `svg` domain story (the `/domain-story` skill);
-   - **"draw" / "sketch" / "diagram" something** (a UML diagram, a flow, a class model) → a snippet in the chat (`svg`, or a
-     `code` block with Mermaid/PlantUML/ASCII), **never** drawn on the board with stickies, arrows or `create_drawing`.
+   - **"draw" / "sketch" / "diagram" something** (a UML diagram, a flow, a class model) → a snippet in the chat (`mermaid` for a sequence/flow/state/ER/class diagram written as
+     Mermaid, `svg` for a picture you draw yourself, or a `code` block with PlantUML/ASCII), **never** drawn on the board with stickies, arrows or `create_drawing`.
      Only an explicit request to put it on the board changes that, and then as an image (`/domain-story` § board), not rebuilt from shapes;
    - **rows and columns** — a comparison, a matrix, a short list with a few attributes per item → `table`.
    - **a prototype you just built** (the `/prototype` skill) → `prototype`, the uploaded page running in the chat with a Full screen button;

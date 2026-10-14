@@ -644,7 +644,7 @@ Create a complete slice (1 column + its nodes automatically placed).
     interaction?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
     swimlane?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
   }
-  status?: 'Created' | 'Planned' | 'InProgress' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
+  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Handover' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
 }
 ```
 
@@ -671,7 +671,7 @@ Create a standalone SLICE_BORDER node spanning an **existing** column. Unlike th
 {
   columnId: string   // id of an existing column on this timeline
   title: string      // slice title — always taken from this field, never derived
-  status?: 'Created' | 'Planned' | 'InProgress' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
+  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Handover' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
   data?: Record<string, unknown>   // optional node.data payload
   meta?: Record<string, unknown>   // optional extra meta fields (type, colId, title are always set explicitly and cannot be overridden here)
 }
@@ -845,7 +845,8 @@ How much each slice of one context has been reworked — read-only, derived from
 for it.
 
 A slice's rework is read from its own SLICE_BORDER history. Going backwards means a step down the progress order
-(Created → Planned → Assigned → InProgress → Review → Done), or reaching `Blocked` from `Review`/`Done`;
+(Created → Ready → Planned → Assigned → InProgress → Handover → Review → Done), or reaching `Blocked` from
+`Handover`/`Review`/`Done`;
 `Informational` is never scored. `reopens` counts transitions leading away from `Done`, `changes` counts writes to the
 slice itself. This says nothing about edits to the elements inside a slice.
 
@@ -854,6 +855,7 @@ context (the same rule `slicedata` uses), so one that inherits a context is repo
 none is its own. Any other node type is rejected. Always scoped to one context; there is no board-wide form.
 
 **Response**: `200` — `{ contextId, contextName, metrics, slices[] }`, slices most reworked first.
+`metrics.progress` is where the slices stand now: `done`, `inProgress` (Assigned/InProgress/Review), `handover`, `ready`, `blocked`, `planned` (Planned/Created) as counts plus a `…Rate` share each, over the non-Informational slices, summing to 1.
 `slices[]` = `{ sliceId, title, status, changes, reopens, regressions, everReachedDone }`.
 `metrics` = `{ slices, everReachedDone, reopenedAfterDone, firstTimeRightRate, currentlyReopened, avgReopensPerSlice,
 avgChangesPerSlice }` — `firstTimeRightRate` is the share of the slices that reached Done and never came back, or
@@ -1172,11 +1174,12 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to show several screens at once — a list, a gallery, a storyboard ("show me all screens of X") | `walkthrough`, one step per screen | nothing — selecting a step pans the canvas |
 | to answer where one piece of information comes from and where it ends up ("where is the customer email used?") | `dataJourney` | nothing — element names pan the canvas |
 | to show a diagram you drew yourself — a context map, a domain story, a sketch, any picture that isn't a chart | `svg` | nothing |
+| to show a UML or flow diagram you write as Mermaid — a sequence, flowchart, state, ER or class diagram | `mermaid` | nothing |
 | to lay out rows and columns — a comparison, a matrix (stressors × elements), a short list with a few attributes | `table` | nothing — linked cells pan the canvas |
 | to show a prototype you just built and uploaded (the `prototype` skill), running in the chat | `prototype` | nothing — **Full screen** opens the board's prototype player |
 | something the customer defined their own snippet type for (a risk card, a sign-off — see `list_snippet_types`) | `custom` | the clicked action's `answer`; `context.snippetReply.then` says what to do |
 
-`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen`, `dataJourney`, `svg`, `table` and `prototype` are display only and never wait for anything.
+`confirm`, `poll`, `tasks` and `changes` are questions: a person answers once, then they show as answered. `link`, `image`, `code`, `report`, `walkthrough`, `screen`, `dataJourney`, `svg`, `mermaid`, `table` and `prototype` are display only and never wait for anything.
 
 ### Shapes
 ```typescript
@@ -1225,6 +1228,8 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
   title?: string, caption?: string,
   links?: Array<{ nodeId: string, x: number, y: number,                           // ≤ 200 clickable areas over the picture, in the svg's viewBox coordinates;
                   width: number, height: number, title?: string }> }             // a click zooms the canvas to nodeId; title = tooltip (else the element's title)
+{ kind: 'mermaid', source: string,                                               // Mermaid source, no ``` fence (≤ 60000 chars); the app draws it
+  title?: string, caption?: string }
 { kind: 'table', title?: string, caption?: string,
   columns: Array<string | { label: string, nodeId?: string,                      // 1–12; nodeId makes the header a link (a matrix with one column per element)
                             align?: 'left' | 'center' | 'right' }>,
@@ -1247,6 +1252,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **`dataJourney`** answers "where does X come from / where is X used?" for **one piece of information**, as a table: one stop per element it passes through, in flow order, each with its `role`, the field name there and the slice. A headline counts the roles ("Originates in 1 place, stored in 2 elements and used in 3 places"). Build it from the board — the `data-journey` skill (modeling kit) has the procedure; every `nodeId` must be a real id from this board, and a field the board doesn't carry is not a stop. Keep `text` to one line naming the data and where it originates.
 - **`svg`** is for a picture you draw yourself: give the root a `viewBox` (and `width`/`height` for its natural size), inline colours and fonts — it is shown as an image, so scripts, `<a>` links and external resources do nothing. To make parts of it clickable, list them in `links`: a rectangle in the viewBox coordinates you drew in plus the element it stands for (only real ids from this board); the app lays a clickable area over each that zooms the canvas there. Prefer `report` for numbers. A domain story (who does what with which work object) is an `svg` you draw — the `domain-story` skill (modeling kit) has the procedure and the drawing style. Every SVG snippet has a download-as-PNG button.
   - **"Place it on the board" after you drew an SVG always means: put that picture on the board as an image** — never rebuild it from elements (stickies, lanes, a timeline), never a SCREEN, never a new snippet. `place_image` with `imageBase64` = the SVG document itself, base64-encoded, `mimeType: "image/svg+xml"`, `title` = the snippet's title: it becomes an OUTLINE (the drawing tools' image element), free-floating at `x`/`y`, in no chapter and connected to nothing. Place it where the person says, else in free space next to the chapter it is about (`get_chapter_bounds`: right of or below it). Add a white background `<rect>` first if the SVG has none, or it is unreadable on a dark board. One SVG = one image. The image on the board has no clickable areas — `links` stay in the chat.
+- **`mermaid`** is for a diagram you can write as text: a sequence diagram (`sequenceDiagram`), a flow (`flowchart LR`), states (`stateDiagram-v2`), an ER or class diagram. Send just the source; the app draws it, with a *Show source* toggle and a copy button, and shows the source when it has a syntax error — so keep the syntax plain (quote labels with special characters). Prefer it over a `code` block for any diagram: a `code` block with `language: "mermaid"` is drawn too, but `mermaid` says what you mean. It has no element links; for clickable parts draw an `svg`.
 - **`table`** is for anything that is rows and columns and not a chart: a comparison of options, an incidence matrix (rows = stressors, columns = elements, `true` where it hits), a short list with a few attributes per item. It computes nothing — totals are a row you add. Put element ids in `nodeId` (header or cell) so names are links; a row longer than the columns is cut, a shorter one padded, an empty one dropped. Prefer `report` for numbers you want *seen* as a trend or share, `dataJourney` for one piece of data's path.
 - **`prototype`** runs a prototype in the chat: the page the platform stored for `timelineId` (the `contextId` the `prototype` skill uploaded under — any timeline of that context works too), in a sandboxed iframe with **Restart** (empty event log) and **Full screen** (the same player as the timeline's ▶). Send it only after `upload` succeeded — before that it shows "No prototype has been built for this yet". The `text` is the short report of what was built; the prototype itself is the snippet.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.

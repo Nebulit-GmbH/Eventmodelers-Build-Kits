@@ -54,6 +54,15 @@ Extract:
        a Slice" step 6) — the built, mocked component still needs a real endpoint before it's done,
        so don't flip it to `Done`.
   - `description` — implementation hints (validation rules, business constraints).
+- **UI contract (write)** — the backend slice's published `POST` contract: look it up as described in
+  the `ui-contract` skill ("How the UI build kit looks the contract up" — the `## UI Contract` entry in
+  `slice.json` `notes[]`; parse only its `ui-contract` block). When present it **overrides
+  `apiEndpoint`** and fixes everything the component must honour: `path` (+ `pathParams`), the exact
+  `body` fields, the success `response`, and `errors[]` (status + code) — surface each error code as a
+  distinct user-facing state through `onError`, not one generic failure. When absent, the backend slice
+  isn't built or re-fetched yet: fall back to `apiEndpoint` / `fields[]` as above and note the assumption
+  in `progress.txt`. If contract and `command.fields[]` disagree, the contract wins for the request and
+  you record the mismatch in `progress.txt`.
 - **events[]** — informational only (what the backend is expected to emit); this stack does not
   act on them directly.
 - **screens[]** — the actor `SCREEN` element(s) that trigger this command, if any. Empty when the
@@ -286,7 +295,7 @@ how many pages this app needs — not one page per slice.
 After writing the hook/component (and context/page, if any), confirm:
 - Every prop matches a `command.fields[]` entry exactly (name + type) — no invented or missing
   fields.
-- The `postCommand` call uses `command.apiEndpoint` verbatim — or, when it was missing at build
+- The `postCommand` call uses the UI contract's `path` and `body` when one was found, else `command.apiEndpoint` verbatim — or, when it was missing at build
   time, the provisional `/api/mock/...` path noted in a comment (Step 1).
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   this component's props.

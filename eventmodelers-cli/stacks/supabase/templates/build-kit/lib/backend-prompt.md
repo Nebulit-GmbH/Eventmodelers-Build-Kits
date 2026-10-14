@@ -32,12 +32,12 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 10. The slice in the json is always true, the code follows what is defined in the json
 11. slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in  JSON are implemented in code and it
     fulfills the slice.json. There must be no specification in json, that has no equivalent in code.
-12. make sure to write the ui-prompt.md as defined if defined in the skill
+12. Invoke the `ui-contract` skill for STATE_VIEW / STATE_CHANGE slices (publishes the UI Contract section to the slice's feedback-lane markdown node)
 13. Run quality checks ( npm run build, npm run test ) - Attention - it´s enough to run the tests for the slice. Do not run all tests.
 14. even if the slice is fully implemented, run your test-analyzer skill and provide the code-slice.json file as defined in the skill
 15. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge ( update
     first )
-16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
+16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available). For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to set is `Handover`, not `Done` — see the `ui-contract` skill, Step 4.
 17. Append your progress to `progress.txt` after each step in the iteration.
  18. append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 19. Finish the iteration.

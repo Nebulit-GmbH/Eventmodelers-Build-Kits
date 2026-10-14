@@ -41,3 +41,15 @@ TODO — file layout, naming conventions, framework idioms, how the handler/proj
 ## Quality gate
 
 TODO — this stack's build command and how to run only this slice's tests (not the full suite).
+
+## UI Contract
+
+Once the command endpoint is built, invoke the `ui-contract` skill (write contract, `POST`): it publishes the contract
+as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it.
+
+TODO — **Source for this stack:** say where the contract is derived from. If your stack maintains a
+machine-readable API description (OpenAPI, GraphQL schema, protobuf, ...), name it here and put the
+mapping to the contract keys in a reference file (see `ui-contract-from-openapi.md` in
+`stacks/node/templates/.claude/skills/build-state-change/references/`). If it has none, delete this
+line — the skill then reads the endpoint's route/handler code. If your UI needs a different contract
+shape or location, ship your own `.claude/skills/ui-contract/SKILL.md`; it replaces the shared one.

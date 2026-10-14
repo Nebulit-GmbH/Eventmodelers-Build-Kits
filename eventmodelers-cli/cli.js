@@ -710,6 +710,18 @@ function findConfigInParents(startDir) {
   return existsSync(globalCandidate) ? globalCandidate : null;
 }
 
+// Where a project-level setting (`config --handover`, `--agent-tracing`) is written: the explicit
+// --config, else the installed kit's project, else the nearest project config up the tree — so it
+// lands in the file `run` merges in, even from a subdirectory — else this directory. The
+// account-wide ~/.eventmodelers/config.json is never a target: these are per-project policies.
+function projectConfigPath(cwd, kitDir, explicitConfig) {
+  if (explicitConfig) return resolve(explicitConfig);
+  if (kitDir) return join(dirname(kitDir), '.eventmodelers', 'config.json');
+  const found = findConfigInParents(cwd);
+  const globalPath = join(homedir(), '.eventmodelers', 'config.json');
+  return found && found !== globalPath ? found : join(cwd, '.eventmodelers', 'config.json');
+}
+
 function readJsonSafe(path) {
   if (!path || !existsSync(path)) return {};
   try {
@@ -983,9 +995,11 @@ async function installStack(stackKey, stackCfg, options = {}) {
       copyDirContents(claudeSkillsSrc, globalSkillsDir);
     } else {
       console.log('📦 Installing skills...');
-      copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
+      // Shared skills first, the stack's own templates last — so a build kit can override
+      // a shared skill (e.g. `ui-contract`) just by shipping a skill of the same name.
       copyDirContents(sharedSkills, join(targetDir, '.claude', 'skills'));
       if (isBridge) copyDirContents(sharedBridgeSkills, join(targetDir, '.claude', 'skills'));
+      copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
       claudeExtras = existsSync(join(templatesSource, '.claude'))
         ? readdirSync(join(templatesSource, '.claude')).filter((f) => f !== 'skills')
         : [];
@@ -1357,6 +1371,10 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
   if (!skipWrite) {
     writeFileSync(configPath, JSON.stringify(config, null, 2));
     console.log(`\n  ✓ Saved to ${relative(targetDir, configPath)}`);
+  } else if (overrides.handover) {
+    // A policy flag, not a credential — it must stick even when credentials were skipped.
+    writeFileSync(configPath, JSON.stringify({ ...readJsonSafe(configPath), handover: true }, null, 2));
+    console.log(`  ✓ Handover on — saved to ${relative(targetDir, configPath)}`);
   }
   return config;
 }
@@ -3241,9 +3259,19 @@ const AGENT_NAME_OPTION = [
   'Human-readable name for the agent this kit runs (e.g. "ci-builder", "martins-laptop"), saved to config.json as `agentName` and sent with every heartbeat so the board shows a name instead of a bare uuid. Also settable via EVENTMODELERS_AGENT_NAME, and overridable for a single run with `run --name`.',
 ];
 
+// `--handover` is the project policy for how a backend build kit finishes a slice with a UI:
+// set, it ends STATE_VIEW / STATE_CHANGE slices at `Handover` (the UI kit builds the rest and sets
+// `Done`); unset, it ends at `Done`, exactly as before. Persisted as `handover: true` in the project's
+// config.json — the `ui-contract` skill (Step 4) reads it there. Switch it later with
+// `eventmodelers config --handover on|off`.
+const HANDOVER_OPTION = [
+  '--handover',
+  'Backend build kit: finish slices that have a UI at status `Handover` (UI build kit takes over, then sets `Done`) instead of `Done`. Saved as `handover: true` in .eventmodelers/config.json; without it slices end at `Done`. Turn it off later with `eventmodelers config --handover off`.',
+];
+
 function identityOverridesFromOpts(opts) {
   const agentName = typeof opts.name === 'string' ? opts.name.trim() : undefined;
-  return agentName ? { agentName } : {};
+  return { ...(agentName ? { agentName } : {}), ...(opts.handover ? { handover: true } : {}) };
 }
 
 credentialFlags(program
@@ -3262,7 +3290,8 @@ credentialFlags(program
   .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
-  .option(...AGENT_NAME_OPTION))
+  .option(...AGENT_NAME_OPTION)
+  .option(...HANDOVER_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
 
@@ -3384,7 +3413,8 @@ credentialFlags(program
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit) and wire it up via `git config core.hooksPath .githooks` — same as `init --hooks`, for turning it on after the fact without a full re-scaffold. Off by default.')
   .option('--global', 'Re-install skills into ~/.claude/skills/ instead of the project — defaults to however they were originally installed')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
-  .option(...AGENT_NAME_OPTION))
+  .option(...AGENT_NAME_OPTION)
+  .option(...HANDOVER_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const targetDir = process.cwd();
@@ -3686,6 +3716,7 @@ credentialFlags(program
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--dangerously-skip-permissions', 'Run the modeling agent\'s Claude process with --dangerously-skip-permissions, as before the lockdown: every tool call is approved — any shell command, curl to anywhere, any file the user can read or write, every MCP server the machine configures. Off by default because the agent takes chat messages and snippet clicks from any collaborator on the board; pass it only for a board whose collaborators you trust with your shell. Default Claude runner of --modeling/--standalone/--worker/--global only — not with --agent, --exec or --local-ai, which bring their own permission flags.')
   .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
+  .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Handover` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3956,7 +3987,7 @@ credentialFlags(program
       // local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
       // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -4174,7 +4205,9 @@ const SLICE_STATUSES = [
   { label: '🔄 InProgress', value: 'InProgress' },
   { label: '🔍 Review', value: 'Review' },
   { label: '🚫 Blocked', value: 'Blocked' },
+  { label: '🧭 Ready', value: 'Ready' },
   { label: '📅 Planned', value: 'Planned' },
+  { label: '🤝 Handover', value: 'Handover' },
   { label: 'ℹ️ Informational', value: 'Informational' },
 ];
 
@@ -4504,21 +4537,31 @@ program
 program
   .command('config')
   .description('Print the fully resolved config (merged across the directory hierarchy + EVENTMODELERS_* env vars), with the token masked')
+  .option('--handover <on|off>', "Turn the backend→UI handover on or off for this project (saved as `handover` in the project's .eventmodelers/config.json). On: a backend build kit ends slices that have a UI at `Handover`; off: at `Done`.")
   .option('--agent-tracing <on|off>', "Turn agent tracing on or off for this project (saved as `agentTracing` in the project's .eventmodelers/config.json). Off: the build agent sends no slice cost data to the platform at all. A non-Claude agent via run --exec is only traced when its command includes the harness's JSON output flag, e.g. \"codex exec --json --full-auto\".")
   .action((opts, command) => {
     const cwd = process.cwd();
     const kitDir = findInstalledKitDir(cwd);
     const explicitConfig = command.optsWithGlobals().config;
 
+    if (opts.handover !== undefined) {
+      const value = String(opts.handover).toLowerCase();
+      if (!['on', 'off'].includes(value)) {
+        console.error('❌ --handover takes "on" or "off"');
+        process.exit(1);
+      }
+      const configPath = projectConfigPath(cwd, kitDir, explicitConfig);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, JSON.stringify({ ...readJsonSafe(configPath), handover: value === 'on' }, null, 2));
+      console.log(`✓ Handover ${value} — saved to ${relative(cwd, configPath) || configPath}\n`);
+    }
     if (opts.agentTracing !== undefined) {
       const value = String(opts.agentTracing).toLowerCase();
       if (!['on', 'off'].includes(value)) {
         console.error('❌ --agent-tracing takes "on" or "off"');
         process.exit(1);
       }
-      const configPath = explicitConfig
-        ? resolve(explicitConfig)
-        : join(kitDir ? dirname(kitDir) : cwd, '.eventmodelers', 'config.json');
+      const configPath = projectConfigPath(cwd, kitDir, explicitConfig);
       mkdirSync(dirname(configPath), { recursive: true });
       writeFileSync(configPath, JSON.stringify({ ...readJsonSafe(configPath), agentTracing: value === 'on' }, null, 2));
       console.log(`✓ Agent tracing ${value} — saved to ${relative(cwd, configPath) || configPath}\n`);

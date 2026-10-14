@@ -105,6 +105,12 @@ After the commit, invoke `/record-evidence`: it writes this slice's element → 
 
 ---
 
+## UI Contract
+
+Once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes
+the endpoint's contract as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it
+(a build kit may override it).
+
 ## Checklist
 
 - [ ] Every read model field is returned, sourced from where its feeding event's data is persisted

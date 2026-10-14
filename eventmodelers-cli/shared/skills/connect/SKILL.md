@@ -289,7 +289,7 @@ Connecting is also where the session's read discipline starts. Every skill that 
 
 The orientation read also tells you what you may write to. `get_board_outline` returns `sliceStatus` per column — a slice owns a column, so every element in that column shares its status. `get_nodes` does **not** carry it, so take it from the outline before any write:
 
-**Only a slice in `Created` may be written to.** Any other status — `Planned`, `Assigned`, `InProgress`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working on that slice: read its elements for context, but never change, move, rename or delete them, and never add scenarios, fields or examples to them. An element in a column with **no** `sliceStatus` is in no slice at all, which is not the same as locked — that one is writable.
+**Only a slice in `Created` may be written to.** Any other status — `Ready`, `Planned`, `Assigned`, `InProgress`, `Handover`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working on that slice: read its elements for context, but never change, move, rename or delete them, and never add scenarios, fields or examples to them. An element in a column with **no** `sliceStatus` is in no slice at all, which is not the same as locked — that one is writable.
 
 Never spend a `list_slices`/`get_slice_data` call to answer this; the outline already did.
 

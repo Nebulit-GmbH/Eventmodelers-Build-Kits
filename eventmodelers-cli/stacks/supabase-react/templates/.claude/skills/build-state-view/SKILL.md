@@ -66,6 +66,10 @@ Extract:
        a Slice" step 6) — the built, mocked component still needs a real table/view before it's done,
        so don't flip it to `Done`.
   - `description` — implementation hints (filtering rules, sort order, business meaning).
+- **No UI contract for reads** — the backend's `ui-contract` skill publishes a `GET` contract, but this
+  stack reads the table/view directly (RLS-protected) and never calls a read endpoint, so that
+  contract does not apply here. `readmodel.apiEndpoint` (table/view name) and `fields[]` stay the
+  source. (Only the write side, `build-state-change`, consumes a contract.)
 - **screens[]** — the actor `SCREEN` element(s) that display this data, if any (see Step 2).
 - **specifications[]** — GWT scenarios/storyline; treat as acceptance criteria (e.g. "given no
   active reservation, show an empty state").

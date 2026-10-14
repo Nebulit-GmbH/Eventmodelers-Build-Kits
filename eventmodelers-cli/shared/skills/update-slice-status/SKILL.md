@@ -23,8 +23,10 @@ Valid status values (case-sensitive):
 | Value | Meaning |
 |-------|---------|
 | `Created` | Default — slice has been created but not started |
-| `Planned` | Work is planned |
+| `Ready` | Modeling is done — specified and ready to be planned for implementation |
+| `Planned` | Work is planned — queued for the backend build kit |
 | `InProgress` | Work is actively in progress |
+| `Handover` | Backend built and its UI contract published (`## UI Contract` in the slice's markdown note) — queued for the UI build kit |
 | `Review` | Ready for review |
 | `Done` | Completed |
 | `Blocked` | Blocked by something |
