@@ -56,9 +56,9 @@ Extract:
   - `description` — implementation hints (validation rules, business constraints).
 - **UI contract (write)** — the backend slice's published `POST` contract: look it up as described in
   the `ui-contract` skill ("How the UI build kit looks the contract up" — the `## UI Contract` entry in
-  `slice.json` `notes[]`; parse only its `ui-contract` block). When present it **overrides
-  `apiEndpoint`** and fixes everything the component must honour: `path` (+ `pathParams`), the exact
-  `body` fields, the success `response`, and `errors[]` (status + code) — surface each error code as a
+  `slice.json` `notes[]`; parse only its `ui-contract` block — an OpenAPI operation). When present it **overrides
+  `apiEndpoint`** and fixes everything the component must honour: the path (+ path `parameters`), the exact
+  `requestBody` properties, the 2xx `responses` entry, and every non-2xx response (status + description) — surface each error code as a
   distinct user-facing state through `onError`, not one generic failure. When absent, the backend slice
   isn't built or re-fetched yet: fall back to `apiEndpoint` / `fields[]` as above and note the assumption
   in `progress.txt`. If contract and `command.fields[]` disagree, the contract wins for the request and

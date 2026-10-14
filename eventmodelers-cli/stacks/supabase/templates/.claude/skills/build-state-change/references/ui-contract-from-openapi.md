@@ -1,17 +1,13 @@
-# UI Contract — derive from the `@openapi` block
+# UI Contract — take the operation from the `@openapi` block
 
 Used by the `ui-contract` skill. This stack's `routes.ts` carries an `@openapi` JSDoc block above every
-handler (guarded by the `openapi-annotation` commit check), so derive the contract from it mechanically
-instead of re-reading handler logic.
+handler (guarded by the `openapi-annotation` commit check). The contract **is** that operation —
+publish it as is, don't translate it into another shape.
 
-| Contract key | OpenAPI source |
-|---|---|
-| `method` | the verb key under the path (`get` / `post`) |
-| `path` | the path key, verbatim (`{param}` style) |
-| `pathParams` / `queryParams` | `parameters[]` with `in: path` / `in: query` → `name`, `schema` (`optional` = not `required`) |
-| `body` (write) | `requestBody…schema.properties` |
-| `response.fields` (read) | the `200` response schema `properties` (follow a `$ref` to `components.schemas`); `Single` vs `List` = object vs `type: array` |
-| `response.status` (write) | the success response code |
-| `errors[]` | every non-2xx response: `status` = the key, `code` / `when` = its description / `error` example |
-| `type` | `string`+`uuid` → `UUID`, `integer`/`int32` → `Int`, `int64` → `Long`, `number`/`double` → `Double`, `number` → `Decimal`, `boolean` → `Boolean`, `date` / `date-time` → `Date` / `DateTime`, `object` → `Custom`, else `String` |
-| `example` | the schema's `example`, nothing invented |
+1. Take the YAML from the handler's `@openapi` block (strip the ` * ` comment prefix) — one path, one verb.
+2. Keep it keyed by its path (`/api/...:` → `get:`/`post:`), with `summary`, `description`, `parameters`,
+   `requestBody` and every `responses` entry. Follow a `$ref` into `components.schemas` and inline it, so
+   the operation is self-contained.
+3. Drop `tags` and anything internal. Add nothing the block doesn't say — examples come from the block.
+4. Write it as the ```` ```yaml ui-contract ```` block of the `## UI Contract` section, with real line
+   breaks and 2-space indentation (see the skill's formatting rule).

@@ -1,12 +1,12 @@
 ---
 name: ui-contract
-description: Publish the slice's UI contract (read contract = GET, write/state-change contract = POST) as its own `## UI Contract` section in the slice's MARKDOWN node in the feedback lane, which the slice export carries in `slice.json` `notes[]` — so the UI build kit finds the contract in one lookup instead of parsing the whole note. Called by every build-state-view / build-state-change skill after the endpoint is built. A build kit can override it by shipping its own `ui-contract` skill.
+description: Publish the slice's UI contract — the OpenAPI operation of its endpoint (read = GET, write/state-change = POST) — as its own `## UI Contract` section in the slice's MARKDOWN node in the feedback lane, which the slice export carries in `slice.json` `notes[]` — so the UI build kit finds the contract in one lookup instead of parsing the whole note. Called by every build-state-view / build-state-change skill after the endpoint is built. A build kit can override it by shipping its own `ui-contract` skill.
 ---
 
 # UI Contract
 
 The UI build kit builds the frontend against what the backend slice **actually exposes**. This skill
-records that as a contract — one per slice, in a fixed, machine-findable place.
+records that as a contract — the endpoint's **OpenAPI operation**, one per slice, in a fixed, machine-findable place.
 
 > Invoke `connect` first if not already connected (`BOARD_ID`). Prefer `mcp__eventmodelers__*` tools;
 > the REST equivalents are in `learn-eventmodelers-api`.
@@ -27,58 +27,24 @@ route, not the plan), before the final commit:
 | `STATE_CHANGE` (COMMAND) | **write** — `POST` (a state change) |
 | `AUTOMATION` | none — no UI counterpart, skip |
 
-## Step 1 — Derive the contract from the built endpoint
+## Step 1 — Derive the OpenAPI operation from the built endpoint
 
-Never copy from the plan — the contract describes what was built.
+Never copy from the plan — the contract describes what was built. The contract **is** the endpoint's
+OpenAPI 3 operation (one path, one verb) — no second, hand-made shape.
 
 1. **Use the source the stack names.** If the calling `build-state-view` / `build-state-change`
-   skill's `## UI Contract` section points to a more authoritative source for this stack (for example a
-   machine-readable API description it already maintains), derive from that, mechanically.
-2. **Otherwise read the endpoint's route/handler code**: method, path, parameter and field names,
-   success status, and the error codes/statuses the handler really returns.
-3. Field `type` / `optional` / `example` come from the `slice.json` element fields.
-4. **Cross-check against `slice.json`**: the `body` / `response.fields` names must equal the command's /
-   read model's `fields[]`. A mismatch is an implementation bug — fix the code, don't publish a
-   contract that disagrees with `slice.json`.
-
-**Read contract** (`kind: "read"`):
-
-```json
-{
-  "kind": "read",
-  "slice": "<slice title>",
-  "sliceId": "<SLICE_BORDER node id>",
-  "readModel": "<READMODEL title>",
-  "method": "GET",
-  "path": "/api/<...>",
-  "pathParams": [{ "name": "customerId", "type": "UUID" }],
-  "queryParams": [{ "name": "page", "type": "Int", "optional": true }],
-  "response": {
-    "cardinality": "Single | List",
-    "fields": [{ "name": "status", "type": "String", "optional": false, "example": "active" }]
-  },
-  "errors": [{ "status": 404, "code": "not_found", "when": "no row for this id" }]
-}
-```
-
-**Write contract** (`kind: "write"`):
-
-```json
-{
-  "kind": "write",
-  "slice": "<slice title>",
-  "sliceId": "<SLICE_BORDER node id>",
-  "command": "<COMMAND title>",
-  "method": "POST",
-  "path": "/api/<...>",
-  "pathParams": [],
-  "body": [{ "name": "itemId", "type": "UUID", "optional": false, "example": "..." }],
-  "response": { "status": 200, "body": [] },
-  "errors": [{ "status": 400, "code": "snake_case_code", "when": "business rule violated" }]
-}
-```
-
-Keep it to what a UI needs — no internal details (no table names, no auth plumbing beyond "requires bearer token" if `security` is set).
+   skill's `## UI Contract` section points to the stack's machine-readable API description (e.g. the
+   handler's `@openapi` block), take that operation **verbatim** — see the stack's
+   `ui-contract-from-openapi.md`. Do not rewrite it.
+2. **Otherwise read the endpoint's route/handler code** and write the equivalent OpenAPI operation:
+   method, path, `parameters` (path / query / header), `requestBody` schema, and a response for the
+   success status and for every error status the handler really returns.
+3. **Trim to what a UI needs**: drop `tags`, internal notes and anything about storage or auth plumbing
+   (keep `security` if set). Keep `summary`, `description`, parameter/field `example`s and the response
+   descriptions — they carry the business meaning of each error status.
+4. **Cross-check against `slice.json`**: the request-body / response property names must equal the
+   command's / read model's `fields[]` (path parameters such as the generated id excepted). A mismatch
+   is an implementation bug — fix the code, don't publish a contract that disagrees with `slice.json`.
 
 ## Step 2 — Write the `## UI Contract` section into the slice's MARKDOWN node
 
@@ -102,18 +68,27 @@ Keep it to what a UI needs — no internal details (no table names, no auth plum
 
 **READ** `GET /api/customers/{customerId}/reservation` — <one-line purpose>
 
-| Part | Name | Type | Optional | Example |
-|---|---|---|---|---|
-| path | customerId | UUID | no | … |
-| response | status | String | no | active |
-
-```json ui-contract
-{ ...the Step 1 JSON, verbatim... }
+```yaml ui-contract
+/api/customers/{customerId}/reservation:
+  get:
+    summary: ...
+    parameters: [...]
+    responses: {...}
 ```
 ````
 
-The table is for humans; the fenced block whose info string is `ui-contract` is the single
-machine-readable source. Both must say the same thing.
+`**READ**` for a `GET`, `**WRITE**` for a `POST`.
+
+**Formatting is part of the contract.** The note renders as Markdown, so `meta.description` must contain
+*real* line breaks — build the string with actual newlines (a multi-line string, or `\n` that the JSON
+parser turns into a newline), never a single line and never a literal backslash-`n` in the stored text.
+Blank line after the heading, blank line before and after the fenced block, the opening ```` ```yaml ui-contract ````
+and the closing ```` ``` ```` each on their own line, and the YAML keeps its indentation (2 spaces). After
+the write, read the node back once (`get_node`) and check that `description` has multiple lines and no
+literal `\n`; if it is flat, rewrite it before moving on.
+
+The fenced block whose info string is `ui-contract` is the single source: the operation alone, keyed by its path — no `openapi:`/`info:`/`servers:`
+wrapper, no restated table.
 
 ## Step 3 — Nothing else to write
 
@@ -140,8 +115,10 @@ runner resolves `run --handover` over the project setting), else `"handover": tr
 
 1. In the slice's `slice.json`, take the `notes[]` entry that contains a `## UI Contract` heading.
    Ignore every other entry.
-2. In that entry, take the fenced block whose info string is `ui-contract` (```` ```json ui-contract ````)
-   and parse just that JSON. Ignore the rest of the note.
+2. In that entry, take the fenced block whose info string is `ui-contract` (```` ```yaml ui-contract ````)
+   and parse just that YAML — an OpenAPI operation keyed by its path: request = path/verb +
+   `parameters` + `requestBody`, success = the 2xx `responses` entry, errors = every non-2xx entry.
+   Ignore the rest of the note.
 3. No such entry → the backend slice isn't built yet, or the slice wasn't re-fetched since; re-fetch
    once, and if still absent build against `slice.json` and note the assumption.
 

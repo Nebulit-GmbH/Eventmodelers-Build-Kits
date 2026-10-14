@@ -32,7 +32,7 @@ From the slice definition, extract:
 
 - **UI contract** — the backend slice's published write (`POST`) contract: look it up as described in the
   `ui-contract` skill ("How the UI build kit looks the contract up": the `## UI Contract` entry in
-  `slice.json` `notes[]`, parse only its `ui-contract` block). It fixes the request: `path` (+ `pathParams`), the exact `body` fields, the success `response`, and `errors[]` (status + code) — surface each error code as its own user-facing state, not one generic failure. When absent, the backend slice isn't
+  `slice.json` `notes[]`, parse only its `ui-contract` block — an OpenAPI operation). It fixes the request: the path (+ path `parameters`), the exact `requestBody` properties, the 2xx `responses` entry, and every non-2xx response (status + description) — surface each error code as its own user-facing state, not one generic failure. When absent, the backend slice isn't
   built or re-fetched yet: build against `slice.json` and note the assumption in `progress.txt`.
 
 > **Comments & description**: each element carries a `comments: string[]` array (board comments) and a `description` field — use them as implementation hints, and resolve consumed comments via `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
