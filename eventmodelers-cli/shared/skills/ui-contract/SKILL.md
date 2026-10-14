@@ -1,6 +1,6 @@
 ---
 name: ui-contract
-description: Publish the slice's UI contract — the OpenAPI operation of its endpoint (read = GET, write/state-change = POST) — as its own `## UI Contract` section in the slice's MARKDOWN node in the feedback lane, which the slice export carries in `slice.json` `notes[]` — so the UI build kit finds the contract in one lookup instead of parsing the whole note. Called by every build-state-view / build-state-change skill after the endpoint is built. A build kit can override it by shipping its own `ui-contract` skill.
+description: When handover is on (`run --handover`), publish the slice's UI contract — the OpenAPI operation of its endpoint (read = GET, write/state-change = POST) — as its own `## UI Contract` section in the slice's MARKDOWN node in the feedback lane, which the slice export carries in `slice.json` `notes[]` — so the UI build kit finds the contract in one lookup instead of parsing the whole note. Called by every build-state-view / build-state-change skill after the endpoint is built. A build kit can override it by shipping its own `ui-contract` skill.
 ---
 
 # UI Contract
@@ -17,6 +17,8 @@ records that as a contract — the endpoint's **OpenAPI operation**, one per sli
 > restate the format.
 
 ## When
+
+**Only when handover is on** — the task request's `Handover: on|off` line (authoritative; the runner resolves `run --handover` over the project setting), else `"handover": true` in `.eventmodelers/config.json`. With handover **off/unset**, do nothing: publish no contract, write no `## UI Contract` section, and finish the slice as `Done` (Step 4). The contract exists only for the UI kit that picks up `Handover` slices.
 
 At the end of building a slice, **after** the endpoint exists (so the contract describes the real
 route, not the plan), before the final commit:

@@ -321,7 +321,7 @@ class {SliceName}ProjectorTest {
 
 ## UI Contract
 
-Once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes
+**Only when handover is on** (the task's `Handover: on` line, else `"handover": true` in `.eventmodelers/config.json`; with it off, skip this section): once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes
 the endpoint's contract as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it
 (a build kit may override it).
 

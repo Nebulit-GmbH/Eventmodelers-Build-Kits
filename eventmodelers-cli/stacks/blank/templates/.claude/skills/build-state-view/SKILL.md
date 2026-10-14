@@ -43,7 +43,7 @@ TODO — this stack's build command and how to run only this slice's tests (not 
 
 ## UI Contract
 
-Once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes the contract
+**Only when handover is on** (the task's `Handover: on` line, else `"handover": true` in `.eventmodelers/config.json`; with it off, skip this section): once the read endpoint is built, invoke the `ui-contract` skill (read contract, `GET`): it publishes the contract
 as the `## UI Contract` section of the slice's feedback-lane markdown node, which the slice export then carries in `slice.json` `notes[]`. Do not restate the format here — the skill owns it.
 
 TODO — **Source for this stack:** say where the contract is derived from. If your stack maintains a

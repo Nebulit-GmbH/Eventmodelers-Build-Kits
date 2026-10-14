@@ -58,7 +58,7 @@ TODO
 
 ## UI Contract
 
-`build-state-view` and `build-state-change` end by invoking the shared `ui-contract` skill (publishes the
-slice's read/write contract for the UI build kit). Decide for your stack where it is derived from — see
+`build-state-view` and `build-state-change` end by invoking the shared `ui-contract` skill when handover is on (publishes the
+slice's read/write contract for the UI build kit; skipped with handover off). Decide for your stack where it is derived from — see
 the `UI Contract` section of those two skills — or override the skill entirely by shipping
 `.claude/skills/ui-contract/SKILL.md`.

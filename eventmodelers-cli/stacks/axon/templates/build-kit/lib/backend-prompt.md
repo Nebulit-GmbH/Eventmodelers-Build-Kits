@@ -36,7 +36,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 10. The slice in the json is always true, the code follows what is defined in the json
 11. slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in  JSON are implemented in code and it
     fulfills the slice.json. There must be no specification in json, that has no equivalent in code.
-12. Invoke the `ui-contract` skill for STATE_VIEW / STATE_CHANGE slices (publishes the UI Contract section to the slice's feedback-lane markdown node)
+12. Only when `handover` is on (the task's `Handover: on` line), invoke the `ui-contract` skill for STATE_VIEW / STATE_CHANGE slices; with handover off skip this step (publishes the UI Contract section to the slice's feedback-lane markdown node)
 13. Run quality checks — it is enough to run the tests for the slice only, not all tests:
     - Compile: `./mvnw compile -q`
     - Test:    `./mvnw test -Dtest="<SliceName>*" -q`
