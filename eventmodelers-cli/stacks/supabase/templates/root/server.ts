@@ -17,11 +17,11 @@ async function startServer() {
     const slicesBase = join(__dirname, 'dist/src/slices');
     const routesPattern = join(slicesBase, '**/routes{,-*}.js');
 
-    const routeFiles = await glob(routesPattern, {nodir: true});
+    const routeFiles = await glob(routesPattern, {nodir: true, windowsPathsNoEscape: true});
     console.log('Found route files:', routeFiles);
 
     const processorPattern = join(slicesBase, '**/processor{,-*}.js');
-    const processorFiles = await glob(processorPattern, {nodir: true});
+    const processorFiles = await glob(processorPattern, {nodir: true, windowsPathsNoEscape: true});
     console.log('Found processor files:', processorFiles);
 
     // Common routes (e.g. projection replay) are privileged/operational and are
@@ -29,7 +29,7 @@ async function startServer() {
     const commonRoutesEnabled = process.env.COMMON_ROUTES_ENABLED === 'true';
     const commonPattern = join(__dirname, 'src/common/routes{,-*}.@(ts|js)');
     const commonRouteFiles = commonRoutesEnabled
-        ? await glob(commonPattern, {nodir: true})
+        ? await glob(commonPattern, {nodir: true, windowsPathsNoEscape: true})
         : [];
     console.log(commonRoutesEnabled
         ? `Found common route files: ${commonRouteFiles}`

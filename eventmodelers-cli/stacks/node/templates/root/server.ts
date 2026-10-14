@@ -16,15 +16,15 @@ async function startServer() {
     const slicesBase = join(__dirname, 'dist/src/slices');
     const routesPattern = join(slicesBase, '**/routes{,-*}.js');
 
-    const routeFiles = await glob(routesPattern, {nodir: true});
+    const routeFiles = await glob(routesPattern, {nodir: true, windowsPathsNoEscape: true});
     console.log('Found route files:', routeFiles);
 
     const processorPattern = join(slicesBase, '**/processor{,-*}.js');
-    const processorFiles = await glob(processorPattern, {nodir: true});
+    const processorFiles = await glob(processorPattern, {nodir: true, windowsPathsNoEscape: true});
     console.log('Found processor files:', processorFiles);
 
     const commonPattern = join(__dirname, 'src/common/routes{,-*}.@(ts|js)');
-    const commonRouteFiles = await glob(commonPattern, {nodir: true});
+    const commonRouteFiles = await glob(commonPattern, {nodir: true, windowsPathsNoEscape: true});
     console.log('Found common route files:', commonRouteFiles);
 
 
