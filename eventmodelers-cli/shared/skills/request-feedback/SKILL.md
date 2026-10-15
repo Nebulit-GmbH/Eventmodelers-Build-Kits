@@ -71,6 +71,37 @@ Find the slice whose `title` matches `sliceName` (case-insensitive), or whose `i
 If no match is found, stop and list the available slice titles so the caller can pick one. Save the
 matched slice's `id` as `SLICE_NODE_ID` and its current `status` as `CURRENT_STATUS`.
 
+## Step 2.5 — Verify the slice is really empty, and check for duplicate names
+
+"The slice has no elements" is the most common reason to block — and also the easiest to get wrong.
+The backend resolves `contextName` to the *first* chapter/context with a matching title, so when two
+chapters share a title, `slicedata?contextName=…` (and `slicedata/slices?contextName=…`) can return
+nothing for a slice that is fully modeled under the twin. A comment claiming "no elements" then
+blocks a healthy slice. Before posting anything:
+
+1. **Fetch the slice by id, not by name.** Resolve the slice's chapter/context id and call
+   `get_slice_data { "boardId": "<BOARD_ID>", "contextId": "<id>", "sliceId": "<SLICE_NODE_ID>" }`
+   (curl: `GET …/slicedata?contextId=<id>&sliceId=<SLICE_NODE_ID>`). Fetch only this one slice.
+2. **Check for duplicate chapter/context titles.** List chapters and MODEL_CONTEXT nodes
+   (`get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }`, and likewise
+   `MODEL_CONTEXT`). If two or more share the slice's chapter/context title (case-insensitive), retry
+   step 1 with each candidate `contextId` before concluding the slice is empty.
+3. **Check for duplicate slice names.** From the `list_slices` result, note any other slice with the
+   same title (case-insensitive) — in the same or another context — with its id and status.
+4. **Decide:**
+   - The slice has elements under some candidate id → **do not block, do not comment.** The "empty"
+     reading was a lookup artefact; go back and build using the correct `contextId`. Report the
+     duplicate-title problem to the caller instead.
+   - The slice really is empty (or contradictory) under every candidate → continue to Step 3, and
+     **name every duplicate you found in the question**, e.g. `Note: 2 timelines are titled "Teams"
+     (d151f017-…, e985e6b3-…) and a slice "Add Team" also exists in <context> (<id>, <status>) — please
+     check the content isn't under the twin.` so the human can tell a genuinely empty slice from a
+     misplaced one.
+   - Duplicates exist but the cause of the block is unrelated (e.g. a contradiction between two
+     specs): still mention them in the report (Step 5), not necessarily in the comment.
+
+---
+
 ## Step 3 — Post the comment
 
 There is no separate `QUESTION` type at the API level — post a normal `COMMENT` worded as a question.
@@ -138,6 +169,7 @@ Do not continue implementing the slice after this. Report back to whoever invoke
 Requested feedback on slice "<sliceName>" (<SLICE_NODE_ID>)
 Question posted: "<question>"
 Status: <CURRENT_STATUS> → Blocked
+Duplicates: <none | duplicate chapter titles "<title>" (<ids>) | same-titled slices "<title>" (<id> <status>, …)>
 ```
 
 Then stop work on this slice for this run. If the caller has other, unrelated slices queued, it may
