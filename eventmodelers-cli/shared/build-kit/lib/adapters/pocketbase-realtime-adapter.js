@@ -16,12 +16,20 @@ const REALTIME_EVENTS_COLLECTION = 'realtime_events';
 // ourselves.
 const RECONNECT_INTERVALS_MS = [200, 300, 500, 1000, 1200, 1500, 2000];
 
+// A path like "/pb" (client-side override) is resolved against the platform's base URL,
+// so it replaces any path on it: https://host/api + /pb -> https://host/pb.
+function resolvePocketBaseUrl({ pocketbaseUrl, baseUrl }) {
+  if (!pocketbaseUrl?.startsWith('/')) return pocketbaseUrl;
+  if (!baseUrl) throw new Error(`pocketbaseUrl "${pocketbaseUrl}" is a path but no baseUrl is configured to resolve it against`);
+  return new URL(pocketbaseUrl, baseUrl).href.replace(/\/+$/, '');
+}
+
 // deps.PocketBase is injectable for tests; by default it is the pocketbase SDK's client.
 export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = {}) {
   const { EventSource } = await import('eventsource');
   if (!globalThis.EventSource) globalThis.EventSource = EventSource; // PocketBase's SDK assumes a browser-style global
   const PocketBase = deps.PocketBase ?? (await import('pocketbase')).default;
-  const pb = new PocketBase(cfg.pocketbaseUrl);
+  const pb = new PocketBase(resolvePocketBaseUrl(cfg));
   pb.authStore.save(initialToken, null);
 
   // The SDK adds one EventSource listener per subscribe() call — and keeps it when the call

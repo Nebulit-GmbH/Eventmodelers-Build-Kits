@@ -697,6 +697,7 @@ Every config field can be set via an `EVENTMODELERS_*` env var instead of the in
 | `EVENTMODELERS_MODEL` | `model` |
 | `EVENTMODELERS_SUBAGENT_MODEL` | `subagentModel` |
 | `EVENTMODELERS_AGENT_NAME` | `agentName` |
+| `EVENTMODELERS_POCKETBASE_URL` | `pocketbaseUrl` — on-prem only: overrides the PocketBase address the server advertises via `/api/config` (e.g. `/pb` or `https://host/pb`; a leading `/` is resolved against the base URL, replacing any path on it). Also read from `config.json`; either one beats the server's value |
 
 ```bash
 EVENTMODELERS_ORGANIZATION_ID=... EVENTMODELERS_BOARD_ID=... EVENTMODELERS_TOKEN=... \

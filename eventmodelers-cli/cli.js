@@ -437,6 +437,7 @@ const ENV_CONFIG_MAP = {
   EVENTMODELERS_MODEL: 'model',
   EVENTMODELERS_SUBAGENT_MODEL: 'subagentModel',
   EVENTMODELERS_AGENT_NAME: 'agentName',
+  EVENTMODELERS_POCKETBASE_URL: 'pocketbaseUrl',
 };
 
 function applyEnvOverrides(config) {

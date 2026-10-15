@@ -89,3 +89,19 @@ test('pocketbase: concurrent subscribes to different topics share one SDK listen
 
   assert.equal(listeners.size, 1);
 });
+
+test('pocketbase adapter resolves a path-only pocketbaseUrl against baseUrl', async () => {
+  const seen = [];
+  class FakePocketBase {
+    constructor(url) { seen.push(url); }
+    authStore = { save() {} };
+  }
+  const make = (cfg) => createPocketBaseRealtimeAdapter(cfg, 'token', { PocketBase: FakePocketBase });
+
+  await make({ pocketbaseUrl: '/pb', baseUrl: 'https://host/' });
+  await make({ pocketbaseUrl: '/pb', baseUrl: 'https://host/api' });
+  await make({ pocketbaseUrl: 'https://other/pb', baseUrl: 'https://host' });
+
+  assert.deepEqual(seen, ['https://host/pb', 'https://host/pb', 'https://other/pb']);
+  await assert.rejects(make({ pocketbaseUrl: '/pb' }), /no baseUrl/);
+});

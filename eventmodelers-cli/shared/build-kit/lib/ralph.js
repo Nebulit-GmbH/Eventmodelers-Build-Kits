@@ -99,6 +99,7 @@ const ENV_CONFIG_MAP = {
   EVENTMODELERS_MODEL: 'model',
   EVENTMODELERS_SUBAGENT_MODEL: 'subagentModel',
   EVENTMODELERS_AGENT_NAME: 'agentName',
+  EVENTMODELERS_POCKETBASE_URL: 'pocketbaseUrl',
 };
 
 function loadLocalConfig(kitDir) {
@@ -199,7 +200,10 @@ async function fetchPlatformConfig(local) {
   const remote = await fetchJSON(`${local.baseUrl}/api/config`, {
     headers: { 'x-token': local.token, ...agentHeaders(local) },
   });
-  return { ...local, ...remote };
+  // A client-side pocketbaseUrl (EVENTMODELERS_POCKETBASE_URL / config.json) beats the server's:
+  // on-prem the server may advertise its internal docker address (http://pocketbase:8090) that a
+  // remote agent cannot reach.
+  return { ...local, ...remote, ...(local.pocketbaseUrl ? { pocketbaseUrl: local.pocketbaseUrl } : {}) };
 }
 
 // ── Realtime agent ────────────────────────────────────────────────────────────
