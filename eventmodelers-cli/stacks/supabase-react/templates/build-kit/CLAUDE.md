@@ -11,8 +11,9 @@ not attempt to build it, flag it via `request-feedback` instead.
 ## File Structure Constraints
 
 - **Strict Path Limitation**: `src/slices/{contextSlug}/{laneSlug}/{slicename}/*` — the one
-  exception is `src/pages/`, where multiple slices sharing one screen get composed together (see
-  guideline 8 below)
+  exceptions are `src/pages/`, where multiple slices sharing one screen get composed together (see
+  guideline 7 below), and — for the **first slice only** — `src/App.tsx` plus the Vite demo files it
+  replaces (guideline 10 below); `index.html` and the demo `src/index.css` for every slice (guideline 11)
 - **Slice Organization**: Each feature/domain should be organized as a separate slice
 
 ## Code Standards
@@ -27,7 +28,7 @@ not attempt to build it, flag it via `request-feedback` instead.
 2. Maintain clear separation of concerns within each slice
 3. Headers, auth, `fetch`, and Supabase table access live exclusively in `src/lib/api.ts` — a
    slice component never imports `src/lib/supabase.ts` itself, never calls `fetch`, and never
-   calls `supabase.from(...)` directly; it calls `postCommand`/`queryReadModel` and only contains
+   calls `supabase.from(...)` directly; when the backend slice published a UI contract (`ui-contract` skill, `slice.json` `notes[]`) the slice is built *from* it — path, parameters, body and every error response — and falls back to `apiEndpoint`/`fields[]` only when none exists; it calls `postCommand`/`getReadModel`/`queryReadModel` and only contains
    business logic (validation, request-body shaping, response handling)
 4. A command's/read-model's screen markup (`meta.pages` on its actor HTML_SCREEN node, scoped to
    this slice's `meta.marks` when the screen is shared) is the visual blueprint — translate it into
@@ -82,6 +83,18 @@ not attempt to build it, flag it via `request-feedback` instead.
    the app, not an arbitrary per-component index. See `build-state-change`/`build-state-view`'s
    samples step for the full convention.
 
+10. **The first slice also builds the base page.** `src/App.tsx` ships as the Vite demo. When the
+    slice being built is the first one in the project (no other folder under `src/slices/`), replace
+    it with a minimal base page rendering that slice's page or component and delete the demo-only
+    files; no router, no new dependency. Later slices never touch `src/App.tsx`. See
+    `build-state-change` Step 8 / `build-state-view` Step 7.
+11. **Every slice loads its screen's styles.** The mockup's classes are meaningless without the CSS
+    framework the board renders them with. Each slice detects it (`cssFrameworks`, else the classes
+    in `meta.pages`; none → Vite's default stays as is), makes sure `index.html` loads it, and neutralises the Vite demo
+    `src/index.css` if it's still there — automatically, idempotently, so an existing project heals
+    on its next build. Never hand-write CSS to imitate a framework. See `build-state-change` Step 7 /
+    `build-state-view` Step 6.
+
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
 When starting to work on a slice, invoke the `update-slice-status` skill with `InProgress` status before doing anything else.
@@ -124,6 +137,7 @@ src/lib/supabase.ts                                # Supabase client singleton �
 src/lib/api.ts                                     # postCommand/queryReadModel + auth headers + mock-mode switch (shared, not per-slice)
 src/lib/<CrossCutting>Provider.tsx                  # only for concerns every slice might need (session, theme, ...)
 src/pages/<ScreenTitle>.tsx                         # only when >1 slice shares a screen title — composes their components
+src/App.tsx                                        # base page — replaces the Vite demo when the first slice is built, untouched afterwards
 src/slices/<contextSlug>/<laneSlug>/<sliceFolder>/
   <CommandTitle>.tsx                                # STATE_CHANGE slice — component (logic inline by default)
   use<CommandTitle>.ts                              # only if the logic was genuinely worth splitting out

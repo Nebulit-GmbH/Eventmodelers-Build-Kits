@@ -63,6 +63,9 @@ Extract:
   isn't built or re-fetched yet: fall back to `apiEndpoint` / `fields[]` as above and note the assumption
   in `progress.txt`. If contract and `command.fields[]` disagree, the contract wins for the request and
   you record the mismatch in `progress.txt`.
+  **Build the call from it**: `postCommand(buildPath('<contract path>', { <path params> }), { <requestBody
+  properties> })` — `buildPath` (in `src/lib/api.ts`) fills and URL-encodes `{param}` segments; the body
+  carries exactly the contract's `requestBody` properties (props the contract doesn't list stay out).
 - **events[]** — informational only (what the backend is expected to emit); this stack does not
   act on them directly.
 - **screens[]** — the actor `SCREEN` element(s) that trigger this command, if any. Empty when the
@@ -127,11 +130,14 @@ lane concept, so the frontend path isn't a strict 1:1 mirror of it. `CommandTitl
 `title` verbatim (e.g. `ReserveBike.tsx`).
 
 **Markup**: translate the blueprint HTML from Step 2 into JSX **1:1** — same tags, same classes
-(Bulma or whatever the mockup used), same layout and copy. This is not a redesign; the screen *is*
+(the screen's `cssFrameworks` framework), same layout and copy. This is not a redesign; the screen *is*
 the design. Only change what must become dynamic:
 - A field's example value becomes that input's controlled `value`.
 - An element repeated for a `cardinality: "List"` field becomes a `.map()` over that field.
-- `class`/`style`/structure otherwise stay exactly as drawn.
+- `class`/`style`/structure otherwise stay exactly as drawn — except the board's own mark plumbing:
+  drop every `data-em-mark-id` attribute and `em-mark`/`em-mark-<hex>` class (they only draw the
+  highlight outline on the canvas; the app never ships it).
+- The classes only render correctly if the screen's CSS framework (`cssFrameworks`) is loaded in the app — see Step 7 (styles); don't hand-write CSS to compensate.
 
 **Props**: exactly `command.fields[]`, typed per each field's `type` (`String`→`string`,
 `Boolean`→`boolean`, `Int`/`Long`→`number`, etc. — `subfields[]` become a nested object type),
@@ -290,9 +296,52 @@ how many pages this app needs — not one page per slice.
    - If `src/pages/<ScreenTitle>.tsx` already exists, update only this slice's marked position;
      leave every other position (already-wired slices, and untouched mockup content) exactly as is.
 
-## Step 7 — Verify against slice.json
+## Step 7 — Load the screen's styles, every slice
 
-After writing the hook/component (and context/page, if any), confirm:
+The mockup's classes only mean something with the CSS framework the board renders it with, so the
+app must load that same one. This runs on **every** slice (not just the first) and is idempotent —
+an existing project that is missing it gets fixed on its next build.
+
+1. **Detect** the framework the screen loads, from the node fetched in Step 2: `cssFrameworks` (one id).
+   If it isn't returned, infer it from the classes in `meta.pages` (`title`/`field`/`is-*` → bulma,
+   `btn`/`form-control`/`col-*` → bootstrap, utility classes like `flex p-6` → tailwind). If the
+   screen loads **no** framework (`[]`, or nothing detectable), use Vite's default: change nothing —
+   skip this whole step, leave `index.html` and `src/index.css` as the template ships them.
+2. **Ensure it's loaded** in `index.html`'s `<head>`, same pinned version the board uses — check with
+   `grep -n -i "bulma\|bootstrap\|cdn.tailwindcss" index.html` first, add only what's missing:
+   - `bulma` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`
+   - `bootstrap` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">`
+   - `tailwind` → `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`
+
+   A *different* framework already there means two screens disagree: don't mix them — keep what's
+   there and flag it via `request-feedback`.
+3. **Neutralise the Vite demo CSS** (only because a framework was detected). If `src/index.css` still holds the demo (it contains `#social` or
+   `--social-bg`), replace the whole file with `body { margin: 0; }` — the centred 1126px `#root`,
+   dark-mode palette, `color-scheme: light dark`, grey text and 56px `h1` all fight the mockup. A file
+   without those markers was already customised (or filled from `learn-styleguide`): leave it alone.
+
+## Step 8 — Base page, only if this is the first slice
+
+`src/App.tsx` ships as the Vite demo scaffold. The **first slice built in this project** replaces it
+with the app's **base page**, so there is something real to open in the browser; every later slice
+leaves it alone.
+
+1. **First slice?** Yes only if `src/slices/` holds no other slice folder than this one (only
+   `.gitkeep` besides it) *and* `src/App.tsx` still contains the scaffold (`Get started` heading).
+   Otherwise skip this step entirely.
+2. Rewrite `src/App.tsx` as the base page: a minimal `<main>` that renders the top-level thing this
+   slice produced — `src/pages/<ScreenTitle>.tsx` when Step 6 composed a shared page, else this
+   slice's own component. Nothing from the Vite demo (counter, logos, doc links) stays. No router and
+   no new dependency — a single page needs neither.
+3. Delete what the scaffold alone used and nothing else now imports: `src/App.css` and
+   `src/assets/{hero.png,react.svg,vite.svg}` (check with `grep -rn` first); `public/icons.svg` too if
+   nothing references it. Leave `src/main.tsx` and `src/index.css` (Step 7 handles it) as they are.
+4. Keep the page working with no backend, per the isolation rule in `.build-kit/CLAUDE.md`: the
+   slice component must render its empty state, and `VITE_DATA_MODE=mock` must show its sample.
+
+## Step 9 — Verify against slice.json
+
+After writing the hook/component (and context/page/base page, if any), confirm:
 - Every prop matches a `command.fields[]` entry exactly (name + type) — no invented or missing
   fields.
 - The `postCommand` call uses the UI contract's `path` and `body` when one was found, else `command.apiEndpoint` verbatim — or, when it was missing at build

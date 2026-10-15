@@ -29,7 +29,8 @@ convenient — for a component to read it straight from Supabase, with no bespok
 between, the same way `miro-eventmodeling` and this stack's other Supabase-backed components do.
 
 That said, a component never calls `supabase.from(...)` (or imports `src/lib/supabase.ts`) itself —
-it calls `queryReadModel(...)` from `src/lib/api.ts`, same as `build-state-change` components only
+it calls `getReadModel(...)` (backend `GET` UI contract available) or `queryReadModel(...)` (table
+read) from `src/lib/api.ts`, same as `build-state-change` components only
 ever call `postCommand`. `queryReadModel` is the real Supabase call in production, but in mock mode
 it serves a numbered sample instead (see Step 4) — routing every read through this one seam is what
 makes a component testable/previewable in isolation, with zero Supabase project needed.
@@ -66,10 +67,22 @@ Extract:
        a Slice" step 6) — the built, mocked component still needs a real table/view before it's done,
        so don't flip it to `Done`.
   - `description` — implementation hints (filtering rules, sort order, business meaning).
-- **No UI contract for reads** — the backend's `ui-contract` skill publishes a `GET` contract, but this
-  stack reads the table/view directly (RLS-protected) and never calls a read endpoint, so that
-  contract does not apply here. `readmodel.apiEndpoint` (table/view name) and `fields[]` stay the
-  source. (Only the write side, `build-state-change`, consumes a contract.)
+- **UI contract (read)** — the backend slice's published `GET` contract: look it up as described in
+  the `ui-contract` skill ("How the UI build kit looks the contract up" — the `## UI Contract` entry in
+  `slice.json` `notes[]`; parse only its `ui-contract` block — an OpenAPI operation). **When present it
+  is the specification and you build the call from it** — it overrides `apiEndpoint` and the table read:
+  - fetch with `getReadModel(buildPath('<contract path>', { <path params> }), { <query params> }, samples)`
+    from `src/lib/api.ts` — path and query `parameters` exactly as the contract names them, never a
+    guessed URL, never `supabase.from(...)`;
+  - type the result from the 2xx `responses` schema (it must match `readmodel.fields[]`; the contract
+    wins for the wire shape, record any mismatch in `progress.txt`);
+  - render **every** non-2xx response (status + description) as its own distinct state — a 404 "no
+    reservation" is an empty state, not an error banner; don't collapse them into one generic failure;
+  - the numbered samples (Step 4) are shaped like the contract's 2xx response body.
+
+  **When absent** (backend slice not built or not re-fetched yet): fall back to the table read —
+  `readmodel.apiEndpoint` (table/view name) + `fields[]` via `queryReadModel` — and note the assumption
+  in `progress.txt`.
 - **screens[]** — the actor `SCREEN` element(s) that display this data, if any (see Step 2).
 - **specifications[]** — GWT scenarios/storyline; treat as acceptance criteria (e.g. "given no
   active reservation, show an empty state").
@@ -103,8 +116,13 @@ the mockup is the design, not a starting point for a redesign.
 its parent, never read from a global store. The queried data itself is **not** a prop — the
 component fetches it.
 
-**Default — call `queryReadModel` from `src/lib/api.ts` inside the component**. Never `supabase.from(...)`
-directly, never a raw `fetch`:
+**With a UI contract (Step 1)**: call `getReadModel(buildPath(path, pathParams), queryParams, samples)`
+from `src/lib/api.ts` inside the component instead of the `queryReadModel` snippet below — same
+effect shape (`useEffect` → loading / empty / error / data), but each documented non-2xx response
+(`ApiError.status`) maps to its own state. Never a raw `fetch`.
+
+**Default (no contract) — call `queryReadModel` from `src/lib/api.ts` inside the component**. Never
+`supabase.from(...)` directly, never a raw `fetch`:
 
 ```tsx
 // ActiveReservationView.tsx
@@ -196,7 +214,7 @@ component doesn't do anything with that number itself, `queryReadModel` reads it
 
 ## Step 5 — Compose onto the shared page, if this screen's name is shared
 
-Identical to `build-state-change` Step 5 — a screen's **title is the page name**, and the number
+Identical to `build-state-change` Step 6 — a screen's **title is the page name**, and the number
 of *distinct* screen titles across the board is a direct hint at how many pages this app needs, not
 one page per slice.
 
@@ -216,10 +234,55 @@ one page per slice.
    slice component still only knows its own declared props. Update only this slice's marked
    position if the page file already exists.
 
-## Step 6 — Verify against slice.json
+## Step 6 — Load the screen's styles, every slice
+
+The mockup's classes only mean something with the CSS framework the board renders it with, so the
+app must load that same one. This runs on **every** slice (not just the first) and is idempotent —
+an existing project that is missing it gets fixed on its next build.
+
+1. **Detect** the framework the screen loads, from the node fetched in Step 2: `cssFrameworks` (one id).
+   If it isn't returned, infer it from the classes in `meta.pages` (`title`/`field`/`is-*` → bulma,
+   `btn`/`form-control`/`col-*` → bootstrap, utility classes like `flex p-6` → tailwind). If the
+   screen loads **no** framework (`[]`, or nothing detectable), use Vite's default: change nothing —
+   skip this whole step, leave `index.html` and `src/index.css` as the template ships them.
+2. **Ensure it's loaded** in `index.html`'s `<head>`, same pinned version the board uses — check with
+   `grep -n -i "bulma\|bootstrap\|cdn.tailwindcss" index.html` first, add only what's missing:
+   - `bulma` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`
+   - `bootstrap` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">`
+   - `tailwind` → `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`
+
+   A *different* framework already there means two screens disagree: don't mix them — keep what's
+   there and flag it via `request-feedback`.
+3. **Neutralise the Vite demo CSS** (only because a framework was detected). If `src/index.css` still holds the demo (it contains `#social` or
+   `--social-bg`), replace the whole file with `body { margin: 0; }` — the centred 1126px `#root`,
+   dark-mode palette, `color-scheme: light dark`, grey text and 56px `h1` all fight the mockup. A file
+   without those markers was already customised (or filled from `learn-styleguide`): leave it alone.
+
+## Step 7 — Base page, only if this is the first slice
+
+`src/App.tsx` ships as the Vite demo scaffold. The **first slice built in this project** replaces it
+with the app's **base page**, so there is something real to open in the browser; every later slice
+leaves it alone.
+
+1. **First slice?** Yes only if `src/slices/` holds no other slice folder than this one (only
+   `.gitkeep` besides it) *and* `src/App.tsx` still contains the scaffold (`Get started` heading).
+   Otherwise skip this step entirely.
+2. Rewrite `src/App.tsx` as the base page: a minimal `<main>` that renders the top-level thing this
+   slice produced — `src/pages/<ScreenTitle>.tsx` when Step 5 composed a shared page, else this
+   slice's own component. Nothing from the Vite demo (counter, logos, doc links) stays. No router and
+   no new dependency — a single page needs neither.
+3. Delete what the scaffold alone used and nothing else now imports: `src/App.css` and
+   `src/assets/{hero.png,react.svg,vite.svg}` (check with `grep -rn` first); `public/icons.svg` too if
+   nothing references it. Leave `src/main.tsx` and `src/index.css` (Step 6 handles it) as they are.
+4. Keep the page working with no backend, per the isolation rule in `.build-kit/CLAUDE.md`: the
+   slice component must render its empty state, and `VITE_DATA_MODE=mock` must show its sample.
+
+## Step 8 — Verify against slice.json
 
 - Every rendered field traces back to a `readmodel.fields[]` entry — no invented or missing
   fields.
+- With a UI contract: the `getReadModel` call uses the contract's path and query `parameters`
+  verbatim, and every non-2xx response has its own rendered state. Otherwise:
 - The `queryReadModel` call targets `readmodel.apiEndpoint` verbatim as `table` — or, when it was
   missing at build time, the provisional `mock_...` table name noted in a comment (Step 1) — never a
   raw `fetch`, a direct `supabase.from(...)` call, or a hardcoded table name that doesn't match

@@ -84,6 +84,58 @@ export async function postCommand<TResponse = unknown>(
   return payload as TResponse;
 }
 
+/**
+ * Fill an OpenAPI path template (`/api/customers/{customerId}/reservation`) with values,
+ * URL-encoding each one. Throws if a `{param}` has no value — a contract's path parameters are
+ * required. Use the contract's path verbatim as `template`; never hand-assemble a URL.
+ */
+export function buildPath(template: string, params: Record<string, string | number> = {}): string {
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => {
+    const value = params[name];
+    if (value === undefined) throw new Error(`Missing path parameter "${name}" for ${template}`);
+    return encodeURIComponent(String(value));
+  });
+}
+
+function mockSample<T>(samples: Record<string, T> | undefined, what: string): T {
+  const n = activeMockSample();
+  const sample = samples?.[n];
+  if (sample === undefined) {
+    throw new Error(
+      `Mock mode is on (VITE_MOCK_SAMPLE=${n}) but no sample-${n}.json exists for ${what} — add one under this component's samples/ folder.`,
+    );
+  }
+  return sample;
+}
+
+/**
+ * GET a read model from the backend's published `GET` UI contract (`path` already filled via
+ * `buildPath`, `query` = the contract's query `parameters`). Resolves with the parsed JSON, or
+ * throws `ApiError` on a non-2xx response — the status and body let a component render each
+ * documented error response as its own state. Mock mode serves `samples` like `queryReadModel`.
+ */
+export async function getReadModel<T>(
+  path: string,
+  query?: Record<string, string | number | boolean | undefined>,
+  samples?: Record<string, T>,
+): Promise<T> {
+  if (isMockMode()) return mockSample(samples, `GET ${path}`);
+
+  const qs = new URLSearchParams(
+    Object.entries(query ?? {}).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]),
+  ).toString();
+  const headers = await getAuthHeaders();
+  const res = await fetch(`${API_BASE}${path}${qs ? `?${qs}` : ''}`, { method: 'GET', headers });
+
+  const payload = await res.json().catch(() => undefined);
+  if (!res.ok) {
+    const message =
+      (payload && (payload.error || payload.message)) || `Request failed with status ${res.status}`;
+    throw new ApiError(message, res.status, payload);
+  }
+  return payload as T;
+}
+
 export interface ReadModelParams {
   /** `readmodel.apiEndpoint`, verbatim — the Postgres table/view name. */
   table: string;
@@ -105,16 +157,7 @@ export async function queryReadModel<T>(
   params: ReadModelParams,
   samples?: Record<string, T>,
 ): Promise<T> {
-  if (isMockMode()) {
-    const n = activeMockSample();
-    const sample = samples?.[n];
-    if (sample === undefined) {
-      throw new Error(
-        `Mock mode is on (VITE_MOCK_SAMPLE=${n}) but no sample-${n}.json exists for table "${params.table}" — add one under this component's samples/ folder.`,
-      );
-    }
-    return sample;
-  }
+  if (isMockMode()) return mockSample(samples, `table "${params.table}"`);
 
   let query = supabase.from(params.table).select(params.select);
   for (const [column, value] of Object.entries(params.filters ?? {})) {
