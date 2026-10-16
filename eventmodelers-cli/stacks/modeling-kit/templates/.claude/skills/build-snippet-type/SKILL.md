@@ -51,7 +51,7 @@ Ask only what you cannot infer, one question per turn, with a snippet whenever t
 - `instructions`: at most 4000 characters.
 
 ### Based on a built-in kind — when the built-in snippet already looks right
-A type doesn't have to be custom-drawn. With `base` set to a built-in kind (`table`, `report`, `poll`, `tasks`, `confirm`, `dataJourney`, `link`, `code`, …) the type has **no template and no actions**, and the `schema` is optional. Its data is exactly that kind's JSON without `kind` (for `table`: `{ title?, columns, rows }`), and the chat draws and answers it like that kind — element links (`nodeId`), paging and its own answer buttons included.
+A type doesn't have to be custom-drawn. With `base` set to a built-in kind (`table`, `report`, `poll`, `tasks`, `confirm`, `dataJourney`, `link`, `code`, `a2ui`, …) the type has **no template and no actions**, and the `schema` is optional. Its data is exactly that kind's JSON without `kind` (for `table`: `{ title?, columns, rows }`) — an `a2ui` base is the way to keep a reusable form (`{ title?, components, data? }`, see `learn-eventmodelers-api` §16), and the chat draws and answers it like that kind — element links (`nodeId`), paging and its own answer buttons included.
 
 - Prefer this whenever the person wants to keep a built-in snippet you showed, and whenever the card must **link to elements** on the board — a template's sandboxed frame can't.
 - The `instructions` carry what makes it reusable: what to collect each time and how to fill the kind's fields (*"One row per chapter (CHAPTER elements), sorted by title; column 'Chapter'; each cell `{text: <title>, nodeId: <id>}`."*).
