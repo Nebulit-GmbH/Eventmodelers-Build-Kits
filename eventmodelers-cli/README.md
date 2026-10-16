@@ -680,6 +680,7 @@ Flow: `Ready → Planned → InProgress → Handover → InProgress → Done`. P
 - **Both sides need the new kit.** An already-installed backend kit keeps its old `ralph.js` and prompts and silently ignores `--handover` (slices still end at `Done`); `re-init` it to pick the feature up.
 - **The platform must know the `Ready` / `Handover` statuses.**
 - A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Handover" }`; absent means `Planned`.
+- `run --status-trigger <status>` overrides that pickup status for a single run (e.g. `--status-trigger Ready`); nothing is saved.
 
 The contract itself is the shared `ui-contract` skill's job (see above); it also owns the rule for which status a slice ends at.
 

@@ -41,9 +41,12 @@ has_pending_tasks() {
   [[ "$content" != "[]" && -n "$content" ]]
 }
 
-# Returns 0 if any JSON under .build-kit/.slices/ contains a "Planned" status
+# Status this loop picks work up from — `run --status-trigger <status>` (RALPH_STATUS_TRIGGER), default Planned
+PICKUP_STATUS="${RALPH_STATUS_TRIGGER:-Planned}"
+
+# Returns 0 if any JSON under .build-kit/.slices/ contains a slice in the pickup status
 has_planned_slices() {
-  grep -rqi '"status"[[:space:]]*:[[:space:]]*"planned"' "$KIT_DIR/.slices/" --include='index.json' 2>/dev/null
+  grep -rqi "\"status\"[[:space:]]*:[[:space:]]*\"$PICKUP_STATUS\"" "$KIT_DIR/.slices/" --include='index.json' 2>/dev/null
 }
 
 # Returns the title of the first "Planned" slice, or empty string
@@ -54,10 +57,10 @@ get_planned_slice_title() {
     title=$(node -e "
       try {
         const d = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf-8'));
-        const s = (d.slices||[]).find(s => (s.status||'').toLowerCase() === 'planned');
+        const s = (d.slices||[]).find(s => (s.status||'').toLowerCase() === process.argv[2].toLowerCase());
         if (s) process.stdout.write(s.slice || s.id || '');
       } catch(e) {}
-    " "$index_file" 2>/dev/null)
+    " "$index_file" "$PICKUP_STATUS" 2>/dev/null)
     if [[ -n "$title" ]]; then
       echo "$title"
       return
@@ -95,7 +98,7 @@ while [[ "$ITERATIONS" -eq 0 || "$cycle" -lt "$ITERATIONS" ]]; do
 
   if has_planned_slices; then
     slice_title=$(get_planned_slice_title)
-    run_agent "onPlannedSlice: building \"$slice_title\"..." "$(cat "$BACKEND_PROMPT_FILE"; task_request "build the Planned slice \"$slice_title\"")"
+    run_agent "onPlannedSlice: building \"$slice_title\"..." "$(cat "$BACKEND_PROMPT_FILE"; task_request "build the $PICKUP_STATUS slice \"$slice_title\"")"
     echo "[$(date -u +%H:%M:%S)] Slice \"$slice_title\" build complete — waiting for next slice"
     ran_something=true
   fi

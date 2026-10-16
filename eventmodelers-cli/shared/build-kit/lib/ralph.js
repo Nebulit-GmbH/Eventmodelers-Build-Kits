@@ -521,8 +521,11 @@ function hasPendingTasks(kitDir) {
 
 // The slice status this kit claims work from. A stack declares it in `lib/kit.json`
 // ({ "pickupStatus": "Handover" } for the UI kits, which build what a backend kit handed over);
-// absent means "Planned", the backend default.
+// absent means "Planned", the backend default. `run --status-trigger <status>` (RALPH_STATUS_TRIGGER)
+// overrides either for that run.
 export function readPickupStatus(kitDir) {
+  const override = (process.env.RALPH_STATUS_TRIGGER || '').trim();
+  if (override) return override;
   try {
     const s = JSON.parse(readFileSync(join(kitDir, 'lib', 'kit.json'), 'utf-8')).pickupStatus;
     if (typeof s === 'string' && s.trim()) return s.trim();
@@ -703,7 +706,7 @@ function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
     : 'process the pending tasks in tasks.json';
   // Stated explicitly so the agent never has to work it out from config.json: this run's effective
   // value, which is what the `ui-contract` skill (Step 4) follows. UI kits (pickup Handover) ignore it.
-  const handover = planned && pickupStatus === 'Planned' ? `\nHandover: ${resolveHandover(cfg) ? 'on' : 'off'}\n` : '';
+  const handover = planned && pickupStatus.toLowerCase() !== 'handover' ? `\nHandover: ${resolveHandover(cfg) ? 'on' : 'off'}\n` : '';
   return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}`;
 }
 
