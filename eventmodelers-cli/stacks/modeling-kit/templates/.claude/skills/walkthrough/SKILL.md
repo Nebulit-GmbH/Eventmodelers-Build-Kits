@@ -170,6 +170,6 @@ Impact mode, same shape with `status` (and `changes`, or `elements` for a new sl
 - `summary` is always there — the first page shows it under the slice count.
 - Every `nodeId` / `screenId` is an id you read in Steps 2–3 — never a guessed or remembered one. A `new` slice has no `nodeId`.
 - The snippet is at most 64 KB; keep descriptions short rather than dropping steps.
-- **Impact mode** ends there: the walkthrough is the proposal. If the person then asks for the changes, that is ordinary work (prompts per the kit's CLAUDE.md) — and a slice that is not `Created` still needs their confirmation first.
+- **Impact mode** ends there: the walkthrough is the proposal. If the person then asks for the changes, that is ordinary work (prompts per the kit's CLAUDE.md).
 
 **No chat** (run from a terminal): print the slice count and the summary, then the steps as a numbered list with the same fields, instead of posting.

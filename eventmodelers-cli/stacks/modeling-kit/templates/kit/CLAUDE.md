@@ -84,22 +84,6 @@ header's `standalone=on|off` tells you which mode they come in.
 
 At the start of every session, read `.agent-modeling-kit/AGENTS.md` if it exists to load accumulated learnings.
 
-**Only touch elements in a slice whose status is `Created` — unless the person explicitly confirmed it.** Every other status — `Ready`, `Planned`,
-`Assigned`, `InProgress`, `Handover`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working
-on that slice: read it for context, but never change, move, rename or delete its elements, and
-never add scenarios, fields or examples to them. An element in no slice at all is not locked.
-`get_board_outline` returns `sliceStatus` per column (`get_nodes` does not carry it), so the
-outline read `/connect` Step 5 already makes answers this — no `list_slices`/`get_slice_data` call needed.
-If only part of what you were asked to do is locked, do the rest and name what you skipped and
-why. **When the work came from a chat** (the prompt carries `origin_session_id=`, or you are in a
-`CHAT` turn), do not simply refuse and do not change it either: **ask the person to confirm**, in
-the chat, with a `confirm` snippet (see "Locked slices in a chat" below). Their yes is what unlocks
-exactly those elements — nothing else about the rule loosens. **No skill overrides this.** `/attributes`,
-`/examples`, `/place-element` and the rest write through their own steps; a skill that does not mention
-`sliceStatus` is not permission — check the outline before its first write, every time. A `COMMENT` on the slice is only for
-when there is no chat to ask in (a prompt that did not come from one, a standalone turn): then change
-nothing and comment which status blocked it. Where there is a chat, never comment — ask with the snippet.
-
 **Every field you add or rename must have a known source. This holds in every skill and every turn, not only in a full modeling run.**
 Follow `eventmodeling-information-completeness` before writing any field. It defines the three valid sources: a same-named upstream field, a `mapping`, or `generated: true`. A field with none of these is a gap to close upstream, never one to place unmapped.
 
@@ -249,19 +233,14 @@ for it. Instead:
      *"Run /<name> <the rest of the message>"*, with the target resolved from `context=` like any other
      (selected elements, chapter), and say so in one line. Don't re-interpret it as a question. A skill that
      needs something the message lacks (which attribute? which screen?) is a **clarify**: ask, with a
-     snippet if the answer is a pick. A locked slice still needs the person's confirmation
-     ("Locked slices in a chat" below).
+     snippet if the answer is a pick.
    - **a review in other words** ("what do you think?", "any questions on this?", "what's missing here?") —
      your call: a quick take is an **answer**, in prose; a thorough review of a whole context or chapter may
      be the same prompt as above. If a reply ends in a question the person answers with a click ("Want me to
      turn these into comments?"), that question is a snippet, not a sentence (step 4, Snippets).
    - **clarify** — too vague to act on even with the session behind it: do no work.
    - **work** — it asks for a change to the board: create the work now, as below — a request is its
-     own go-ahead, in every mode — **except for a locked slice.** Before `create_prompt`, find out whether
-     the elements it names (and, for a change that follows connections, the ones it reaches) sit in a slice
-     that is not `Created`: `get_board_outline` for that chapter, `sliceStatus` per column. If so, no
-     prompt for those: ask first (see "Locked slices in a chat"). A request is not a go-ahead to reopen
-     finished work.
+     own go-ahead, in every mode.
    - **confirm** — the message says yes to a proposal you started after a board change (`--modeling`
      proposes instead of acting on board changes; see "Propose mode" in CLAUDE-STANDALONE.md). Any
      form counts, typed or spoken ("yes", "sure", "go ahead", "do it", "ok, but only the
@@ -364,31 +343,6 @@ only what got done. Anything you skipped, could not do or changed differently is
 the reason: *"Added the fields to Register User. I left Order Placed alone — see my question below."*
 The work card shows "Done", which the person would otherwise read as everything went through. Never
 reply `DONE` to a chat-originated prompt without having posted a message.
-
-### Locked slices in a chat
-
-A request that touches an element in a slice that is not `Created` (e.g. `Done`) is not refused and
-not silently turned into a comment: **you ask, explicitly, and wait for the yes.** Whichever turn
-notices it — the `CHAT` turn (the outline you read already has `sliceStatus`) or the prompt turn —
-does the same:
-
-1. **Change nothing in the locked slice.** Do everything else the request asked for.
-2. **Post one `post_chat_message`** (`replyTo` = this turn's `message_id` in a `CHAT` turn; `sessionId`
-   = `origin_session_id` in a prompt turn) with a **`confirm` snippet**: the text names the slice, its
-   status and what you would change — *"Order Placed is in the slice 'Place order', which is Done.
-   Changing it reopens finished work."* — and the snippet's `headline` is the question, with a
-   `yesLabel` that says what happens (*"Yes, change it"*, `noLabel` *"No, leave it"*). When the change is
-   several edits, a `changes` snippet (title = element as link, slice, before/after, one confirm) shows
-   exactly what will be touched instead.
-3. **Reply `DONE`** — a turn that asked is finished; the question is the result. **No `COMMENT` on the
-   slice, not now and not instead of asking** — the snippet in the chat is the only thing you post.
-4. **The click arrives as a `CHAT` turn** (`Yes, change it – …` / `Apply changes – …` is a yes, `No, leave it
-   – …` a no). On a yes, create the prompt for exactly the elements you asked about
-   (`originMessageId` = the yes) and **write the confirmation into the prompt's text**: *"The person
-   confirmed changing the locked slice 'Place order' (status Done): …"*. A prompt turn whose text carries
-   that confirmation, with `origin_message_id` pointing at the yes, may change those elements — and only
-   those; any other locked slice still needs its own yes. On a no, acknowledge in a line and drop it.
-   Not clearly a yes? Ask again, don't change it.
 
 ## Standalone board-change turns — see `CLAUDE-STANDALONE.md`
 

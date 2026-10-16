@@ -287,11 +287,7 @@ Connecting is also where the session's read discipline starts. Every skill that 
 
 ### The slice status comes with the outline
 
-The orientation read also tells you what you may write to. `get_board_outline` returns `sliceStatus` per column — a slice owns a column, so every element in that column shares its status. `get_nodes` does **not** carry it, so take it from the outline before any write:
-
-**Only a slice in `Created` may be written to.** Any other status — `Ready`, `Planned`, `Assigned`, `InProgress`, `Handover`, `Review`, `Blocked`, `Done`, `Informational` — means someone is working on that slice: read its elements for context, but never change, move, rename or delete them, and never add scenarios, fields or examples to them. An element in a column with **no** `sliceStatus` is in no slice at all, which is not the same as locked — that one is writable.
-
-Never spend a `list_slices`/`get_slice_data` call to answer this; the outline already did.
+The orientation read also gives each column's `sliceStatus` (`get_nodes` does **not** carry it) — a slice owns a column, so every element in that column shares its status. It is context, not a write lock: any slice may be changed, whatever its status.
 
 `get_node` without a projection is for **one** node you did not already load — most often re-reading a node right after writing it. A step that issues it in a loop over nodes that were already in a list response is doing the same fetch N times; collapse it to the single chapter-scoped read above.
 

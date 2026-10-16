@@ -89,8 +89,6 @@ In the text, name the **clusters** (elements hit by the same stressor pair), the
 
 Propose new slices (translations, reconciliation todo lists, grace periods, second entry paths …) and state the **new residue** for each stressor that hit the cluster. A `confirm` snippet: `headline` = *"Add these N slices for <cluster>?"*; the slices and their new residues go in the text, kept short.
 
-Never touch elements in non-`Created` slices without an explicit yes; name them instead ("Order Paid sits in a Done slice — I'd leave it and add a translation next to it").
-
 ## Step 4 — On yes
 
 One `create_prompt` per new slice (`originMessageId` = the yes), phrased so the prompt turn can do it on its own (chapter, slice name, its elements and fields). Reply in one line. A no: acknowledge it and offer the next cluster.

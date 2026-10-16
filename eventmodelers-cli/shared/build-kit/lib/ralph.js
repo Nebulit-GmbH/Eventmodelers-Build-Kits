@@ -553,8 +553,8 @@ function readTicketNumber(kitDir, ctx, folder) {
 // Returns the first Planned slice, preferring the current context so a context is finished
 // before the next one starts. When the current context has no planned work, the first other
 // context that does becomes the current one (current_context.json is rewritten), so a slice
-// set to Planned in any context is eventually built.
-function getFirstPlannedSlice(kitDir) {
+// set to Planned in any context is eventually built. Ids in `skipIds` are passed over.
+function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
   const slicesDir = join(kitDir, '.slices');
   const currentCtx = readCurrentContext(kitDir);
   let others = [];
@@ -568,7 +568,7 @@ function getFirstPlannedSlice(kitDir) {
     if (!existsSync(indexPath)) continue;
     try {
       const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === pickup);
+      const planned = slices && slices.find((s) => (s.status || '').toLowerCase() === pickup && !skipIds.has(s.id));
       if (!planned) continue;
       if (ctx !== currentCtx) {
         writeFileSync(join(slicesDir, 'current_context.json'), JSON.stringify({ name: ctx }, null, 2), 'utf-8');
@@ -580,15 +580,35 @@ function getFirstPlannedSlice(kitDir) {
   return null;
 }
 
-// If the exact same Planned slice (by id) comes back up this many times in a
-// row without its status ever leaving "Planned", onPlannedSlice is stuck on
+// Ids of every slice currently waiting for pickup, across all contexts.
+function listPlannedIds(kitDir) {
+  const slicesDir = join(kitDir, '.slices');
+  const pickup = readPickupStatus(kitDir).toLowerCase();
+  const ids = new Set();
+  try {
+    for (const d of readdirSync(slicesDir, { withFileTypes: true })) {
+      if (!d.isDirectory()) continue;
+      try {
+        const { slices } = JSON.parse(readFileSync(join(slicesDir, d.name, 'index.json'), 'utf-8'));
+        for (const s of slices ?? []) if ((s.status || '').toLowerCase() === pickup) ids.add(s.id);
+      } catch {}
+    }
+  } catch {}
+  return ids;
+}
+
+// If the exact same Planned slice (by id) has been built this many times without its status ever leaving "Planned", onPlannedSlice is stuck on
 // it — declining to build it, or building it but its own status change keeps
 // getting reverted (e.g. a failed check). Rather than retry it forever (or
 // crash the whole loop, which would take down every other slice with it),
 // mark it Blocked with a note explaining why and move on to other work.
 // Critical for unsupervised/CI runs, which have no human watching to notice
 // a stall. Configurable for teams that want more slack.
-const MAX_PLANNED_ATTEMPTS = Number(process.env.RALPH_MAX_PLANNED_ATTEMPTS) || 2;
+const MAX_PLANNED_ATTEMPTS = Number(process.env.RALPH_MAX_PLANNED_ATTEMPTS) || 5;
+
+// After this many builds that left a slice Planned, the loop builds any other Planned slice first
+// and comes back to the stuck one only when nothing else is waiting (until MAX_PLANNED_ATTEMPTS).
+const SWITCH_AFTER_ATTEMPTS = Math.min(2, MAX_PLANNED_ATTEMPTS);
 
 // Marks a stuck slice Blocked (locally, and on the board if credentialed) and
 // records why, so the loop can move on instead of looping or exiting.
@@ -664,6 +684,23 @@ async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, las
     }
   }
 
+  // Always leave a comment on the slice saying why it was blocked — a Blocked slice with no
+  // explanation is a dead end for whoever finds it. Its own try block, so a failed status sync
+  // above can't skip it; without credentials there is no board to comment on, so say so loudly.
+  if (credentialed) {
+    try {
+      await fetchJSON(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/${planned.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
+        body: JSON.stringify({ text: `Slice "${planned.title}" was auto-blocked by the Ralph loop. ${reason}`, type: 'COMMENT', author: 'ralph-loop' }),
+      });
+    } catch (err) {
+      console.error(`[ralph] Failed to post the auto-block comment on "${planned.title}" — the reason is only in progress.txt:`, err.message);
+    }
+  } else {
+    console.error(`[ralph] No board credentials — could not comment on "${planned.title}"; the reason is only in progress.txt.`);
+  }
+
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
 }
 
@@ -718,9 +755,9 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   // this back on.
   const credentialed = !localOnly && hasCredentials(cfg);
   let lastIdleCtx;
-  // Tracks consecutive sightings of the same Planned slice id — see
-  // MAX_PLANNED_ATTEMPTS above.
-  let stuckSlice = { id: null, count: 0 };
+  // Builds so far per slice id that is still Planned — see MAX_PLANNED_ATTEMPTS above. An id drops
+  // out as soon as its slice leaves Planned, so only builds that failed to move it count.
+  const plannedAttempts = new Map();
   // The build agent's final reply on the most recent planned-slice turn — quoted in the Blocked note.
   let lastReply = null;
 
@@ -735,18 +772,23 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       didWork = true;
     }
 
-    const planned = onPlannedSlice && getFirstPlannedSlice(kitDir);
+    let planned = null;
+    if (onPlannedSlice) {
+      const stillPlanned = listPlannedIds(kitDir);
+      for (const id of plannedAttempts.keys()) if (!stillPlanned.has(id)) plannedAttempts.delete(id);
+      const stuckIds = new Set([...plannedAttempts].filter(([, n]) => n >= SWITCH_AFTER_ATTEMPTS).map(([id]) => id));
+      // Prefer a slice that hasn't been tried to the switch point; fall back to a stuck one.
+      planned = getFirstPlannedSlice(kitDir, stuckIds) ?? (stuckIds.size ? getFirstPlannedSlice(kitDir) : null);
+    }
     if (planned) {
-      stuckSlice = planned.id !== null && planned.id === stuckSlice.id
-        ? { id: stuckSlice.id, count: stuckSlice.count + 1 }
-        : { id: planned.id, count: 1 };
-
-      if (stuckSlice.count > MAX_PLANNED_ATTEMPTS) {
-        await blockStuckSlice(kitDir, cfg, credentialed, planned, stuckSlice.count, lastReply);
-        stuckSlice = { id: null, count: 0 };
+      const attempts = plannedAttempts.get(planned.id) ?? 0;
+      if (planned.id !== null && attempts >= MAX_PLANNED_ATTEMPTS) {
+        await blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, lastReply);
+        plannedAttempts.delete(planned.id);
         didWork = true;
         continue;
       }
+      if (planned.id !== null) plannedAttempts.set(planned.id, attempts + 1);
 
       const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
@@ -757,7 +799,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         context: planned.ctx,
         ticketNumber: planned.ticketNumber,
         boardId: cfg.boardId ?? null,
-        attempt: stuckSlice.count,
+        attempt: attempts + 1,
       }); });
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
