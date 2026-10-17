@@ -138,8 +138,10 @@ timestamp no event carries), add that field to the element — don't move the va
 - `isError` marks a beat as an alternate/error branch off the previous beat.
 - A note beat (`type: "STORYLINE_NOTE"`, `refId: ""`, markdown in `note`) may sit anywhere and is
   skipped by the order rules — see "Notes — Last Resort Only" above before adding one.
-- `fields`, `expectEmptyList`, `exampleMode`, `examples` mirror the same fields GWT scenario steps
-  use, letting a beat show concrete example data the same way a "then" readmodel step does.
+- `fields`, `expectEmptyList`, `exampleMode`, `examples` are set **per beat** — a list READMODEL beat
+  carries its own expected rows (or `expectEmptyList: true`), so every intermediate state is
+  asserted, not just "not empty". This is storyline-only: in a GWT scenario the same data goes on
+  the scenario, never on the `then` step (see Step 4b).
 
 Post storylines via `POST .../timelines/:tl/columns/:col/storylines` (see `learn-eventmodelers-api`
 for the full endpoint contract) — the same auto-create-if-missing SCENARIO spec node scenarios use,
@@ -406,6 +408,8 @@ mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "pro
 
 If there is more than one chapter, ask the user which timeline to target.
 
+**Scenarios go on the original node, never on a linked copy.** If the COMMAND/READMODEL you are specifying has `meta.linkedTo` (it is a copy), resolve to the origin node (the one without `linkedTo`), and use the origin's timeline and column for `add_scenario`/`POST .../scenarios`. A copy's column gets no spec node of its own; the origin's column holds the one spec for that fact. If the origin sits on another timeline, post there. The same applies to storylines.
+
 For each command or view being specified, find its column: `mcp__eventmodelers__get_board_outline { "boardId": "<BOARD_ID>", "chapterId": "<TL>" }` lists every column (`columnId`, index) with the nodes in it — take the column whose node list holds that COMMAND or READMODEL. If the user named the slice, find the SLICE_BORDER node with that title (`get_nodes { "type": "SLICE_BORDER", "name": "<slice title>", "projection": "line" }` gives its id) or its column in the outline to get the `colId`. (REST fallback: `GET .../nodes/$TL?projection=cells` → `{rows, columns, cells}`; find the cell whose `nodeId` is the COMMAND/READMODEL and take its `colId`.)
 
 ### Step 2 — Load valid step elements
@@ -454,7 +458,7 @@ Pass `compact: true` — you already hold every scenario object you sent, so the
 
 ### Step 4b — List-type readmodel scenario fields
 
-When `then` contains a READMODEL whose `listElement` property is `true` — set on the node when it was created, per `eventmodeling-core-rules`'s READMODEL section and `eventmodeling-identifying-outputs`/`eventmodeling-designing-automation-chains` — add two fields **at the scenario level** (not inside `then`):
+When `then` contains a READMODEL whose `listElement` property is `true` — set on the node when it was created, per `eventmodeling-core-rules`'s READMODEL section and `eventmodeling-identifying-outputs`/`eventmodeling-designing-automation-chains` — add two fields **at the scenario level** (not inside `then`). Setting `examples`, `exampleMode` or `expectEmptyList` on the `then` step is not supported — the board never reads it, and the API rejects it with `SCENARIO_STEP_LIST_EXPECTATION_UNSUPPORTED`:
 
 **`examples`** — one object per expected row, keyed by the readmodel's snake_case field names. Without this the spec node renders with no expected output and the scenario is unverifiable.
 

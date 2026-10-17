@@ -127,6 +127,8 @@ To make one: place a normal new node of the same type (COMMAND/EVENT/READMODEL o
 
 A linked copy is allowed to diverge from its origin afterward in the specific field(s) a newly-connected event actually drives — e.g. the "Updating a Read Model That Already Feeds a Screen" copy above, where `status` is updated post-link to the event's new value. The link establishes "this is the same underlying fact, not a duplicate" at creation time; it doesn't freeze the copy's fields identical to the origin's forever.
 
+**Scenarios (and storylines) are always added to the original, never to a copy.** A copy is the same fact reused, so its GWT spec lives once, in the origin's column. Before calling `add_scenario`/`add_storyline`, check `meta.linkedTo` on the target node and follow it to the origin. `eventmodeling-elaborating-scenarios` carries the step-by-step.
+
 Never delete the original (the node with no `linkedTo`) once copies of it exist — copies reference it, and removing it breaks every copy. `eventmodeling-checking-completeness` already treats any `linkedTo`-marked node as an intentional copy, never a duplicate or missing-slice gap to flag.
 
 See `place-element` Step 6a for the mechanical linking steps.

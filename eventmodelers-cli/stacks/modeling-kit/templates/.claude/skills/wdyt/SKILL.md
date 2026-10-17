@@ -40,7 +40,7 @@ mcp__eventmodelers__get_slice_data {
 
 This deliberately stays the **full graph (no `projection`)**: a business review needs elements, specs *and* existing comments together — `fields` drops specs and comments, `specs` drops elements, `outline` drops both fields and specs — and the full graph is also what carries the element geometry Step 4 draws from. Stitching two projections together would still miss the comments (existing questions you must not re-ask).
 
-`format` matters here because this skill reads the entire model before it writes anything. `"textual"` is a compact markdown dump and `"toon"` a token-efficient tabular encoding — both carry the same graph as `"json"` in a fraction of the tokens. Use `"json"` only when you need to read exact `x`/`y`/`width`/`height` values for the drawings in Step 4.2.
+`format` matters here because this skill reads the entire model before it writes anything. `"textual"` is a compact markdown dump and `"toon"` a token-efficient tabular encoding — both are compact renderings of the same model in a fraction of the tokens — elements, specs (a list read model's expected rows or empty-list expectation included) and storylines with their beats' rows. Positions and sizes are left out. Use `"json"` only when you need to read exact `x`/`y`/`width`/`height` values for the drawings in Step 4.2.
 
 Each response contains screens, commands, events, read models, specs, scenarios, actors, automations, and the edges between them.
 
