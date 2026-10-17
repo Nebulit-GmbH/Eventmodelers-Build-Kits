@@ -93,6 +93,12 @@ test('observing the board appends one event per slice whose status changed, and 
   assert.deepEqual(readEvents(kit).map((e) => `${e.slice}:${e.status}`), ['s1:Planned', 's2:Done', 's1:Blocked']);
 });
 
+test('observed events carry the metadata they were given', (t) => {
+  const kit = kitWith(t);
+  observeBoard(kit, [{ id: 's1', status: 'Planned' }], { agent_id: 'a1', organization_id: 'o1', board_id: 'b1' });
+  assert.deepEqual(readEvents(kit)[0].meta, { agent_id: 'a1', organization_id: 'o1', board_id: 'b1' });
+});
+
 test('observing the board returns the folded state', (t) => {
   const kit = kitWith(t);
   const state = observeBoard(kit, [{ id: 's1', status: 'Planned' }]);
@@ -133,6 +139,25 @@ test('the refresh still merges onto slice.json and clears a removed ticketNumber
   await fetchAndPersistSlices(cfg, kit);
   assert.deepEqual(sliceJson(kit).commands, ['AddItem']);
   assert.equal(sliceJson(kit).ticketNumber, null);
+});
+
+test('a refresh stamps its events with this agent, organization and board', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices({ ...cfg, agentId: 'agent-7' }, kit);
+  assert.deepEqual(readEvents(kit)[0].meta, { agent_id: 'agent-7', organization_id: 'o', board_id: 'b' });
+});
+
+test('without cfg.agentId the agent id comes from RALPH_AGENT_ID, like the platform headers', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  const before = process.env.RALPH_AGENT_ID;
+  process.env.RALPH_AGENT_ID = 'from-env';
+  t.after(() => { if (before === undefined) delete process.env.RALPH_AGENT_ID; else process.env.RALPH_AGENT_ID = before; });
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(readEvents(kit)[0].meta.agent_id, 'from-env');
 });
 
 test('a refresh records only changes: a second identical one adds no events', async (t) => {

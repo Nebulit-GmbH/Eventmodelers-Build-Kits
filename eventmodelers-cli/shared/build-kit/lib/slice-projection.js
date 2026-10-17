@@ -12,13 +12,13 @@ export function statusOf(state, slice) {
 }
 
 // Records what the board shows. Only changes become events, so a refresh every few seconds does not
-// grow the log. Returns the folded state.
-export function observeBoard(kitDir, boardSlices) {
+// grow the log. `meta` (agent, organization, board) is stamped on each event. Returns the folded state.
+export function observeBoard(kitDir, boardSlices, meta) {
   const state = fold(readEvents(kitDir));
   let changed = false;
   for (const { id, status } of boardSlices) {
     if (!id || !status || state.slices[id]?.lastBoardStatus === status) continue;
-    appendEvent(kitDir, { type: 'board-observed', slice: id, status });
+    appendEvent(kitDir, { type: 'board-observed', slice: id, status }, meta);
     changed = true;
   }
   return changed ? fold(readEvents(kitDir)) : state;

@@ -117,6 +117,59 @@ test('two processes appending at the same time lose and tear nothing, whatever t
   assert.equal(existsSync(join(kit, EVENTS_DIR)), true);
 });
 
+test('tags are stored in the event file, trimmed, de-duplicated and without blanks', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'learning-recorded', text: 'x', tags: [' api ', 'api', '', 'testing', 42, null] });
+  assert.deepEqual(readEvents(kit)[0].tags, ['api', 'testing']);
+});
+
+test('an event without usable tags carries no tags field', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1', tags: ['  ', ''] });
+  appendEvent(kit, { type: 'claimed', slice: 's2', tags: 'not-a-list' });
+  appendEvent(kit, { type: 'claimed', slice: 's3' });
+  for (const e of readEvents(kit)) assert.equal('tags' in e, false);
+});
+
+test('readEvents can filter by tag, keeping the index order', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'learning-recorded', text: 'a', tags: ['api'] });
+  appendEvent(kit, { type: 'learning-recorded', text: 'b', tags: ['ui'] });
+  appendEvent(kit, { type: 'learning-recorded', text: 'c', tags: ['ui', 'api'] });
+  appendEvent(kit, { type: 'claimed', slice: 's1' });
+  assert.deepEqual(readEvents(kit, { tag: 'api' }).map((e) => e.text), ['a', 'c']);
+  assert.deepEqual(readEvents(kit, { tag: 'nope' }), []);
+  assert.equal(readEvents(kit).length, 4);
+});
+
+const META = { agent_id: 'a1', organization_id: 'o1', board_id: 'b1' };
+
+test('metadata (agent, organization, board) is stored under meta on the event', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1' }, META);
+  assert.deepEqual(readEvents(kit)[0].meta, META);
+});
+
+test('blank metadata values and unknown keys are dropped; no usable metadata means no meta field', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1' }, { agent_id: ' a1 ', organization_id: '', board_id: undefined, token: 'secret' });
+  appendEvent(kit, { type: 'claimed', slice: 's2' }, { agent_id: '', board_id: null });
+  appendEvent(kit, { type: 'claimed', slice: 's3' });
+  const [a, b, c] = readEvents(kit);
+  assert.deepEqual(a.meta, { agent_id: 'a1' });
+  assert.equal('meta' in b, false);
+  assert.equal('meta' in c, false);
+});
+
+test('the metadata the caller passes wins over a meta field smuggled into the event', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1', meta: { agent_id: 'forged', board_id: 'forged' } }, META);
+  appendEvent(kit, { type: 'claimed', slice: 's2', meta: { agent_id: 'forged' } });
+  const [a, b] = readEvents(kit);
+  assert.deepEqual(a.meta, META);
+  assert.equal('meta' in b, false);
+});
+
 test('the store lives in the kit dir under fixed names', () => {
   assert.equal(EVENTS_DIR, 'events');
   assert.equal(INDEX_FILE, 'events.log');

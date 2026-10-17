@@ -3,7 +3,7 @@
 // Design and the precedence rule: slice-state-test-design.md.
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
-// released, attempt-failed, blocked, learning-recorded, learning-retracted. Unknown types are ignored, so a
+// released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated. Unknown types are ignored, so a
 // newer loop's log is readable.
 
 const emptySlice = () => ({
@@ -65,18 +65,35 @@ const apply = {
   },
 };
 
+// The curator's merge: the known sources are replaced by one learning, in the slot of the first of them.
+function mergeLearnings(learnings, e) {
+  const sources = learnings.filter((l) => e.learnings?.includes(l.id));
+  if (!sources.length) return learnings;
+  const tags = [...new Set([...sources.flatMap((l) => l.tags), ...(e.tags ?? [])])];
+  const merged = { id: e.id, text: e.text, topic: e.topic, slice: undefined, scope: e.scope ?? sources[0].scope, tags, curated: true };
+  return learnings.flatMap((l) => (l === sources[0] ? [merged] : sources.includes(l) ? [] : [l]));
+}
+
 export function fold(events) {
   const slices = {};
   let learnings = [];
   for (const e of events) {
     if (!e) continue;
     // Learnings are not about one slice (the slice is just where it was learned), so they sit beside them.
-    if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice });
+    if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice, scope: e.scope ?? 'repo', tags: e.tags ?? [], curated: false });
     else if (e.type === 'learning-retracted') learnings = learnings.filter((l) => l.id !== e.learning);
+    else if (e.type === 'learning-merged') learnings = mergeLearnings(learnings, e);
+    else if (e.type === 'learnings-curated') learnings = learnings.map((l) => ({ ...l, curated: true }));
     if (!e.slice || !Object.hasOwn(apply, e.type)) continue;
     apply[e.type](slices[e.slice] ??= emptySlice(), e);
   }
   return { slices, learnings };
+}
+
+// The curator (an LLM, writing events) is worth a turn once this many learnings have been recorded since
+// it last reviewed them.
+export function needsCuration(state, threshold) {
+  return state.learnings.filter((l) => !l.curated).length >= threshold && threshold > 0;
 }
 
 // AGENTS.md: the learnings, grouped by topic (in order of first appearance), one line each, duplicates

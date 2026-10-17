@@ -192,9 +192,18 @@ function ensureAgentId(kitDir, agentType) {
 // ensureAgentId above / RALPH_AGENT_ID). The heartbeat says this agent is alive; the header says
 // which calls are its, so its board writes are attributed to it and a prompt the user addressed
 // to one preferred agent is only ever claimed by that agent.
+function agentIdOf(cfg) {
+  return cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '';
+}
+
 function agentHeaders(cfg) {
-  const agentId = cfg?.agentId || process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID || '';
+  const agentId = agentIdOf(cfg);
   return agentId ? { 'x-agent-id': agentId } : {};
+}
+
+// What every slice-state event is stamped with: this agent and the organization and board it runs against.
+function eventMeta(cfg) {
+  return { agent_id: agentIdOf(cfg), organization_id: cfg?.organizationId, board_id: cfg?.boardId };
 }
 
 async function fetchPlatformConfig(local) {
@@ -232,7 +241,7 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
   // The board's status is an observation, not the truth for the local files: while a build holds a claim
   // a refresh that still shows InProgress must not revert the outcome the agent recorded. The status
   // written below is the log's (statusOf), which falls back to the board's for slices it knows nothing of.
-  const state = observeBoard(kitDir, slices);
+  const state = observeBoard(kitDir, slices, eventMeta(cfg));
 
   // Group by context slug
   const contexts = {};

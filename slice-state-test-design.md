@@ -30,8 +30,10 @@ events/<id>.json + events.log ──read──▶ fold(events) ──▶ State �
 | `released` | loop | `slice, reason: lost \| unconfirmed \| moved` — claim ended with nothing pushed |
 | `attempt-failed` | loop | `slice, reason, lastReply` |
 | `blocked` | loop | `slice, reason` |
-| `learning-recorded` | agent, via a `learn` command | `text, topic?, slice?` |
-| `learning-retracted` | agent, via the same command | `learning: <event id>` |
+| `learning-recorded` | agent, via a `learn` command | `text, topic?, slice?, scope: system \| repo` (default `repo`) |
+| `learning-retracted` | agent or curator | `learning: <event id>` |
+| `learning-merged` | curator (LLM) | `learnings: [ids], text, topic?, scope?` |
+| `learnings-curated` | curator (LLM) | — marks every learning recorded so far as reviewed |
 
 ### State
 
@@ -44,7 +46,7 @@ slices[id] = {
   attempts,        // count of attempt-failed since the slice last left Planned
   blocked,         // null | { reason, at }
 }
-learnings[]        // { id, text, topic, slice } from learning-recorded, minus the retracted ones
+learnings[]        // { id, text, topic, slice, scope, curated } — recorded, minus retracted, with merges applied
 ```
 
 ### Learnings: AGENTS.md is a projection
@@ -53,7 +55,18 @@ learnings[]        // { id, text, topic, slice } from learning-recorded, minus t
 (`text`, optional `topic`, optional `slice`); a wrong or obsolete one is withdrawn with
 `learning-retracted`. `AGENTS.md` is `renderLearnings(state)`: grouped by topic in order of first
 appearance, one line each, duplicates dropped (ignoring case and whitespace), regenerated from the log
-and never edited by hand. No agent turn folds anything, so there is no pending list and no
+and never edited by hand.
+
+`scope` says who the learning is for: `system` (the modeled domain — the board owns the system) or `repo`
+(the codebase that builds it). How each scope is shared across machines (platform for `system`, git for
+`repo`, or both on one transport) is open; until it is decided every event store stays local.
+
+**The LLM is a writer of events, never part of the fold.** A curator turn reads the learnings (with their
+ids) and appends `learning-merged` for near-duplicates, `learning-retracted` for wrong or obsolete ones,
+and finally `learnings-curated`. `renderLearnings` stays deterministic, and every curation decision is an
+auditable, replayable event. `needsCuration(state, threshold)` says when a turn is worth it: enough
+learnings recorded since the last review. The build agent also records and retracts at write time — it
+reads `AGENTS.md` at the start of a session, so it can skip what is already there. No agent turn folds anything, so there is no pending list and no
 "keep the pending file" logic. `attempt-failed` and `blocked` are slice state (attempt count, blocked
 note), not learnings.
 
@@ -85,6 +98,7 @@ note), not learnings.
 | `attempt-failed` ×N counts, reset when the board status leaves `Planned` | replaces the in-memory `plannedAttempts` map |
 | `blocked` sets `blocked`; a later `board-observed Planned` clears it | |
 | `learning-recorded` accumulates in order; `learning-retracted` removes it (unknown id: no change); attempt/blocked events are not learnings | learnings |
+| a learning carries its `scope` (default `repo`); `learning-merged` replaces its known sources by one learning in the first one's slot (unknown ids ignored, none known = no change), keeping their scope unless named; `learnings-curated` marks all curated; `needsCuration(state, n)` counts uncurated | curator |
 | `renderLearnings`: grouped by topic in first-appearance order, deduped, `General` for topic-less, empty for none | learnings |
 | unknown event types are ignored | robustness |
 
@@ -115,11 +129,17 @@ the push leaves no `settled`.
 
 ### C. Event store (real files, `tempKit`)
 
-Each event is a standalone JSON file `.build-kit/events/<id>.json`; `.build-kit/events.log` only
+Every event is stamped with `id`, `at` and, when known, `meta: { agent_id, organization_id, board_id }`
+(supplied by the caller from the loop's config; only those three keys survive, blanks dropped; a `meta`
+smuggled into the event itself is ignored) and optional `tags` (any event; trimmed, de-duplicated, blanks
+dropped; `readEvents(kitDir, { tag })` filters). Each event is a standalone JSON file `.build-kit/events/<id>.json`; `.build-kit/events.log` only
 indexes them, one id per line, and its order is the event order. The event file is written whole
 (temp file, rename) *before* its id is indexed, so the index line is what commits the event.
 
 - `append` creates the dir, the file and the index, and stamps `at` and `id` (the event cannot override its id).
+- Tags and `meta` are normalised on write; an event without usable ones has no such field. The refresh stamps
+  its `board-observed` events with this agent, organization and board (agent id from `cfg.agentId`, else
+  `RALPH_AGENT_ID` / `EVENTMODELERS_AGENT_ID`, the same lookup as the platform headers).
 - Every event is a valid standalone JSON file; events read back in index order.
 - A file the index doesn't list (crash between the two writes) is never applied.
 - An indexed id with a missing or corrupt file is skipped; the rest still load.

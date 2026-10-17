@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, renderLearnings, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
+import { fold, renderLearnings, needsCuration, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
 
 // Design: slice-state-test-design.md (layers A and B). Case numbers refer to slice-state-learnings.md.
 
@@ -152,6 +152,64 @@ test('events that are not learnings never show up as learnings', () => {
 test('a learning is kept with its topic and slice', () => {
   const [l] = fold([learning('l1', { topic: 'Testing', slice: 's1' })]).learnings;
   assert.deepEqual({ id: l.id, topic: l.topic, slice: l.slice }, { id: 'l1', topic: 'Testing', slice: 's1' });
+});
+
+test('a learning is scoped to the system (the board) or the repo, repo by default', () => {
+  const [a, b] = fold([learning('l1', { scope: 'system' }), learning('l2')]).learnings;
+  assert.equal(a.scope, 'system');
+  assert.equal(b.scope, 'repo');
+});
+
+test('a learning carries its tags, none by default', () => {
+  const [a, b] = fold([learning('l1', { tags: ['api', 'ui'] }), learning('l2')]).learnings;
+  assert.deepEqual(a.tags, ['api', 'ui']);
+  assert.deepEqual(b.tags, []);
+});
+
+// The curator is an LLM that writes events: it merges and retracts, and marks what it has reviewed.
+
+test('learning-merged replaces its sources by one learning, in the slot of the first', () => {
+  const state = fold([
+    learning('l1', { topic: 'Testing', text: 'run npm test' }),
+    learning('l2', { topic: 'Git', text: 'rebase before merge' }),
+    learning('l3', { topic: 'Testing', text: 'tests are run with npm test' }),
+    { type: 'learning-merged', id: 'm1', learnings: ['l1', 'l3'], text: 'Run the suite with npm test', topic: 'Testing' },
+  ]);
+  assert.deepEqual(state.learnings.map((l) => [l.id, l.text]), [['m1', 'Run the suite with npm test'], ['l2', 'rebase before merge']]);
+});
+
+test('a merged learning keeps the sources\' scope unless the merge names one, and counts as curated', () => {
+  const events = [learning('l1', { scope: 'system' }), learning('l2', { scope: 'system' })];
+  const kept = fold([...events, { type: 'learning-merged', id: 'm1', learnings: ['l1', 'l2'], text: 'x' }]).learnings[0];
+  assert.deepEqual([kept.scope, kept.curated], ['system', true]);
+  const named = fold([...events, { type: 'learning-merged', id: 'm2', learnings: ['l1', 'l2'], text: 'x', scope: 'repo' }]).learnings[0];
+  assert.equal(named.scope, 'repo');
+});
+
+test('a merged learning has the tags of its sources plus the ones the merge names', () => {
+  const state = fold([
+    learning('l1', { tags: ['api'] }), learning('l2', { tags: ['ui', 'api'] }),
+    { type: 'learning-merged', id: 'm1', learnings: ['l1', 'l2'], text: 'x', tags: ['testing'] },
+  ]);
+  assert.deepEqual(state.learnings[0].tags, ['api', 'ui', 'testing']);
+});
+
+test('a merge naming unknown learnings merges only the known ones; naming none changes nothing', () => {
+  const events = [learning('l1'), learning('l2')];
+  assert.deepEqual(texts([...events, { type: 'learning-merged', id: 'm1', learnings: ['l1', 'nope'], text: 'merged' }]), ['merged', 'learned l2']);
+  assert.deepEqual(texts([...events, { type: 'learning-merged', id: 'm2', learnings: ['nope'], text: 'merged' }]), ['learned l1', 'learned l2']);
+});
+
+test('learnings-curated marks everything recorded so far; later learnings are uncurated', () => {
+  const state = fold([learning('l1'), learning('l2'), { type: 'learnings-curated' }, learning('l3')]);
+  assert.deepEqual(state.learnings.map((l) => l.curated), [true, true, false]);
+});
+
+test('needsCuration is true once enough learnings are waiting for review', () => {
+  const state = fold([learning('l1'), { type: 'learnings-curated' }, learning('l2'), learning('l3')]);
+  assert.equal(needsCuration(state, 2), true);
+  assert.equal(needsCuration(state, 3), false);
+  assert.equal(needsCuration(fold([]), 1), false);
 });
 
 test('renderLearnings groups by topic, one line each, topics in order of first appearance', () => {
