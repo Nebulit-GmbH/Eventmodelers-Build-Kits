@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, renderLearnings, needsCuration, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
+import { fold, learningKey, renderLearnings, needsCuration, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
 
 // Design: slice-state-test-design.md (layers A and B). Case numbers refer to slice-state-learnings.md.
 
@@ -114,6 +114,15 @@ test('any status but Blocked on the board lifts the block (a person may set Hand
   const blocked = { type: 'blocked', slice: 's1', reason: 'x', at: 'now' };
   assert.equal(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Handover' }]).blocked, null);
   assert.notEqual(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Blocked' }]).blocked, null);
+});
+
+test('the last failed attempt is kept with what it tried, and forgotten once the slice moves on', () => {
+  const failed = { type: 'attempt-failed', slice: 's1', reason: 'no-outcome', at: 't1', lastReply: 'gave up', branch: 'feature/x', created: ['feature/x'], changed: ' M code.txt' };
+  const s = slice([failed, { type: 'attempt-failed', slice: 's1', reason: 'turn-failed', at: 't2' }]);
+  assert.deepEqual(s.lastFailure, { at: 't2', reason: 'turn-failed', lastReply: null, branch: null, created: [], changed: '' });
+  assert.equal(slice([failed]).lastFailure.lastReply, 'gave up');
+  assert.equal(slice([failed, { type: 'board-observed', slice: 's1', status: 'Done' }]).lastFailure, null);
+  assert.equal(slice([failed, { type: 'blocked', slice: 's1', reason: 'x', at: 'now' }]).lastFailure, null);
 });
 
 test('our own claim moving the board to InProgress does not reset the attempts', () => {
@@ -249,6 +258,11 @@ test('renderLearnings groups by topic, one line each, topics in order of first a
     '- Never amend a merged commit',
     '',
   ].join('\n'));
+});
+
+test('learningKey ignores case and whitespace', () => {
+  assert.equal(learningKey('  Use   NPM test '), learningKey('use npm test'));
+  assert.notEqual(learningKey('use npm test'), learningKey('use pnpm test'));
 });
 
 test('renderLearnings drops duplicates (ignoring case and whitespace), puts topic-less ones under General', () => {

@@ -13,6 +13,7 @@ const emptySlice = () => ({
   lastBoardStatus: undefined,
   attempts: 0,
   retryStatus: undefined,
+  lastFailure: null,
   blocked: null,
 });
 
@@ -28,7 +29,7 @@ const apply = {
     s.status = e.status;
     // Attempts count builds that failed to move the slice off the status it was put back to (Planned, or
     // Handover for UI kits); any other status means it moved. Any status but Blocked lifts a block.
-    if (!same(e.status, s.retryStatus ?? 'Planned')) s.attempts = 0;
+    if (!same(e.status, s.retryStatus ?? 'Planned')) { s.attempts = 0; s.lastFailure = null; }
     if (!same(e.status, 'Blocked')) s.blocked = null;
   },
   // First claim wins: while one is open a second `claimed` for the slice is ignored.
@@ -62,12 +63,15 @@ const apply = {
   'attempt-failed'(s, e) {
     s.attempts += 1;
     s.retryStatus = e.status ?? 'Planned';
+    // What the next build is told about the one that failed.
+    s.lastFailure = { at: e.at, reason: e.reason, lastReply: e.lastReply ?? null, branch: e.branch ?? null, created: e.created ?? [], changed: e.changed ?? '' };
   },
   // A block starts the count afresh: an unblocked slice gets a full budget again.
   blocked(s, e) {
     s.blocked = { reason: e.reason, at: e.at };
     s.status = 'Blocked';
     s.attempts = 0;
+    s.lastFailure = null;
   },
 };
 
@@ -102,13 +106,18 @@ export function needsCuration(state, threshold) {
   return state.learnings.filter((l) => !l.curated).length >= threshold && threshold > 0;
 }
 
+// Two learnings that differ only in case or whitespace are the same learning.
+export function learningKey(text) {
+  return String(text).replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 // AGENTS.md: the learnings, grouped by topic (in order of first appearance), one line each, duplicates
 // dropped. Nothing is written into the file by hand — it is regenerated from the log.
 export function renderLearnings(state) {
   const topics = new Map();
   const seen = new Set();
   for (const { text, topic } of state.learnings) {
-    const key = String(text).replace(/\s+/g, ' ').trim().toLowerCase();
+    const key = learningKey(text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const name = topic?.trim() || 'General';

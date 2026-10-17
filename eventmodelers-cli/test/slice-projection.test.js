@@ -69,6 +69,18 @@ test('projection of a blocked slice writes its reason and time; unblocking clear
   assert.equal('blockedAt' in sliceJson(kit), false);
 });
 
+test('a failed attempt is projected into slice.json (not index.json) so the next build sees what went wrong', (t) => {
+  const kit = kitWith(t);
+  appendEvent(kit, { type: 'attempt-failed', slice: 's1', reason: 'no-outcome', lastReply: 'gave up', branch: 'feature/x', created: ['feature/x'], changed: ' M code.txt', status: 'Planned', at: '2026-10-18T10:00:00.000Z' });
+  appendEvent(kit, { type: 'board-observed', slice: 's1', status: 'Planned' });
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.deepEqual(sliceJson(kit).lastAttempt, { at: '2026-10-18T10:00:00.000Z', reason: 'no-outcome', lastReply: 'gave up', branch: 'feature/x', created: ['feature/x'], changed: ' M code.txt' });
+  assert.equal('lastAttempt' in indexEntry(kit), false);
+  appendEvent(kit, { type: 'board-observed', slice: 's1', status: 'Done' });
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.equal('lastAttempt' in sliceJson(kit), false);
+});
+
 test('projection leaves slices the log knows nothing about, and writes nothing when nothing changed', (t) => {
   const kit = kitWith(t, { status: 'Done' });
   assert.equal(projectStatus(kit, fold([])), 0);

@@ -54,13 +54,13 @@ function writeJsonAtomic(path, data) {
 }
 
 // Sets status (and the Blocked note) on one parsed file's object; true when anything changed.
-function apply(target, slice) {
-  const want = { status: slice.status, blockedReason: slice.blocked?.reason, blockedAt: slice.blocked?.at };
+function apply(target, slice, extra = {}) {
+  const want = { status: slice.status, blockedReason: slice.blocked?.reason, blockedAt: slice.blocked?.at, ...extra };
   let changed = false;
   for (const [key, value] of Object.entries(want)) {
     if (value === undefined) {
       if (key !== 'status' && key in target) { delete target[key]; changed = true; }
-    } else if (target[key] !== value) {
+    } else if (JSON.stringify(target[key]) !== JSON.stringify(value)) {
       target[key] = value;
       changed = true;
     }
@@ -91,7 +91,8 @@ export function projectStatus(kitDir, state) {
       if (!entry.folder || !existsSync(slicePath)) continue;
       try {
         const data = JSON.parse(readFileSync(slicePath, 'utf-8'));
-        if (apply(data, slice)) { writeJsonAtomic(slicePath, data); written++; }
+        // slice.json is what the build agent reads, so it also carries what the last failed attempt tried.
+        if (apply(data, slice, { lastAttempt: slice.lastFailure ?? undefined })) { writeJsonAtomic(slicePath, data); written++; }
       } catch { /* an unreadable slice.json is left for the next full fetch to repair */ }
     }
     if (indexChanged) { writeJsonAtomic(indexPath, index); written++; }

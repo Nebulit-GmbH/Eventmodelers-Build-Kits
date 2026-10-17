@@ -30,6 +30,7 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
+import { listLearnings, recordLearning, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -4361,6 +4362,28 @@ program
     console.log(`✅ Pushed status change to the board (node ${slice.id}).`);
   });
 
+// The build kit a build agent's command works against: same resolution as run-checks — a build kit, not the
+// modeling/bridge kit that may sit beside it. Exits with a message when there is none.
+function requireBuildKitDir(cwd) {
+  const installed = findAllInstalledKitDirs(cwd);
+  const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName)) ?? installed[0];
+  if (!kitDir) {
+    console.error('❌ No build kit found in this directory — run this from the project root.');
+    process.exit(1);
+  }
+  return kitDir;
+}
+
+// What the build agent's events are stamped with: the loop exports the agent id into its environment.
+function agentEventMeta(cwd, kitDir, command) {
+  const { config: cfg } = loadEffectiveConfig(cwd, kitDir, command.optsWithGlobals().config);
+  return {
+    agent_id: process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID,
+    organization_id: cfg.organizationId,
+    board_id: cfg.boardId,
+  };
+}
+
 program
   .command('slice-status <status>')
   .description("For a build agent: record the outcome of the slice the run loop is building (Done, Handover, Blocked, ...). The loop owns the slice's status on the board and pushes it when the build ends — never edit index.json or call update-slice-status for a loop build.")
@@ -4372,19 +4395,8 @@ program
       console.error(`❌ "${status}" is not a slice status. Valid: ${SLICE_STATUSES.map((s) => s.value).join(', ')}`);
       process.exit(1);
     }
-    // Same resolution as run-checks: a build kit, not the modeling/bridge kit that may sit beside it.
-    const installed = findAllInstalledKitDirs(cwd);
-    const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName)) ?? installed[0];
-    if (!kitDir) {
-      console.error('❌ No build kit found in this directory — run this from the project root.');
-      process.exit(1);
-    }
-    const { config: cfg } = loadEffectiveConfig(cwd, kitDir, command.optsWithGlobals().config);
-    const meta = {
-      agent_id: process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID,
-      organization_id: cfg.organizationId,
-      board_id: cfg.boardId,
-    };
+    const kitDir = requireBuildKitDir(cwd);
+    const meta = agentEventMeta(cwd, kitDir, command);
     try {
       const result = recordAgentStatus({ kitDir, status: canonical, sliceId: opts.slice, meta });
       console.log(`✅ "${result.title}": recorded ${result.status} — the run loop pushes it to the board when the build ends.`);
@@ -4392,6 +4404,53 @@ program
       console.error(`❌ ${err.message}`);
       process.exit(1);
     }
+  });
+
+program
+  .command('learn [text]')
+  .description("For a build agent: record one reusable learning (a codebase pattern, a gotcha, a command that works or doesn't, what a failed approach tried and why it failed). .build-kit/AGENTS.md is generated from the recorded learnings — never edit it by hand. --retract withdraws a wrong or obsolete one (ids: `learnings --ids`).")
+  .option('--topic <topic>', 'Group the learning under this heading in AGENTS.md')
+  .option('--tag <tag>', 'Label the learning (repeatable)', (tag, tags) => [...tags, tag], [])
+  .option('--scope <scope>', 'system: true of the modeled domain · repo: about the codebase and its tooling (default)', 'repo')
+  .option('--slice <slice>', 'The slice it was learned on')
+  .option('--retract <id>', 'Withdraw the learning with this id (or a unique prefix of it) instead of recording one')
+  .action((text, opts, command) => {
+    const cwd = process.cwd();
+    const kitDir = requireBuildKitDir(cwd);
+    const meta = agentEventMeta(cwd, kitDir, command);
+    try {
+      if (opts.retract !== undefined) {
+        const gone = retractLearning({ kitDir, id: opts.retract, meta });
+        console.log(`✅ Retracted: ${gone.text}`);
+        return;
+      }
+      if (text === undefined) throw new Error('give the learning as text, or --retract <id>');
+      const result = recordLearning({ kitDir, text, topic: opts.topic, tags: opts.tag, scope: opts.scope, slice: opts.slice, meta });
+      console.log(result.duplicate ? `ℹ️  Already recorded (${result.id.slice(0, 8)}) — nothing to add.` : `✅ Recorded (${result.id.slice(0, 8)}) — .build-kit/AGENTS.md is updated.`);
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('learnings')
+  .description('Print the recorded learnings — what .build-kit/AGENTS.md says. With --ids, one line each with the id to retract it by.')
+  .option('--ids', 'One line per learning: id, topic, text')
+  .action((opts, command) => {
+    const cwd = process.cwd();
+    const kitDir = requireBuildKitDir(cwd);
+    syncLearnings({ kitDir, meta: agentEventMeta(cwd, kitDir, command) });
+    const all = listLearnings(kitDir);
+    if (!all.length) {
+      console.log('No learnings recorded yet.');
+      return;
+    }
+    if (!opts.ids) {
+      console.log(readFileSync(join(kitDir, 'AGENTS.md'), 'utf-8').trimEnd());
+      return;
+    }
+    for (const l of all) console.log(`  ${l.id.slice(0, 8)}  [${l.topic ?? 'General'}]  ${l.text}`);
   });
 
 program

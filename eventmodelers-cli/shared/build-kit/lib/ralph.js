@@ -19,6 +19,7 @@ import { fold } from './slice-state.js';
 import { readEvents } from './slice-events.js';
 import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './slice-run.js';
 import { isTreeClean } from './slice-git.js';
+import { syncLearnings } from './slice-learnings.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -648,15 +649,6 @@ export async function blockStuckSlice(kitDir, cfg, credentialed, planned, attemp
   // The status lives in the event log; index.json / slice.json show it (and the note) as a projection.
   recordEvent(kitDir, { type: 'blocked', slice: planned.id, reason, at: now }, eventMeta(cfg));
 
-  try {
-    const progressPath = join(dirname(kitDir), 'progress.txt');
-    const existing = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
-    const note = `\n## ${now} — Slice auto-blocked\n\nSlice: ${planned.title} (id=${planned.id}, context=${planned.ctx})\n\n- ${reason}\n---\n`;
-    writeFileSync(progressPath, existing + note, 'utf-8');
-  } catch (err) {
-    console.error('[ralph] Failed to append progress.txt note:', err.message);
-  }
-
   // Best-effort: also reflect Blocked on the board itself so a synced fetch
   // doesn't just pull "Planned" back down over our local fix. Never fatal —
   // this loop must keep going locally even if the board call fails.
@@ -691,10 +683,10 @@ export async function blockStuckSlice(kitDir, cfg, credentialed, planned, attemp
         body: JSON.stringify({ text: `Slice "${planned.title}" was auto-blocked by the Ralph loop. ${reason}`, type: 'COMMENT', author: 'ralph-loop' }),
       });
     } catch (err) {
-      console.error(`[ralph] Failed to post the auto-block comment on "${planned.title}" — the reason is only in progress.txt:`, err.message);
+      console.error(`[ralph] Failed to post the auto-block comment on "${planned.title}" — the reason is only on its blocked event:`, err.message);
     }
   } else {
-    console.error(`[ralph] No board credentials — could not comment on "${planned.title}"; the reason is only in progress.txt.`);
+    console.error(`[ralph] No board credentials — could not comment on "${planned.title}"; the reason is only on its blocked event.`);
   }
 
   console.error(`[ralph] ${reason} Marked "${planned.title}" (id=${planned.id}) as Blocked — moving on.`);
@@ -786,75 +778,17 @@ function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
   return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}`;
 }
 
-// ── Learnings ─────────────────────────────────────────────────────────────────
-// progress.txt is the build agents' running log (including the loop's own "Failed attempt discarded"
-// entries); AGENTS.md is the compact knowledge base every session starts from. No extra agent turn:
-// before a build the log is moved to .build-kit/progress.pending.txt and the build agent is told, in
-// the same turn, to fold it into AGENTS.md (new learnings merged in, duplicates and slice-specific
-// history dropped, the file kept compact). The pending log is deleted only once AGENTS.md actually
-// changed; otherwise it stays and goes to the next build. An AGENTS.md left empty is restored.
-const PENDING_LOG = 'progress.pending.txt';
-
-function stageLearnings(kitDir) {
-  const progressPath = join(dirname(kitDir), 'progress.txt');
-  const pendingPath = join(kitDir, PENDING_LOG);
-  const agentsPath = join(kitDir, 'AGENTS.md');
-  try {
-    const fresh = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
-    const kept = existsSync(pendingPath) ? readFileSync(pendingPath, 'utf-8') : '';
-    const log = kept + fresh;
-    if (!log.trim()) return null;
-    if (fresh) {
-      writeFileSync(pendingPath, log, 'utf-8');
-      rmSync(progressPath, { force: true });
-    }
-    return { pendingPath, agentsPath, before: existsSync(agentsPath) ? readFileSync(agentsPath, 'utf-8') : null };
-  } catch (err) {
-    console.error('[ralph] Could not stage progress.txt for the learnings merge:', err.message);
-    return null;
-  }
-}
-
-function learningsRequest(staged) {
-  if (!staged) return '';
-  return `\n\nAlso, in this same turn, before you start building: fold the log of earlier attempts into the project's learnings.\n`
-    + `- Read \`.build-kit/${PENDING_LOG}\` (earlier progress notes, including "Failed attempt discarded" entries) and \`.build-kit/AGENTS.md\` (may not exist yet).\n`
-    + `- Extract what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions, and for each failed attempt what was tried and why it failed. Skip slice-specific history and anything the code or git log already records.\n`
-    + `- Skip learnings already in AGENTS.md, merge near-duplicates, correct entries the log proves wrong, drop obsolete ones.\n`
-    + `- Rewrite \`.build-kit/AGENTS.md\` compact: grouped by topic under short headings, one terse line per learning, no prose, no dates.\n`
-    + `- Do not delete the pending log; the loop does that. Then build the slice as instructed.\n`;
-}
-
-// After the build: the pending log has been folded in once AGENTS.md changed.
-function finishLearnings(staged) {
-  if (!staged) return;
-  try {
-    const after = existsSync(staged.agentsPath) ? readFileSync(staged.agentsPath, 'utf-8') : '';
-    if (!after.trim()) {
-      if (staged.before !== null) writeFileSync(staged.agentsPath, staged.before, 'utf-8');
-      console.warn('[ralph] AGENTS.md is empty after the build — kept the old one and the pending log for the next build.');
-    } else if (after !== staged.before) {
-      rmSync(staged.pendingPath, { force: true });
-    } else {
-      console.warn('[ralph] AGENTS.md did not change — the pending log goes to the next build.');
-    }
-  } catch (err) {
-    console.error('[ralph] Could not finish the learnings merge — keeping the pending log:', err.message);
-  }
-}
-
-// Two agents on different branches both record learnings. The raw log (progress.txt and its pending
-// copy) is scratch and must never be versioned, and so is the slice-state event store (events/, events.log:
-// pids and claims of this checkout); AGENTS.md is shared knowledge and is rewritten on every branch, so a
-// plain merge would conflict. `merge=union` keeps both sides' lines instead — duplicates are folded away
-// by the next learnings merge. The rules go in .git/info/exclude and .git/info/attributes: local to this
-// clone, never tracked, so the loop does not dirty the working tree it is about to judge (a dirty tree at
-// claim time is taken for a person's own work and is never discarded). Idempotent; best effort.
+// The slice-state event store (events/, events.log) holds pids and claims of this checkout and must never be
+// versioned. AGENTS.md is rendered from the learning events and adopts what a merge brings in, so where it
+// is tracked, two branches that both regenerated it should keep both sides' lines rather than conflict:
+// `merge=union`. The rules go in .git/info/exclude and .git/info/attributes: local to this clone, never
+// tracked, so the loop does not dirty the working tree it is about to judge (a dirty tree at claim time is
+// taken for a person's own work and is never discarded). Idempotent; best effort.
 function ensureLearningsGitRules(kitDir) {
   const projectDir = dirname(kitDir);
   if (!existsSync(join(projectDir, '.git'))) return;
   const rules = [
-    ['info/exclude', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`, `${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
+    ['info/exclude', [`${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
     ['info/attributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
   ];
   for (const [name, lines] of rules) {
@@ -894,6 +828,9 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
     // A claim still open here is a leftover: its process died mid-build, or settling failed last time.
     await settleLeftoverClaims({ kitDir, board, meta, pickupStatus: readPickupStatus(kitDir) });
 
+    // AGENTS.md is the projection of the learning events; anything added to it by hand (or by a pull) is adopted first.
+    syncLearnings({ kitDir, meta });
+
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8') + taskRequest();
       for (const t of readTasks(join(kitDir, 'tasks.json'))) await fetchFullSlice(cfg, kitDir, t.payload?.sliceId);
@@ -919,8 +856,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         continue;
       }
 
-      const staged = stageLearnings(kitDir);
-      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir)) + learningsRequest(staged);
+      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       if (planned.id) {
         const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir) });
@@ -945,7 +881,6 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (planned.id) await settleSlice({ kitDir, planned, board, meta, pickupStatus: readPickupStatus(kitDir), details: { built, lastReply } });
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
-      finishLearnings(staged);
       didWork = true;
     }
 
@@ -965,7 +900,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks, ensureLearningsGitRules, stageLearnings, learningsRequest, finishLearnings };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks, ensureLearningsGitRules };
 
 // The connect line a runner puts in front of every prompt. --local must mean zero board
 // contact, so it is empty then — handed live credentials, the agent would treat itself as

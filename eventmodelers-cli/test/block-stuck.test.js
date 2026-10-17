@@ -47,10 +47,11 @@ test('the Blocked status and its note are projected into index.json and slice.js
   assert.deepEqual(slice.commands, ['AddItem']);
 });
 
-test('without a board it blocks locally and says so in progress.txt', async (t) => {
+test('without a board it blocks locally, and the reason lives on the event — no progress.txt is written', async (t) => {
   quiet(t);
   const kit = kitWithSlice(t);
   await blockStuckSlice(kit, {}, false, planned, 5, null);
-  assert.match(readFileSync(join(dirname(kit), 'progress.txt'), 'utf-8'), /Slice auto-blocked/);
+  assert.equal(existsSync(join(dirname(kit), 'progress.txt')), false);
   assert.equal(existsSync(join(kit, 'events.log')), true);
+  assert.match(fold(readEvents(kit)).slices.s1.blocked.reason, /Auto-blocked/);
 });
