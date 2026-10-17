@@ -7,8 +7,8 @@
 //     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
 //     May resolve with the agent's final reply — quoted in the note if the slice ends up auto-blocked.
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync } from 'fs';
-import { join, dirname } from 'path';
+import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync, rmSync } from 'fs';
+import { join, dirname, basename } from 'path';
 import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
@@ -747,6 +747,88 @@ function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
   return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}`;
 }
 
+// ── Learnings ─────────────────────────────────────────────────────────────────
+// progress.txt is the build agents' running log (including the loop's own "Failed attempt discarded"
+// entries); AGENTS.md is the compact knowledge base every session starts from. No extra agent turn:
+// before a build the log is moved to .build-kit/progress.pending.txt and the build agent is told, in
+// the same turn, to fold it into AGENTS.md (new learnings merged in, duplicates and slice-specific
+// history dropped, the file kept compact). The pending log is deleted only once AGENTS.md actually
+// changed; otherwise it stays and goes to the next build. An AGENTS.md left empty is restored.
+const PENDING_LOG = 'progress.pending.txt';
+
+function stageLearnings(kitDir) {
+  const progressPath = join(dirname(kitDir), 'progress.txt');
+  const pendingPath = join(kitDir, PENDING_LOG);
+  const agentsPath = join(kitDir, 'AGENTS.md');
+  try {
+    const fresh = existsSync(progressPath) ? readFileSync(progressPath, 'utf-8') : '';
+    const kept = existsSync(pendingPath) ? readFileSync(pendingPath, 'utf-8') : '';
+    const log = kept + fresh;
+    if (!log.trim()) return null;
+    if (fresh) {
+      writeFileSync(pendingPath, log, 'utf-8');
+      rmSync(progressPath, { force: true });
+    }
+    return { pendingPath, agentsPath, before: existsSync(agentsPath) ? readFileSync(agentsPath, 'utf-8') : null };
+  } catch (err) {
+    console.error('[ralph] Could not stage progress.txt for the learnings merge:', err.message);
+    return null;
+  }
+}
+
+function learningsRequest(staged) {
+  if (!staged) return '';
+  return `\n\nAlso, in this same turn, before you start building: fold the log of earlier attempts into the project's learnings.\n`
+    + `- Read \`.build-kit/${PENDING_LOG}\` (earlier progress notes, including "Failed attempt discarded" entries) and \`.build-kit/AGENTS.md\` (may not exist yet).\n`
+    + `- Extract what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions, and for each failed attempt what was tried and why it failed. Skip slice-specific history and anything the code or git log already records.\n`
+    + `- Skip learnings already in AGENTS.md, merge near-duplicates, correct entries the log proves wrong, drop obsolete ones.\n`
+    + `- Rewrite \`.build-kit/AGENTS.md\` compact: grouped by topic under short headings, one terse line per learning, no prose, no dates.\n`
+    + `- Do not delete the pending log; the loop does that. Then build the slice as instructed.\n`;
+}
+
+// After the build: the pending log has been folded in once AGENTS.md changed.
+function finishLearnings(staged) {
+  if (!staged) return;
+  try {
+    const after = existsSync(staged.agentsPath) ? readFileSync(staged.agentsPath, 'utf-8') : '';
+    if (!after.trim()) {
+      if (staged.before !== null) writeFileSync(staged.agentsPath, staged.before, 'utf-8');
+      console.warn('[ralph] AGENTS.md is empty after the build — kept the old one and the pending log for the next build.');
+    } else if (after !== staged.before) {
+      rmSync(staged.pendingPath, { force: true });
+    } else {
+      console.warn('[ralph] AGENTS.md did not change — the pending log goes to the next build.');
+    }
+  } catch (err) {
+    console.error('[ralph] Could not finish the learnings merge — keeping the pending log:', err.message);
+  }
+}
+
+// Two agents on different branches both record learnings. The raw log (progress.txt and its pending
+// copy) is scratch and must never be versioned; AGENTS.md is shared knowledge and is rewritten on
+// every branch, so a plain merge would conflict. `merge=union` keeps both sides' lines instead —
+// duplicates are folded away by the next learnings merge. Idempotent; best effort.
+function ensureLearningsGitRules(kitDir) {
+  const projectDir = dirname(kitDir);
+  if (!existsSync(join(projectDir, '.git'))) return;
+  const rules = [
+    ['.gitignore', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`]],
+    ['.gitattributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
+  ];
+  for (const [file, lines] of rules) {
+    try {
+      const path = join(projectDir, file);
+      const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
+      const have = new Set(current.split('\n').map((l) => l.trim()));
+      const missing = lines.filter((l) => !have.has(l));
+      if (!missing.length) continue;
+      writeFileSync(path, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`, 'utf-8');
+      console.log(`[ralph] Added to ${file}: ${missing.join(', ')}`);
+    } catch (err) {
+      console.error(`[ralph] Could not update ${file}:`, err.message);
+    }
+  }
+}
 async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
@@ -754,6 +836,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   // happens to hold valid credentials — never let a locally-present token flip
   // this back on.
   const credentialed = !localOnly && hasCredentials(cfg);
+  ensureLearningsGitRules(kitDir);
   let lastIdleCtx;
   // Builds so far per slice id that is still Planned — see MAX_PLANNED_ATTEMPTS above. An id drops
   // out as soon as its slice leaves Planned, so only builds that failed to move it count.
@@ -790,7 +873,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }
       if (planned.id !== null) plannedAttempts.set(planned.id, attempts + 1);
 
-      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
+      const staged = stageLearnings(kitDir);
+      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir)) + learningsRequest(staged);
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       lastReply = null;
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {
@@ -803,6 +887,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       }); });
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
+      finishLearnings(staged);
       didWork = true;
     }
 
@@ -822,7 +907,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks, ensureLearningsGitRules, stageLearnings, learningsRequest, finishLearnings };
 
 // The connect line a runner puts in front of every prompt. --local must mean zero board
 // contact, so it is empty then — handed live credentials, the agent would treat itself as
