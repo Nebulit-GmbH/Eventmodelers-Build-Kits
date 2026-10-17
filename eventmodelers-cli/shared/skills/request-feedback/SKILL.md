@@ -16,8 +16,7 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 **The default is to assume and build.** A missing example value, an unclear field type, a status
 mapping, a referenced event that isn't modeled yet, a dependency slice that isn't built yet — none of
 these is a reason to stop. Pick the most sensible interpretation from `slice.json`, its
-`specifications[]` and the surrounding model, build the slice, and record each assumption in one line
-in `progress.txt` and as a code comment. **Read `slice.json` fully, and read the build skill's own
+`specifications[]` and the surrounding model, build the slice, and record each assumption in one line as a code comment. **Read `slice.json` fully, and read the build skill's own
 instructions and reference docs, before concluding anything is missing.**
 
 Invoke `request-feedback` **only if the slice literally cannot be built**: even with sensible

@@ -52,7 +52,7 @@ Locate where the trigger event's state change happens in the code — the **Slic
 | in-process application/domain events (e.g. Spring `ApplicationEventPublisher`, MediatR notifications, Node `EventEmitter`) | a listener on the existing event for the trigger — or publish a new one from the trigger's service method the same way others are published |
 | transactional outbox / message broker | a consumer on the existing topic/queue, registered like the reference consumer |
 | scheduler / job framework | a scheduled job that queries the todo-list read model (or the trigger's persisted state) for pending items and fires the command per item |
-| none of the above | the least invasive option consistent with the codebase: a direct call from the trigger's service method after it commits, or a scheduled job if the reaction must be decoupled/retried. Record the choice in `progress.txt` and in `ARCHITECTURE.md` so later automations reuse it |
+| none of the above | the least invasive option consistent with the codebase: a direct call from the trigger's service method after it commits, or a scheduled job if the reaction must be decoupled/retried. Record the choice in `ARCHITECTURE.md` so later automations reuse it |
 
 Rules:
 - Map trigger fields → command fields exactly as slice.json defines; no extra fields.

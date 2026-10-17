@@ -26,7 +26,7 @@ From the slice you just built (or, for a legacy slice, from its row in the **Sli
 | Field → code mapping | every command / event / read-model field and the parameter, property or column it maps to |
 | Specification → test mapping | every entry in `specifications[]` (and storyline-derived tests) and the test class + method that covers it |
 | Shared seams | the `Shared seams` column of the slice's Slice map row |
-| Assumptions | the lines this slice added to `progress.txt` |
+| Assumptions | the assumptions this slice recorded as code comments |
 | Quality checks | the build and test commands from `ARCHITECTURE.md` you ran, and their result |
 
 Only list what is really in the code. If an element has no counterpart (e.g. a modeled event the CRUD codebase has no equivalent for), say so explicitly — `— (persisted as the row insert, no event class)` — instead of leaving it out.
@@ -174,4 +174,4 @@ Note: <noteId> in lane Implementation, column <COLUMN_ID> (created|updated)
 Commit: <sha>
 ```
 
-A failed write here never undoes the build: log it in `progress.txt` and continue with the status update — but do not skip this step silently.
+A failed write here never undoes the build: say so in your reply and continue with the status update — but do not skip this step silently.

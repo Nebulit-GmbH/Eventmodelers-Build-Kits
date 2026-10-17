@@ -61,8 +61,8 @@ Extract:
   `requestBody` properties, the 2xx `responses` entry, and every non-2xx response (status + description) — surface each error code as a
   distinct user-facing state through `onError`, not one generic failure. When absent, the backend slice
   isn't built or re-fetched yet: fall back to `apiEndpoint` / `fields[]` as above and note the assumption
-  in `progress.txt`. If contract and `command.fields[]` disagree, the contract wins for the request and
-  you record the mismatch in `progress.txt`.
+  as a code comment. If contract and `command.fields[]` disagree, the contract wins for the request and
+  you record the mismatch as a code comment.
   **Build the call from it**: `postCommand(buildPath('<contract path>', { <path params> }), { <requestBody
   properties> })` — `buildPath` (in `src/lib/api.ts`) fills and URL-encodes `{param}` segments; the body
   carries exactly the contract's `requestBody` properties (props the contract doesn't list stay out).

@@ -65,7 +65,7 @@ Ignore case for files and slices in prompts. "CartItems" slice is the same as "c
 Do not change test files unless explicitly instructed, or the change brings the test in line with slice.json (e.g. step 4's field/spec diff): `src/test/java/**/*Test.java`.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project
-learnings.
+learnings. It is generated from the learnings recorded so far — record a new one with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>`, never by editing the file.
 
 When working from a `tasks.json` task, invoke the `update-slice-status` skill with `InProgress` status before doing anything else. When the task request names the slice to build (a run-loop build), the run loop has already set it to `InProgress` and pushes the final status itself — do not call `update-slice-status`; record the outcome with `npx @eventmodelers/cli slice-status <status>`.
 
@@ -75,7 +75,7 @@ When working from a `tasks.json` task, invoke the `update-slice-status` skill wi
 **ALL fields, event names, command names, and business rules MUST come exclusively from slice.json. Do NOT
 invent, assume, or guess any field or logic not present in the slice definition.**
 
-**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line in `progress.txt` and as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
+**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
 
 When asked to build a slice, always follow this flow:
 

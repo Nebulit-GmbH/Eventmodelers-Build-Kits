@@ -47,7 +47,7 @@ If a Done slice in this context has no row in the Slice map, run `/learn-archite
 For every read model field, find where the feeding event's data is persisted (the entity/table/column written by that event's state-change slice). Search by event name, entity and field names.
 
 - **Found** → the field is read from there.
-- **Not persisted anywhere** (the state-change slice isn't built yet, or never stored that field) → do not invent a parallel store. Add the missing column/entity the way the reference does (new migration) only if it clearly belongs to this read; otherwise record the gap as an assumption in `progress.txt` and as a code comment.
+- **Not persisted anywhere** (the state-change slice isn't built yet, or never stored that field) → do not invent a parallel store. Add the missing column/entity the way the reference does (new migration) only if it clearly belongs to this read; otherwise record the gap as an assumption as a code comment.
 
 If the slice reappears as `Planned` and a query for it already exists, treat this skill as a **diff** against slice.json: add missing fields, remove fields slice.json no longer has, add missing specifications.
 
@@ -120,5 +120,5 @@ the endpoint's contract as the `## UI Contract` section of the slice's feedback-
 - [ ] If `storylines[]` is present, a storyline-derived test was added for every isolable read-model transition (adjacent READMODEL beats with only EVENT beats between them)
 - [ ] The new code mirrors its precedent slice (or the reference implementation): layout, naming and conventions; no new framework, library or architectural style was introduced
 - [ ] The slice lives in its own files; shared files were touched only at the seams in `ARCHITECTURE.md`, and its Slice map row lists them
-- [ ] Assumptions and data gaps are recorded in `progress.txt` and as code comments
+- [ ] Assumptions and data gaps are recorded as code comments
 - [ ] The evidence note exists in the slice's column on the board (`/record-evidence`)

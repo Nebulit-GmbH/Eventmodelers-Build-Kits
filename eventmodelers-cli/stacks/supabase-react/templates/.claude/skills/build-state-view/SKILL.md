@@ -75,14 +75,14 @@ Extract:
     from `src/lib/api.ts` — path and query `parameters` exactly as the contract names them, never a
     guessed URL, never `supabase.from(...)`;
   - type the result from the 2xx `responses` schema (it must match `readmodel.fields[]`; the contract
-    wins for the wire shape, record any mismatch in `progress.txt`);
+    wins for the wire shape, record any mismatch as a code comment);
   - render **every** non-2xx response (status + description) as its own distinct state — a 404 "no
     reservation" is an empty state, not an error banner; don't collapse them into one generic failure;
   - the numbered samples (Step 4) are shaped like the contract's 2xx response body.
 
   **When absent** (backend slice not built or not re-fetched yet): fall back to the table read —
   `readmodel.apiEndpoint` (table/view name) + `fields[]` via `queryReadModel` — and note the assumption
-  in `progress.txt`.
+  as a code comment.
 - **screens[]** — the actor `SCREEN` element(s) that display this data, if any (see Step 2).
 - **specifications[]** — GWT scenarios/storyline; treat as acceptance criteria (e.g. "given no
   active reservation, show an empty state").

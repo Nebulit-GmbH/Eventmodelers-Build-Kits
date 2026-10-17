@@ -20,15 +20,15 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 
 0. Do not read the entire code base. `.build-kit/ARCHITECTURE.md` tells you where to look; read the code of the precedent slices its Slice map names and the files the slice actually touches. If a `Done` slice has no row in the Slice map, run `/learn-architecture slices` first.
 1. Read `.build-kit/.slices/current_context.json` to find the active context name, then read `.build-kit/.slices/<contextName>/index.json`. Every item in status "planned" is a task.
-2. Read the progress log at `progress.txt` **if it exists** (check Codebase Patterns section first) — it is absent until the first slice is built, which is not an error; create it when you write your first entry
+2. Read `.build-kit/AGENTS.md` **if it exists** — the project's accumulated learnings, generated from what earlier builds recorded. If the slice's `slice.json` has a `lastAttempt`, an earlier attempt at it failed: read its `reason`, `lastReply`, `branch` and `changed`, and do not repeat what failed.
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
 5. Your slice is the one the task request names (the run loop picked the highest priority slice with status "Planned"); it becomes your PRD. The run loop has already claimed it — its status is "InProgress" in index.json and on the board. Build that slice and do not call `update-slice-status`: the run loop owns the slice's status on the board.
    **IMPORTANT: Only work on the slice named in the task request. Never switch to another slice, whatever its status. If the task request names no slice and no slice has status "Planned" in the current context, reply with:**
    <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices and do not switch to another context.
 6. Pick the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
-7. A slice can define additional prompts as codegen/backendPrompt. Any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
+7. A slice can define additional prompts as codegen/backendPrompt. Any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account.
 7. Determine the slice type and invoke the matching skill as defined in the **Building a Slice** section of `.build-kit/CLAUDE.md`. Do NOT implement manually.
-8. Write a short progress one liner after each step to progress.txt
+8. Record each learning the moment you have it (see **Recording Learnings**), not at the end.
 9. Analyze and Implement that single slice, making use of the skills in the skills directory plus your previously collected knowledge. Make a TODO list for what needs to be done, and adjust the implementation according to the JSON definition. Carefully inspect events, fields and compare against the implemented slice. JSON is the desired state. ATTENTION: a "planned" task can also be just added specifications. So always look at the slice itself, but also the specifications. If specifications were added in json which are not on code, you need to add them in code.
 10. The slice in the json is always true, the code follows what is defined in the json
 11. Slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in JSON are implemented in code and it fulfills the slice.json. There must be no specification in json that has no equivalent in code.
@@ -37,43 +37,26 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
 15. Invoke `/record-evidence` to write the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a note into the slice's column, in the chapter's `Implementation` feedback lane.
 16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Handover`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
-17. Append your progress to `progress.txt` after each step in the iteration.
-18. Append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
+17. Record any reusable learning you have not recorded yet (see **Recording Learnings**).
+18. If an entry in `.build-kit/AGENTS.md` turned out wrong or obsolete, retract it (see **Recording Learnings**).
 19. Finish the iteration.
 
 ## Escalating Ambiguity
 
-**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line in `progress.txt` and as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
+**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
 
-## Progress Report Format
+## Recording Learnings
 
-APPEND to progress.txt (never replace, always append):
-
-```
-## [Date/Time] - [Slice]
-
-- What was implemented
-- Files changed
-- **Learnings for future iterations:**
-  - Patterns discovered (e.g., "this codebase uses X for Y")
-  - Gotchas encountered (e.g., "don't forget to update Z when changing W")
-  - Useful context (e.g., "the evaluation panel is in component X")
----
-```
-
-The learnings section is critical - it helps future iterations avoid repeating mistakes and understand the codebase better.
-
-## Consolidate Patterns
-
-If you discover a **reusable pattern** that future iterations should know, add it to the `## Codebase Patterns` section at the TOP of progress.txt (create it if it doesn't exist).
+`.build-kit/AGENTS.md` is generated from the learnings recorded so far — read it at the start of every session, never edit it by hand. Record a learning the moment you have it:
 
 ```
-## Codebase Patterns
-- Example: "Services are transactional at the class level — never open a transaction in the controller"
-- Example: "New tables need a Flyway migration in db/migration, never edit an existing one"
+npx @eventmodelers/cli learn "<one terse line>" --topic "<topic>"
 ```
 
-Only add patterns that are **general and reusable**, not story-specific details.
+- Only what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions — and, after a failed approach, what was tried and why it failed. Not slice-specific details, and nothing the code or git log already says.
+- One learning per call, one line each. A learning that is already in `.build-kit/AGENTS.md` is skipped for you.
+- `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
+- One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
 
 ## Update AGENTS.md Files
 
@@ -84,7 +67,7 @@ Before committing, check if any edited files have learnings worth preserving in 
 - Slice specific implementation details
 - Story-specific implementation details
 - Temporary debugging notes
-- Information already in progress.txt
+- Information already recorded as a learning in `.build-kit/AGENTS.md`
 - Task-specific learnings
 
 Only update AGENTS.md if you have **genuinely reusable knowledge** that would help future work
@@ -129,9 +112,9 @@ If ALL slices in the current context are Done, reply with:
 - If no `.eventmodelers/config.json` exists anywhere (project root or an ancestor directory, or `~/.eventmodelers/config.json` — the one inside `.build-kit/` is only an optional override, so its absence means nothing), skip all platform communication (MCP calls, `update-slice-status`, board sync) and continue working locally.
 - Work on ONE slice per iteration
 - Commit frequently
-- update progress.txt frequently
-- Read the Codebase Patterns section in progress.txt before starting
+- Record learnings as you go with `learn`
+- Read `.build-kit/AGENTS.md` before starting
 
 ## When an iteration completes
 
-Use all the key learnings from the progress.txt and update the `.build-kit/AGENTS.md` file with those learnings.
+Make sure every reusable learning is recorded with `learn`; `.build-kit/AGENTS.md` is generated from them — never edit it by hand.

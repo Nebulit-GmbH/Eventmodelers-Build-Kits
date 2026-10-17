@@ -38,3 +38,35 @@ for (const stack of stacks) {
     assert.match(readFileSync(join(dir, 'lib/AGENT.md'), 'utf-8'), /run loop owns its status/);
   });
 }
+
+// progress.txt is gone: learnings are events (`learn`), AGENTS.md is generated from them, what a failed
+// attempt tried is in slice.json's `lastAttempt`, assumptions are code comments. A prompt or skill that
+// still tells the agent to write progress.txt sends it to a file nothing reads. (The modeling kit and the
+// bridge keep their own journals and are not build kits.)
+const buildKitFiles = (stack) => {
+  const root = join(stacksDir, stack, 'templates');
+  const files = [join(root, 'build-kit/CLAUDE.md'), join(root, 'build-kit/lib/prompt.md'), join(root, 'build-kit/lib/backend-prompt.md'), join(root, 'build-kit/lib/AGENT.md')];
+  const skills = join(root, '.claude/skills');
+  if (existsSync(skills)) for (const d of readdirSync(skills)) if (existsSync(join(skills, d, 'SKILL.md'))) files.push(join(skills, d, 'SKILL.md'));
+  return files.filter((f) => existsSync(f));
+};
+
+for (const stack of stacks) {
+  test(`${stack}: no prompt or skill sends the agent to progress.txt`, () => {
+    for (const file of buildKitFiles(stack)) assert.doesNotMatch(readFileSync(file, 'utf-8'), /progress\.txt|progress log/i, file);
+  });
+
+  test(`${stack}: the build prompt teaches learn, retract and lastAttempt`, () => {
+    const backend = readFileSync(join(stacksDir, stack, 'templates/build-kit/lib/backend-prompt.md'), 'utf-8');
+    assert.match(backend, /npx @eventmodelers\/cli learn "/);
+    assert.match(backend, /learn --retract/);
+    assert.match(backend, /learnings --ids/);
+    assert.match(backend, /`lastAttempt`/);
+    assert.match(readFileSync(join(stacksDir, stack, 'templates/build-kit/CLAUDE.md'), 'utf-8'), /npx @eventmodelers\/cli learn/);
+  });
+}
+
+test('the shared request-feedback skill does not send the agent to progress.txt', () => {
+  const skill = readFileSync(join(stacksDir, '..', 'shared/skills/request-feedback/SKILL.md'), 'utf-8');
+  assert.doesNotMatch(skill, /progress\.txt/);
+});

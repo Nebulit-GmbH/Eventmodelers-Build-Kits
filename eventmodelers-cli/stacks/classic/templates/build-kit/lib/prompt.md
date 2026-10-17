@@ -12,7 +12,7 @@ You are an autonomous agent reacting to slice status change events on an Eventmo
 4. Pick the **oldest task** (earliest `createdAt`).
 5. Execute the task — see the Execution section below.
 6. After execution, remove that task from the array and write `.build-kit/tasks.json` back.
-7. Append a progress entry to `progress.txt` (create if missing).
+7. Record any reusable learning with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>` (see **Recording Learnings**).
 8. Update `AGENT.md` with any new reusable learnings discovered this iteration.
 9. Reply normally so the next iteration can pick up the next task.
 
@@ -50,7 +50,7 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
 
-   **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Log it in `progress.txt`, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
+   **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Planned`), another agent already claimed it first — this is expected, not an error. Say so in your reply, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
 
 2. Run `/load-slice sliceId=<payload.sliceId>` to fetch the full slice, then read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`. The runner keeps a `slice.json` fresh from a summary endpoint, so a file holding only `id`, `title`, `status` and `sliceType` is that stub, not an empty slice — never conclude a slice has no elements from it. Only if the full fetch itself returns no commands/events/read models/fields is the slice actually empty.
 
@@ -78,16 +78,16 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 Another agent is already building this slice. Log it and skip — do not build.
 
 #### `Done`
-Summarize what was completed and update `progress.txt`.
+Summarize what was completed in your reply.
 
 #### `Blocked`
-Log the blocker in `progress.txt`.
+State the blocker in your reply.
 
 #### `Review`
-Fetch slice details and prepare a review summary in `progress.txt`.
+Fetch slice details and prepare a review summary in your reply.
 
 #### Any other status (`Created`, etc.)
-Load the slice and log the state transition in `progress.txt`. No build action.
+Load the slice and note the state transition in your reply. No build action.
 
 Use the skills available in `.claude/skills/` to interact with the board.
 
@@ -97,24 +97,20 @@ After completing a task, remove it from the array and write the updated array ba
 
 ## Escalating Ambiguity
 
-**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line in `progress.txt` and as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
+**Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
 
-## Progress Report Format
+## Recording Learnings
 
-APPEND to `progress.txt` (never replace):
+`.build-kit/AGENTS.md` is generated from the learnings recorded so far — read it at the start of every session, never edit it by hand. Record a learning the moment you have it:
+
 ```
-## [ISO timestamp] — Task [task.id]
-
-Slice: [sliceTitle] ([sliceId])
-Status change: [sliceStatus]
-
-Action taken:
-- [what was done in response to the slice change]
-
-Learnings:
-- [any patterns, gotchas, or reusable knowledge discovered]
----
+npx @eventmodelers/cli learn "<one terse line>" --topic "<topic>"
 ```
+
+- Only what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions — and, after a failed approach, what was tried and why it failed. Not slice-specific details, and nothing the code or git log already says.
+- One learning per call, one line each. A learning that is already in `.build-kit/AGENTS.md` is skipped for you.
+- `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
+- One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
 
 ## Stop Condition
 
