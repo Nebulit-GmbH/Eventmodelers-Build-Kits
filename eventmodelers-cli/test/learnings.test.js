@@ -71,13 +71,28 @@ test('an emptied AGENTS.md is restored and the pending log kept', (t) => {
   assert.equal(existsSync(join(kit, 'progress.pending.txt')), true);
 });
 
-test('git rules: logs and the slice-state event store ignored, AGENTS.md union-merged, idempotent and existing lines kept', (t) => {
+test('git rules go in .git/info, not in tracked files, so the loop never dirties the tree it is about to judge', (t) => {
   quiet(t);
   const { root, kit } = project(t);
-  writeFileSync(join(root, '.gitignore'), 'node_modules');
+  mkdirSync(join(root, '.git', 'info'), { recursive: true });
+  writeFileSync(join(root, '.git', 'info', 'exclude'), 'node_modules');
   ensureLearningsGitRules(kit);
   ensureLearningsGitRules(kit);
-  const ignore = readFileSync(join(root, '.gitignore'), 'utf-8');
-  assert.equal(ignore, 'node_modules\nprogress.txt\n.build-kit/progress.pending.txt\n.build-kit/events/\n.build-kit/events.log\n');
-  assert.equal(readFileSync(join(root, '.gitattributes'), 'utf-8'), '.build-kit/AGENTS.md merge=union\n');
+  assert.equal(readFileSync(join(root, '.git', 'info', 'exclude'), 'utf-8'),
+    'node_modules\nprogress.txt\n.build-kit/progress.pending.txt\n.build-kit/events/\n.build-kit/events.log\n');
+  assert.equal(readFileSync(join(root, '.git', 'info', 'attributes'), 'utf-8'), '.build-kit/AGENTS.md merge=union\n');
+  assert.equal(existsSync(join(root, '.gitignore')), false);
+  assert.equal(existsSync(join(root, '.gitattributes')), false);
+  assert.equal(execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf-8' }).includes('.gitignore'), false);
+});
+
+test('the ignore rules really apply: the event store and the pending log stay out of git status', (t) => {
+  quiet(t);
+  const { root, kit } = project(t);
+  ensureLearningsGitRules(kit);
+  mkdirSync(join(kit, 'events'), { recursive: true });
+  writeFileSync(join(kit, 'events', 'x.json'), '{}');
+  writeFileSync(join(kit, 'events.log'), 'x\n');
+  writeFileSync(join(kit, 'progress.pending.txt'), 'x');
+  assert.equal(execFileSync('git', ['status', '--porcelain', '--', '.build-kit/events', '.build-kit/events.log', '.build-kit/progress.pending.txt'], { cwd: root, encoding: 'utf-8' }), '');
 });

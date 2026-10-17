@@ -10,6 +10,7 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync, rmSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { homedir } from 'os';
+import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
@@ -843,31 +844,36 @@ function finishLearnings(staged) {
 }
 
 // Two agents on different branches both record learnings. The raw log (progress.txt and its pending
-// copy) is scratch and must never be versioned, and so is the slice-state event store (events/, events.log: pids and
-// claims of this checkout); AGENTS.md is shared knowledge and is rewritten on
-// every branch, so a plain merge would conflict. `merge=union` keeps both sides' lines instead —
-// duplicates are folded away by the next learnings merge. Idempotent; best effort.
+// copy) is scratch and must never be versioned, and so is the slice-state event store (events/, events.log:
+// pids and claims of this checkout); AGENTS.md is shared knowledge and is rewritten on every branch, so a
+// plain merge would conflict. `merge=union` keeps both sides' lines instead — duplicates are folded away
+// by the next learnings merge. The rules go in .git/info/exclude and .git/info/attributes: local to this
+// clone, never tracked, so the loop does not dirty the working tree it is about to judge (a dirty tree at
+// claim time is taken for a person's own work and is never discarded). Idempotent; best effort.
 function ensureLearningsGitRules(kitDir) {
   const projectDir = dirname(kitDir);
   if (!existsSync(join(projectDir, '.git'))) return;
   const rules = [
-    ['.gitignore', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`, `${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
-    ['.gitattributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
+    ['info/exclude', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`, `${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
+    ['info/attributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
   ];
-  for (const [file, lines] of rules) {
+  for (const [name, lines] of rules) {
     try {
-      const path = join(projectDir, file);
+      // `--git-path` also resolves for a worktree, where .git is a file.
+      const path = join(projectDir, execFileSync('git', ['rev-parse', '--git-path', name], { cwd: projectDir, encoding: 'utf-8' }).trim());
+      mkdirSync(dirname(path), { recursive: true });
       const current = existsSync(path) ? readFileSync(path, 'utf-8') : '';
       const have = new Set(current.split('\n').map((l) => l.trim()));
       const missing = lines.filter((l) => !have.has(l));
       if (!missing.length) continue;
       writeFileSync(path, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${missing.join('\n')}\n`, 'utf-8');
-      console.log(`[ralph] Added to ${file}: ${missing.join(', ')}`);
+      console.log(`[ralph] Added to .git/${name}: ${missing.join(', ')}`);
     } catch (err) {
-      console.error(`[ralph] Could not update ${file}:`, err.message);
+      console.error(`[ralph] Could not update .git/${name}:`, err.message);
     }
   }
 }
+
 async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
