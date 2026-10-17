@@ -13,7 +13,11 @@ import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
-import { observeBoard, projectStatus, statusOf } from './slice-projection.js';
+import { adoptAgentEdits, observeBoard, projectStatus, statusOf } from './slice-projection.js';
+import { fold } from './slice-state.js';
+import { readEvents } from './slice-events.js';
+import { claimSlice, settleSlice, settleLeftoverClaims } from './slice-run.js';
+import { isTreeClean } from './slice-git.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -241,7 +245,8 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
   // The board's status is an observation, not the truth for the local files: while a build holds a claim
   // a refresh that still shows InProgress must not revert the outcome the agent recorded. The status
   // written below is the log's (statusOf), which falls back to the board's for slices it knows nothing of.
-  const state = observeBoard(kitDir, slices, eventMeta(cfg));
+  const meta = eventMeta(cfg);
+  const state = observeBoard(kitDir, slices, meta, adoptAgentEdits(kitDir, fold(readEvents(kitDir)), meta));
 
   // Group by context slug
   const contexts = {};
@@ -755,6 +760,49 @@ export function resolveHandover(cfg) {
   return process.env.RALPH_HANDOVER === '1' || cfg?.handover === true;
 }
 
+// The board as the slice-state shell sees it. Slice status on the board is the loop's job, not the build
+// agent's: the loop claims a slice (InProgress) before the build and pushes the outcome afterwards.
+// Transient failures (network, 429, 5xx) are retried until they go through; a 4xx is a real rejection
+// (e.g. the move-into-same-status guard that lets two agents race for one slice) and surfaces.
+export function createBoard(cfg) {
+  const base = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}`;
+  return {
+    async setStatus(sliceId, status) {
+      let attempts = 0;
+      await retryTransient(`set "${status}" on slice ${sliceId}`, async () => {
+        attempts++;
+        try {
+          await fetchJSON(`${base}/nodes/events`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
+            body: JSON.stringify([{
+              id: randomUUID(),
+              eventType: 'node:changed',
+              nodeId: sliceId,
+              boardId: cfg.boardId,
+              timestamp: Date.now(),
+              changedAttributes: ['sliceStatus'],
+              meta: { type: 'SLICE_BORDER', sliceStatus: status },
+            }]),
+          });
+        } catch (err) {
+          // An earlier attempt may have landed with its response lost; the same-status guard then
+          // rejects the retry. A genuine lost race is rejected on the first attempt, so only a 4xx
+          // on a retry is forgiven.
+          if (attempts > 1 && err instanceof HttpError && err.status >= 400 && err.status < 500) return;
+          throw err;
+        }
+      });
+    },
+    async readStatus(sliceId) {
+      const { slices } = await retryTransient(`read slices of board ${cfg.boardId}`, () => fetchJSON(`${base}/slicedata/slices`, {
+        headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
+      }));
+      return slices.find((sl) => sl.id === sliceId)?.status ?? null;
+    },
+  };
+}
+
 function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
   const task = planned
     ? `build the ${pickupStatus} slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
@@ -855,6 +903,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   // happens to hold valid credentials — never let a locally-present token flip
   // this back on.
   const credentialed = !localOnly && hasCredentials(cfg);
+  const board = credentialed ? createBoard(cfg) : null;
+  const meta = eventMeta(cfg);
   ensureLearningsGitRules(kitDir);
   let lastIdleCtx;
   // Builds so far per slice id that is still Planned — see MAX_PLANNED_ATTEMPTS above. An id drops
@@ -865,6 +915,9 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
   while (true) {
     let didWork = false;
+
+    // A claim still open here is a leftover: its process died mid-build, or settling failed last time.
+    await settleLeftoverClaims({ kitDir, board, meta, pickupStatus: readPickupStatus(kitDir) });
 
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8') + taskRequest();
@@ -895,6 +948,21 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       const staged = stageLearnings(kitDir);
       const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir)) + learningsRequest(staged);
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
+      if (planned.id) {
+        const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir) });
+        if (claimed !== 'won') {
+          if (claimed === 'held') {
+            console.log(`[ralph] Another run loop holds "${planned.title}" in this kit — waiting.`);
+            plannedAttempts.set(planned.id, attempts);
+          } else {
+            // The attempt stays counted so SWITCH_AFTER_ATTEMPTS can move on to another slice.
+            console.log(`[ralph] Could not claim "${planned.title}" — skipping it this iteration.`);
+          }
+          didWork = true;
+          await sleep(5_000);
+          continue;
+        }
+      }
       lastReply = null;
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {
         sliceId: planned.id,
@@ -905,6 +973,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
         attempt: attempts + 1,
       }); });
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
+      if (planned.id) await settleSlice({ kitDir, planned, board, meta, pickupStatus: readPickupStatus(kitDir), details: { built, lastReply } });
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       finishLearnings(staged);
       didWork = true;

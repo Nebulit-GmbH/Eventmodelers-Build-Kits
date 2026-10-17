@@ -13,8 +13,8 @@ export function statusOf(state, slice) {
 
 // Records what the board shows. Only changes become events, so a refresh every few seconds does not
 // grow the log. `meta` (agent, organization, board) is stamped on each event. Returns the folded state.
-export function observeBoard(kitDir, boardSlices, meta) {
-  const state = fold(readEvents(kitDir));
+export function observeBoard(kitDir, boardSlices, meta, current = fold(readEvents(kitDir))) {
+  const state = current;
   let changed = false;
   for (const { id, status } of boardSlices) {
     if (!id || !status || state.slices[id]?.lastBoardStatus === status) continue;
@@ -22,6 +22,29 @@ export function observeBoard(kitDir, boardSlices, meta) {
     changed = true;
   }
   return changed ? fold(readEvents(kitDir)) : state;
+}
+
+// The build agent still records its outcome by editing a slice's status in index.json (until it has a
+// command of its own). While a slice is claimed the projection keeps that file equal to the log, so any
+// difference is the agent's edit — adopted as `agent-recorded`. This runs before every refresh and before
+// settling, or the next projection would write the log's InProgress over the agent's Done.
+// Returns the folded state.
+export function adoptAgentEdits(kitDir, state, meta) {
+  const claimed = Object.entries(state.slices).filter(([, s]) => s.claim).map(([id]) => id);
+  const slicesDir = join(kitDir, '.slices');
+  if (!claimed.length || !existsSync(slicesDir)) return state;
+  let adopted = false;
+  for (const ctx of readdirSync(slicesDir, { withFileTypes: true })) {
+    if (!ctx.isDirectory()) continue;
+    let index;
+    try { index = JSON.parse(readFileSync(join(slicesDir, ctx.name, 'index.json'), 'utf-8')); } catch { continue; }
+    for (const entry of index.slices ?? []) {
+      if (!claimed.includes(entry.id) || !entry.status || entry.status === state.slices[entry.id].status) continue;
+      appendEvent(kitDir, { type: 'agent-recorded', slice: entry.id, status: entry.status }, meta);
+      adopted = true;
+    }
+  }
+  return adopted ? fold(readEvents(kitDir)) : state;
 }
 
 function writeJsonAtomic(path, data) {

@@ -113,11 +113,45 @@ test('a stale refresh during a claim cannot revert the status the agent recorded
   claim(kit);
   appendEvent(kit, { type: 'claim-confirmed', slice: 's1' });
   appendEvent(kit, { type: 'agent-recorded', slice: 's1', status: 'Done' });
+  projectStatus(kit, fold(readEvents(kit))); // every event is projected as it is appended (recordEvent)
   board(t, [{ id: 's1', title: 'Add item', status: 'InProgress', contextName: 'cart' }]);
   await fetchAndPersistSlices(cfg, kit);
   assert.equal(indexEntry(kit).status, 'Done');
   assert.equal(indexEntry(kit).definition.status, 'Done');
   assert.equal(sliceJson(kit).status, 'Done');
+});
+
+test('an outcome the agent wrote into index.json mid-build survives a refresh and is recorded as its own event', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  claim(kit);
+  appendEvent(kit, { type: 'claim-confirmed', slice: 's1' });
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.equal(indexEntry(kit).status, 'InProgress');
+  // the build agent records its outcome by editing the file itself
+  const index = JSON.parse(readFileSync(join(kit, '.slices', 'cart', 'index.json'), 'utf-8'));
+  index.slices[0].status = 'Done';
+  writeFileSync(join(kit, '.slices', 'cart', 'index.json'), JSON.stringify(index));
+  board(t, [{ id: 's1', title: 'Add item', status: 'InProgress', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(indexEntry(kit).status, 'Done');
+  assert.equal(sliceJson(kit).status, 'Done');
+  const recorded = readEvents(kit).filter((e) => e.type === 'agent-recorded');
+  assert.deepEqual(recorded.map((e) => e.status), ['Done']);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(readEvents(kit).filter((e) => e.type === 'agent-recorded').length, 1);
+});
+
+test('an edit to a slice nobody has claimed is not adopted — the board decides', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  const index = JSON.parse(readFileSync(join(kit, '.slices', 'cart', 'index.json'), 'utf-8'));
+  index.slices[0].status = 'Done';
+  writeFileSync(join(kit, '.slices', 'cart', 'index.json'), JSON.stringify(index));
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(readEvents(kit).some((e) => e.type === 'agent-recorded'), false);
+  assert.equal(indexEntry(kit).status, 'Planned');
 });
 
 test('without a claim the refresh shows the board status, and the board then wins', async (t) => {
