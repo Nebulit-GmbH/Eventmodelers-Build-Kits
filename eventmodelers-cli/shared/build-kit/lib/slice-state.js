@@ -1,0 +1,118 @@
+// Local slice state as an event log: `fold` derives it, `decide*` turn it into actions. Both are pure —
+// the run loop appends the events, executes the actions and appends what came of them.
+// Design and the precedence rule: slice-state-test-design.md.
+//
+// Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
+// released, attempt-failed, blocked. Unknown types are ignored, so a newer loop's log is readable.
+
+const emptySlice = () => ({
+  status: undefined,
+  claim: null,
+  pendingOutcome: null,
+  lastBoardStatus: undefined,
+  attempts: 0,
+  blocked: null,
+});
+
+const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+
+// A line that does not parse is a crash mid-append: skip it, keep everything before it.
+export function parseEvents(text) {
+  const events = [];
+  for (const line of text.split('\n')) {
+    if (!line.trim()) continue;
+    try {
+      events.push(JSON.parse(line));
+    } catch { /* torn line */ }
+  }
+  return events;
+}
+
+const apply = {
+  // While a claim is open the board's view is recorded but does not touch `status`: a refresh that
+  // still shows InProgress must not revert the outcome the agent recorded. Attempts reset only between
+  // builds — our own claim moving the board to InProgress is not the slice leaving Planned.
+  'board-observed'(s, e) {
+    s.lastBoardStatus = e.status;
+    if (s.claim) return;
+    s.status = e.status;
+    if (!same(e.status, 'Planned')) s.attempts = 0;
+    if (same(e.status, 'Planned')) s.blocked = null;
+  },
+  // First claim wins: while one is open a second `claimed` for the slice is ignored.
+  claimed(s, e) {
+    if (s.claim) return;
+    s.claim = { pid: e.pid, confirmed: false, base: e.base ?? null, cleanTree: e.cleanTree, ctx: e.ctx, title: e.title, prevStatus: s.status };
+    s.pendingOutcome = null;
+    s.status = 'InProgress';
+  },
+  'claim-confirmed'(s) {
+    if (s.claim) s.claim.confirmed = true;
+  },
+  'agent-recorded'(s, e) {
+    s.status = e.status;
+    if (s.claim) s.pendingOutcome = e.status;
+  },
+  settled(s, e) {
+    s.claim = null;
+    s.pendingOutcome = null;
+    s.status = e.status;
+    s.lastBoardStatus = e.status;
+  },
+  // The claim ended without anything pushed: the slice is back to what it was before the claim.
+  released(s) {
+    if (!s.claim) return;
+    s.status = s.claim.prevStatus;
+    s.claim = null;
+    s.pendingOutcome = null;
+  },
+  'attempt-failed'(s) {
+    s.attempts += 1;
+  },
+  blocked(s, e) {
+    s.blocked = { reason: e.reason, at: e.at };
+    s.status = 'Blocked';
+  },
+};
+
+export function fold(events) {
+  const slices = {};
+  for (const e of events) {
+    if (!e?.slice || !Object.hasOwn(apply, e.type)) continue;
+    apply[e.type](slices[e.slice] ??= emptySlice(), e);
+  }
+  return { slices };
+}
+
+// What to do with a claimed slice once its build is over. `boardStatus` is the board's current status
+// for it (null when unknown or there is no board); `pickupStatus` is what an unfinished slice goes back
+// to (Planned, or Handover for UI kits). Actions: discard {base, skip}, push {status}, release {reason} —
+// the loop appends `settled` after a successful push and `released` for a release. A failed push appends
+// nothing, so the claim stays open and the next iteration settles it again.
+export function decideSettle(state, sliceId, { boardStatus = null, pickupStatus = 'Planned' } = {}) {
+  const s = state.slices[sliceId];
+  const claim = s?.claim;
+  if (!claim) return [];
+  // Never confirmed on the board: nothing of ours to push there — the slice may belong to the winner of the race.
+  if (!claim.confirmed) return [{ type: 'release', reason: 'unconfirmed' }];
+  // Someone else moved it (a person, request-feedback's Blocked) — theirs to keep.
+  if (boardStatus && !same(boardStatus, 'InProgress')) return [{ type: 'release', reason: 'moved' }];
+  const outcome = s.pendingOutcome;
+  const unfinished = !outcome || same(outcome, 'InProgress') || same(outcome, pickupStatus);
+  if (!unfinished) return [{ type: 'push', status: outcome }];
+  // `skip`: the tree already held someone's edits at claim time, so none of it is the build's debris.
+  return [{ type: 'discard', base: claim.base, skip: !claim.cleanTree }, { type: 'push', status: pickupStatus }];
+}
+
+// Claims still open at the top of a loop iteration are leftovers: the process died mid-build, or settling
+// failed last time. Each is settled the way a finished build is. A claim held by another live process
+// belongs to it — left alone.
+export function decideRecovery(state, { isAlive, selfPid, boardStatuses = {}, pickupStatus = 'Planned' }) {
+  const result = [];
+  for (const [slice, s] of Object.entries(state.slices)) {
+    if (!s.claim) continue;
+    if (s.claim.pid !== selfPid && isAlive(s.claim.pid)) continue;
+    result.push({ slice, actions: decideSettle(state, slice, { boardStatus: boardStatuses[slice] ?? null, pickupStatus }) });
+  }
+  return result;
+}

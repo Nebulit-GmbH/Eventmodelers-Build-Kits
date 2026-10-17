@@ -27,7 +27,7 @@ events.jsonl ──read──▶ fold(events) ──▶ State ──▶ decide*(
 | `claim-confirmed` | loop | `slice` |
 | `agent-recorded` | agent, via `slice-status` command | `slice, status` |
 | `settled` | loop | `slice, status` — the outcome is on the board |
-| `released` | loop | `slice, reason: lost \| dead-process \| unfinished` |
+| `released` | loop | `slice, reason: lost \| unconfirmed \| moved` — claim ended with nothing pushed |
 | `attempt-failed` | loop | `slice, reason, lastReply` |
 | `blocked` | loop | `slice, reason` |
 
@@ -75,25 +75,26 @@ slices[id] = {
 
 ### B. `decide*` — pure
 
-`decideSettle(state, slice, { boardStatus })`:
+`decideSettle(state, slice, { boardStatus, pickupStatus })` (`pickupStatus` is `Planned`, or `Handover` for UI kits):
 
 | facts | actions | covers |
 |---|---|---|
 | `pendingOutcome: Done`, board `InProgress` | `[push Done]` | 5 |
 | no `pendingOutcome`, status `InProgress`, board `InProgress` | `[discard, push Planned]` | 6 |
-| board is `Blocked` (someone else moved it) | `[]` plus release, **no push** | 7 |
-| claim `confirmed: false` | `[release]`, never a push | 4 |
+| board is `Blocked` (someone else moved it) | `[release moved]`, **no push**, no discard | 7 |
+| claim `confirmed: false` | `[release unconfirmed]`, never a push | 4 |
 
 Case 8 needs no `decide` test: the shell appends `settled` only after a successful push, and the
 fold test "claim stays open without `settled`" covers it. One shell test checks the board rejecting
 the push leaves no `settled`.
 
-`decideRecovery(state, { isAlive })`:
+`decideRecovery(state, { isAlive, selfPid, boardStatuses, pickupStatus })` (a leftover claim of this very process is settled too):
 
 | facts | actions | covers |
 |---|---|---|
-| open claim, pid dead, confirmed | `[push Planned, release]` | 9 |
-| open claim, pid dead, unconfirmed | `[release]` | 9 |
+| open claim, pid dead, confirmed, no outcome | `[discard, push Planned]` — settled like a finished build | 9 |
+| open claim, pid dead, confirmed, outcome recorded | `[push <outcome>]` | 9 |
+| open claim, pid dead, unconfirmed | `[release unconfirmed]` | 9 |
 | open claim, pid alive (incl. EPERM) | `[]` | 10 |
 | open claim, `cleanTree: false` | discard action carries `skip: true` | 14 |
 
