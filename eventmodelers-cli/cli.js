@@ -29,6 +29,7 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // copyDirContents in installStack) for ralph.js to import standalone — see
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
+import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -4358,6 +4359,39 @@ program
     }
 
     console.log(`✅ Pushed status change to the board (node ${slice.id}).`);
+  });
+
+program
+  .command('slice-status <status>')
+  .description("For a build agent: record the outcome of the slice the run loop is building (Done, Handover, Blocked, ...). The loop owns the slice's status on the board and pushes it when the build ends — never edit index.json or call update-slice-status for a loop build.")
+  .option('--slice <idOrTitle>', 'The slice, when the loop has claimed more than one (default: the one it is building)')
+  .action((status, opts, command) => {
+    const cwd = process.cwd();
+    const canonical = SLICE_STATUSES.find((s) => s.value.toLowerCase() === status.toLowerCase())?.value;
+    if (!canonical) {
+      console.error(`❌ "${status}" is not a slice status. Valid: ${SLICE_STATUSES.map((s) => s.value).join(', ')}`);
+      process.exit(1);
+    }
+    // Same resolution as run-checks: a build kit, not the modeling/bridge kit that may sit beside it.
+    const installed = findAllInstalledKitDirs(cwd);
+    const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName)) ?? installed[0];
+    if (!kitDir) {
+      console.error('❌ No build kit found in this directory — run this from the project root.');
+      process.exit(1);
+    }
+    const { config: cfg } = loadEffectiveConfig(cwd, kitDir, command.optsWithGlobals().config);
+    const meta = {
+      agent_id: process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID,
+      organization_id: cfg.organizationId,
+      board_id: cfg.boardId,
+    };
+    try {
+      const result = recordAgentStatus({ kitDir, status: canonical, sliceId: opts.slice, meta });
+      console.log(`✅ "${result.title}": recorded ${result.status} — the run loop pushes it to the board when the build ends.`);
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
   });
 
 program

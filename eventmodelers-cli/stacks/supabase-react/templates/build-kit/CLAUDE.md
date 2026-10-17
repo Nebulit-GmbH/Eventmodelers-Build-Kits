@@ -97,7 +97,7 @@ not attempt to build it, flag it via `request-feedback` instead.
 
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings.
 
-When starting to work on a slice, invoke the `update-slice-status` skill with `InProgress` status before doing anything else.
+When working from a `tasks.json` task, invoke the `update-slice-status` skill with `InProgress` status before doing anything else. When the task request names the slice to build (a run-loop build), the run loop has already set it to `InProgress` and pushes the final status itself — do not call `update-slice-status`; record the outcome with `npx @eventmodelers/cli slice-status <status>`.
 
 ## Building a Slice
 

@@ -19,10 +19,9 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 1. Read `.build-kit/.slices/current_context.json` to find the active context name, then read `.build-kit/.slices/<contextName>/index.json`. Every item in status "planned" is a task.
 2. Read the progress log at `progress.txt` **if it exists** (check Codebase Patterns section first) — it is absent until the first slice is built, which is not an error; create it when you write your first entry
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
-5. Pick the **highest priority** slice where status is **exactly** "Planned" (case insensitive). This becomes your PRD. Set the status "InProgress" in the index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available).
-   **IMPORTANT: Only work on slices with status "Planned" in the CURRENT context. Never pick up a slice that is "InProgress", "Done", "Blocked", "Created", or any other status — even if it looks incomplete. If no slice has status "Planned" in the current context, reply with:**
+5. Your slice is the one the task request names (the run loop picked the highest priority slice with status "Planned"); it becomes your PRD. The run loop has already claimed it — its status is "InProgress" in index.json and on the board. Build that slice and do not call `update-slice-status`: the run loop owns the slice's status on the board.
+   **IMPORTANT: Only work on the slice named in the task request. Never switch to another slice, whatever its status. If the task request names no slice and no slice has status "Planned" in the current context, reply with:**
    <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices and do not switch to another context.
-   **Claim conflict**: the board rejects the status update if the slice is already in the target status — this is expected: another agent claimed it first, racing you for the same slice. This is NOT an error. Do not stop, do not retry the same slice. Re-read `index.json` (or re-fetch via `load-slice`), pick the next-highest-priority slice still "Planned", and try claiming that one instead. Repeat until a claim succeeds or no "Planned" slice remains, in which case reply `<promise>NO_TASKS</promise>`.
 6. Pick the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account. If you use the additional prompt, add a line in progress.txt
 7. Determine the slice type and invoke the matching skill as defined in the **Building a Slice** section of `.build-kit/CLAUDE.md`. Do NOT implement manually.
@@ -37,7 +36,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 14. even if the slice is fully implemented, run your test-analyzer skill and provide the code-slice.json file as defined in the skill
 15. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge ( update
     first )
-16. Update the PRD to set `status: Done` for the completed story in index.json **and** update the slice status on the eventmodelers board using the `update-slice-status` skill (or MCP if available). For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to set is `Handover`, not `Done` — see the `ui-contract` skill, Step 4.
+16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Handover`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
 17. Append your progress to `progress.txt` after each step in the iteration.
  18. append your new learnings to `.build-kit/AGENTS.md` in a compressed form, reusable for future iterations. Only add learnings if they are not already there.
 19. Finish the iteration.

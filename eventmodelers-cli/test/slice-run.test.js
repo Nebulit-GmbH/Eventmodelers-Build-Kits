@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { appendEvent, readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
 import { observeBoard } from '../shared/build-kit/lib/slice-projection.js';
-import { claimSlice, settleSlice, settleLeftoverClaims } from '../shared/build-kit/lib/slice-run.js';
+import { claimSlice, recordAgentStatus, settleSlice, settleLeftoverClaims } from '../shared/build-kit/lib/slice-run.js';
 import { quiet, tempKit } from './helpers.js';
 
 // The loop's shell around the pure core: claim → build → settle, and recovery of leftover claims.
@@ -315,4 +315,46 @@ test('recovery with nothing left over does nothing', async (t) => {
   await recover(kit, board);
   assert.deepEqual(board.writes, []);
   assert.equal(existsSync(join(kit, 'events')), true);
+});
+
+// ── the build agent's side: recordAgentStatus (behind `eventmodelers slice-status`) ─────────────
+
+test('the agent records its outcome for the one slice the loop has claimed; the loop then pushes it (5)', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  const board = fakeBoard();
+  await claim(kit, board);
+  const result = recordAgentStatus({ kitDir: kit, status: 'Done', meta: META });
+  assert.deepEqual(result, { slice: 's1', title: 'Add item', status: 'Done' });
+  assert.equal(localStatus(kit), 'Done');
+  assert.equal(state(kit).pendingOutcome, 'Done');
+  assert.equal(await settle(kit, board), true);
+  assert.deepEqual(board.writes, ['InProgress', 'Done']);
+  const recorded = readEvents(kit).filter((e) => e.type === 'agent-recorded');
+  assert.deepEqual(recorded.map((e) => [e.status, e.meta]), [['Done', META]]);
+});
+
+test('the slice can be named by id or by title, and must be one the loop has claimed', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  await claim(kit, fakeBoard());
+  assert.equal(recordAgentStatus({ kitDir: kit, status: 'Review', sliceId: 's1' }).slice, 's1');
+  assert.equal(recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 'add ITEM' }).slice, 's1');
+  assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 'other' }), /not claimed/);
+});
+
+test('without a claim there is nothing to record — the board owns tasks.json statuses', (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done' }), /update-slice-status/);
+  assert.equal(readEvents(kit).some((e) => e.type === 'agent-recorded'), false);
+});
+
+test('with several claims the agent has to name the slice', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  await claim(kit, fakeBoard());
+  appendEvent(kit, { type: 'claimed', slice: 's2', ctx: 'cart', title: 'Remove item', pid: process.pid, base: null, cleanTree: true });
+  assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done' }), /2 slices are claimed/);
+  assert.equal(recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 's2' }).title, 'Remove item');
 });

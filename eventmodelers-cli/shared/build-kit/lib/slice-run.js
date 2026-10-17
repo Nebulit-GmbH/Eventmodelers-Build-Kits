@@ -28,6 +28,30 @@ export function isProcessAlive(pid) {
   }
 }
 
+// The build agent's side (behind `eventmodelers slice-status`): it records the outcome of the slice the
+// loop has claimed, instead of editing index.json. The loop pushes it to the board when the build ends.
+// The slice is the one open claim, or the one named by id or title. Appends `agent-recorded` and
+// projects straight away — the file the agent reads must never lag the log, or the next refresh would
+// take the stale file for an edit.
+export function recordAgentStatus({ kitDir, status, sliceId, meta }) {
+  const claimed = Object.entries(fold(readEvents(kitDir)).slices).filter(([, s]) => s.claim);
+  let match;
+  if (sliceId) {
+    const wanted = sliceId.trim().toLowerCase();
+    match = claimed.find(([id, s]) => id === sliceId || s.claim.title?.toLowerCase() === wanted);
+    if (!match) throw new Error(`slice "${sliceId}" is not claimed by the run loop — only a slice the loop is building has its status recorded here`);
+  } else if (claimed.length === 1) {
+    match = claimed[0];
+  } else if (claimed.length > 1) {
+    throw new Error(`${claimed.length} slices are claimed (${claimed.map(([, s]) => s.claim.title).join(', ')}) — name one with --slice`);
+  } else {
+    throw new Error('no slice is claimed by the run loop. For a task from tasks.json, set the status with the update-slice-status skill instead');
+  }
+  const [id, { claim }] = match;
+  recordEvent(kitDir, { type: 'agent-recorded', slice: id, status }, meta);
+  return { slice: id, title: claim.title ?? id, status };
+}
+
 // Claims a slice before it is built. The log is the local arbiter (the first claim wins); the board is
 // the cross-agent one — it rejects a move into the status a slice is already in. Returns 'won', 'held'
 // (another live process owns it in this kit) or 'lost' (the board refused; nothing was built).

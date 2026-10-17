@@ -21,3 +21,20 @@ for (const stack of stacks) {
     assert.equal(firstLine(stack, 'backend-prompt.md'), '# Ralph Agent Instructions');
   });
 }
+
+// The run loop claims a slice and pushes its final status; the build agent only records its outcome
+// (`slice-status`). Prompts for loop-built slices must not tell the agent to claim or push anything
+// itself — a claim it makes is always rejected (the loop got there first), and the prompt's "claim
+// conflict" advice would then send it off to the next slice with nothing built.
+for (const stack of stacks) {
+  test(`${stack}: the build flow leaves slice status to the run loop and records the outcome with slice-status`, () => {
+    const dir = join(stacksDir, stack, 'templates/build-kit');
+    const backend = readFileSync(join(dir, 'lib/backend-prompt.md'), 'utf-8');
+    assert.match(backend, /do not call `update-slice-status`/);
+    assert.match(backend, /npx @eventmodelers\/cli slice-status Done/);
+    assert.doesNotMatch(backend, /Set the status "InProgress"/);
+    assert.doesNotMatch(backend, /Claim conflict/);
+    assert.match(readFileSync(join(dir, 'CLAUDE.md'), 'utf-8'), /do not call `update-slice-status`/);
+    assert.match(readFileSync(join(dir, 'lib/AGENT.md'), 'utf-8'), /run loop owns its status/);
+  });
+}
