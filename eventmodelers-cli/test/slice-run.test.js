@@ -103,6 +103,15 @@ test('a claim the board rejects is lost: no build, no claim left, status back to
   assert.ok(readEvents(kit).some((e) => e.type === 'released' && e.reason === 'lost'));
 });
 
+test('a lost claim counts as a failed attempt, so a slice the board keeps refusing is eventually switched away from and blocked', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  await claim(kit, fakeBoard({ rejectWrites: true }));
+  await claim(kit, fakeBoard({ rejectWrites: true }));
+  assert.equal(state(kit).attempts, 2);
+  assert.equal(readEvents(kit).filter((e) => e.type === 'attempt-failed')[0].reason, 'claim-lost');
+});
+
 test('a slice another live process holds is not claimed, and the board is not touched', async (t) => {
   quiet(t);
   const { kit } = project(t);
@@ -149,6 +158,7 @@ test('settle puts an unfinished slice back to Planned, undoes the build and reco
   const failed = readEvents(kit).find((e) => e.type === 'attempt-failed');
   assert.equal(failed.slice, 's1');
   assert.equal(failed.lastReply, 'ran out of time');
+  assert.equal(failed.status, 'Planned');
   assert.match(failed.changed, /code\.txt/);
   assert.equal(state(kit).attempts, 1);
 });
@@ -160,6 +170,7 @@ test('an unfinished slice goes back to the pickup status of the kit (Handover fo
   await claim(kit, board);
   await settle(kit, board, { pickupStatus: 'Handover' });
   assert.deepEqual(board.writes, ['InProgress', 'Handover']);
+  assert.equal(readEvents(kit).find((e) => e.type === 'attempt-failed').status, 'Handover');
 });
 
 test('a build on a tree that already held someone\'s edits is never discarded (14)', async (t) => {

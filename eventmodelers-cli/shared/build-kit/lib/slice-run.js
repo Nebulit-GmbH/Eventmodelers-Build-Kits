@@ -44,6 +44,8 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
     } catch (err) {
       console.error(`[ralph] Could not claim "${planned.title}" on the board:`, err.message);
       recordEvent(kitDir, { type: 'released', slice: planned.id, reason: 'lost' }, meta);
+      // Counted like any attempt that did not move the slice, so one the board keeps refusing is switched away from.
+      recordEvent(kitDir, { type: 'attempt-failed', slice: planned.id, reason: 'claim-lost', lastReply: null }, meta);
       return 'lost';
     }
   }
@@ -80,6 +82,7 @@ async function runActions({ kitDir, planned, board, meta, actions, details }) {
       type: 'attempt-failed',
       slice: planned.id,
       reason: details.built === false ? 'turn-failed' : 'no-outcome',
+      status: actions.find((a) => a.type === 'push')?.status,
       lastReply: details.lastReply ?? null,
       ...(discarded ?? {}),
     }, meta);

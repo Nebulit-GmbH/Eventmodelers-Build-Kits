@@ -12,6 +12,7 @@ const emptySlice = () => ({
   pendingOutcome: null,
   lastBoardStatus: undefined,
   attempts: 0,
+  retryStatus: undefined,
   blocked: null,
 });
 
@@ -25,8 +26,10 @@ const apply = {
     s.lastBoardStatus = e.status;
     if (s.claim) return;
     s.status = e.status;
-    if (!same(e.status, 'Planned')) s.attempts = 0;
-    if (same(e.status, 'Planned')) s.blocked = null;
+    // Attempts count builds that failed to move the slice off the status it was put back to (Planned, or
+    // Handover for UI kits); any other status means it moved. Any status but Blocked lifts a block.
+    if (!same(e.status, s.retryStatus ?? 'Planned')) s.attempts = 0;
+    if (!same(e.status, 'Blocked')) s.blocked = null;
   },
   // First claim wins: while one is open a second `claimed` for the slice is ignored.
   claimed(s, e) {
@@ -56,12 +59,15 @@ const apply = {
     s.claim = null;
     s.pendingOutcome = null;
   },
-  'attempt-failed'(s) {
+  'attempt-failed'(s, e) {
     s.attempts += 1;
+    s.retryStatus = e.status ?? 'Planned';
   },
+  // A block starts the count afresh: an unblocked slice gets a full budget again.
   blocked(s, e) {
     s.blocked = { reason: e.reason, at: e.at };
     s.status = 'Blocked';
+    s.attempts = 0;
   },
 };
 

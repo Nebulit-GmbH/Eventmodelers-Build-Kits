@@ -96,6 +96,26 @@ test('attempt-failed counts attempts; they reset once the board shows the slice 
   assert.equal(slice([...two, { type: 'board-observed', slice: 's1', status: 'Done' }]).attempts, 0);
 });
 
+test('attempts reset against the status the slice went back to, not a hard-coded Planned (UI kits pick up Handover)', () => {
+  const failed = { type: 'attempt-failed', slice: 's1', reason: 'no-outcome', lastReply: null, status: 'Handover' };
+  const waiting = [failed, failed, { type: 'board-observed', slice: 's1', status: 'Handover' }];
+  assert.equal(slice(waiting).attempts, 2);
+  assert.equal(slice([...waiting, { type: 'board-observed', slice: 's1', status: 'Done' }]).attempts, 0);
+});
+
+test('a block starts the count afresh, so an unblocked slice gets a full budget again', () => {
+  const failed = { type: 'attempt-failed', slice: 's1', reason: 'timeout', lastReply: null };
+  const s = slice([failed, failed, failed, { type: 'blocked', slice: 's1', reason: 'x', at: 'now' }]);
+  assert.equal(s.attempts, 0);
+  assert.equal(slice([failed, { type: 'blocked', slice: 's1', reason: 'x', at: 'now' }, failed]).attempts, 1);
+});
+
+test('any status but Blocked on the board lifts the block (a person may set Handover, not only Planned)', () => {
+  const blocked = { type: 'blocked', slice: 's1', reason: 'x', at: 'now' };
+  assert.equal(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Handover' }]).blocked, null);
+  assert.notEqual(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Blocked' }]).blocked, null);
+});
+
 test('our own claim moving the board to InProgress does not reset the attempts', () => {
   const s = slice([
     { type: 'board-observed', slice: 's1', status: 'Planned' },

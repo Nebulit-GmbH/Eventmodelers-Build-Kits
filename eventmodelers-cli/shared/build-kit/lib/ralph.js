@@ -16,7 +16,7 @@ import { backoffMs, sleep } from './backoff.js';
 import { adoptAgentEdits, observeBoard, projectStatus, statusOf } from './slice-projection.js';
 import { fold } from './slice-state.js';
 import { readEvents } from './slice-events.js';
-import { claimSlice, settleSlice, settleLeftoverClaims } from './slice-run.js';
+import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './slice-run.js';
 import { isTreeClean } from './slice-git.js';
 import { redactConsole } from './redact.js';
 
@@ -637,43 +637,15 @@ const SWITCH_AFTER_ATTEMPTS = Math.min(2, MAX_PLANNED_ATTEMPTS);
 // records why, so the loop can move on instead of looping or exiting.
 // `lastReply` is the build agent's final message on the last attempt (when the runner reports one),
 // so the note says what actually happened instead of only listing what might have.
-async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, lastReply) {
+export async function blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, lastReply) {
   const now = new Date().toISOString();
   const reason = `Ralph loop picked up this slice ${attempts} times in a row without its status ever leaving ` +
     `"Planned" — the build agent kept declining to build it, or kept building it but its own status change kept ` +
     `getting reverted (e.g. a failed check). Auto-blocked to stop the loop from retrying it forever.` +
     (lastReply ? ` Build agent's last reply: "${String(lastReply).replace(/\s+/g, ' ').trim().slice(0, 500)}"` : '');
 
-  const indexPath = join(kitDir, '.slices', planned.ctx, 'index.json');
-  let folder;
-  try {
-    const indexData = JSON.parse(readFileSync(indexPath, 'utf-8'));
-    const entry = (indexData.slices ?? []).find((s) => s.id === planned.id);
-    if (entry) {
-      entry.status = 'Blocked';
-      entry.blockedReason = reason;
-      entry.blockedAt = now;
-      folder = entry.folder;
-      writeFileSync(indexPath, JSON.stringify(indexData, null, 2), 'utf-8');
-    }
-  } catch (err) {
-    console.error(`[ralph] Failed to write Blocked status to ${indexPath}:`, err.message);
-  }
-
-  if (folder) {
-    const sliceJsonPath = join(kitDir, '.slices', planned.ctx, folder, 'slice.json');
-    try {
-      if (existsSync(sliceJsonPath)) {
-        const sliceData = JSON.parse(readFileSync(sliceJsonPath, 'utf-8'));
-        sliceData.status = 'Blocked';
-        sliceData.blockedReason = reason;
-        sliceData.blockedAt = now;
-        writeFileSync(sliceJsonPath, JSON.stringify(sliceData, null, 2), 'utf-8');
-      }
-    } catch (err) {
-      console.error(`[ralph] Failed to write Blocked status to ${sliceJsonPath}:`, err.message);
-    }
-  }
+  // The status lives in the event log; index.json / slice.json show it (and the note) as a projection.
+  recordEvent(kitDir, { type: 'blocked', slice: planned.id, reason, at: now }, eventMeta(cfg));
 
   try {
     const progressPath = join(dirname(kitDir), 'progress.txt');
@@ -907,9 +879,6 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
   const meta = eventMeta(cfg);
   ensureLearningsGitRules(kitDir);
   let lastIdleCtx;
-  // Builds so far per slice id that is still Planned — see MAX_PLANNED_ATTEMPTS above. An id drops
-  // out as soon as its slice leaves Planned, so only builds that failed to move it count.
-  const plannedAttempts = new Map();
   // The build agent's final reply on the most recent planned-slice turn — quoted in the Blocked note.
   let lastReply = null;
 
@@ -929,21 +898,20 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
     let planned = null;
     if (onPlannedSlice) {
-      const stillPlanned = listPlannedIds(kitDir);
-      for (const id of plannedAttempts.keys()) if (!stillPlanned.has(id)) plannedAttempts.delete(id);
-      const stuckIds = new Set([...plannedAttempts].filter(([, n]) => n >= SWITCH_AFTER_ATTEMPTS).map(([id]) => id));
+      // Attempts are the failed builds the log holds for a slice (see MAX_PLANNED_ATTEMPTS above); they
+      // survive a restart and reset once the slice moves off the status it was put back to.
+      const attemptsBySlice = fold(readEvents(kitDir)).slices;
+      const stuckIds = new Set([...listPlannedIds(kitDir)].filter((id) => (attemptsBySlice[id]?.attempts ?? 0) >= SWITCH_AFTER_ATTEMPTS));
       // Prefer a slice that hasn't been tried to the switch point; fall back to a stuck one.
       planned = getFirstPlannedSlice(kitDir, stuckIds) ?? (stuckIds.size ? getFirstPlannedSlice(kitDir) : null);
     }
     if (planned) {
-      const attempts = plannedAttempts.get(planned.id) ?? 0;
+      const attempts = fold(readEvents(kitDir)).slices[planned.id]?.attempts ?? 0;
       if (planned.id !== null && attempts >= MAX_PLANNED_ATTEMPTS) {
         await blockStuckSlice(kitDir, cfg, credentialed, planned, attempts, lastReply);
-        plannedAttempts.delete(planned.id);
         didWork = true;
         continue;
       }
-      if (planned.id !== null) plannedAttempts.set(planned.id, attempts + 1);
 
       const staged = stageLearnings(kitDir);
       const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir)) + learningsRequest(staged);
@@ -951,13 +919,9 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
       if (planned.id) {
         const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir) });
         if (claimed !== 'won') {
-          if (claimed === 'held') {
-            console.log(`[ralph] Another run loop holds "${planned.title}" in this kit — waiting.`);
-            plannedAttempts.set(planned.id, attempts);
-          } else {
-            // The attempt stays counted so SWITCH_AFTER_ATTEMPTS can move on to another slice.
-            console.log(`[ralph] Could not claim "${planned.title}" — skipping it this iteration.`);
-          }
+          console.log(claimed === 'held'
+            ? `[ralph] Another run loop holds "${planned.title}" in this kit — waiting.`
+            : `[ralph] Could not claim "${planned.title}" — skipping it this iteration.`);
           didWork = true;
           await sleep(5_000);
           continue;
