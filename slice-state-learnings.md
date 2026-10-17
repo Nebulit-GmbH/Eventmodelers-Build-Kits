@@ -63,12 +63,8 @@ satisfy — port each one as an acceptance test of the new fold.
 - A **cleared ticket** must be cleared locally too. The board summary omits `ticketNumber` when the
   slice has none, so a merge-on-refresh keeps the old one unless it is set to `null` explicitly.
 
-## Separate feature tangled into the same branch
+## Separate feature, already extracted
 
-`stageLearnings` / `finishLearnings` / `ensureLearningsGitRules` (progress.txt → `AGENTS.md`, the last
-five tests in the file) are **not** slice state. They moved `progress.txt` aside as
-`progress.pending.txt`, asked the agent to fold it into `AGENTS.md` in its own turn, and deleted the
-pending log only once `AGENTS.md` actually changed (an emptied `AGENTS.md` is restored, an unchanged
-one keeps the pending log for the next build). Git rules: `progress.txt` and
-`.build-kit/progress.pending.txt` ignored, `.build-kit/AGENTS.md merge=union`, idempotent, existing
-lines kept. Extract from `wip/claim-record` on its own.
+`stageLearnings` / `finishLearnings` / `ensureLearningsGitRules` (progress.txt → `AGENTS.md`) are not
+slice state. They were tangled into the same branch and now live on `main` (commit `0702e77`, tests in
+`eventmodelers-cli/test/learnings.test.js`). `wip/claim-record` still contains its own copy — ignore it.
