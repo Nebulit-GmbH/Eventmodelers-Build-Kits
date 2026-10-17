@@ -7,13 +7,13 @@ and file I/O need real fixtures.
 ## Shape: functional core, imperative shell
 
 ```
-events.jsonl ──read──▶ fold(events) ──▶ State ──▶ decide*(State, facts) ──▶ Action[]
+events/<id>.json + events.log ──read──▶ fold(events) ──▶ State ──▶ decide*(State, facts) ──▶ Action[]
                                                                     │
                                    shell executes actions (board POST, git discard, project files)
                                    and appends the resulting events
 ```
 
-- `fold(events) → State` — pure. Unknown event types and an unparseable trailing line are ignored.
+- `fold(events) → State` — pure. Unknown event types are ignored.
 - `decide*` — pure. Takes the state plus injected facts (`boardStatus`, `isAlive(pid)`), returns actions.
   No fetch, no git, no clock.
 - Shell (`ralph.js`) — appends events, runs actions, regenerates the projection files. Kept thin.
@@ -98,11 +98,20 @@ the push leaves no `settled`.
 | open claim, pid alive (incl. EPERM) | `[]` | 10 |
 | open claim, `cleanTree: false` | discard action carries `skip: true` | 14 |
 
-### C. Log I/O (real files, `tempKit`)
+### C. Event store (real files, `tempKit`)
 
-- Two child processes append 200 lines each concurrently → every line parses, 400 lines total.
-- A crash mid-append (write half a line, then read) → the half line is ignored, earlier events intact.
-- `append` creates the file and the kit dir if missing.
+Each event is a standalone JSON file `.build-kit/events/<id>.json`; `.build-kit/events.log` only
+indexes them, one id per line, and its order is the event order. The event file is written whole
+(temp file, rename) *before* its id is indexed, so the index line is what commits the event.
+
+- `append` creates the dir, the file and the index, and stamps `at` and `id` (the event cannot override its id).
+- Every event is a valid standalone JSON file; events read back in index order.
+- A file the index doesn't list (crash between the two writes) is never applied.
+- An indexed id with a missing or corrupt file is skipped; the rest still load.
+- A torn index line is ignored, and the next id starts on a fresh line instead of being glued onto it.
+- An id indexed twice is applied once; `append` never rewrites earlier files or index lines; no temp files remain.
+- Two processes appending 100 events each with 100 KB payloads lose and tear nothing. Indexing only the id
+  is what keeps this safe at any event size.
 
 ### D. Projection
 
@@ -144,6 +153,6 @@ as its own small test. Case 1 is a shell test: a rejected claim appends `release
    right behaviour (a slice that keeps failing should stay blocked), but it is a behaviour change.
 2. **First claim wins** locally (rule 5), instead of today's "foreign pid alive → wait 5 s". Same
    outcome, but it makes the log the arbiter. OK to replace the pid-wait loop?
-3. **Location**: `.build-kit/events.jsonl`, git-ignored like `progress.pending.txt`.
-4. **No compaction.** A slice produces a handful of events per build; revisit only if the file ever
+3. **Location**: `.build-kit/events/` (one file per event) and `.build-kit/events.log` (the index), both git-ignored like `progress.pending.txt`. Decided: local only.
+4. **No compaction.** A slice produces a handful of events per build; revisit only if the directory ever
    gets large.

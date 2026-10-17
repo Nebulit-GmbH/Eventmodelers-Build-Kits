@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, parseEvents, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
+import { fold, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
 
 // Design: slice-state-test-design.md (layers A and B). Case numbers refer to slice-state-learnings.md.
 
@@ -117,11 +117,6 @@ test('slices are tracked independently', () => {
 test('unknown event types and events without a slice are ignored', () => {
   const s = slice([{ type: 'from-the-future', slice: 's1' }, { type: 'board-observed', status: 'Done' }, claimed()]);
   assert.equal(s.status, 'InProgress');
-});
-
-test('parseEvents skips a torn last line and keeps the earlier events', () => {
-  const text = `${JSON.stringify(claimed())}\n${JSON.stringify({ type: 'claim-confirmed', slice: 's1' })}\n{"type":"settl`;
-  assert.deepEqual(parseEvents(text).map((e) => e.type), ['claimed', 'claim-confirmed']);
 });
 
 // ── decideSettle ────────────────────────────────────────────────────────────────

@@ -16,18 +16,6 @@ const emptySlice = () => ({
 
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
 
-// A line that does not parse is a crash mid-append: skip it, keep everything before it.
-export function parseEvents(text) {
-  const events = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    try {
-      events.push(JSON.parse(line));
-    } catch { /* torn line */ }
-  }
-  return events;
-}
-
 const apply = {
   // While a claim is open the board's view is recorded but does not touch `status`: a refresh that
   // still shows InProgress must not revert the outcome the agent recorded. Attempts reset only between
