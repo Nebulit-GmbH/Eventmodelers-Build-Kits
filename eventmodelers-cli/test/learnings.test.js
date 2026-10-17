@@ -71,13 +71,13 @@ test('an emptied AGENTS.md is restored and the pending log kept', (t) => {
   assert.equal(existsSync(join(kit, 'progress.pending.txt')), true);
 });
 
-test('git rules: logs ignored, AGENTS.md union-merged, idempotent and existing lines kept', (t) => {
+test('git rules: logs and the slice-state event store ignored, AGENTS.md union-merged, idempotent and existing lines kept', (t) => {
   quiet(t);
   const { root, kit } = project(t);
   writeFileSync(join(root, '.gitignore'), 'node_modules');
   ensureLearningsGitRules(kit);
   ensureLearningsGitRules(kit);
   const ignore = readFileSync(join(root, '.gitignore'), 'utf-8');
-  assert.equal(ignore, 'node_modules\nprogress.txt\n.build-kit/progress.pending.txt\n');
+  assert.equal(ignore, 'node_modules\nprogress.txt\n.build-kit/progress.pending.txt\n.build-kit/events/\n.build-kit/events.log\n');
   assert.equal(readFileSync(join(root, '.gitattributes'), 'utf-8'), '.build-kit/AGENTS.md merge=union\n');
 });

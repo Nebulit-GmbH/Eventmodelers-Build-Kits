@@ -13,6 +13,7 @@ import { homedir } from 'os';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
+import { observeBoard, projectStatus, statusOf } from './slice-projection.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -220,13 +221,18 @@ function slugify(str) {
   return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
-async function fetchAndPersistSlices(cfg, kitDir) {
+export async function fetchAndPersistSlices(cfg, kitDir) {
   const url = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata/slices`;
   const { slices } = await fetchJSON(url, {
     headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
   });
   const slicesDir = join(kitDir, '.slices');
   mkdirSync(slicesDir, { recursive: true });
+
+  // The board's status is an observation, not the truth for the local files: while a build holds a claim
+  // a refresh that still shows InProgress must not revert the outcome the agent recorded. The status
+  // written below is the log's (statusOf), which falls back to the board's for slices it knows nothing of.
+  const state = observeBoard(kitDir, slices);
 
   // Group by context slug
   const contexts = {};
@@ -280,8 +286,8 @@ async function fetchAndPersistSlices(cfg, kitDir) {
         contextName: s.contextName || contextSlug,
         contextSlug,
         folder,
-        status: s.status,
-        definition: { ...existing?.definition, id: s.id, title: s.title, status: s.status },
+        status: statusOf(state, s),
+        definition: { ...existing?.definition, id: s.id, title: s.title, status: statusOf(state, s) },
       };
     });
     writeFileSync(indexPath, JSON.stringify({ slices: indexSlices }, null, 2), 'utf-8');
@@ -294,9 +300,12 @@ async function fetchAndPersistSlices(cfg, kitDir) {
       const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
       // The summary omits ticketNumber when the slice has none, so a cleared ticket must be cleared
       // here too — otherwise the old one survives the merge and lands on the next build's trace.
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, ticketNumber: slice.ticketNumber ?? null }, null, 2), 'utf-8');
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, status: statusOf(state, slice), ticketNumber: slice.ticketNumber ?? null }, null, 2), 'utf-8');
     }
   }
+
+  // Blocked notes (reason, time) follow the log too; a no-op when nothing changed.
+  projectStatus(kitDir, state);
 
   console.log(`[agent] Persisted ${slices.length} slice(s)`);
 }
@@ -805,14 +814,15 @@ function finishLearnings(staged) {
 }
 
 // Two agents on different branches both record learnings. The raw log (progress.txt and its pending
-// copy) is scratch and must never be versioned; AGENTS.md is shared knowledge and is rewritten on
+// copy) is scratch and must never be versioned, and so is the slice-state event store (events/, events.log: pids and
+// claims of this checkout); AGENTS.md is shared knowledge and is rewritten on
 // every branch, so a plain merge would conflict. `merge=union` keeps both sides' lines instead —
 // duplicates are folded away by the next learnings merge. Idempotent; best effort.
 function ensureLearningsGitRules(kitDir) {
   const projectDir = dirname(kitDir);
   if (!existsSync(join(projectDir, '.git'))) return;
   const rules = [
-    ['.gitignore', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`]],
+    ['.gitignore', ['progress.txt', `${basename(kitDir)}/${PENDING_LOG}`, `${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
     ['.gitattributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
   ];
   for (const [file, lines] of rules) {

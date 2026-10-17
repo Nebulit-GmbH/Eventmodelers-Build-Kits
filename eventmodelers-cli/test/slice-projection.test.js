@@ -1,0 +1,145 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { appendEvent, readEvents } from '../shared/build-kit/lib/slice-events.js';
+import { fold } from '../shared/build-kit/lib/slice-state.js';
+import { observeBoard, projectStatus } from '../shared/build-kit/lib/slice-projection.js';
+import { fetchAndPersistSlices } from '../shared/build-kit/lib/ralph.js';
+import { quiet, tempKit } from './helpers.js';
+
+// Design: slice-state-test-design.md (layer D). The log owns slice *status*; index.json / slice.json are
+// read-only views of it for the build agent.
+
+const cfg = { baseUrl: 'http://board.test', organizationId: 'o', boardId: 'b', token: 't' };
+const BASE = { branch: 'main', commit: 'abc' };
+
+// A kit dir with one context holding slice s1 (folder additem).
+function kitWith(t, { status = 'Planned', slice = {} } = {}) {
+  const kit = join(tempKit(t), '.build-kit');
+  const dir = join(kit, '.slices', 'cart');
+  mkdirSync(join(dir, 'additem'), { recursive: true });
+  writeFileSync(join(dir, 'index.json'), JSON.stringify({ slices: [{ id: 's1', slice: 'Add item', folder: 'additem', status, definition: { id: 's1', title: 'Add item', status } }] }));
+  writeFileSync(join(dir, 'additem', 'slice.json'), JSON.stringify({ id: 's1', title: 'Add item', status, commands: ['AddItem'], ...slice }));
+  return kit;
+}
+const indexEntry = (kit) => JSON.parse(readFileSync(join(kit, '.slices', 'cart', 'index.json'), 'utf-8')).slices[0];
+const sliceJson = (kit) => JSON.parse(readFileSync(join(kit, '.slices', 'cart', 'additem', 'slice.json'), 'utf-8'));
+const claim = (kit) => {
+  appendEvent(kit, { type: 'board-observed', slice: 's1', status: 'Planned' });
+  appendEvent(kit, { type: 'claimed', slice: 's1', ctx: 'cart', title: 'Add item', pid: 1, base: BASE, cleanTree: true });
+};
+
+// Board stand-in serving the slice summary list.
+function board(t, slices) {
+  t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ slices }), { status: 200 }));
+}
+
+// ── projectStatus ───────────────────────────────────────────────────────────────
+
+test('projection writes the derived status into index.json (entry and definition) and slice.json', (t) => {
+  const kit = kitWith(t);
+  claim(kit);
+  assert.equal(projectStatus(kit, fold(readEvents(kit))), 2);
+  assert.equal(indexEntry(kit).status, 'InProgress');
+  assert.equal(indexEntry(kit).definition.status, 'InProgress');
+  assert.equal(sliceJson(kit).status, 'InProgress');
+});
+
+test('projection keeps every other field of both files', (t) => {
+  const kit = kitWith(t);
+  claim(kit);
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.deepEqual(sliceJson(kit).commands, ['AddItem']);
+  assert.equal(indexEntry(kit).folder, 'additem');
+  assert.equal(indexEntry(kit).definition.title, 'Add item');
+});
+
+test('projection of a blocked slice writes its reason and time; unblocking clears them', (t) => {
+  const kit = kitWith(t);
+  appendEvent(kit, { type: 'blocked', slice: 's1', reason: 'five failed builds', at: '2026-10-18T10:00:00.000Z' });
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.equal(indexEntry(kit).status, 'Blocked');
+  assert.equal(indexEntry(kit).blockedReason, 'five failed builds');
+  assert.equal(sliceJson(kit).blockedAt, '2026-10-18T10:00:00.000Z');
+  appendEvent(kit, { type: 'board-observed', slice: 's1', status: 'Planned' });
+  projectStatus(kit, fold(readEvents(kit)));
+  assert.equal(indexEntry(kit).status, 'Planned');
+  assert.equal('blockedReason' in indexEntry(kit), false);
+  assert.equal('blockedAt' in sliceJson(kit), false);
+});
+
+test('projection leaves slices the log knows nothing about, and writes nothing when nothing changed', (t) => {
+  const kit = kitWith(t, { status: 'Done' });
+  assert.equal(projectStatus(kit, fold([])), 0);
+  appendEvent(kit, { type: 'board-observed', slice: 's1', status: 'Done' });
+  assert.equal(projectStatus(kit, fold(readEvents(kit))), 0);
+  assert.equal(indexEntry(kit).status, 'Done');
+});
+
+test('projection tolerates a kit without slices', (t) => {
+  const kit = join(tempKit(t), '.build-kit');
+  assert.equal(projectStatus(kit, fold([])), 0);
+});
+
+// ── observeBoard ────────────────────────────────────────────────────────────────
+
+test('observing the board appends one event per slice whose status changed, and nothing for a repeat', (t) => {
+  const kit = kitWith(t);
+  observeBoard(kit, [{ id: 's1', status: 'Planned' }, { id: 's2', status: 'Done' }]);
+  observeBoard(kit, [{ id: 's1', status: 'Planned' }, { id: 's2', status: 'Done' }]);
+  assert.equal(readEvents(kit).length, 2);
+  observeBoard(kit, [{ id: 's1', status: 'Blocked' }]);
+  assert.deepEqual(readEvents(kit).map((e) => `${e.slice}:${e.status}`), ['s1:Planned', 's2:Done', 's1:Blocked']);
+});
+
+test('observing the board returns the folded state', (t) => {
+  const kit = kitWith(t);
+  const state = observeBoard(kit, [{ id: 's1', status: 'Planned' }]);
+  assert.equal(state.slices.s1.status, 'Planned');
+});
+
+// ── the refresh (fetchAndPersistSlices) ─────────────────────────────────────────
+
+test('a stale refresh during a claim cannot revert the status the agent recorded — the Done→Planned loop', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  claim(kit);
+  appendEvent(kit, { type: 'claim-confirmed', slice: 's1' });
+  appendEvent(kit, { type: 'agent-recorded', slice: 's1', status: 'Done' });
+  board(t, [{ id: 's1', title: 'Add item', status: 'InProgress', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(indexEntry(kit).status, 'Done');
+  assert.equal(indexEntry(kit).definition.status, 'Done');
+  assert.equal(sliceJson(kit).status, 'Done');
+});
+
+test('without a claim the refresh shows the board status, and the board then wins', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(indexEntry(kit).status, 'Planned');
+  board(t, [{ id: 's1', title: 'Add item', status: 'Blocked', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(indexEntry(kit).status, 'Blocked');
+  assert.equal(sliceJson(kit).status, 'Blocked');
+});
+
+test('the refresh still merges onto slice.json and clears a removed ticketNumber', async (t) => {
+  quiet(t);
+  const kit = kitWith(t, { slice: { ticketNumber: 'T-1' } });
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.deepEqual(sliceJson(kit).commands, ['AddItem']);
+  assert.equal(sliceJson(kit).ticketNumber, null);
+});
+
+test('a refresh records only changes: a second identical one adds no events', async (t) => {
+  quiet(t);
+  const kit = kitWith(t);
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  await fetchAndPersistSlices(cfg, kit);
+  assert.equal(readEvents(kit).length, 1);
+});

@@ -3,7 +3,8 @@
 // Design and the precedence rule: slice-state-test-design.md.
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
-// released, attempt-failed, blocked. Unknown types are ignored, so a newer loop's log is readable.
+// released, attempt-failed, blocked, learning-recorded, learning-retracted. Unknown types are ignored, so a
+// newer loop's log is readable.
 
 const emptySlice = () => ({
   status: undefined,
@@ -47,10 +48,11 @@ const apply = {
     s.status = e.status;
     s.lastBoardStatus = e.status;
   },
-  // The claim ended without anything pushed: the slice is back to what it was before the claim.
+  // The claim ended without anything pushed: the slice shows what the board last said (someone else may
+  // have moved it meanwhile), or what it was before the claim if the board was never observed.
   released(s) {
     if (!s.claim) return;
-    s.status = s.claim.prevStatus;
+    s.status = s.lastBoardStatus ?? s.claim.prevStatus;
     s.claim = null;
     s.pendingOutcome = null;
   },
@@ -65,11 +67,34 @@ const apply = {
 
 export function fold(events) {
   const slices = {};
+  let learnings = [];
   for (const e of events) {
-    if (!e?.slice || !Object.hasOwn(apply, e.type)) continue;
+    if (!e) continue;
+    // Learnings are not about one slice (the slice is just where it was learned), so they sit beside them.
+    if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice });
+    else if (e.type === 'learning-retracted') learnings = learnings.filter((l) => l.id !== e.learning);
+    if (!e.slice || !Object.hasOwn(apply, e.type)) continue;
     apply[e.type](slices[e.slice] ??= emptySlice(), e);
   }
-  return { slices };
+  return { slices, learnings };
+}
+
+// AGENTS.md: the learnings, grouped by topic (in order of first appearance), one line each, duplicates
+// dropped. Nothing is written into the file by hand — it is regenerated from the log.
+export function renderLearnings(state) {
+  const topics = new Map();
+  const seen = new Set();
+  for (const { text, topic } of state.learnings) {
+    const key = String(text).replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const name = topic?.trim() || 'General';
+    if (!topics.has(name)) topics.set(name, []);
+    topics.get(name).push(String(text).trim());
+  }
+  if (!topics.size) return '';
+  const body = [...topics].map(([name, lines]) => `## ${name}\n${lines.map((l) => `- ${l}`).join('\n')}\n`).join('\n');
+  return `<!-- Generated from the slice-state event log. Record learnings with the learn command; do not edit. -->\n\n${body}`;
 }
 
 // What to do with a claimed slice once its build is over. `boardStatus` is the board's current status

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
+import { fold, renderLearnings, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
 
 // Design: slice-state-test-design.md (layers A and B). Case numbers refer to slice-state-learnings.md.
 
@@ -29,6 +29,18 @@ test('a lost claim is released: no claim, status back to what it was (1)', () =>
   ]);
   assert.equal(s.claim, null);
   assert.equal(s.status, 'Planned');
+});
+
+test('a claim released because someone else moved the slice shows the board status, not the old one (7)', () => {
+  const s = slice([
+    { type: 'board-observed', slice: 's1', status: 'Planned' },
+    claimed(),
+    { type: 'claim-confirmed', slice: 's1' },
+    { type: 'board-observed', slice: 's1', status: 'Blocked' },
+    { type: 'released', slice: 's1', reason: 'moved' },
+  ]);
+  assert.equal(s.claim, null);
+  assert.equal(s.status, 'Blocked');
 });
 
 test('a stale board refresh cannot revert what the agent recorded during a claim', () => {
@@ -117,6 +129,58 @@ test('slices are tracked independently', () => {
 test('unknown event types and events without a slice are ignored', () => {
   const s = slice([{ type: 'from-the-future', slice: 's1' }, { type: 'board-observed', status: 'Done' }, claimed()]);
   assert.equal(s.status, 'InProgress');
+});
+
+// ── learnings: AGENTS.md is a projection of these ────────────────────────────────
+
+const learning = (id, extra = {}) => ({ type: 'learning-recorded', id, text: `learned ${id}`, ...extra });
+const texts = (events) => fold(events).learnings.map((l) => l.text);
+
+test('recorded learnings accumulate in order, with or without a slice', () => {
+  assert.deepEqual(texts([learning('l1'), learning('l2', { slice: 's1' })]), ['learned l1', 'learned l2']);
+});
+
+test('a retracted learning is gone; retracting an unknown one changes nothing', () => {
+  const events = [learning('l1'), learning('l2'), { type: 'learning-retracted', learning: 'l1' }, { type: 'learning-retracted', learning: 'nope' }];
+  assert.deepEqual(texts(events), ['learned l2']);
+});
+
+test('events that are not learnings never show up as learnings', () => {
+  assert.deepEqual(texts([claimed(), { type: 'attempt-failed', slice: 's1', reason: 'timeout' }, { type: 'blocked', slice: 's1', reason: 'x', at: 'now' }]), []);
+});
+
+test('a learning is kept with its topic and slice', () => {
+  const [l] = fold([learning('l1', { topic: 'Testing', slice: 's1' })]).learnings;
+  assert.deepEqual({ id: l.id, topic: l.topic, slice: l.slice }, { id: 'l1', topic: 'Testing', slice: 's1' });
+});
+
+test('renderLearnings groups by topic, one line each, topics in order of first appearance', () => {
+  const state = fold([
+    learning('l1', { topic: 'Testing', text: 'Run the suite with npm test' }),
+    learning('l2', { topic: 'Git', text: 'Never amend a merged commit' }),
+    learning('l3', { topic: 'Testing', text: 'Mock fetch, not the module' }),
+  ]);
+  assert.equal(renderLearnings(state), [
+    '<!-- Generated from the slice-state event log. Record learnings with the learn command; do not edit. -->',
+    '',
+    '## Testing',
+    '- Run the suite with npm test',
+    '- Mock fetch, not the module',
+    '',
+    '## Git',
+    '- Never amend a merged commit',
+    '',
+  ].join('\n'));
+});
+
+test('renderLearnings drops duplicates (ignoring case and whitespace), puts topic-less ones under General', () => {
+  const state = fold([learning('l1', { text: 'Use  npm test' }), learning('l2', { text: 'use npm TEST' })]);
+  assert.match(renderLearnings(state), /## General\n- Use {2}npm test\n/);
+  assert.equal(renderLearnings(state).match(/^- /gm).length, 1);
+});
+
+test('renderLearnings of nothing is empty', () => {
+  assert.equal(renderLearnings(fold([])), '');
 });
 
 // ── decideSettle ────────────────────────────────────────────────────────────────

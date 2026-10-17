@@ -30,6 +30,8 @@ events/<id>.json + events.log ──read──▶ fold(events) ──▶ State �
 | `released` | loop | `slice, reason: lost \| unconfirmed \| moved` — claim ended with nothing pushed |
 | `attempt-failed` | loop | `slice, reason, lastReply` |
 | `blocked` | loop | `slice, reason` |
+| `learning-recorded` | agent, via a `learn` command | `text, topic?, slice?` |
+| `learning-retracted` | agent, via the same command | `learning: <event id>` |
 
 ### State
 
@@ -42,7 +44,18 @@ slices[id] = {
   attempts,        // count of attempt-failed since the slice last left Planned
   blocked,         // null | { reason, at }
 }
+learnings[]        // { id, text, topic, slice } from learning-recorded, minus the retracted ones
 ```
+
+### Learnings: AGENTS.md is a projection
+
+`progress.txt` and `progress.pending.txt` are removed. A learning is a `learning-recorded` event
+(`text`, optional `topic`, optional `slice`); a wrong or obsolete one is withdrawn with
+`learning-retracted`. `AGENTS.md` is `renderLearnings(state)`: grouped by topic in order of first
+appearance, one line each, duplicates dropped (ignoring case and whitespace), regenerated from the log
+and never edited by hand. No agent turn folds anything, so there is no pending list and no
+"keep the pending file" logic. `attempt-failed` and `blocked` are slice state (attempt count, blocked
+note), not learnings.
 
 ### The precedence rule (this is what ends the Done→Planned loop)
 
@@ -71,7 +84,9 @@ slices[id] = {
 | no open claim, `board-observed A` then `settled B` → `B`; reversed order → `A` | rule 4 |
 | `attempt-failed` ×N counts, reset when the board status leaves `Planned` | replaces the in-memory `plannedAttempts` map |
 | `blocked` sets `blocked`; a later `board-observed Planned` clears it | |
-| unknown event type and a torn last line are ignored | robustness |
+| `learning-recorded` accumulates in order; `learning-retracted` removes it (unknown id: no change); attempt/blocked events are not learnings | learnings |
+| `renderLearnings`: grouped by topic in first-appearance order, deduped, `General` for topic-less, empty for none | learnings |
+| unknown event types are ignored | robustness |
 
 ### B. `decide*` — pure
 
