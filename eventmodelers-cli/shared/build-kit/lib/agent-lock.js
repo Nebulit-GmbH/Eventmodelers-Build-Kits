@@ -3,11 +3,13 @@
 // would make them fight over a single heartbeat row and a single chat, and the second one's start-up recovery
 // would hand back the first one's prompts.
 //
-// The id is claimed with an exclusive lock file (`<id>.lock`, holding the pid) that the process removes on exit.
+// The id is claimed with an exclusive lock file (`<id>.lock`, holding the pid) that the process removes on exit. It
+// is written complete under a private name and then hard-linked into place, so a competitor never finds it empty
+// and mistakes a lock being taken for one left over.
 // A lock left by a process that is gone — a crash, kill -9 — is taken over. A lock problem never stops an agent:
 // if locking is impossible the stable id is simply kept.
 
-import { closeSync, mkdirSync, openSync, readFileSync, rmSync, writeSync } from 'fs';
+import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
 import { isProcessAlive } from './slice-run.js';
@@ -29,9 +31,13 @@ function release() {
 function lock(path, pid, isAlive) {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      const fd = openSync(path, 'wx');
-      writeSync(fd, JSON.stringify({ pid, startedAt: new Date().toISOString() }));
-      closeSync(fd);
+      const mine = `${path}.${pid}.${randomUUID()}.tmp`;
+      writeFileSync(mine, JSON.stringify({ pid, startedAt: new Date().toISOString() }));
+      try {
+        linkSync(mine, path); // EEXIST when someone holds it — atomically, and never half written
+      } finally {
+        rmSync(mine, { force: true });
+      }
       owned.add(path);
       if (!exitHooked) { exitHooked = true; process.on('exit', release); }
       return true;

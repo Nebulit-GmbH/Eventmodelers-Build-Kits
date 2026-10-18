@@ -400,3 +400,17 @@ test('with several claims the agent has to name the slice', async (t) => {
   assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done' }), /2 slices are claimed/);
   assert.equal(recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 's2' }).title, 'Remove item');
 });
+
+test('the claim records the slice\'s ticket and assignee when it has them, and nothing when it has none', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  assert.equal(await claim(kit, null, {}), 'won');
+  const [bare] = readEvents(kit).filter((e) => e.type === 'claimed');
+  assert.equal('ticketNumber' in bare || 'assignee' in bare, false);
+
+  const { kit: kit2 } = project(t);
+  assert.equal(await claimSlice({ kitDir: kit2, planned: { ...planned, ticketNumber: 'PROJ-7', assignee: 'user-1' }, board: null, meta: META, cleanTree: true }), 'won');
+  const [full] = readEvents(kit2).filter((e) => e.type === 'claimed');
+  assert.equal(full.ticketNumber, 'PROJ-7');
+  assert.equal(full.assignee, 'user-1');
+});

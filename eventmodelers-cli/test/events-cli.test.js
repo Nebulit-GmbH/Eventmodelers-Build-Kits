@@ -97,9 +97,9 @@ test('a bad --last is refused', (t) => {
   assert.match(res.stderr, /--last/);
 });
 
-test('--follow prints what is appended afterwards', async (t) => {
+for (const flag of ['--follow', '--watch']) test(`${flag} prints what is appended afterwards`, async (t) => {
   const { root, kit } = project(t);
-  const child = spawn(process.execPath, [cli, 'events', '--follow'], { cwd: root, env });
+  const child = spawn(process.execPath, [cli, 'events', flag], { cwd: root, env });
   t.after(() => child.kill());
   let out = '';
   child.stdout.on('data', (c) => { out += c; });

@@ -4,7 +4,7 @@
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called once per queued slice change (the oldest first; see lib/slice-tasks.js)
 //   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
-//     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
+//     `slice` ({sliceId, sliceTitle, context, ticketNumber, assignee, boardId, attempt}) lets a runner record what building it cost.
 //     May resolve with the agent's final reply — quoted in the note if the slice ends up auto-blocked.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
@@ -211,9 +211,10 @@ function agentHeaders(cfg) {
   return agentId ? { 'x-agent-id': agentId } : {};
 }
 
-// What every slice-state event is stamped with: this agent and the organization and board it runs against.
+// What every slice-state event is stamped with: this agent, its type (this loop builds unless told otherwise) and the
+// organization and board it runs against.
 function eventMeta(cfg) {
-  return { agent_id: agentIdOf(cfg), organization_id: cfg?.organizationId, board_id: cfg?.boardId };
+  return { agent_id: agentIdOf(cfg), agent_type: cfg?.agentType ?? 'BUILD', organization_id: cfg?.organizationId, board_id: cfg?.boardId };
 }
 
 async function fetchPlatformConfig(local) {
@@ -318,9 +319,9 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
       mkdirSync(sliceDir, { recursive: true });
       const sliceJsonPath = join(sliceDir, 'slice.json');
       const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
-      // The summary omits ticketNumber when the slice has none, so a cleared ticket must be cleared
-      // here too — otherwise the old one survives the merge and lands on the next build's trace.
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, status: statusOf(state, slice), ticketNumber: slice.ticketNumber ?? null }, null, 2), 'utf-8');
+      // The summary omits ticketNumber and assignee when the slice has none, so a cleared one must be cleared
+      // here too — otherwise the old one survives the merge and lands on the next build.
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, status: statusOf(state, slice), ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null }, null, 2), 'utf-8');
     }
   }
 
@@ -508,14 +509,16 @@ function readCurrentContext(kitDir) {
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
 }
 
-// The slice's ticket as of the last fetch, from its slice.json — a trace carries the ticket the
-// slice is built under, since it can be reassigned between builds.
-function readTicketNumber(kitDir, ctx, folder) {
-  if (!folder) return null;
+// The slice's ticket and assignee as of the last fetch, from its slice.json — a build carries the ones the slice is
+// built under, since both can change between builds. Either is null when the slice has none.
+function readSliceMeta(kitDir, ctx, folder) {
+  const none = { ticketNumber: null, assignee: null };
+  if (!folder) return none;
   try {
-    return JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8')).ticketNumber ?? null;
+    const slice = JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8'));
+    return { ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null };
   } catch {
-    return null;
+    return none;
   }
 }
 
@@ -543,7 +546,7 @@ function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
         writeFileSync(join(slicesDir, 'current_context.json'), JSON.stringify({ name: ctx }, null, 2), 'utf-8');
         console.log(`[ralph] No planned slices in context "${currentCtx}" — switching to "${ctx}".`);
       }
-      return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx, ticketNumber: readTicketNumber(kitDir, ctx, planned.folder) };
+      return { id: planned.id ?? null, title: planned.slice || planned.id || null, ctx, ...readSliceMeta(kitDir, ctx, planned.folder) };
     } catch {}
   }
   return null;
@@ -829,6 +832,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
         sliceTitle: planned.title,
         context: planned.ctx,
         ticketNumber: planned.ticketNumber,
+        assignee: planned.assignee,
         boardId: cfg.boardId ?? null,
         attempt: attempts + 1,
       }); });

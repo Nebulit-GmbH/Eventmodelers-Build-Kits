@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'path';
 import {
@@ -10,6 +10,7 @@ import {
   copyFileSync,
   rmSync,
   readdirSync,
+  statSync,
   writeFileSync,
   readFileSync,
   appendFileSync,
@@ -33,11 +34,13 @@ import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/agent-name.js';
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
 import { readEvents } from './shared/build-kit/lib/slice-events.js';
+import { findPromptEvent, replayRequest } from './shared/build-kit/lib/prompt-replay.js';
+import { prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from './shared/build-kit/lib/event-prune.js';
 import { fold } from './shared/build-kit/lib/slice-state.js';
-import { filterEvents, formatEvent, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
+import { filterEvents, formatEvent, formatPayload, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
-import { heldPromptsRequest, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
+import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1714,6 +1717,22 @@ async function fetchDefaultBoardId(baseUrl, token) {
   }
 }
 
+// The board whose credentials were written most recently — the best guess for "the board I
+// was just driving" when nothing in this directory names one. Only offered as the default
+// of the interactive question, never applied silently.
+function lastUsedBoardId() {
+  try {
+    const dir = join(GLOBAL_DIR, 'boards');
+    return readdirSync(dir)
+      .filter((f) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.json$/.test(f))
+      .map((f) => ({ id: f.slice(0, -5), mtime: statSync(join(dir, f)).mtimeMs, creds: readJsonSafe(join(dir, f)) }))
+      .filter((b) => b.creds.token)
+      .sort((a, b) => b.mtime - a.mtime)[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // Per-run credentials for the global install. Precedence is this CLI's usual one, with the
 // per-board file slotted in as the most specific *file*: explicit flags beat
 // EVENTMODELERS_* env vars beat ~/.eventmodelers/boards/<board>.json beat the nearest
@@ -1753,6 +1772,7 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print,
   let boardChosen = !!(explicit.boardId || process.env.EVENTMODELERS_BOARD_ID);
   let pasted = null;
   if (!boardChosen && interactive) {
+    boardId = boardId || lastUsedBoardId();
     const answer = await prompt(boardId ? `\n  Board ID [${boardId}]: ` : '\n  Board ID: ');
     if (answer) {
       pasted = parseCredentialsPaste(answer, ['organizationId', 'token', 'boardId']);
@@ -1950,6 +1970,27 @@ async function ensureGlobalKit(baseUrl) {
 // untargeted is handed straight back to the queue for another agent to take. It says
 // nothing about the standalone lane — a self-directed turn is nobody's task, so an
 // exclusive standalone agent still works the board on its own initiative.
+// A new instance of a loop starts by checking how big its event log has grown: at every multiple of 1000 events it
+// asks whether to prune it (`events --prune` does the same on demand). Only asked where someone can answer.
+async function offerPrune(kitDir, { interactive }) {
+  let count;
+  try { count = readEvents(kitDir).length; } catch { return; }
+  if (!shouldOfferPrune(kitDir, count)) return;
+  const prunable = prunableEvents(readEvents(kitDir)).length;
+  if (!interactive) {
+    console.error(`ℹ️  The event log has ${count} events (${prunable} of them prunable) — \`eventmodelers events --prune\` removes them.`);
+    return;
+  }
+  const answer = (await prompt(`The event log has ${count} events. Should we prune the log? Removes the journal of finished prompts (${prunable} events); slice state and learnings stay. [y/N] `)).toLowerCase();
+  if (answer === 'y' || answer === 'yes') {
+    const { removed, kept } = pruneLog(kitDir);
+    rememberPruneAnswer(kitDir, kept);
+    console.log(`Pruned ${removed} events, ${kept} left.\n`);
+  } else {
+    rememberPruneAnswer(kitDir, count);
+  }
+}
+
 async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null, skipPermissions = false, browser = false } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
@@ -2002,10 +2043,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     const base = defaultAgentName(codeDir ?? projectDir, 'MODELING');
     cfg.agentName = cfg.agentIdFellBack ? withInstanceSuffix(base, cfg.agentId) : base;
   }
-  // Only a project install keeps a record (learnings and the prompt journal, as events in its kit). A standalone
-  // session writes nothing to disk, and neither does any run on the global install (`overrides`): its kit dir,
-  // ~/.eventmodelers/kit, is shared by every board and account, so what one board taught the agent would end up in
-  // another's AGENTS.md.
+  // Learnings are kept only on a project install: the global install's kit dir (~/.eventmodelers/kit) is shared by every
+  // board and account, so what one board taught the agent would end up in another's AGENTS.md. The prompt journal has no
+  // such problem — every entry is stamped with its board (`events --board`) — so every run keeps it, standalone included.
   const keepsRecord = !standalone && !overrides;
   if (keepsRecord) ensureLearningsGitRules(kitDir);
   if (!cfg.boardId) {
@@ -2033,7 +2073,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   let localRunner = null;
   if (localAi) {
     try {
-      localRunner = createModelingLocalAiRunner({ cfg, target: localAi, log, verbose, standalone });
+      localRunner = createModelingLocalAiRunner({ cfg, target: localAi, log, verbose, standalone, onToolUse: (name, input) => { const id = `local-${++localCallSeq}`; noteToolStart(id, name, input); return (outcome) => noteToolEnd(id, outcome); } });
     } catch (err) {
       console.error(`❌ --local-ai: ${err.message}`);
       process.exit(1);
@@ -2172,6 +2212,19 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   let proc = null;
   let stdoutBuffer = '';
   let pending = null; // one in-flight turn at a time
+  let turnPromptId = null; // the prompt the current turn works, so the board writes it makes are journaled against it
+  // A call is journaled when it ends, so its entry carries how long it took (see journalPromptAction). Only the calls the
+  // journal will keep are tracked at all.
+  const calls = createCallTracker();
+  let localCallSeq = 0;
+  const journalCall = (call) => journal(() => journalPromptAction({ kitDir, id: turnPromptId, toolName: call.name, input: call.input, verbose, detail: verbose ? describeToolUse(call) : undefined, secrets: [cfg.token], startedAt: call.startedAt, durationMs: call.durationMs, error: call.error, meta: journalMeta }));
+  const noteToolStart = (id, name, input) => {
+    if (turnPromptId && shouldJournalCall(name, input, verbose)) calls.begin(id, { name, input });
+  };
+  const noteToolEnd = (id, outcome) => {
+    const call = calls.end(id, outcome);
+    if (call) journalCall(call);
+  };
   // The last message of each session this process has handed to Claude. A session the process has
   // never seen is read whole; after that only what came since — each message enters the warm
   // session's context once. Cleared whenever the process is (re)spawned: a fresh process has read
@@ -2230,10 +2283,16 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
 
+    if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
+      for (const block of msg.message.content) if (block.type === 'tool_result') noteToolEnd(block.tool_use_id, { isError: block.is_error });
+      return;
+    }
+
     if (msg.type === 'assistant') {
       for (const block of msg.message?.content ?? []) {
         if (block.type === 'text' && block.text && verbose) log(block.text);
         if (block.type === 'tool_use') {
+          noteToolStart(block.id, block.name, block.input);
           if (verbose) log(`→ ${describeToolUse(block)}`);
           else if (block.name === 'Skill') log(`→ Skill: ${block.input?.skill ?? ''}`);
           else log(`→ ${block.name}`);
@@ -2538,10 +2597,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   let realtimeToken = await getRealtimeToken();
 
-  // What this agent writes into its own record: events in the kit, stamped with who and where (see keepsRecord).
-  const journalMeta = { agent_id: cfg.agentId, organization_id: cfg.organizationId, board_id: cfg.boardId };
+  // What this agent writes into its own record: events in the kit, stamped with who and where (learnings: see keepsRecord).
+  const journalMeta = { agent_id: cfg.agentId, agent_type: 'MODELING', organization_id: cfg.organizationId, board_id: cfg.boardId };
   const journal = (write) => {
-    if (!keepsRecord) return;
     try { write(); } catch (err) { log(`could not write the prompt journal: ${err.message}`); }
   };
 
@@ -2592,6 +2650,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
         journal(() => journalPromptReceived({ kitDir, prompt: p, meta: journalMeta }));
         try {
+          turnPromptId = p.id;
           const reply = await runTurn(buildTurn(p));
           // The agent cannot run `learn` (locked-down Bash), so it states learnings in its reply and they are recorded here.
           // Best effort: a failed write never takes the prompt queue down.
@@ -2608,6 +2667,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
           // Not finished: the entry stays open, so the next start asks the platform about it and hands it back
           // (or closes it if the agent had set DONE before the turn failed).
           log(`turn failed: ${err.message}`);
+        } finally {
+          for (const call of calls.drain()) journalCall(call); // never ended: the turn died mid-call, so no duration
+          turnPromptId = null;
         }
       }
     } finally {
@@ -3224,11 +3286,40 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events']);
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
 const NO_KIT_UPDATE_HINT = new Set(['init', 're-init', 'uninstall']);
+
+// Retired: still recognised, so an old script or muscle memory gets an explanation instead of "unknown option".
+// The hidden options and the `bridge` command exist only to say so; they do nothing else.
+const RETIRED_BASH = [
+  '❌ `run --bash` (the bash-only loop, ralph.sh) has been retired.',
+  '   Its task queue (tasks.json) is now an event log inside the kit, which the bash scripts cannot read or write.',
+  '   Use the default loop instead:  npx @eventmodelers/cli run',
+  '   (add --exec "<command>" to drive another agent harness, or --local-ai for a local model).',
+];
+const RETIRED_BRIDGE = [
+  '❌ The bridge kit (`init --bridge`, `bridge`) has been retired — it ran on the same tasks.json queue, which is now an event log.',
+  '   To hand slices to Spec Kitty, `fetch --spec-kitty` still works on its own, without a standing loop.',
+];
+function retire(lines) {
+  console.error(lines.join('\n'));
+  process.exit(1);
+}
+
+program
+  .command('bridge', { hidden: true })
+  .allowUnknownOption()
+  .allowExcessArguments()
+  .action(() => retire(RETIRED_BRIDGE));
+
+program.hook('preAction', (_thisCommand, actionCommand) => {
+  const o = actionCommand.opts();
+  if (actionCommand.name() === 'run' && o.bash) retire(RETIRED_BASH);
+  if (actionCommand.name() === 'init' && (o.bridge || o.target || o.hook)) retire(RETIRED_BRIDGE);
+});
 
 // Startup hint when this CLI is behind npm, or an installed kit here is behind this CLI.
 // Best effort and on stderr, so it never breaks piped output; EVENTMODELERS_NO_UPDATE_CHECK
@@ -3303,6 +3394,9 @@ credentialFlags(program
   .option('--git <url>', 'Install a build kit not built into this CLI by cloning this git repo (used with --stack <name> to name it) — the repo must mirror the templates/.claude, templates/root, templates/<kitSubdir> layout of this CLI\'s own stacks/<name>/templates, optionally with a stack.json declaring label/kitSubdir/useShared/needsBoardId')
   .option('--branch <name>', 'Branch to clone — only meaningful with --git (defaults to the repo\'s default branch)')
   .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--build-kit.')
+  .addOption(new Option('--bridge').hideHelp())
+  .addOption(new Option('--target <name>').hideHelp())
+  .addOption(new Option('--hook <command>').hideHelp())
   .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling.')
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
@@ -3685,7 +3779,8 @@ credentialFlags(program
   .command('run')
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
-  .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec, --local-ai and --bash.`)
+  .addOption(new Option('--bash').hideHelp())
+  .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
@@ -3869,6 +3964,7 @@ credentialFlags(program
       // right after (dynamic imports, config reads) can eat the event-loop tick this write
       // needed to drain, so a piped watcher sees the ping arrive after runModeling's own
       // [modeling] log lines instead of before them.
+      await offerPrune(kitDir, { interactive: !globalOpts.print && !opts.nonInteractive && !!process.stdin.isTTY });
       const shown = relative(cwd, kitDir);
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
@@ -3898,6 +3994,8 @@ credentialFlags(program
       console.error('❌ --local-ai and --exec are mutually exclusive — pick one runner.');
       process.exit(1);
     }
+
+    await offerPrune(kitDir, { interactive: !globalOpts.print && !opts.nonInteractive && !!process.stdin.isTTY });
 
     // The actual agent loop lives in the scaffolded kit dir, not in this package — this
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
@@ -4288,6 +4386,7 @@ function agentEventMeta(cwd, kitDir, command) {
   const { config: cfg } = loadEffectiveConfig(cwd, kitDir, command.optsWithGlobals().config);
   return {
     agent_id: process.env.RALPH_AGENT_ID || process.env.EVENTMODELERS_AGENT_ID,
+    agent_type: 'BUILD', // `learn` and `slice-status` are the build agent's commands
     organization_id: cfg.organizationId,
     board_id: cfg.boardId,
   };
@@ -4363,8 +4462,11 @@ program
   .option('--tag <tag>', 'Only events carrying this tag')
   .option('--last <n>', 'Only the last n events (after the other filters)')
   .option('--json', 'Print the raw events, one JSON object per line')
+  .option('--verbose', 'Print each event\'s payload under its line — for a tool call, the input it was sent (recorded by runs started with --verbose)')
   .option('--state', 'Print the state the log folds to (slices, queue, open prompts, learnings) instead of the events')
+  .option('--prune', 'Delete the events nothing reads any more — the journal of finished prompts — and stop. Slice state, learnings and open prompts are kept; the same prune a run offers at every 1000 events.')
   .option('--follow', 'Keep running and print events as they are appended')
+  .option('--watch', 'Same as --follow')
   .action(async (opts) => {
     const cwd = process.cwd();
     if (opts.global && opts.kit) {
@@ -4373,6 +4475,17 @@ program
     }
     const globalLog = join(GLOBAL_KIT_DIR, MODELING_KIT.kitDirName);
     const kitDir = opts.global ? globalLog : opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
+    if (opts.prune) {
+      try {
+        const { removed, kept } = pruneLog(kitDir);
+        rememberPruneAnswer(kitDir, kept);
+        console.log(removed ? `Pruned ${removed} events, ${kept} left.` : `Nothing to prune — ${kept} events, all of them carry state.`);
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+      return;
+    }
     let last;
     if (opts.last !== undefined) {
       last = Number(opts.last);
@@ -4391,24 +4504,26 @@ program
         const [time, ...rest] = formatEvent(e, { titles }).split('  ');
         const type = rest.shift();
         console.log([paint('2', time), paint(family(e.type), type), ...rest].join('  '));
+        if (opts.verbose) { const payload = formatPayload(e); if (payload) console.log(paint('2', payload)); }
       }
     };
 
+    const follow = opts.follow || opts.watch;
     const events = readEvents(kitDir);
     const titles = sliceTitles(events);
     if (opts.state) {
-      if (opts.follow) console.error('ℹ️  --follow does not apply to --state.');
+      if (follow) console.error('ℹ️  --follow/--watch does not apply to --state.');
       console.log(events.length ? summarize(fold(events), titles) : 'No events yet in this kit.');
       return;
     }
-    if (!events.length && !opts.follow) {
+    if (!events.length && !follow) {
       console.log(`No events yet in ${opts.global ? '~/.eventmodelers/kit' : relative(cwd, kitDir) || kitDir}.`);
       // Runs started without a project install keep their log in the global kit — say so when it has one.
       if (!opts.global && !opts.kit && readEvents(globalLog).length) console.log('The global install has a log of its own: `eventmodelers events --global`.');
       return;
     }
     print(filterEvents(events, { ...filter, last }, titles), titles);
-    if (!opts.follow) return;
+    if (!follow) return;
 
     // Follow: what has been printed is remembered by event id, and the log is read again twice a second.
     const seen = new Set(events.map((e) => e.id));
@@ -4418,6 +4533,49 @@ program
       for (const e of fresh) seen.add(e.id);
       if (fresh.length) print(filterEvents(fresh, filter, sliceTitles(all)), sliceTitles(all));
     }, 500);
+  });
+
+program
+  .command('replay <id>')
+  .description("Submit a prompt from the event log again: puts it back on its board's queue as a new prompt, with the same text, node, comment, priority and canvas context, for an agent to work. <id> is a prompt id from `events` (a unique prefix will do). Writes to the platform.")
+  .option('--kit <dir>', "Read this kit directory's log (default: the build kit of the current project, else its modeling kit)")
+  .option('--global', 'Read the log of the global install (~/.eventmodelers/kit)')
+  .option('--dry-run', 'Show the request that would be sent and stop — nothing is submitted')
+  .option('--token <uuid>', 'API token (overrides config file / env var)')
+  .option('--organization-id <uuid>', 'Organization ID (overrides config file / env var)')
+  .option('--base-url <url>', 'Platform base URL (overrides config file / env var)')
+  .action(async (id, opts) => {
+    const cwd = process.cwd();
+    if (opts.global && opts.kit) {
+      console.error('❌ --global and --kit are alternatives — pick one.');
+      process.exit(1);
+    }
+    const kitDir = opts.global ? join(GLOBAL_KIT_DIR, MODELING_KIT.kitDirName) : opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
+    try {
+      const event = findPromptEvent(readEvents(kitDir), id);
+      const boardId = event.prompt.board_id ?? event.meta?.board_id;
+      // The credentials of the board the prompt was for: flags and env vars over the board's own file over the account's.
+      const stored = boardId ? readJsonSafe(boardCredentialsPath(boardId)) : {};
+      const explicit = Object.fromEntries(Object.entries(credentialOverridesFromOpts(opts)).filter(([, v]) => v));
+      const cfg = applyEnvOverrides({ ...loadEffectiveConfig(cwd, null, null).config, ...(stored.useGlobal || stored.useBoard ? {} : stored), ...explicit });
+      cfg.baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
+      if (!cfg.token || !cfg.organizationId) throw new Error('no credentials for this board — pass --token/--organization-id, or run the agent once for it');
+
+      const tokenRes = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts/realtime-token`, { headers: { 'x-token': cfg.token } });
+      if (!tokenRes.ok) throw new Error(`realtime-token: HTTP ${tokenRes.status}`);
+      const { url, headers, body } = replayRequest({ baseUrl: cfg.baseUrl, organizationId: cfg.organizationId, token: cfg.token, jwt: (await tokenRes.json()).token, event: { ...event, prompt: { ...event.prompt, board_id: boardId } } });
+      if (opts.dryRun) {
+        console.log(`POST ${url}\n${JSON.stringify(body, null, 2)}`);
+        return;
+      }
+      const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+      if (!res.ok) throw new Error(`prompts: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+      const created = await res.json();
+      console.log(`Re-submitted prompt ${String(event.prompt.id).slice(0, 8)} as ${String(created.id ?? '').slice(0, 8)}: "${event.prompt.text.length > 80 ? `${event.prompt.text.slice(0, 79)}…` : event.prompt.text}"`);
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
   });
 
 program

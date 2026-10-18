@@ -36,10 +36,10 @@ export function normalizeTags(tags) {
   return [...new Set(tags.filter((t) => typeof t === 'string').map((t) => t.trim()).filter(Boolean))];
 }
 
-// Where an event came from: the agent that wrote it and the organization and board it ran against. Only
-// these three keys are kept (never a token or anything else that wandered into the config), blank values
+// Where an event came from: the agent that wrote it, what kind it is (BUILD or MODELING) and the organization and
+// board it ran against. Only these four keys are kept (never a token or anything else that wandered into the config), blank values
 // dropped; no usable metadata means no `meta` field.
-const META_KEYS = ['agent_id', 'organization_id', 'board_id'];
+const META_KEYS = ['agent_id', 'agent_type', 'organization_id', 'board_id'];
 export function normalizeMeta(meta) {
   const clean = {};
   for (const key of META_KEYS) {

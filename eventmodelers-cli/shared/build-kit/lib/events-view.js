@@ -15,6 +15,9 @@ export function sliceTitles(events) {
   return titles;
 }
 
+// How long a call took, and that it failed — nothing for an event without a duration.
+const took = (e) => (typeof e.durationMs === 'number' ? ` (${e.durationMs < 1000 ? `${e.durationMs}ms` : `${(e.durationMs / 1000).toFixed(1)}s`}${e.error ? ', failed' : ''})` : '');
+
 // [subject, detail] — what the event is about, and what it says.
 function describe(e) {
   const tags = e.tags?.length ? ` ${e.tags.map((t) => `#${t}`).join(' ')}` : '';
@@ -23,7 +26,7 @@ function describe(e) {
       return [e.slice, e.status ?? ''];
     case 'claimed': {
       const tree = e.cleanTree === true ? 'clean tree' : e.cleanTree === false ? 'dirty tree' : 'not a git tree';
-      return [e.slice, `pid ${e.pid}, ${tree}${e.base ? `, ${e.base.branch}@${String(e.base.head).slice(0, 8)}` : ''}`];
+      return [e.slice, `pid ${e.pid}, ${tree}${e.base ? `, ${e.base.branch}@${String(e.base.head).slice(0, 8)}` : ''}${e.ticketNumber ? `, ticket ${e.ticketNumber}` : ''}${e.assignee ? `, assignee ${e.assignee}` : ''}`];
     }
     case 'claim-confirmed':
       return [e.slice, ''];
@@ -50,6 +53,10 @@ function describe(e) {
       return ['', ''];
     case 'prompt-received':
       return [e.prompt?.id, `"${oneLine(e.prompt?.text, 80)}"${e.prompt?.priority ? ', priority' : ''}, pid ${e.pid}`];
+    case 'prompt-action':
+      return [e.prompt, `${e.action ?? ''}${e.detail ? ` ${oneLine(e.detail, 140)}` : ''}${took(e)}`];
+    case 'tool-call':
+      return [e.prompt, `${oneLine(e.detail ?? e.tool, 140)}${took(e)}`];
     case 'prompt-finished':
       return [e.prompt, `${e.outcome ?? ''}${e.reason ? ` — ${oneLine(e.reason, 80)}` : ''}`];
     default: {
@@ -59,15 +66,23 @@ function describe(e) {
   }
 }
 
-// One line: time, type, subject (a slice with its title when known), detail, and the first four characters of the
-// agent that wrote it — a log shared by several agents says who did what.
+// One line: date and time (UTC, as logged), type, subject (a slice with its title when known), detail, and the first four characters of the
+// agent that wrote it with its type (build or modeling) — a log shared by several agents says who did what.
 export function formatEvent(e, { titles = {} } = {}) {
-  const time = typeof e.at === 'string' && e.at.length >= 19 ? e.at.slice(11, 19) : '--------';
+  const time = typeof e.at === 'string' && e.at.length >= 19 ? `${e.at.slice(0, 10)} ${e.at.slice(11, 19)}` : '-'.repeat(19);
   const [rawSubject, detail] = describe(e);
   const title = titles[rawSubject];
   const subject = rawSubject ? `${short(rawSubject)}${title ? ` "${title}"` : ''}` : '';
-  const agent = e.meta?.agent_id ? String(e.meta.agent_id).slice(0, 4) : '';
+  const agent = [e.meta?.agent_id ? String(e.meta.agent_id).slice(0, 4) : '', String(e.meta?.agent_type ?? '').toLowerCase()].filter(Boolean).join(' ');
   return [time, String(e.type).padEnd(18), subject, detail, agent].filter((p, i) => i < 2 || p).join('  ');
+}
+
+// What an event carries beyond its line, indented under it: every field but the ones the line already shows
+// (type, id, time, who). Empty when there is nothing more to say.
+export function formatPayload(e) {
+  const { type, id, at, meta, ...rest } = e;
+  if (!Object.keys(rest).length) return '';
+  return JSON.stringify(rest, null, 2).split('\n').map((l) => `    ${l}`).join('\n');
 }
 
 // types / slice (an id prefix or part of a title) / tag / board (an id prefix — a global kit's log mixes boards) narrow

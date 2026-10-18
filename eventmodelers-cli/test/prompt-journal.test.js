@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
-import { journalPromptFinished, journalPromptReceived, openPrompts } from '../shared/build-kit/lib/prompt-journal.js';
+import { createCallTracker, journalPromptAction, journalPromptFinished, journalPromptReceived, openPrompts, shouldJournalCall } from '../shared/build-kit/lib/prompt-journal.js';
 import { tempKit } from './helpers.js';
 
 // What the modeling agent keeps of the board prompts it takes: received, then finished. The platform decides
@@ -13,28 +13,25 @@ const META = { agent_id: 'a1', organization_id: 'o1', board_id: 'b1' };
 const kitDir = (t) => { const kit = join(tempKit(t), '.agent-modeling-kit'); mkdirSync(kit, { recursive: true }); return kit; };
 const board = { id: 'p1', prompt: 'Add the OrderPlaced event', board_id: 'b1', priority: 2, agent_id: null, node_id: 'n1', comment_id: 'c1', status: 'CLAIMED', context: { big: 'x'.repeat(5000) } };
 
-test('a received prompt is journaled with what identifies it, the process, and the agent metadata', (t) => {
+test('a received prompt is journaled with what identifies it and what replay needs, the process, and the agent metadata', (t) => {
   const kit = kitDir(t);
   journalPromptReceived({ kitDir: kit, prompt: board, meta: META });
   const [event] = readEvents(kit);
   assert.equal(event.type, 'prompt-received');
   assert.equal(event.pid, process.pid);
   assert.deepEqual(event.meta, META);
-  assert.deepEqual(event.prompt, { id: 'p1', text: 'Add the OrderPlaced event', board_id: 'b1', priority: 2, agent_id: null, node_id: 'n1', comment_id: 'c1' });
+  assert.deepEqual(event.prompt, { id: 'p1', text: 'Add the OrderPlaced event', board_id: 'b1', priority: 2, agent_id: null, node_id: 'n1', comment_id: 'c1', context: board.context });
   assert.deepEqual(openPrompts(kit).map((p) => p.id), ['p1']);
 });
 
-test('only the identifying fields are kept — never the prompt\'s context or other platform columns', (t) => {
+test('what replay needs is kept — text, timeline, context — and the platform\'s own columns are not', (t) => {
   const kit = kitDir(t);
-  journalPromptReceived({ kitDir: kit, prompt: board });
-  assert.equal('context' in readEvents(kit)[0].prompt, false);
-  assert.equal('status' in readEvents(kit)[0].prompt, false);
-});
-
-test('a long prompt text is cut to 300 characters', (t) => {
-  const kit = kitDir(t);
-  journalPromptReceived({ kitDir: kit, prompt: { ...board, prompt: 'y'.repeat(500) } });
-  assert.equal(readEvents(kit)[0].prompt.text.length, 300);
+  journalPromptReceived({ kitDir: kit, prompt: { ...board, timeline_id: 'tl1', prompt: 'y'.repeat(500) } });
+  const { prompt } = readEvents(kit)[0];
+  assert.equal(prompt.text.length, 500);
+  assert.equal(prompt.timeline_id, 'tl1');
+  assert.deepEqual(prompt.context, board.context);
+  assert.equal('status' in prompt, false);
 });
 
 test('a prompt without an id is not journaled', (t) => {
@@ -162,4 +159,70 @@ test('the held-prompts request carries the API token and the realtime JWT — th
   const u = new URL(url);
   assert.equal(u.pathname, '/api/org/o1/prompts');
   assert.deepEqual(Object.fromEntries(u.searchParams), { board_id: 'b 1', claimed_by: 'agent-9', status: 'CLAIMED,IN_PROGRESS', limit: '500' });
+});
+
+test('the board writes a turn makes are journaled against its prompt, reads are not', (t) => {
+  const kit = kitDir(t);
+  const act = (toolName, input) => journalPromptAction({ kitDir: kit, id: 'p1', toolName, input, meta: META });
+  act('mcp__eventmodelers__add_comment', { comments: [{ nodeId: 'n1', text: 'Which flow is this?' }, { nodeId: 'n2', text: 'x' }] });
+  act('mcp__eventmodelers__update_slice_status', { sliceTitle: 'Place order', newStatus: 'Blocked' });
+  act('mcp__eventmodelers__submit_node_events', { events: [{ type: 'node:created' }, { type: 'node:changed' }, { type: 'node:changed' }] });
+  act('mcp__eventmodelers__get_node', { nodeId: 'n1' });
+  act('Bash', { command: 'ls' });
+  assert.deepEqual(readEvents(kit).map((e) => [e.type, e.prompt, e.action, e.detail]), [
+    ['prompt-action', 'p1', 'commented', '2 comments on 2 nodes: "Which flow is this?"'],
+    ['prompt-action', 'p1', 'slice-status', '"Place order" → Blocked'],
+    ['prompt-action', 'p1', 'nodes-changed', '1 node:created, 2 node:changed'],
+  ]);
+});
+
+test('with verbose, every other tool call becomes an event of its own', (t) => {
+  const kit = kitDir(t);
+  const act = (toolName, input, verbose) => journalPromptAction({ kitDir: kit, id: 'p1', toolName, input, verbose, detail: `${toolName}!`, meta: META });
+  act('mcp__eventmodelers__get_node', { nodeId: 'n1' }, false);
+  act('mcp__eventmodelers__get_node', { nodeId: 'n1' }, true);
+  act('mcp__eventmodelers__add_comment', { comments: [{ nodeId: 'n1', text: 'q' }] }, true);
+  assert.deepEqual(readEvents(kit).map((e) => [e.type, e.action ?? e.tool]), [
+    ['tool-call', 'mcp__eventmodelers__get_node'],
+    ['prompt-action', 'commented'],
+  ]);
+});
+
+test('with verbose the full input is stored, with the API token and JWTs masked; without it, no input', (t) => {
+  const kit = kitDir(t);
+  const TOKEN = '3f2c9a1e-7b44-4d0e-9c1a-2b6f8e5d4c3a';
+  const call = (verbose) => journalPromptAction({ kitDir: kit, id: 'p1', toolName: 'Skill', input: { skill: 'connect', args: `token=${TOKEN} board=b1` }, verbose, secrets: [TOKEN], meta: META });
+  call(false);
+  call(true);
+  const events = readEvents(kit);
+  assert.equal(events.length, 1);
+  assert.deepEqual(events[0].input, { skill: 'connect', args: 'token=*** board=b1' });
+  assert.doesNotMatch(JSON.stringify(events[0]), new RegExp(TOKEN));
+});
+
+test('a call is timed from when it begins to when it ends, and one that never ends is drained without a duration', () => {
+  let t = 100;
+  const tracker = createCallTracker({ now: () => t, clock: () => '2026-10-18T10:00:00.000Z' });
+  tracker.begin('a', { name: 'get_node', input: { nodeId: 'n1' } });
+  tracker.begin('b', { name: 'add_comment', input: {} });
+  t = 1350;
+  assert.deepEqual(tracker.end('a'), { name: 'get_node', input: { nodeId: 'n1' }, startedAt: '2026-10-18T10:00:00.000Z', durationMs: 1250, error: false });
+  assert.equal(tracker.end('a'), null);
+  assert.deepEqual(tracker.drain().map((c) => c.name), ['add_comment']);
+  assert.deepEqual(tracker.drain(), []);
+  tracker.begin('c', { name: 'x', input: {} });
+  t = 1400;
+  assert.equal(tracker.end('c', { isError: true }).error, true);
+});
+
+test('a journaled call carries when it started and how long it took; only calls the journal keeps are worth timing', (t) => {
+  const kit = kitDir(t);
+  journalPromptAction({ kitDir: kit, id: 'p1', toolName: 'mcp__eventmodelers__update_slice_status', input: { sliceTitle: 'S', newStatus: 'Blocked' }, startedAt: '2026-10-18T10:00:00.000Z', durationMs: 420, error: true, meta: META });
+  const [e] = readEvents(kit);
+  assert.equal(e.at, '2026-10-18T10:00:00.000Z');
+  assert.equal(e.durationMs, 420);
+  assert.equal(e.error, true);
+  assert.equal(shouldJournalCall('get_node', {}, false), false);
+  assert.equal(shouldJournalCall('get_node', {}, true), true);
+  assert.equal(shouldJournalCall('mcp__eventmodelers__add_comment', { comments: [] }, false), true);
 });

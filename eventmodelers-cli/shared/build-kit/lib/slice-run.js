@@ -79,6 +79,9 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
   }
   const state = recordEvent(kitDir, {
     type: 'claimed', slice: planned.id, ctx: planned.ctx, title: planned.title, pid, base: gitBase(kitDir), cleanTree,
+    // What the board says about the slice at build time, when it says anything: both can change between builds.
+    ...(planned.ticketNumber ? { ticketNumber: planned.ticketNumber } : {}),
+    ...(planned.assignee ? { assignee: planned.assignee } : {}),
   }, meta);
   if (state.slices[planned.id].claim?.pid !== pid) return 'held';
   if (board) {

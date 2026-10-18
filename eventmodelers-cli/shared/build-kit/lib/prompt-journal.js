@@ -4,10 +4,10 @@
 
 import { appendEvent, readEvents } from './slice-events.js';
 import { fold } from './slice-state.js';
+import { redactString } from './redact.js';
 
-const MAX_TEXT = 300;
-
-// Only what identifies the prompt — never its context or other platform columns.
+// What identifies the prompt and what `replay` needs to submit it again (text, timeline, canvas context) — not the
+// platform's own columns (status, claim, timestamps).
 export function journalPromptReceived({ kitDir, prompt, meta }) {
   if (!prompt?.id) return;
   appendEvent(kitDir, {
@@ -15,8 +15,10 @@ export function journalPromptReceived({ kitDir, prompt, meta }) {
     pid: process.pid,
     prompt: {
       id: prompt.id,
-      text: String(prompt.prompt ?? '').slice(0, MAX_TEXT),
+      text: String(prompt.prompt ?? ''),
       board_id: prompt.board_id,
+      timeline_id: prompt.timeline_id,
+      ...(prompt.context ? { context: prompt.context } : {}),
       priority: prompt.priority,
       agent_id: prompt.agent_id ?? null,
       node_id: prompt.node_id,
@@ -29,6 +31,94 @@ export function journalPromptReceived({ kitDir, prompt, meta }) {
 // open, and the next start recovers it.
 export function journalPromptFinished({ kitDir, id, outcome, reason, meta }) {
   appendEvent(kitDir, { type: 'prompt-finished', prompt: id, outcome, ...(reason ? { reason } : {}) }, meta);
+}
+
+// ── what a turn did on the board ────────────────────────────────────────────────
+// `prompt-received` and `prompt-finished` say a prompt was taken and a turn ended; they cannot say what happened in
+// between. Each board write the turn makes is journaled as it streams past — a comment, a slice moved to Blocked,
+// nodes placed — so the log reads as what the agent did, and a turn that dies half way still shows how far it got.
+// Reads are not journaled. Only what the runner can see is: a write made through curl in Bash is not.
+
+const oneLine = (text, max) => {
+  const flat = String(text ?? '').replace(/\s+/g, ' ').trim();
+  return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const count = (list) => (Array.isArray(list) ? list.length : 1);
+
+// tool → what to journal; null for a tool that writes nothing to the board.
+const BOARD_WRITES = {
+  add_comment: ({ comments = [] }) => {
+    const nodes = new Set(comments.map((c) => c?.nodeId).filter(Boolean)).size;
+    const first = oneLine(comments[0]?.text, 100);
+    return { action: 'commented', detail: `${plural(comments.length, 'comment')} on ${plural(nodes, 'node')}${first ? `: "${first}"` : ''}` };
+  },
+  update_comment: ({ action, commentId }) => ({ action: `comment-${action === 'delete' ? 'deleted' : 'resolved'}`, detail: String(commentId ?? '').slice(0, 8) }),
+  update_slice_status: ({ newStatus, sliceId, sliceTitle }) => ({ action: 'slice-status', detail: `${sliceTitle ? `"${oneLine(sliceTitle, 60)}"` : String(sliceId ?? '').slice(0, 8)} → ${newStatus}` }),
+  submit_node_events: ({ events = [] }) => {
+    const by = {};
+    for (const e of events) by[e?.type ?? 'event'] = (by[e?.type ?? 'event'] ?? 0) + 1;
+    return { action: 'nodes-changed', detail: Object.entries(by).map(([t, n]) => `${n} ${t}`).join(', ') };
+  },
+  place_element: ({ elements }) => ({ action: 'placed', detail: plural(count(elements), 'element') }),
+  delete_node: ({ nodeIds }) => ({ action: 'nodes-deleted', detail: plural(count(nodeIds), 'node') }),
+  create_slice: ({ type, status }) => ({ action: 'slice-created', detail: [type, status].filter(Boolean).join(', ') }),
+  create_chapter: ({ title }) => ({ action: 'chapter-created', detail: title ? `"${oneLine(title, 60)}"` : '' }),
+  add_column: ({ count: n = 1 }) => ({ action: 'columns-added', detail: String(n) }),
+  add_lane: ({ lanes }) => ({ action: 'lanes-added', detail: String(count(lanes)) }),
+  add_scenario: ({ scenarios }) => ({ action: 'scenarios-added', detail: String(count(scenarios)) }),
+  add_storyline: ({ storylines }) => ({ action: 'storylines-added', detail: String(count(storylines)) }),
+  set_connection: ({ connections }) => ({ action: 'connections-changed', detail: String(count(connections)) }),
+  link_element: () => ({ action: 'linked', detail: '' }),
+  create_screen: ({ screens }) => ({ action: 'screens-created', detail: String(count(screens)) }),
+  post_chat_message: ({ text }) => ({ action: 'chat-posted', detail: `"${oneLine(text, 100)}"` }),
+};
+
+// The journal entry for a tool call, or null when it is not a board write.
+export function describeBoardAction(toolName, input) {
+  const describe = BOARD_WRITES[String(toolName).split('__').pop()];
+  return describe ? describe(input ?? {}) : null;
+}
+
+// Under `verbose` every call leaves exactly one entry: a board write as its action, any other call (a read, Bash, a
+// skill) as a `tool-call` with `detail` — the caller's one-line account of its input — and both carry the call's full
+// `input`, so `events --verbose` can show what was actually sent. The input is stored with the API token and anything
+// JWT-shaped masked: a skill's arguments can hold credentials, and this log is a plain file.
+//
+// A call is journaled when it ends, as one entry: stamped with when it started, and carrying `durationMs` and, when the
+// tool reported one, `error`. Timing costs nothing beyond a clock read at each end (createCallTracker).
+export function journalPromptAction({ kitDir, id, toolName, input, verbose = false, detail, secrets = [], startedAt, durationMs, error = false, meta }) {
+  if (!id) return;
+  const done = describeBoardAction(toolName, input);
+  if (!done && !verbose) return;
+  const payload = verbose && input !== undefined ? { input: JSON.parse(redactString(JSON.stringify(input), secrets)) } : {};
+  const timing = { ...(startedAt ? { at: startedAt } : {}), ...(durationMs !== undefined ? { durationMs } : {}), ...(error ? { error: true } : {}) };
+  if (done) appendEvent(kitDir, { type: 'prompt-action', prompt: id, ...done, ...timing, ...payload }, meta);
+  else appendEvent(kitDir, { type: 'tool-call', prompt: id, tool: toolName, ...(detail ? { detail } : {}), ...timing, ...payload }, meta);
+}
+
+// Which calls are in flight, and for how long. `begin` and `end` are a Map operation and a clock read; calls that are
+// never going to be journaled should not be begun (shouldJournalCall). `drain` returns what never ended — a turn that
+// died mid-call — without a duration.
+export const shouldJournalCall = (toolName, input, verbose) => verbose || describeBoardAction(toolName, input) !== null;
+
+export function createCallTracker({ now = () => performance.now(), clock = () => new Date().toISOString() } = {}) {
+  const open = new Map();
+  return {
+    begin(id, call) { open.set(id, { ...call, startedAt: clock(), t0: now() }); },
+    end(id, { isError = false } = {}) {
+      const call = open.get(id);
+      if (!call) return null;
+      open.delete(id);
+      const { t0, ...rest } = call;
+      return { ...rest, durationMs: Math.round(now() - t0), error: !!isError };
+    },
+    drain() {
+      const rest = [...open.values()].map(({ t0, ...call }) => call);
+      open.clear();
+      return rest;
+    },
+  };
 }
 
 export function openPrompts(kitDir) {

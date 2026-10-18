@@ -174,3 +174,9 @@ test('the store lives in the kit dir under fixed names', () => {
   assert.equal(EVENTS_DIR, 'events');
   assert.equal(INDEX_FILE, 'events.log');
 });
+
+test('the agent type is part of the metadata, trimmed like the rest', (t) => {
+  const kit = tempKit(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1' }, { agent_id: 'a1', agent_type: ' MODELING ', token: 'secret' });
+  assert.deepEqual(readEvents(kit)[0].meta, { agent_id: 'a1', agent_type: 'MODELING' });
+});

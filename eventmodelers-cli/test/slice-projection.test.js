@@ -187,12 +187,12 @@ test('the refresh still merges onto slice.json and clears a removed ticketNumber
   assert.equal(sliceJson(kit).ticketNumber, null);
 });
 
-test('a refresh stamps its events with this agent, organization and board', async (t) => {
+test('a refresh stamps its events with this agent, its type (build), organization and board', async (t) => {
   quiet(t);
   const kit = kitWith(t);
   board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'cart' }]);
   await fetchAndPersistSlices({ ...cfg, agentId: 'agent-7' }, kit);
-  assert.deepEqual(readEvents(kit)[0].meta, { agent_id: 'agent-7', organization_id: 'o', board_id: 'b' });
+  assert.deepEqual(readEvents(kit)[0].meta, { agent_id: 'agent-7', agent_type: 'BUILD', organization_id: 'o', board_id: 'b' });
 });
 
 test('without cfg.agentId the agent id comes from RALPH_AGENT_ID, like the platform headers', async (t) => {

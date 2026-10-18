@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterEvents, formatEvent, summarize } from '../shared/build-kit/lib/events-view.js';
+import { filterEvents, formatEvent, formatPayload, summarize } from '../shared/build-kit/lib/events-view.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
 
 // `eventmodelers events`: the event log, decoded for a terminal. One line per event; filters; and the state the
@@ -11,9 +11,14 @@ const ev = (type, extra = {}) => ({ type, id: '11111111-2222-3333-4444-555555555
 const S = 'ccc5e66b-6b29-40b9-a163-269b1b0b173b';
 const line = (e, titles = {}) => formatEvent(e, { titles });
 
-test('a line starts with the time, the event type and the agent that wrote it', () => {
+test('a line starts with the date and time, the event type and the agent that wrote it', () => {
   const l = line(ev('claim-confirmed', { slice: S }));
-  assert.match(l, /^11:54:56 +claim-confirmed +ccc5e66b +.*cc9a$/);
+  assert.match(l, /^2026-10-18 11:54:56 +claim-confirmed +ccc5e66b +.*cc9a$/);
+});
+
+test('a claim shows the ticket and assignee the slice was built under, when it had them', () => {
+  assert.match(line(ev('claimed', { slice: S, pid: 1, cleanTree: true, ticketNumber: 'PROJ-7', assignee: 'user-1' })), /clean tree, ticket PROJ-7, assignee user-1/);
+  assert.doesNotMatch(line(ev('claimed', { slice: S, pid: 1, cleanTree: true })), /ticket|assignee/);
 });
 
 test('the slice is shown by its short id, with its title when the log knows it', () => {
@@ -103,4 +108,21 @@ test('the board filter keeps the events stamped with that board (a global kit\'s
   assert.equal(filterEvents(events, { board: 'c2b3b7da' }).length, 1);
   assert.equal(filterEvents(events, { board: 'C2B3' }).length, 1, 'by prefix, ignoring case');
   assert.equal(filterEvents(events, { board: 'nope' }).length, 0);
+});
+
+test('the payload is every field the line does not already show, indented — or nothing', () => {
+  assert.equal(formatPayload(ev('claim-confirmed')), '');
+  assert.equal(formatPayload(ev('tool-call', { prompt: 'p1', tool: 'get_node', input: { nodeId: 'n1' } })),
+    '    {\n      "prompt": "p1",\n      "tool": "get_node",\n      "input": {\n        "nodeId": "n1"\n      }\n    }');
+});
+
+test('the line ends with the agent and its type, build or modeling', () => {
+  assert.match(line(ev('claimed', { slice: S, meta: { agent_id: '8eb47d8d-c6fa', agent_type: 'MODELING' } })), /8eb4 modeling$/);
+  assert.match(line(ev('claimed', { slice: S, meta: { agent_id: '8eb47d8d-c6fa', agent_type: 'BUILD' } })), /8eb4 build$/);
+});
+
+test('a call shows how long it took, and that it failed', () => {
+  assert.match(line(ev('tool-call', { prompt: 'p1', tool: 'get_node', detail: 'get_node', durationMs: 420 })), /get_node \(420ms\)/);
+  assert.match(line(ev('prompt-action', { prompt: 'p1', action: 'commented', detail: '1 comment', durationMs: 2340, error: true })), /commented 1 comment \(2\.3s, failed\)/);
+  assert.doesNotMatch(line(ev('tool-call', { prompt: 'p1', tool: 'get_node' })), /\(/);
 });

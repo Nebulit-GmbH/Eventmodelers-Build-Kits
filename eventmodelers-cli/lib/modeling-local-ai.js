@@ -175,7 +175,7 @@ function systemPrompt({ boardId, organizationId, standalone }) {
   ].join('\n');
 }
 
-export function createModelingLocalAiRunner({ cfg, target, log, verbose = false, standalone = false }) {
+export function createModelingLocalAiRunner({ cfg, target, log, verbose = false, standalone = false, onToolUse = () => () => {} }) {
   const t = resolveLocalAiTarget({ target, localAi: cfg.localAi || {} });
   let tools = null; // the MCP tool set, fetched once per session
 
@@ -269,6 +269,7 @@ export function createModelingLocalAiRunner({ cfg, target, log, verbose = false,
           : rawArgs;
 
         log(verbose ? `→ ${name}(${JSON.stringify(args).slice(0, 120)})` : `→ ${name}`);
+        const finish = onToolUse(name, args);
 
         let toolResult;
         try {
@@ -276,6 +277,7 @@ export function createModelingLocalAiRunner({ cfg, target, log, verbose = false,
         } catch (err) {
           toolResult = { isError: true, content: [{ type: 'text', text: err.message }] };
         }
+        finish({ isError: !!toolResult.isError });
         if (verbose) log(`  ${JSON.stringify(toolResult).slice(0, 160)}`);
 
         messages.push({
