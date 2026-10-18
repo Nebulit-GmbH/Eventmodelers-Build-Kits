@@ -32,6 +32,9 @@ import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/ad
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/agent-name.js';
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
+import { readEvents } from './shared/build-kit/lib/slice-events.js';
+import { fold } from './shared/build-kit/lib/slice-state.js';
+import { filterEvents, formatEvent, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
 import { heldPromptsRequest, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
@@ -3221,7 +3224,7 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen']);
+const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
@@ -4347,6 +4350,65 @@ program
       console.error(`❌ ${err.message}`);
       process.exit(1);
     }
+  });
+
+program
+  .command('events')
+  .description("Decode a kit's event log in the terminal: one line per event (claims, settles, learnings, tasks, prompts …) with the slice's title and the agent that wrote it. Filter it, print the raw events, or print the state the log folds to.")
+  .option('--kit <dir>', "Read this kit directory's log (default: the build kit of the current project, else its modeling kit)")
+  .option('--type <types>', 'Only these event types, comma-separated (e.g. claimed,settled)')
+  .option('--slice <slice>', 'Only events of the slice with this id (prefix) or a title containing this text')
+  .option('--tag <tag>', 'Only events carrying this tag')
+  .option('--last <n>', 'Only the last n events (after the other filters)')
+  .option('--json', 'Print the raw events, one JSON object per line')
+  .option('--state', 'Print the state the log folds to (slices, queue, open prompts, learnings) instead of the events')
+  .option('--follow', 'Keep running and print events as they are appended')
+  .action(async (opts) => {
+    const cwd = process.cwd();
+    const kitDir = opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
+    let last;
+    if (opts.last !== undefined) {
+      last = Number(opts.last);
+      if (!Number.isInteger(last) || last < 1) {
+        console.error('❌ --last needs a positive number.');
+        process.exit(1);
+      }
+    }
+    const filter = { types: opts.type?.split(',').map((t) => t.trim()).filter(Boolean), slice: opts.slice, tag: opts.tag };
+    const color = process.stdout.isTTY && !process.env.NO_COLOR;
+    const paint = (code, text) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
+    const family = (type) => (/^(claim|settled|agent-recorded|task-done|prompt-finished)/.test(type) ? '32' : /^(attempt-failed|blocked|released)/.test(type) ? '31' : /^(learning|learnings)/.test(type) ? '36' : /^(prompt|task)/.test(type) ? '35' : '33');
+    const print = (events, titles) => {
+      for (const e of events) {
+        if (opts.json) { console.log(JSON.stringify(e)); continue; }
+        const [time, ...rest] = formatEvent(e, { titles }).split('  ');
+        const type = rest.shift();
+        console.log([paint('2', time), paint(family(e.type), type), ...rest].join('  '));
+      }
+    };
+
+    const events = readEvents(kitDir);
+    const titles = sliceTitles(events);
+    if (opts.state) {
+      if (opts.follow) console.error('ℹ️  --follow does not apply to --state.');
+      console.log(events.length ? summarize(fold(events), titles) : 'No events yet in this kit.');
+      return;
+    }
+    if (!events.length && !opts.follow) {
+      console.log(`No events yet in ${relative(cwd, kitDir) || kitDir}.`);
+      return;
+    }
+    print(filterEvents(events, { ...filter, last }, titles), titles);
+    if (!opts.follow) return;
+
+    // Follow: what has been printed is remembered by event id, and the log is read again twice a second.
+    const seen = new Set(events.map((e) => e.id));
+    setInterval(() => {
+      const all = readEvents(kitDir);
+      const fresh = all.filter((e) => !seen.has(e.id));
+      for (const e of fresh) seen.add(e.id);
+      if (fresh.length) print(filterEvents(fresh, filter, sliceTitles(all)), sliceTitles(all));
+    }, 500);
   });
 
 program

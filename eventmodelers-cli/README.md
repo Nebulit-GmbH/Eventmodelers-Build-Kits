@@ -536,6 +536,21 @@ That sync is deterministic and stops well short of writing Spec Kitty's own arti
 
 (The standing bridge loop — `init --bridge` / `bridge` — is retired for now.)
 
+### Reading the event log
+
+Everything an agent does to a slice, a task, a prompt or a learning is an event in the kit's log (`.build-kit/events/` and `events.log`, or `.agent-modeling-kit/` for a modeling agent). `eventmodelers events` decodes it in the terminal — one line per event, with the slice's title and the first four characters of the agent that wrote it:
+
+```bash
+npx @eventmodelers/cli events                          # the build kit of this project, else its modeling kit
+npx @eventmodelers/cli events --type claimed,settled   # only these event types
+npx @eventmodelers/cli events --slice "Add item"       # a slice by id prefix or part of its title
+npx @eventmodelers/cli events --tag ci --last 20       # by tag; only the last 20 that remain
+npx @eventmodelers/cli events --state                  # what the log folds to: slices, queue, open prompts, learnings
+npx @eventmodelers/cli events --json                   # the raw events, one per line (pipe to jq)
+npx @eventmodelers/cli events --follow                 # keep printing as events are appended
+npx @eventmodelers/cli events --kit ../other/.build-kit   # another kit's log, from anywhere
+```
+
 ### Claude execution & config resolution
 
 During install you can optionally point the agent at a local LLM server instead of the default
