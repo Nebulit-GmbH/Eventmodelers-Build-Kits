@@ -70,3 +70,25 @@ test('the shared request-feedback skill does not send the agent to progress.txt'
   const skill = readFileSync(join(stacksDir, '..', 'shared/skills/request-feedback/SKILL.md'), 'utf-8');
   assert.doesNotMatch(skill, /progress\.txt/);
 });
+
+// There is no tasks.json: the loop replays the event log, hands the agent the oldest queued task in the task
+// request and completes it when the turn ends. A prompt that still tells the agent to read the file, remove
+// its task from it or reply IDLE sends it to a queue that does not exist.
+for (const stack of stacks) {
+  test(`${stack}: the task prompt works from the task request, not a queue file`, () => {
+    const dir = join(stacksDir, stack, 'templates/build-kit');
+    const prompt = readFileSync(join(dir, 'lib/prompt.md'), 'utf-8');
+    for (const f of [prompt, readFileSync(join(dir, 'CLAUDE.md'), 'utf-8'), readFileSync(join(dir, 'lib/AGENT.md'), 'utf-8')]) {
+      assert.doesNotMatch(f, /tasks\.json/);
+    }
+    assert.match(prompt, /task request/);
+    assert.match(prompt, /never read or write a queue file/);
+    assert.doesNotMatch(prompt, /<promise>IDLE<\/promise>/);
+    assert.doesNotMatch(prompt, /## Updating AGENT\.md/);
+  });
+}
+
+test('the shared ui-contract skill speaks of queued tasks, not tasks.json', () => {
+  const skill = readFileSync(join(stacksDir, '..', 'shared/skills/ui-contract/SKILL.md'), 'utf-8');
+  assert.doesNotMatch(skill, /tasks\.json/);
+});

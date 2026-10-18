@@ -160,6 +160,40 @@ test('unknown event types and events without a slice are ignored', () => {
   assert.equal(s.status, 'InProgress');
 });
 
+// ── tasks: the queue the loop works through ─────────────────────────────────────
+
+const queued = (id, sliceId, sliceStatus = 'Review', at = `t-${id}`) => ({ type: 'task-queued', id, at, payload: { sliceId, sliceTitle: sliceId, sliceStatus } });
+const taskIds = (events) => fold(events).tasks.map((t) => t.id);
+
+test('queued tasks wait in the order they were queued', () => {
+  assert.deepEqual(taskIds([queued('t1', 'a'), queued('t2', 'b'), queued('t3', 'c')]), ['t1', 't2', 't3']);
+  const [first] = fold([queued('t1', 'a')]).tasks;
+  assert.deepEqual(first, { id: 't1', at: 't-t1', payload: { sliceId: 'a', sliceTitle: 'a', sliceStatus: 'Review' } });
+});
+
+test('a newer change to the same slice replaces its queued task and goes to the back', () => {
+  assert.deepEqual(taskIds([queued('t1', 'a'), queued('t2', 'b'), queued('t3', 'a', 'Done')]), ['t2', 't3']);
+  assert.equal(fold([queued('t1', 'a'), queued('t3', 'a', 'Done')]).tasks[0].payload.sliceStatus, 'Done');
+});
+
+test('a done task leaves the queue, and only that task', () => {
+  assert.deepEqual(taskIds([queued('t1', 'a'), queued('t2', 'b'), { type: 'task-done', task: 't1' }]), ['t2']);
+});
+
+test('a change that arrives while its slice\'s task is being worked is a new task; finishing the old one keeps it', () => {
+  // t1 is handed to the agent, then slice a changes again (t2 replaces it), then the turn ends: task-done names t1.
+  assert.deepEqual(taskIds([queued('t1', 'a', 'Review'), queued('t2', 'a', 'Done'), { type: 'task-done', task: 't1' }]), ['t2']);
+});
+
+test('finishing a task that is not queued (or twice) changes nothing', () => {
+  assert.deepEqual(taskIds([queued('t1', 'a'), { type: 'task-done', task: 'nope' }, { type: 'task-done', task: 't1' }, { type: 'task-done', task: 't1' }]), []);
+  assert.deepEqual(taskIds([{ type: 'task-done', task: 'x' }]), []);
+});
+
+test('a task event without a slice in its payload is still queued, keyed by its own id', () => {
+  assert.deepEqual(taskIds([{ type: 'task-queued', id: 't1', at: 'x', payload: {} }, { type: 'task-queued', id: 't2', at: 'y', payload: {} }]), ['t1', 't2']);
+});
+
 // ── learnings: AGENTS.md is a projection of these ────────────────────────────────
 
 const learning = (id, extra = {}) => ({ type: 'learning-recorded', id, text: `learned ${id}`, ...extra });

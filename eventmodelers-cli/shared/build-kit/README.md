@@ -40,9 +40,9 @@ node .build-kit/ralph-claude.js /path/to/project
 
 ## How it works
 
-**Phase 1** — triggered when `tasks.json` has entries:
-- The realtime agent writes a task to `tasks.json` each time a `slice:changed` event arrives from the board
-- The loop picks it up and runs Claude (or a local model) with `prompt.md`
+**Phase 1** — triggered when the task queue has entries (the queue is the event log in `.build-kit/events/`):
+- The realtime agent queues a task (`task-queued`) each time a `slice:changed` event arrives from the board; a newer change to the same slice replaces its queued task
+- The loop hands the oldest one to Claude (or a local model) with `prompt.md` and completes it (`task-done`) when the turn ends
 - Claude loads the slice data and updates `.slices/`
 
 **Phase 2** — triggered when any file in `.slices/` contains `"status": "Planned"`:
@@ -63,7 +63,7 @@ Claude (`ralph-claude.js`) stays the default runner — this is opt-in.
 Planned. That is by design, not a bug:
 
 - **Planned slices are never handed to it.** `ralph-local-ai.js` gives `startRalph` no
-  `onPlannedSlice`, so the loop only feeds it `tasks.json` prompts.
+  `onPlannedSlice`, so the loop only feeds it queued tasks.
 - **It has no coding tools.** `lib/local-ai-agent.js` exposes only the board MCP tools:
   no file read/write, no shell, no git, no test run.
 - **Its system prompt forbids file and shell access.** Such a request is answered with

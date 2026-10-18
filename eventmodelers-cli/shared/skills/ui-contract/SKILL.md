@@ -108,7 +108,7 @@ runner resolves `run --handover` over the project setting), else `"handover": tr
 
 - **On** — the build kit's "set the slice to `Done`" for a STATE_VIEW / STATE_CHANGE slice means
   **`Handover`** instead: after the contract is published and the commit/merge succeeded. Where the build
-  kit's prompt says to call `update-slice-status` (a `tasks.json` task), set `Handover` through it,
+  kit's prompt says to call `update-slice-status` (a queued task), set `Handover` through it,
   mirrored in the local `index.json`. For a run-loop build (the task request names the slice), record it
   with `npx @eventmodelers/cli slice-status Handover` — the run loop pushes it to the board; do not call
   `update-slice-status`. The UI kit claims `Handover` slices and sets `Done` when its UI is built.

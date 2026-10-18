@@ -1,12 +1,11 @@
-# Agent Learnings
+# Agent Reference
 
-Patterns and gotchas discovered during task processing. Update this file whenever you encounter something reusable.
+What task processing relies on: the shape of a task and the API facts the skills use. A reusable learning is recorded with `npx @eventmodelers/cli learn "<one terse line>"`, not added here.
 
-## tasks.json
+## Tasks
 
-- Tasks are objects with `id`, `createdAt`, and `payload` (a `SliceChangedPayload`).
-- After completing a task, remove it from the array entirely — do not add a status field.
-- Write `[]` to `tasks.json` if the last task is completed.
+- A task is a slice change the run loop queued: an `id` and a `payload` (a `SliceChangedPayload`). The task request names it.
+- You never read or write a queue file: the run loop completes the task when your turn ends.
 
 ## SliceChangedPayload fields
 
@@ -44,7 +43,7 @@ These files are always up to date — read them directly before invoking any ski
 - The `boardId` and `organizationId` from each payload provide full context — pass them to skills.
 - Node events use `node:created`, `node:changed`, `node:deleted` — always POST to `/api/org/:orgId/boards/:boardId/nodes/events`.
 - Slice metadata (title, status) lives on the SLICE_BORDER node under `meta.sliceStatus` and `meta.title`.
-- `/update-slice-status` rejects moving a slice into a status it's already in — this is a concurrency guard, not a bug. It means another agent already claimed the slice. Treat it as `ALREADY_IN_STATUS`, skip that slice, and move on to the next `Planned` one instead of erroring out. This applies to `tasks.json` tasks only: when the task request names the slice to build, the run loop owns its status — never call `/update-slice-status` there.
+- `/update-slice-status` rejects moving a slice into a status it's already in — this is a concurrency guard, not a bug. It means another agent already claimed the slice. Treat it as `ALREADY_IN_STATUS`, skip that slice, and move on to the next `Planned` one instead of erroring out. This applies to queued tasks only: when the task request names the slice to build, the run loop owns its status — never call `/update-slice-status` there.
 
 ## OpenCQRS-specific
 

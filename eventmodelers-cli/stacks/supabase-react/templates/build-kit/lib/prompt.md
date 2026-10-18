@@ -4,17 +4,11 @@ You are an autonomous agent reacting to slice status change events on an Eventmo
 
 ## Your Loop
 
-1. Read `AGENT.md` to load accumulated learnings before doing anything else.
-2. Read `.build-kit/tasks.json`.
-3. If `tasks.json` is empty or missing, reply with:
-   <promise>IDLE</promise>
-   and stop.
-4. Pick the **oldest task** (earliest `createdAt`).
-5. Execute the task — see the Execution section below.
-6. After execution, remove that task from the array and write `.build-kit/tasks.json` back.
-7. Record any reusable learning with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>` (see **Recording Learnings**).
-8. Update `AGENT.md` with any new reusable learnings discovered this iteration.
-9. Reply normally so the next iteration can pick up the next task.
+1. Read `AGENT.md` and, if it exists, `.build-kit/AGENTS.md` to load accumulated knowledge before doing anything else.
+2. The task request at the end of this prompt names your task: its id and the slice change that queued it (`sliceId`, `sliceTitle`, `sliceStatus`, …). It is the oldest one waiting — the run loop picked it for you.
+3. Execute the task — see the Execution section below.
+4. Record any reusable learning with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>` (see **Recording Learnings**).
+5. Reply normally. The run loop completes the task when your turn ends and hands you the next one in a fresh turn — you never read or write a queue file.
 
 ## Execution
 
@@ -89,10 +83,6 @@ Load the slice and note the state transition in your reply. No build action.
 
 Use the skills available in `.claude/skills/` to interact with the board.
 
-## Updating tasks.json
-
-After completing a task, remove it from the array and write the updated array back to `.build-kit/tasks.json`. If the array is now empty, write `[]`.
-
 ## Escalating Ambiguity
 
 **Default: make a reasonable assumption and build the slice.** If a detail is unclear or missing (an example value, a field type, a status mapping, a referenced event that isn't modeled yet, ...), pick the most sensible interpretation from `slice.json`, its specifications and the surrounding model, build it, and record each assumption in one line as a code comment. Ambiguity alone is never a reason to stop. **Only if the slice literally cannot be built** — nothing runnable can be produced even with sensible assumptions — invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`. That must be the absolute exception; a `Blocked` slice should mean "impossible without a human", never "the agent preferred to ask".
@@ -117,15 +107,6 @@ npx @eventmodelers/cli learn "<one terse line>" --topic "<topic>"
 - One learning per call, one line each. A learning that is already in `.build-kit/AGENTS.md` is skipped for you.
 - `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
 - One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
-
-## Stop Condition
-
-If `.build-kit/tasks.json` is empty (`[]`) or does not exist, reply with:
-<promise>IDLE</promise>
-
-## Updating AGENT.md
-
-After completing a task, add any **reusable** learnings to `AGENT.md` — patterns, gotchas, API quirks, or skill behaviour that future iterations should know. Only add things that are general and applicable beyond this single task. Do not duplicate what is already there.
 
 ## Important
 

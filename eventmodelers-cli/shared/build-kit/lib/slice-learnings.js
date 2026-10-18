@@ -74,10 +74,9 @@ export function recordLearning({ kitDir, text, topic, tags, scope = 'repo', slic
   const { state } = syncLearnings({ kitDir, meta });
   const existing = state.learnings.find((l) => learningKey(l.text) === learningKey(clean));
   if (existing) return { id: existing.id, duplicate: true };
-  appendEvent(kitDir, { type: 'learning-recorded', text: clean, ...(topic?.trim() ? { topic: topic.trim() } : {}), scope, ...(slice ? { slice } : {}), tags }, meta);
-  const events = readEvents(kitDir);
-  projectLearnings(kitDir, fold(events));
-  return { id: events[events.length - 1].id, duplicate: false };
+  const id = appendEvent(kitDir, { type: 'learning-recorded', text: clean, ...(topic?.trim() ? { topic: topic.trim() } : {}), scope, ...(slice ? { slice } : {}), tags }, meta);
+  projectLearnings(kitDir, fold(readEvents(kitDir)));
+  return { id, duplicate: false };
 }
 
 // A learning by its id or by a unique prefix of it (`learnings --ids` shows the first eight characters).
@@ -113,7 +112,7 @@ export function mergeLearnings({ kitDir, ids, text, topic, scope, tags, reason, 
   if (!clean) throw new Error('the merged learning is empty');
   if (scope !== undefined && !SCOPES.includes(scope)) throw new Error(`scope must be ${SCOPES.join(' or ')}, not "${scope}"`);
   if (scope === undefined && new Set(sources.map((l) => l.scope)).size > 1) throw new Error('the learnings have different scopes — name the scope of the merged one');
-  appendEvent(kitDir, {
+  const id = appendEvent(kitDir, {
     type: 'learning-merged',
     learnings: sources.map((l) => l.id),
     text: clean,
@@ -123,9 +122,8 @@ export function mergeLearnings({ kitDir, ids, text, topic, scope, tags, reason, 
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
     sources: sources.map(({ id, text: was }) => ({ id, text: was })),
   }, meta);
-  const events = readEvents(kitDir);
-  projectLearnings(kitDir, fold(events));
-  return { id: events[events.length - 1].id };
+  projectLearnings(kitDir, fold(readEvents(kitDir)));
+  return { id };
 }
 
 // What the curator (an LLM turn) is told: the learnings with their ids, and the two things it may do.

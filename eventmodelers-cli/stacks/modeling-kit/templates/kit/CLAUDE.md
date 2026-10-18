@@ -7,7 +7,7 @@ You are an autonomous agent processing prompts for an eventmodelers board.
 This project runs in one mode only — a warm, direct-dispatch session driven by
 `npx @eventmodelers/cli run --modeling`. The CLI itself subscribes to the board's realtime
 channel and writes each incoming prompt directly to your stdin as a new turn — there is
-**no `tasks.json` queue** and no file-queue loop in this mode (that's a build-kit concept,
+**no task queue** and no queue loop in this mode (that's a build-kit concept,
 for their independent, self-contained slice-implementation tasks). Each user message you
 receive already IS the one prompt to handle; there's nothing to read, pre-filter, or pick
 from.

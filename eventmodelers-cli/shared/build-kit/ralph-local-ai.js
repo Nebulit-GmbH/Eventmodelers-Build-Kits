@@ -16,13 +16,15 @@ const kitDir = dirname(fileURLToPath(import.meta.url));
 const projectDir = process.argv[2] ? resolve(process.argv[2]) : resolve(kitDir, '..');
 
 
-function runLocalAi() {
+// The task goes in on stdin, as it does for the Claude runner: the loop has already picked it.
+function runLocalAi(prompt) {
   return new Promise((resolve, reject) => {
     const proc = spawn('node', [join(kitDir, 'lib', 'local-ai-agent.js')], {
       cwd: projectDir,
-      stdio: 'inherit',
+      stdio: ['pipe', 'inherit', 'inherit'],
       env: process.env,
     });
+    proc.stdin.end(prompt);
     proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`local-ai-agent exited ${code}`))));
     proc.on('error', reject);
   });
@@ -32,7 +34,7 @@ startRalph({
   kitDir,
   projectDir,
   onTask: runLocalAi,
-  // onPlannedSlice omitted — local-ai-agent manages its own task queue
+  // onPlannedSlice omitted — this runner works the queued tasks only
   localOnly: process.env.RALPH_LOCAL === '1',
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);

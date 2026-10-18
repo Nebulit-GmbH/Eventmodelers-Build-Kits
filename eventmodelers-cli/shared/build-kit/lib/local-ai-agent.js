@@ -6,16 +6,17 @@
 //   ollama  — Ollama's native POST /api/chat
 //   openai  — the OpenAI-compatible POST /v1/chat/completions that vLLM, LM Studio,
 //             llama.cpp-server, TGI, SGLang (and hosted gateways) all speak
-// Everything above the transport — the MCP tool loop, the tasks.json queue, the
+// Everything above the transport — the MCP tool loop, the
 // security prompt — is identical for both, which is why this is one file and not
 // one kit per vendor.
 //
 // Usage: node local-ai-agent.js [model]
 //        LOCAL_AI_TARGET=vllm node local-ai-agent.js
 //        LOCAL_AI_URL=http://gpu-box:8000/v1 LOCAL_AI_MODEL=Qwen/Qwen3-8B node local-ai-agent.js
-// Reads tasks.json, picks the next task, and passes its prompts to the model.
+// The run loop (lib/ralph.js) picks the oldest queued task and hands it over as the prompt on stdin — one task
+// per run, completed by the loop when this process exits cleanly. There is no queue file to read.
 
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -254,28 +255,15 @@ async function runAgent(userPrompt, boardId) {
   return 'Max tool iterations reached.';
 }
 
-async function runNextTask() {
-  const tasksPath = resolve(__dirname, '..', 'tasks.json');
-  let tasks = [];
-  try { tasks = JSON.parse(readFileSync(tasksPath, 'utf8')); } catch {}
-
-  const blocked = tasks.filter(t => t.blocked === true || t.blockedBy?.length > 0);
-  if (blocked.length > 0) {
-    console.error(`[local-ai] removing ${blocked.length} blocked task(s): ${blocked.map(t => t.id).join(', ')}`);
-    tasks = tasks.filter(t => !blocked.includes(t));
-    writeFileSync(tasksPath, JSON.stringify(tasks, null, 2));
-  }
-
-  const task = tasks[0];
-  if (!task) return;
-
-  console.error(`[local-ai] task=${task.id} prompts=${task.prompts.length}`);
-
-  for (const p of task.prompts) {
-    console.log(await runAgent(p.prompt, p.board_id || defaultBoardId));
-  }
-
-  writeFileSync(tasksPath, JSON.stringify(tasks.slice(1), null, 2));
+async function readStdin() {
+  let text = '';
+  for await (const chunk of process.stdin) text += chunk;
+  return text;
 }
 
-await runNextTask();
+const prompt = await readStdin();
+if (!prompt.trim()) {
+  console.error('[local-ai] no prompt on stdin — this agent is started by the run loop with the task as its prompt');
+  process.exit(1);
+}
+console.log(await runAgent(prompt, defaultBoardId));

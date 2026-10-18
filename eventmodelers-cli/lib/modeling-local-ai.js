@@ -2,7 +2,7 @@
 //
 // The build kit's own local runner (shared/build-kit/lib/local-ai-agent.js) is a
 // template copied into user projects, so it owns its whole lifecycle: it reads
-// config.json off disk, pulls one task out of tasks.json and exits. This one is the
+// config.json off disk, pulls one task off the queue and exits. This one is the
 // same idea mounted the other way round — the modeling loop already owns the prompt
 // queue, the standalone board-change lane and the idle review, and only ever needed
 // something to hand a turn's text to. So this exports a runner with one method,

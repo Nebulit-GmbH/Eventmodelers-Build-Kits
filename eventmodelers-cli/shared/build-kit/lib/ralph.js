@@ -2,12 +2,12 @@
 // Not meant to be run directly — use ralph-claude.js or ralph-local-ai.js.
 //
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
-//   onTask(prompt) — called when tasks.json has entries
+//   onTask(prompt) — called once per queued slice change (the oldest first; see lib/slice-tasks.js)
 //   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
 //     `slice` ({sliceId, sliceTitle, context, ticketNumber, boardId, attempt}) lets a runner record what building it cost.
 //     May resolve with the agent's final reply — quoted in the note if the slice ends up auto-blocked.
 
-import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync, renameSync, rmSync } from 'fs';
+import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
@@ -21,6 +21,7 @@ import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './sl
 import { isTreeClean } from './slice-git.js';
 import { syncLearnings } from './slice-learnings.js';
 import { curateIfDue } from './slice-curation.js';
+import { queueTask, workNextTask } from './slice-tasks.js';
 import { defaultAgentName } from './agent-name.js';
 import { redactConsole } from './redact.js';
 
@@ -280,7 +281,7 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
   //
   // This endpoint (`/slicedata/slices`) is the CHEAP summary one — `{ id, title, status }`
   // only, no commands/events/specifications/codeGen prompts. Its whole job here is to keep
-  // `status` fresh so hasPendingTasks/getFirstPlannedSliceTitle see live transitions; it must
+  // `status` fresh so the loop's pickup (getFirstPlannedSlice) sees live transitions; it must
   // NEVER clobber the richer slice.json a full fetch (`/load-slice`, `eventmodelers fetch`,
   // `eventmodelers listen`) already wrote for the same slice. So every write below merges
   // onto whatever's already on disk — spreading the existing object first, the fresh summary
@@ -359,64 +360,6 @@ async function fetchFullSlice(cfg, kitDir, sliceId) {
   }
 }
 
-// tasks.json has two writers: this process, queueing slice changes, and the agent, removing
-// the task it just handled (as each stack's prompt.md tells it to). An unlocked read-modify-
-// write from both sides at once lost whichever update landed first. So the two never overlap:
-// while an onTask turn runs (see inTurn), a change is held here instead — latest per slice —
-// and written the moment the turn ends. Every write goes through a temp file and a rename,
-// so a reader never sees a half-written file either.
-let heldTasks = null; // sliceId → payload while an onTask turn runs, null otherwise
-
-function writeTasksAtomically(tasksPath, tasks) {
-  const tmp = `${tasksPath}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(tasks, null, 2), 'utf-8');
-  renameSync(tmp, tasksPath);
-}
-
-function readTasks(tasksPath) {
-  if (!existsSync(tasksPath)) return [];
-  try {
-    const tasks = JSON.parse(readFileSync(tasksPath, 'utf-8'));
-    return Array.isArray(tasks) ? tasks : [];
-  } catch {
-    return []; // the agent left it unparseable — start over rather than wedge the queue
-  }
-}
-
-function appendTasks(kitDir, payloads) {
-  const tasksPath = join(kitDir, 'tasks.json');
-  const replaced = new Set(payloads.map((p) => p.sliceId));
-  const tasks = readTasks(tasksPath).filter((t) => !replaced.has(t.payload?.sliceId));
-  for (const payload of payloads) tasks.push({ id: randomUUID(), createdAt: new Date().toISOString(), payload });
-  writeTasksAtomically(tasksPath, tasks);
-}
-
-async function writeTask(payload, kitDir) {
-  if (heldTasks) {
-    heldTasks.set(payload.sliceId, payload);
-    console.log(`[agent] Task held until the current turn ends — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-    return;
-  }
-  appendTasks(kitDir, [payload]);
-  console.log(`[agent] Task written — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
-}
-
-// Runs one agent turn that may rewrite tasks.json, keeping this process's own writes out of
-// its way; whatever arrived meanwhile is written as soon as it's over, success or not.
-async function inTurn(kitDir, fn) {
-  heldTasks = new Map();
-  try {
-    return await fn();
-  } finally {
-    const payloads = [...heldTasks.values()];
-    heldTasks = null;
-    if (payloads.length > 0) {
-      appendTasks(kitDir, payloads);
-      console.log(`[agent] Wrote ${payloads.length} task(s) held during the turn`);
-    }
-  }
-}
-
 async function handleSliceChanged(payload, cfg, kitDir) {
   console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
@@ -435,7 +378,12 @@ async function handleSliceChanged(payload, cfg, kitDir) {
   // Slices in the kit's pickup status (Planned, or Handover for UI kits) are handled by
   // onPlannedSlice directly — no task needed.
   if ((payload.sliceStatus || '').toLowerCase() !== readPickupStatus(kitDir).toLowerCase()) {
-    await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
+    try {
+      queueTask({ kitDir, payload, meta: eventMeta(cfg) });
+      console.log(`[agent] Task queued — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+    } catch (err) {
+      console.error('[agent] queueTask error:', err);
+    }
   }
 }
 
@@ -538,10 +486,6 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
 }
 
 // ── Ralph loop ────────────────────────────────────────────────────────────────
-
-function hasPendingTasks(kitDir) {
-  return readTasks(join(kitDir, 'tasks.json')).length > 0;
-}
 
 // The slice status this kit claims work from. A stack declares it in `lib/kit.json`
 // ({ "pickupStatus": "Handover" } for the UI kits, which build what a backend kit handed over);
@@ -767,10 +711,10 @@ export function createBoard(cfg) {
   };
 }
 
-function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned') {
+function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned', queued = null) {
   const task = planned
     ? `build the ${pickupStatus} slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
-    : 'process the pending tasks in tasks.json';
+    : `process this queued task (id=${queued?.id}) — the slice change that queued it: ${JSON.stringify(queued?.payload ?? {})}`;
   // Stated explicitly so the agent never has to work it out from config.json: this run's effective
   // value, which is what the `ui-contract` skill (Step 4) follows. UI kits (pickup Handover) ignore it.
   const handover = planned && pickupStatus.toLowerCase() !== 'handover' ? `\nHandover: ${resolveHandover(cfg) ? 'on' : 'off'}\n` : '';
@@ -832,10 +776,18 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
     // Enough new learnings, and no build in progress: one agent turn tidies them (merge / retract only).
     if (await curateIfDue({ kitDir, meta, onCurate })) didWork = true;
 
-    if (credentialed && hasPendingTasks(kitDir)) {
-      const prompt = readFileSync(promptFile, 'utf-8') + taskRequest();
-      for (const t of readTasks(join(kitDir, 'tasks.json'))) await fetchFullSlice(cfg, kitDir, t.payload?.sliceId);
-      await runWithRetry('onTask: loading slice from board...', () => inTurn(kitDir, () => onTask(prompt)));
+    // The oldest queued slice change, one turn at a time. The task is completed once the turn finished; one that
+    // timed out stays queued and is handed out again.
+    const workedTask = credentialed && await workNextTask({
+      kitDir,
+      meta,
+      run: async (task) => {
+        await fetchFullSlice(cfg, kitDir, task.payload?.sliceId);
+        const prompt = readFileSync(promptFile, 'utf-8') + taskRequest(null, null, 'Planned', task);
+        return runWithRetry('onTask: loading slice from board...', () => onTask(prompt));
+      },
+    });
+    if (workedTask) {
       await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }
@@ -901,7 +853,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, writeTask, inTurn, hasPendingTasks, ensureLearningsGitRules };
+export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, ensureLearningsGitRules };
 
 // The connect line a runner puts in front of every prompt. --local must mean zero board
 // contact, so it is empty then — handed live credentials, the agent would treat itself as

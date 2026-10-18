@@ -48,7 +48,7 @@ const __dirname = dirname(__filename);
 // (lib/prompt.md, lib/backend-prompt.md, lib/AGENT.md, checks, etc.); shared/build-kit/*
 // is copied after it, so the shared runtime always wins over any copy a stack still ships.
 // modeling-kit (below) is the one kit that opts out of all of this (useShared:false)
-// — it has no cold-spawn/tasks.json runtime at all, so none of shared/build-kit/*
+// — it has no cold-spawn/task-queue runtime at all, so none of shared/build-kit/*
 // applies to it; see its own templates/kit for its (much smaller) self-contained set.
 // --- Local-AI runner selection ------------------------------------------------
 // One runner drives every local/self-hosted backend. What differs between Ollama,
@@ -216,7 +216,7 @@ const STACKS = {
 
 // Not a stack — no backend scaffold, just skills + the agent loop. Installed via
 // `init --modeling` instead of the `init --stack <name>` picker.
-// useShared:false — unlike build-kit, modeling-kit has no cold-spawn/tasks.json
+// useShared:false — unlike build-kit, modeling-kit has no cold-spawn/task-queue
 // runtime to reuse from shared/build-kit/*; its only runtime mode is the CLI's
 // own warm, direct-dispatch loop (`run --modeling`), so its kit dir just needs
 // lib/config.js for config resolution — see stacks/modeling-kit/templates/kit.
@@ -231,7 +231,7 @@ const MODELING_KIT = {
 
 // Also not a stack — installed via `init --build-kit` instead of `init --stack <name>`.
 // useShared:true, same as any real backend stack: it reuses build-kit's cold-spawn/
-// tasks.json engine as-is (lib/ralph.js). Its templates/build-kit/CLAUDE.md,
+// task-queue engine as-is (lib/ralph.js). Its templates/build-kit/CLAUDE.md,
 // lib/{prompt,backend-prompt}.md, and templates/.claude/skills/build-*/SKILL.md are
 // TODO-marked placeholders instead of real stack content (see stacks/blank/templates)
 // — this is for a stack that isn't built into this CLI yet: fill in the TODOs against
@@ -1921,7 +1921,7 @@ async function ensureGlobalKit(baseUrl) {
 }
 
 // `run --modeling`: modeling-kit's one and only runtime mode — there is no
-// cold-spawn/tasks.json loop for this kit (that's a build-kit concept; see the
+// cold-spawn/task-queue loop for this kit (that's a build-kit concept; see the
 // `run` command's build-kit-vs-modeling-kit gate above). It keeps ONE Claude
 // process warm across turns via `--input-format stream-json`, subscribes to the
 // org's realtime channel itself, and writes each prompt straight to that
@@ -3724,7 +3724,7 @@ credentialFlags(program
 
     // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
     // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
-    // cold-spawn/tasks.json loop (default, or --local-ai/--exec). Neither falls back
+    // cold-spawn/task-queue loop (default, or --local-ai/--exec). Neither falls back
     // to the other's mechanism, so each side is gated explicitly below rather than
     // just being left to fail on a missing file.
     // --standalone implies --modeling: it already refused every other runner, so there
@@ -3828,7 +3828,7 @@ credentialFlags(program
 
     if (!buildKitDir) {
       if (modelingKitDir) {
-        console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
+        console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/task-queue loop for modeling-only projects.`);
       } else {
         console.error(`❌ No kit installed in ${cwd} — run \`eventmodelers install\` first.`);
         console.error('   (A modeling agent needs no install at all: eventmodelers run --standalone --board-id <uuid>)');

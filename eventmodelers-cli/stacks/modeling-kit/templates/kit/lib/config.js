@@ -1,6 +1,6 @@
 // Config resolution for a modeling-kit install. A modeling agent has exactly one
 // runtime mode (the CLI's warm, direct-dispatch loop — see `eventmodelers run
-// --modeling`), so unlike build-kit there's no ralph loop / tasks.json queue
+// --modeling`), so unlike build-kit there's no ralph loop / task queue
 // living alongside this — just the shared, read-only config-file-walk logic.
 
 import { readFileSync, existsSync } from 'fs';

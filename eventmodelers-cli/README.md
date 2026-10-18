@@ -208,7 +208,7 @@ Installing both a build stack and `init-modeling` into the same project reuses t
 
 A modeling-kit install has one runtime: a warm Claude process the CLI keeps alive across
 turns and feeds directly over stdin, so a prompt typed (or spoken) on the board is picked up
-with no cold start and no `tasks.json` round trip.
+with no cold start and no task-queue round trip.
 
 ```bash
 npx @eventmodelers/cli run --modeling               # react to prompts sent to this board

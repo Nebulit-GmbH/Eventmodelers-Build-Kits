@@ -3,7 +3,8 @@
 // Design and the precedence rule: slice-state-test-design.md.
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
-// released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated. Unknown types are ignored, so a
+// released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated,
+// task-queued, task-done. Unknown types are ignored, so a
 // newer loop's log is readable.
 
 const emptySlice = () => ({
@@ -87,8 +88,19 @@ function mergeLearnings(learnings, e) {
 export function fold(events) {
   const slices = {};
   let learnings = [];
+  let tasks = [];
   for (const e of events) {
     if (!e) continue;
+    // The task queue: slice changes the agent has to react to, oldest first. A newer change to the same
+    // slice replaces its queued task (and goes to the back); `task-done` names a task by id, so a change that
+    // arrived while the agent was working the old one is a new task and survives.
+    if (e.type === 'task-queued') {
+      const sliceId = e.payload?.sliceId;
+      tasks = tasks.filter((t) => sliceId === undefined || t.payload?.sliceId !== sliceId);
+      tasks.push({ id: e.id, at: e.at, payload: e.payload });
+    } else if (e.type === 'task-done') {
+      tasks = tasks.filter((t) => t.id !== e.task);
+    }
     // Learnings are not about one slice (the slice is just where it was learned), so they sit beside them.
     if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice, scope: e.scope ?? 'repo', tags: e.tags ?? [], curated: false });
     else if (e.type === 'learning-retracted') learnings = learnings.filter((l) => l.id !== e.learning);
@@ -97,7 +109,7 @@ export function fold(events) {
     if (!e.slice || !Object.hasOwn(apply, e.type)) continue;
     apply[e.type](slices[e.slice] ??= emptySlice(), e);
   }
-  return { slices, learnings };
+  return { slices, learnings, tasks };
 }
 
 // The curator (an LLM, writing events) is worth a turn once this many learnings have been recorded since
