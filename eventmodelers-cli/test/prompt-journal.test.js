@@ -149,3 +149,17 @@ test('an agent without an id recovers nothing', async (t) => {
   assert.deepEqual(await recoverOwnPrompts({ kitDir: kit, meta: META, agentId: '', fetchHeld: platform.fetchHeld, release: platform.release }), { released: 0, settled: 0, left: 1 });
   assert.deepEqual(platform.calls.asked, []);
 });
+
+// ── the request that asks the platform what this agent is holding ───────────────
+
+import { heldPromptsRequest } from '../shared/build-kit/lib/prompt-journal.js';
+
+test('the held-prompts request carries the API token and the realtime JWT — the prompt routes need both — and the agent id', () => {
+  const { url, headers } = heldPromptsRequest({ baseUrl: 'https://api.test', organizationId: 'o1', boardId: 'b 1', token: 'tok', jwt: 'jwt-123', agentId: 'agent-9' });
+  assert.equal(headers['x-token'], 'tok');
+  assert.equal(headers.Authorization, 'Bearer jwt-123');
+  assert.equal(headers['x-agent-id'], 'agent-9');
+  const u = new URL(url);
+  assert.equal(u.pathname, '/api/org/o1/prompts');
+  assert.deepEqual(Object.fromEntries(u.searchParams), { board_id: 'b 1', claimed_by: 'agent-9', status: 'CLAIMED,IN_PROGRESS', limit: '500' });
+});

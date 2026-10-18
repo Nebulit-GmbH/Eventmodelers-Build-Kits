@@ -34,7 +34,7 @@ import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/age
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
-import { journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
+import { heldPromptsRequest, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2405,9 +2405,8 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // The prompts the platform shows as held (CLAIMED / IN_PROGRESS) under this agent's id — GET /prompts?claimed_by=,
   // which reads and claims nothing. At start an agent holds none, so these are what an earlier run left behind.
   async function fetchHeldPrompts(agentId) {
-    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts?board_id=${encodeURIComponent(cfg.boardId)}&claimed_by=${encodeURIComponent(agentId)}&status=CLAIMED,IN_PROGRESS&limit=500`, {
-      headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
-    });
+    const { url, headers } = heldPromptsRequest({ baseUrl: cfg.baseUrl, organizationId: cfg.organizationId, boardId: cfg.boardId, token: cfg.token, jwt: realtimeToken, agentId });
+    const res = await fetch(url, { headers });
     if (!res.ok) throw new Error(`prompts list: HTTP ${res.status}`);
     return ((await res.json()).prompts ?? []).map((p) => ({ id: p.id, status: p.status }));
   }

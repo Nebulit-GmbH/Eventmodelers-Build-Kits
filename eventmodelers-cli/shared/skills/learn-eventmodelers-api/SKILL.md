@@ -1074,7 +1074,7 @@ The claim records its holder: `claimed_by` is the caller's `x-agent-id` (`null` 
 ---
 
 ### GET `/api/org/:orgId/prompts`
-List a board's prompts **with their status** — the only way to read a prompt's status. Read-only: nothing is claimed. Auth: `x-token`. A status write is unconditional (`CLAIMED` → `ADDED` works on a `DONE` prompt too), so an agent that wants to hand back prompts a crash left it holding looks here first and releases only the ones still `CLAIMED` / `IN_PROGRESS`.
+List a board's prompts **with their status** — the only way to read a prompt's status. Read-only: nothing is claimed. Auth: `x-token` **and** a Supabase JWT (`Authorization: Bearer`) together, like `/prompts/next` — an agent uses the realtime token it already holds. A status write is unconditional (`CLAIMED` → `ADDED` works on a `DONE` prompt too), so an agent that wants to hand back prompts a crash left it holding looks here first and releases only the ones still `CLAIMED` / `IN_PROGRESS`.
 
 **Query params**: `board_id` (required) · `status` (optional, comma-separated subset of `ADDED`,`CLAIMED`,`IN_PROGRESS`,`DONE`) · `ids` (optional, comma-separated prompt ids, at most 200 — only these prompts of the board come back; an empty value asks about none, and the id of another board's prompt matches nothing) · `claimed_by` (optional, an agent id — only the prompts that agent holds) · `limit` (optional, default 200, max 500)
 **Response**: `200` — `{ "prompts": [ … ] }`, each row with `id`, `status`, `agent_id` (who it is addressed to), `claimed_by` / `claimed_at` (who holds it and since when), `priority`, `creation_time`, `node_id`, `comment_id`, the progress `comment` and the parsed `context`. Ordered like the claim: priority first, then oldest first.

@@ -57,7 +57,7 @@ export async function recoverOwnPrompts({ kitDir, meta, agentId, fetchHeld, rele
   try {
     held = await fetchHeld(agentId);
   } catch (err) {
-    console.error(`[modeling] could not ask the platform which prompts this agent was holding — leaving ${open.length} unfinished for the next start:`, err.message);
+    console.error(`[modeling] could not ask the platform which prompts this agent was holding${open.length ? ` — leaving ${open.length} unfinished for the next start` : ''}:`, err.message);
     return { ...result, left: open.length };
   }
 
@@ -87,4 +87,15 @@ export async function recoverOwnPrompts({ kitDir, meta, agentId, fetchHeld, rele
     result.settled++;
   }
   return result;
+}
+
+// What asks the platform which prompts an agent holds: GET /prompts?claimed_by=, which reads and claims nothing.
+// Like the other prompt routes it needs the API token *and* an authenticated user — the realtime JWT the agent
+// already holds for /prompts/next.
+export function heldPromptsRequest({ baseUrl, organizationId, boardId, token, jwt, agentId }) {
+  const query = new URLSearchParams({ board_id: boardId, claimed_by: agentId, status: 'CLAIMED,IN_PROGRESS', limit: '500' });
+  return {
+    url: `${baseUrl}/api/org/${organizationId}/prompts?${query}`,
+    headers: { 'x-token': token, Authorization: `Bearer ${jwt}`, 'x-agent-id': agentId },
+  };
 }
