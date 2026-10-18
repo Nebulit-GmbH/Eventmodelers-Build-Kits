@@ -22,7 +22,8 @@ import { isTreeClean } from './slice-git.js';
 import { syncLearnings } from './slice-learnings.js';
 import { curateIfDue } from './slice-curation.js';
 import { queueTask, workNextTask } from './slice-tasks.js';
-import { defaultAgentName } from './agent-name.js';
+import { defaultAgentName, withInstanceSuffix } from './agent-name.js';
+import { acquireAgentId } from './agent-lock.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -876,9 +877,17 @@ export function connectHeader(cfg, localOnly) {
 // plain run. Exported so a runner can resolve it at load time, before startRalph runs — the env
 // it hands its `claude` is built then. Idempotent: ensureAgentId returns the id it persisted.
 export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLocalConfig(kitDir)) {
-  const agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
-  // --name, else the configured agentName, else the repository's name — never the bare uuid on the board.
-  const agentName = process.env.RALPH_AGENT_NAME || cfg.agentName || defaultAgentName(dirname(kitDir), agentType);
+  // --id is the operator's choice: used as given, no lock. Otherwise the project's stable id — unless another live
+  // process is already running under it, in which case this one gets a fresh id (see agent-lock.js).
+  const pinned = process.env.RALPH_AGENT_ID;
+  const { agentId, fellBack } = pinned
+    ? { agentId: pinned, fellBack: false }
+    : acquireAgentId({ lockDir: join(dirname(kitDir), '.eventmodelers', 'locks'), stableId: ensureAgentId(kitDir, agentType) });
+  // --name, else the configured agentName, else the repository's name — never the bare uuid on the board. A name
+  // nobody gave is marked with the instance when the id fell back, so the board does not show two of the same.
+  const given = process.env.RALPH_AGENT_NAME || cfg.agentName;
+  const fallback = defaultAgentName(dirname(kitDir), agentType);
+  const agentName = given || (fellBack ? withInstanceSuffix(fallback, agentId) : fallback);
   process.env.EVENTMODELERS_AGENT_ID = agentId;
   return { agentId, agentName, agentType };
 }

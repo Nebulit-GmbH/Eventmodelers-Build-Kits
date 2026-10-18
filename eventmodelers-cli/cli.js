@@ -30,7 +30,9 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
-import { defaultAgentName } from './shared/build-kit/lib/agent-name.js';
+import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/agent-name.js';
+import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
+import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
 import { journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
@@ -1875,16 +1877,12 @@ async function resolveModelingCredentials(cwd, flags, explicitConfigPath, print,
     process.exit(1);
   }
 
-  // A fresh identity for every standalone run, deliberately not persisted. A standalone agent
-  // is started ad hoc from wherever, and nothing stops two of them running for the same board —
-  // with one id stored per board they upserted the same alive row (the heartbeat is keyed on
-  // token + agent_id + agent_type), so the second agent replaced the first instead of joining
-  // it: the board showed one agent however many were running, and their writes were
-  // indistinguishable. A per-run uuid costs the identity its continuity across restarts (a
-  // restarted agent is a new row, and the old one lingers until its 45s window lapses) — pass
-  // `run --id <uuid>` when an agent needs to keep one identity, which is also what makes
-  // "preferred agent" on the board stick to it.
-  config.agentId = randomUUID();
+  // One identity per board and repo — the directory the run is started in — kept in ~/.eventmodelers/agent-ids.json, so a
+  // standalone agent is the same agent on every start: its chat sessions, its star on the board and the prompts it holds
+  // stay addressed to it. This is the id it keeps; whether this process may use it (another live run may already be
+  // under it) is decided in the run action, which also lets `run --id` pin a different one. Not written into the
+  // per-board credentials file below — the id is not a credential.
+  config.agentId = stableGlobalAgentId({ file: join(GLOBAL_DIR, 'agent-ids.json'), boardId: config.boardId, dir: cwd });
   writeBoardCredentials(stored.useGlobal
     ? { boardId: config.boardId, useGlobal: true, agentName: config.agentName }
     : config);
@@ -1976,7 +1974,17 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // `run --id` overrides that for this run only — ensureAgentId is skipped rather than
   // overwritten, so the project's own stable id stays on disk and the next run without the
   // flag is the same agent the platform saw before.
-  if (!overrides) local.agentId = identity.agentId || ensureAgentId(kitDir, 'MODELING');
+  if (!overrides) {
+    if (identity.agentId) {
+      local.agentId = identity.agentId;
+    } else {
+      // The project's stable id — unless a live process already runs under it (two `run --modeling` in one
+      // project), in which case this one gets a fresh id (agent-lock.js).
+      const { agentId, fellBack } = acquireAgentId({ lockDir: join(projectDir, '.eventmodelers', 'locks'), stableId: ensureAgentId(kitDir, 'MODELING') });
+      local.agentId = agentId;
+      local.agentIdFellBack = fellBack;
+    }
+  }
   if (!local.token || !local.organizationId) {
     console.error('❌ --modeling needs platform credentials in .eventmodelers/config.json (token + organizationId) — run `/connect` once or paste your config first.');
     process.exit(1);
@@ -1987,7 +1995,10 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   const cfg = { ...applyEnvOverrides(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}), ...(model ? { model } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   // No name given (--name, agentName in the config): the repository's, so the board shows which agent is live.
   // (On the global install projectDir is ~/.eventmodelers/kit; the repo is the directory the run was started in.)
-  if (!cfg.agentName) cfg.agentName = defaultAgentName(codeDir ?? projectDir, 'MODELING');
+  if (!cfg.agentName) {
+    const base = defaultAgentName(codeDir ?? projectDir, 'MODELING');
+    cfg.agentName = cfg.agentIdFellBack ? withInstanceSuffix(base, cfg.agentId) : base;
+  }
   // Only a project install keeps a record (learnings and the prompt journal, as events in its kit). A standalone
   // session writes nothing to disk, and neither does any run on the global install (`overrides`): its kit dir,
   // ~/.eventmodelers/kit, is shared by every board and account, so what one board taught the agent would end up in
@@ -2349,10 +2360,10 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   log(chat ? 'chat: ON — answering chat messages addressed to this agent' : 'chat: off (--worker)');
   if (exclusive) {
     log(`exclusive: ON — only prompts addressed to ${cfg.agentId} are worked; every untargeted prompt is handed back to the queue`);
-    // A global/standalone run mints its id per run (see resolveModelingCredentials), so an id
-    // someone addressed a prompt to yesterday is not this agent — worth saying out loud here,
+    // A run keeps its stable id unless another live process is already running under it (agent-lock.js), in which
+    // case it got a fresh one — and an id someone addressed a prompt to is not this agent. Worth saying out loud here,
     // where the alternative is an agent that looks healthy and quietly works nothing.
-    if (overrides && !identity.agentId) log('exclusive: this run minted a fresh agent id — star it on the board now, or restart with `--id <uuid>` to keep one addressable identity');
+    if (cfg.agentIdFellBack) log('exclusive: another process is already running under this agent\'s usual id, so this run got a fresh one — star it on the board now, or stop the other process and restart');
   }
   // Both warm-ups are the same bet — pay the session's fixed setup cost before a turn arrives
   // rather than making whoever sends the first prompt wait for it. For a local model that cost
@@ -2534,7 +2545,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   // Prompts an earlier run of this agent was holding are still CLAIMED / IN_PROGRESS — the platform never re-queues
   // them by itself. This run holds none yet, so whatever the platform shows as held under this agent's id goes back.
-  if (!standalone) {
+  {
     const recovered = await recoverOwnPrompts({ kitDir, meta: journalMeta, agentId: cfg.agentId, fetchHeld: fetchHeldPrompts, release: releasePrompt });
     if (recovered.released || recovered.settled || recovered.left) {
       log(`prompts from an earlier run: ${recovered.released} handed back, ${recovered.settled} already settled${recovered.left ? `, ${recovered.left} left for the next start` : ''}`);
@@ -3689,7 +3700,7 @@ credentialFlags(program
   .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Handover` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Handover). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
-  .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. A project install otherwise mints one id per project and reuses it on every restart; --global/--standalone mints a fresh one per run, since two ad-hoc agents for one board must not share a row (the heartbeat is keyed on token + agent_id + agent_type, so the second would replace the first). Pass this when an agent has to keep ONE identity across restarts — a supervisor that already knows the id, or a board where it is the starred "preferred agent". Per-run only: nothing is written to disk.')
+  .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. Without it an agent keeps one id: a project install per project, a --global/--standalone run per board and repo (the directory it is started in) — the same agent on every restart, with its chat, its star on the board and the prompts it holds. If another live process already runs under that id, this one gets a fresh id instead (two agents must not share a heartbeat row). Pass --id when a supervisor already knows the id you want, or for a second agent on purpose; it is used as given, with no such check. Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
   .option('--credentials <values>', 'Credentials as the comma-separated blob from app.eventmodelers.ai/account (token=...,boardId=...,organizationId=...,baseUrl=...), the equivalent JSON, or - to read either from stdin. Saved to ~/.eventmodelers/boards/<board>.json, so it is only needed once per board, and passing it skips the first-run question. The individual flags below override single fields of it.'))
   .action(async (opts, command) => {
@@ -3818,6 +3829,13 @@ credentialFlags(program
           ...Object.fromEntries(Object.entries(credentialOverridesFromOpts(opts)).filter(([, v]) => v)),
         };
         const config = await resolveModelingCredentials(cwd, flags, globalOpts.config, globalOpts.print, !!opts.nonInteractive, !!opts.force);
+        // The stable id of this board and repo — unless `--id` pins another, or a live process already runs under it,
+        // in which case this run gets a fresh one (agent-lock.js).
+        if (!identity.agentId) {
+          const { agentId, fellBack } = acquireAgentId({ lockDir: join(GLOBAL_DIR, 'locks'), stableId: config.agentId });
+          config.agentId = agentId;
+          config.agentIdFellBack = fellBack;
+        }
         projectDir = await ensureGlobalKit(config.baseUrl);
         kitDir = join(projectDir, MODELING_KIT.kitDirName);
         overrides = config;

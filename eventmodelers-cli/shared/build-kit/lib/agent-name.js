@@ -19,3 +19,9 @@ export function defaultAgentName(projectDir, agentType = 'BUILD') {
   } catch { /* no remote, or not a git repo */ }
   return `${repo || basename(projectDir)} (${agentType.toLowerCase()})`;
 }
+
+// A second agent in the same repo gets a fresh id (see agent-lock.js); its default name says which instance it is,
+// so the board does not show two rows of the same name.
+export function withInstanceSuffix(name, agentId) {
+  return `${name} · ${String(agentId).slice(0, 4)}`;
+}
