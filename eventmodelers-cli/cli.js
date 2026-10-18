@@ -1986,10 +1986,14 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // an explicit --id.
   const cfg = { ...applyEnvOverrides(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}), ...(model ? { model } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
   // No name given (--name, agentName in the config): the repository's, so the board shows which agent is live.
-  if (!cfg.agentName) cfg.agentName = defaultAgentName(projectDir, 'MODELING');
-  // A standalone session writes nothing to disk. Otherwise the learnings the agent states in its replies are recorded as
-  // events in this kit, and the event store stays out of git.
-  if (!standalone) ensureLearningsGitRules(kitDir);
+  // (On the global install projectDir is ~/.eventmodelers/kit; the repo is the directory the run was started in.)
+  if (!cfg.agentName) cfg.agentName = defaultAgentName(codeDir ?? projectDir, 'MODELING');
+  // Only a project install keeps a record (learnings and the prompt journal, as events in its kit). A standalone
+  // session writes nothing to disk, and neither does any run on the global install (`overrides`): its kit dir,
+  // ~/.eventmodelers/kit, is shared by every board and account, so what one board taught the agent would end up in
+  // another's AGENTS.md.
+  const keepsRecord = !standalone && !overrides;
+  if (keepsRecord) ensureLearningsGitRules(kitDir);
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -2521,11 +2525,10 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   let realtimeToken = await getRealtimeToken();
 
-  // What this agent writes into its own record: events in the kit, stamped with who and where. A standalone
-  // session writes nothing to disk.
+  // What this agent writes into its own record: events in the kit, stamped with who and where (see keepsRecord).
   const journalMeta = { agent_id: cfg.agentId, organization_id: cfg.organizationId, board_id: cfg.boardId };
   const journal = (write) => {
-    if (standalone) return;
+    if (!keepsRecord) return;
     try { write(); } catch (err) { log(`could not write the prompt journal: ${err.message}`); }
   };
 
@@ -2579,7 +2582,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
           const reply = await runTurn(buildTurn(p));
           // The agent cannot run `learn` (locked-down Bash), so it states learnings in its reply and they are recorded here.
           // Best effort: a failed write never takes the prompt queue down.
-          if (!standalone) {
+          if (keepsRecord) {
             try {
               const n = recordTurnLearnings({ kitDir, reply, meta: journalMeta });
               if (n) log(`recorded ${n} learning${n === 1 ? '' : 's'} from the turn`);
