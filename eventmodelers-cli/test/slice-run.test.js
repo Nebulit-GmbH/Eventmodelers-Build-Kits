@@ -45,13 +45,14 @@ const agentSets = (kit, status) => {
 };
 
 // Board stand-in: records the writes, serves a status, can reject writes or reads.
-function fakeBoard({ remote = 'InProgress', rejectWrites = false, failReads = false } = {}) {
+function fakeBoard({ remote = 'Planned', rejectWrites = false, failReads = false } = {}) {
   const board = {
     writes: [],
     remote,
     async setStatus(id, status) {
       if (rejectWrites) throw Object.assign(new Error('HTTP 409: ALREADY_IN_STATUS'), { status: 409 });
       board.writes.push(status);
+      board.remote = status;
     },
     async readStatus() {
       if (failReads) throw new Error('board unreachable');
@@ -69,7 +70,7 @@ const settle = (kit, board, extra = {}) => settleSlice({ kitDir: kit, planned, b
 test('a won claim is confirmed, pushes InProgress, and shows InProgress to the agent (3)', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'Planned' });
   assert.equal(await claim(kit, board), 'won');
   assert.deepEqual(board.writes, ['InProgress']);
   assert.equal(state(kit).claim.confirmed, true);
@@ -88,14 +89,14 @@ test('the claim records the git state it started from and the tree\'s cleanlines
 test('every event of a claim carries the agent, organization and board', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  await claim(kit, fakeBoard());
+  await claim(kit, fakeBoard({ remote: 'Planned' }));
   for (const e of readEvents(kit).filter((e) => e.type !== 'board-observed')) assert.deepEqual(e.meta, META);
 });
 
 test('a claim the board rejects is lost: no build, no claim left, status back to what the board showed (1)', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  const board = fakeBoard({ rejectWrites: true });
+  const board = fakeBoard({ remote: 'Planned', rejectWrites: true });
   assert.equal(await claim(kit, board), 'lost');
   assert.equal(state(kit).claim, null);
   assert.deepEqual(board.writes, []);
@@ -106,8 +107,8 @@ test('a claim the board rejects is lost: no build, no claim left, status back to
 test('a lost claim counts as a failed attempt, so a slice the board keeps refusing is eventually switched away from and blocked', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  await claim(kit, fakeBoard({ rejectWrites: true }));
-  await claim(kit, fakeBoard({ rejectWrites: true }));
+  await claim(kit, fakeBoard({ remote: 'Planned', rejectWrites: true }));
+  await claim(kit, fakeBoard({ remote: 'Planned', rejectWrites: true }));
   assert.equal(state(kit).attempts, 2);
   assert.equal(readEvents(kit).filter((e) => e.type === 'attempt-failed')[0].reason, 'claim-lost');
 });
@@ -116,7 +117,7 @@ test('a slice another live process holds is not claimed, and the board is not to
   quiet(t);
   const { kit } = project(t);
   appendEvent(kit, { type: 'claimed', slice: 's1', ctx: 'cart', title: 'Add item', pid: process.ppid, base: null, cleanTree: true });
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'Planned' });
   assert.equal(await claim(kit, board), 'held');
   assert.deepEqual(board.writes, []);
   assert.equal(state(kit).claim.pid, process.ppid);
@@ -128,6 +129,47 @@ test('without a board the claim is confirmed straight away', async (t) => {
   assert.equal(await claim(kit, null), 'won');
   assert.equal(state(kit).claim.confirmed, true);
   assert.equal(localStatus(kit), 'InProgress');
+});
+
+test('a slice the board no longer shows as Planned is not claimed — someone else got there first', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  for (const remote of ['InProgress', 'Done', 'Blocked']) {
+    const board = fakeBoard({ remote });
+    assert.equal(await claim(kit, board), 'lost', remote);
+    assert.deepEqual(board.writes, [], `${remote}: nothing written to the board`);
+    assert.equal(state(kit).claim, null);
+  }
+});
+
+test('a lost claim of a stale view corrects it: the board\'s real status is recorded and shown to the loop', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  await claim(kit, fakeBoard({ remote: 'Done' }));
+  assert.equal(state(kit).status, 'Done');
+  assert.equal(localStatus(kit), 'Done');
+  assert.equal(readEvents(kit).filter((e) => e.type === 'board-observed').at(-1).status, 'Done');
+});
+
+test('the pickup status of the kit is what the board must show (Handover for UI kits)', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  assert.equal(await claim(kit, fakeBoard({ remote: 'Handover' }), { pickupStatus: 'Handover' }), 'won');
+  const other = project(t).kit;
+  assert.equal(await claim(other, fakeBoard({ remote: 'Planned' }), { pickupStatus: 'Handover' }), 'lost');
+});
+
+test('a board that cannot be read is not claimed against, and an unknown status does not stop a claim', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  const board = fakeBoard({ remote: 'Planned' });
+  board.readStatus = async () => { throw new Error('board unreachable'); };
+  assert.equal(await claim(kit, board), 'lost');
+  assert.deepEqual(board.writes, []);
+  const { kit: other } = project(t);
+  const unknown = fakeBoard();
+  unknown.readStatus = async () => null;
+  assert.equal(await claim(other, unknown), 'won');
 });
 
 // ── settling ────────────────────────────────────────────────────────────────────
@@ -262,7 +304,7 @@ test('a confirmed claim of a dead process is released back to Planned at the nex
   quiet(t);
   const { kit } = project(t);
   leftover(kit);
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.deepEqual(board.writes, ['Planned']);
   assert.equal(state(kit).claim, null);
@@ -274,7 +316,7 @@ test('a dead process that had recorded its outcome gets it pushed (9)', async (t
   const { kit } = project(t);
   leftover(kit);
   agentSets(kit, 'Done');
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.deepEqual(board.writes, ['Done']);
 });
@@ -283,7 +325,7 @@ test('an unconfirmed claim of a dead process never writes to the board (4)', asy
   quiet(t);
   const { kit } = project(t);
   leftover(kit, { confirmed: false });
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.deepEqual(board.writes, []);
   assert.equal(state(kit).claim, null);
@@ -293,7 +335,7 @@ test('a claim held by another live process is left alone (10)', async (t) => {
   quiet(t);
   const { kit } = project(t);
   leftover(kit, { pid: process.ppid });
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.deepEqual(board.writes, []);
   assert.notEqual(state(kit).claim, null);
@@ -303,7 +345,7 @@ test('a claim of this very process left over from a failed settle is settled aga
   quiet(t);
   const { kit } = project(t);
   leftover(kit, { pid: process.pid });
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.equal(state(kit).claim, null);
 });
@@ -311,7 +353,7 @@ test('a claim of this very process left over from a failed settle is settled aga
 test('recovery with nothing left over does nothing', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  const board = fakeBoard();
+  const board = fakeBoard({ remote: 'InProgress' });
   await recover(kit, board);
   assert.deepEqual(board.writes, []);
   assert.equal(existsSync(join(kit, 'events')), true);

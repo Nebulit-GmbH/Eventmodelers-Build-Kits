@@ -813,7 +813,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
       const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       if (planned.id) {
-        const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir) });
+        const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir), pickupStatus: readPickupStatus(kitDir) });
         if (claimed !== 'won') {
           console.log(claimed === 'held'
             ? `[ralph] Another run loop holds "${planned.title}" in this kit — waiting.`
