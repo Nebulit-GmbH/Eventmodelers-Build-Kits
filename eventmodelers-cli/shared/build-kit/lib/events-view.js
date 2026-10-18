@@ -70,9 +70,11 @@ export function formatEvent(e, { titles = {} } = {}) {
   return [time, String(e.type).padEnd(18), subject, detail, agent].filter((p, i) => i < 2 || p).join('  ');
 }
 
-// types / slice (an id prefix or part of a title) / tag narrow the log; last keeps the final N that remain.
-export function filterEvents(events, { types, slice, tag, last } = {}, titles = {}) {
+// types / slice (an id prefix or part of a title) / tag / board (an id prefix — a global kit's log mixes boards) narrow
+// the log; last keeps the final N that remain.
+export function filterEvents(events, { types, slice, tag, board, last } = {}, titles = {}) {
   let out = events;
+  if (board) out = out.filter((e) => String(e.meta?.board_id ?? '').toLowerCase().startsWith(board.toLowerCase()));
   if (types?.length) out = out.filter((e) => types.includes(e.type));
   if (slice) {
     const wanted = slice.toLowerCase();

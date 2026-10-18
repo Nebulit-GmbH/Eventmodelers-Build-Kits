@@ -549,6 +549,8 @@ npx @eventmodelers/cli events --state                  # what the log folds to: 
 npx @eventmodelers/cli events --json                   # the raw events, one per line (pipe to jq)
 npx @eventmodelers/cli events --follow                 # keep printing as events are appended
 npx @eventmodelers/cli events --kit ../other/.build-kit   # another kit's log, from anywhere
+npx @eventmodelers/cli events --global                 # the global install's log (~/.eventmodelers/kit): what runs without a project install wrote
+npx @eventmodelers/cli events --global --board c2b3b7da   # that log mixes every board; --board keeps one (an id prefix)
 ```
 
 ### Claude execution & config resolution

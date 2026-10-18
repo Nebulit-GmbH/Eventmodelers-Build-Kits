@@ -93,3 +93,14 @@ test('the summary names a slice by the title the log knows, even after its claim
   const state = fold([ev('board-observed', { slice: S, status: 'Done' })]);
   assert.match(summarize(state, { [S]: 'State Change' }), /ccc5e66b "State Change" +Done/);
 });
+
+test('the board filter keeps the events stamped with that board (a global kit\'s log mixes boards)', () => {
+  const events = [
+    ev('settled', { slice: S, meta: { agent_id: 'a', board_id: 'c2b3b7da-f3bb-4ad6-ae89-f59873c6556c' } }),
+    ev('settled', { slice: S, meta: { agent_id: 'a', board_id: '11111111-aaaa-4aaa-8aaa-111111111111' } }),
+    ev('settled', { slice: S }),
+  ];
+  assert.equal(filterEvents(events, { board: 'c2b3b7da' }).length, 1);
+  assert.equal(filterEvents(events, { board: 'C2B3' }).length, 1, 'by prefix, ignoring case');
+  assert.equal(filterEvents(events, { board: 'nope' }).length, 0);
+});

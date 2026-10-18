@@ -14,6 +14,7 @@ const S = 'ccc5e66b-6b29-40b9-a163-269b1b0b173b';
 const META = { agent_id: 'cc9a10b3-8492-4bf7-b992-2ad19e8a4772' };
 const env = { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0', EVENTMODELERS_TOKEN: '' };
 const run = (cwd, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf-8', env });
+const runWithHome = (cwd, home, ...args) => spawnSync(process.execPath, [cli, ...args], { cwd, encoding: 'utf-8', env: { ...env, HOME: home, USERPROFILE: home } });
 
 function project(t, { events = true } = {}) {
   const root = tempKit(t);
@@ -113,4 +114,53 @@ test('--follow prints what is appended afterwards', async (t) => {
     }, 150);
   });
   assert.equal(out.match(/settled/g).length, 1, 'the earlier events are printed once, not again');
+});
+
+// ── the global install ──────────────────────────────────────────────────────────
+
+function globalKit(t) {
+  const home = tempKit(t);
+  const kit = join(home, '.eventmodelers', 'kit', '.agent-modeling-kit');
+  mkdirSync(kit, { recursive: true });
+  appendEvent(kit, { type: 'prompt-received', pid: 7, prompt: { id: '0e5835db-43f2', text: 'Add one slice' } }, { agent_id: 'f200831e-0000', board_id: 'c2b3b7da-f3bb-4ad6-ae89-f59873c6556c' });
+  appendEvent(kit, { type: 'prompt-finished', prompt: '0e5835db-43f2', outcome: 'worked' }, { agent_id: 'f200831e-0000', board_id: 'c2b3b7da-f3bb-4ad6-ae89-f59873c6556c' });
+  appendEvent(kit, { type: 'prompt-received', pid: 8, prompt: { id: '99999999-aaaa', text: 'Another board' } }, { agent_id: '2b5b0000', board_id: '11111111-aaaa-4aaa-8aaa-111111111111' });
+  return { home, kit };
+}
+
+test('--global decodes the log of the global install, from any directory', (t) => {
+  const { home } = globalKit(t);
+  const res = runWithHome(tempKit(t), home, 'events', '--global');
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(res.stdout.trim().split('\n').length, 3);
+  assert.match(res.stdout, /prompt-received +0e5835db +"Add one slice", pid 7/);
+});
+
+test('--board narrows a mixed log to one board, by id prefix', (t) => {
+  const { home } = globalKit(t);
+  const res = runWithHome(tempKit(t), home, 'events', '--global', '--board', 'c2b3b7da');
+  assert.equal(res.stdout.trim().split('\n').length, 2);
+  assert.doesNotMatch(res.stdout, /Another board/);
+});
+
+test('--global and --kit are alternatives', (t) => {
+  const { home, kit } = globalKit(t);
+  const res = runWithHome(tempKit(t), home, 'events', '--global', '--kit', kit);
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /--global.*--kit|--kit.*--global/);
+});
+
+test('an empty project log points at the global log when that one has events', (t) => {
+  const { home } = globalKit(t);
+  const { root } = project(t, { events: false });
+  const res = runWithHome(root, home, 'events');
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /No events yet/);
+  assert.match(res.stdout, /events --global/);
+});
+
+test('--global with no global install says so', (t) => {
+  const res = runWithHome(tempKit(t), tempKit(t), 'events', '--global');
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /No events yet/);
 });

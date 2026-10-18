@@ -4356,6 +4356,8 @@ program
   .command('events')
   .description("Decode a kit's event log in the terminal: one line per event (claims, settles, learnings, tasks, prompts …) with the slice's title and the agent that wrote it. Filter it, print the raw events, or print the state the log folds to.")
   .option('--kit <dir>', "Read this kit directory's log (default: the build kit of the current project, else its modeling kit)")
+  .option('--global', 'Read the log of the global install (~/.eventmodelers/kit) — what runs started without a project install wrote')
+  .option('--board <id>', "Only events stamped with this board (an id prefix) — the global install's log mixes every board")
   .option('--type <types>', 'Only these event types, comma-separated (e.g. claimed,settled)')
   .option('--slice <slice>', 'Only events of the slice with this id (prefix) or a title containing this text')
   .option('--tag <tag>', 'Only events carrying this tag')
@@ -4365,7 +4367,12 @@ program
   .option('--follow', 'Keep running and print events as they are appended')
   .action(async (opts) => {
     const cwd = process.cwd();
-    const kitDir = opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
+    if (opts.global && opts.kit) {
+      console.error('❌ --global and --kit are alternatives — pick one.');
+      process.exit(1);
+    }
+    const globalLog = join(GLOBAL_KIT_DIR, MODELING_KIT.kitDirName);
+    const kitDir = opts.global ? globalLog : opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
     let last;
     if (opts.last !== undefined) {
       last = Number(opts.last);
@@ -4374,7 +4381,7 @@ program
         process.exit(1);
       }
     }
-    const filter = { types: opts.type?.split(',').map((t) => t.trim()).filter(Boolean), slice: opts.slice, tag: opts.tag };
+    const filter = { types: opts.type?.split(',').map((t) => t.trim()).filter(Boolean), slice: opts.slice, tag: opts.tag, board: opts.board };
     const color = process.stdout.isTTY && !process.env.NO_COLOR;
     const paint = (code, text) => (color ? `\x1b[${code}m${text}\x1b[0m` : text);
     const family = (type) => (/^(claim|settled|agent-recorded|task-done|prompt-finished)/.test(type) ? '32' : /^(attempt-failed|blocked|released)/.test(type) ? '31' : /^(learning|learnings)/.test(type) ? '36' : /^(prompt|task)/.test(type) ? '35' : '33');
@@ -4395,7 +4402,9 @@ program
       return;
     }
     if (!events.length && !opts.follow) {
-      console.log(`No events yet in ${relative(cwd, kitDir) || kitDir}.`);
+      console.log(`No events yet in ${opts.global ? '~/.eventmodelers/kit' : relative(cwd, kitDir) || kitDir}.`);
+      // Runs started without a project install keep their log in the global kit — say so when it has one.
+      if (!opts.global && !opts.kit && readEvents(globalLog).length) console.log('The global install has a log of its own: `eventmodelers events --global`.');
       return;
     }
     print(filterEvents(events, { ...filter, last }, titles), titles);
