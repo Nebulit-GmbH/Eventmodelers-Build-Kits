@@ -32,6 +32,7 @@ import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/ad
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 import { defaultAgentName } from './shared/build-kit/lib/agent-name.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
+import { journalPromptFinished, journalPromptReceived, recoverOpenPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2383,7 +2384,23 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       headers: { 'x-token': cfg.token, 'Content-Type': 'application/json', ...agentHeaders(cfg) },
       body: JSON.stringify({ status: 'ADDED' }),
     });
-    if (!res.ok) throw new Error(`prompts/${promptId}/status: HTTP ${res.status}`);
+    if (!res.ok) throw Object.assign(new Error(`prompts/${promptId}/status: HTTP ${res.status}`), { status: res.status });
+  }
+
+  // Where these prompts stand on the platform (GET /prompts?ids=, which reads status and claims nothing) — what
+  // crash recovery asks before it hands anything back: a status write is unconditional, so a prompt that is
+  // already DONE must not be released.
+  async function fetchPromptStatuses(ids) {
+    const statuses = new Map();
+    for (let i = 0; i < ids.length; i += 200) {
+      const chunk = ids.slice(i, i + 200);
+      const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts?board_id=${encodeURIComponent(cfg.boardId)}&ids=${chunk.map(encodeURIComponent).join(',')}`, {
+        headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
+      });
+      if (!res.ok) throw new Error(`prompts list: HTTP ${res.status}`);
+      for (const p of (await res.json()).prompts ?? []) statuses.set(p.id, p.status);
+    }
+    return statuses;
   }
 
   // ── Chat ───────────────────────────────────────────────────────────────────
@@ -2510,6 +2527,23 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   let realtimeToken = await getRealtimeToken();
 
+  // What this agent writes into its own record: events in the kit, stamped with who and where. A standalone
+  // session writes nothing to disk.
+  const journalMeta = { agent_id: cfg.agentId, organization_id: cfg.organizationId, board_id: cfg.boardId };
+  const journal = (write) => {
+    if (standalone) return;
+    try { write(); } catch (err) { log(`could not write the prompt journal: ${err.message}`); }
+  };
+
+  // Prompts a crashed run was holding are still CLAIMED / IN_PROGRESS — the platform never re-queues them by
+  // itself. Hand back the ones the platform still shows as held; close the ones that finished after all.
+  if (!standalone) {
+    const recovered = await recoverOpenPrompts({ kitDir, meta: journalMeta, fetchStatuses: fetchPromptStatuses, release: releasePrompt });
+    if (recovered.released || recovered.settled || recovered.left) {
+      log(`unfinished prompts from an earlier run: ${recovered.released} handed back, ${recovered.settled} already settled${recovered.left ? `, ${recovered.left} left for the next start` : ''}`);
+    }
+  }
+
   let draining = false;
   async function drain() {
     if (draining) return;
@@ -2546,19 +2580,23 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
           continue;
         }
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
+        journal(() => journalPromptReceived({ kitDir, prompt: p, meta: journalMeta }));
         try {
           const reply = await runTurn(buildTurn(p));
           // The agent cannot run `learn` (locked-down Bash), so it states learnings in its reply and they are recorded here.
           // Best effort: a failed write never takes the prompt queue down.
           if (!standalone) {
             try {
-              const n = recordTurnLearnings({ kitDir, reply, meta: { agent_id: cfg.agentId, organization_id: cfg.organizationId, board_id: cfg.boardId } });
+              const n = recordTurnLearnings({ kitDir, reply, meta: journalMeta });
               if (n) log(`recorded ${n} learning${n === 1 ? '' : 's'} from the turn`);
             } catch (err) {
               log(`could not record the turn's learnings: ${err.message}`);
             }
           }
+          journal(() => journalPromptFinished({ kitDir, id: p.id, outcome: 'worked', meta: journalMeta }));
         } catch (err) {
+          // Not finished: the entry stays open, so the next start asks the platform about it and hands it back
+          // (or closes it if the agent had set DONE before the turn failed).
           log(`turn failed: ${err.message}`);
         }
       }

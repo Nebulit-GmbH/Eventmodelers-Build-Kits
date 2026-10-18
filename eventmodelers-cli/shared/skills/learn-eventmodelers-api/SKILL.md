@@ -1071,6 +1071,15 @@ Note what this endpoint does *not* do: an agent that sends its id still gets eve
 
 ---
 
+### GET `/api/org/:orgId/prompts`
+List a board's prompts **with their status** — the only way to read a prompt's status. Read-only: nothing is claimed. Auth: `x-token`. A status write is unconditional (`CLAIMED` → `ADDED` works on a `DONE` prompt too), so an agent that wants to hand back prompts a crash left it holding looks here first and releases only the ones still `CLAIMED` / `IN_PROGRESS`.
+
+**Query params**: `board_id` (required) · `status` (optional, comma-separated subset of `ADDED`,`CLAIMED`,`IN_PROGRESS`,`DONE`) · `ids` (optional, comma-separated prompt ids, at most 200 — only these prompts of the board come back; an empty value asks about none, and the id of another board's prompt matches nothing) · `limit` (optional, default 200, max 500)
+**Response**: `200` — `{ "prompts": [ … ] }`, each row with `id`, `status`, `agent_id` (who it is addressed to), `priority`, `creation_time`, `node_id`, `comment_id`, the progress `comment` and the parsed `context`. Ordered like the claim: priority first, then oldest first.
+**Errors**: `400` missing `board_id`, unknown status (`PROMPT_STATUS_INVALID`), more than 200 ids or a bad `limit` · `403` the board is not in the token's organization
+
+---
+
 ### POST `/api/org/:orgId/prompts/:id/status`
 Set a prompt's status, optionally attaching a progress comment. Auth: `x-token` only (bot token — no user JWT needed, this is meant to be called directly by the agent working the prompt).
 

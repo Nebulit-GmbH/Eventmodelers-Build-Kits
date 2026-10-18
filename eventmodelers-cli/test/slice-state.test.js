@@ -160,6 +160,29 @@ test('unknown event types and events without a slice are ignored', () => {
   assert.equal(s.status, 'InProgress');
 });
 
+// ── prompts: the modeling agent's journal of the board prompts it took ───────────
+
+const received = (id, extra = {}) => ({ type: 'prompt-received', pid: 100, prompt: { id, text: `do ${id}`, board_id: 'b1', priority: 1, ...extra } });
+const openIds = (events) => fold(events).prompts.map((p) => p.id);
+
+test('a received prompt is open until it is finished, in the order it was received', () => {
+  assert.deepEqual(openIds([received('p1'), received('p2')]), ['p1', 'p2']);
+  assert.deepEqual(openIds([received('p1'), received('p2'), { type: 'prompt-finished', prompt: 'p1', outcome: 'worked' }]), ['p2']);
+  assert.deepEqual(fold([received('p1')]).prompts[0], { id: 'p1', pid: 100, at: undefined, text: 'do p1', board_id: 'b1', priority: 1, agent_id: null });
+});
+
+test('finishing an unknown prompt, or one twice, changes nothing', () => {
+  const finish = (prompt) => ({ type: 'prompt-finished', prompt, outcome: 'worked' });
+  assert.deepEqual(openIds([received('p1'), finish('nope'), finish('p1'), finish('p1')]), []);
+  assert.deepEqual(openIds([finish('x')]), []);
+});
+
+test('receiving a prompt again (after a restart) keeps one open entry for it, with the newer pid', () => {
+  const [p] = fold([received('p1'), { ...received('p1'), pid: 200 }]).prompts;
+  assert.equal(p.pid, 200);
+  assert.equal(fold([received('p1'), received('p1')]).prompts.length, 1);
+});
+
 // ── tasks: the queue the loop works through ─────────────────────────────────────
 
 const queued = (id, sliceId, sliceStatus = 'Review', at = `t-${id}`) => ({ type: 'task-queued', id, at, payload: { sliceId, sliceTitle: sliceId, sliceStatus } });

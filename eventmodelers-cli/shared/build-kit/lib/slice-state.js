@@ -4,7 +4,7 @@
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
 // released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated,
-// task-queued, task-done. Unknown types are ignored, so a
+// task-queued, task-done, prompt-received, prompt-finished. Unknown types are ignored, so a
 // newer loop's log is readable.
 
 const emptySlice = () => ({
@@ -89,8 +89,15 @@ export function fold(events) {
   const slices = {};
   let learnings = [];
   let tasks = [];
+  const prompts = new Map(); // board prompts the modeling agent took and has not finished, in the order received
   for (const e of events) {
     if (!e) continue;
+    if (e.type === 'prompt-received' && e.prompt?.id) {
+      const { id, text, board_id, priority, agent_id } = e.prompt;
+      prompts.set(id, { id, pid: e.pid, at: e.at, text, board_id, priority, agent_id: agent_id ?? null });
+    } else if (e.type === 'prompt-finished') {
+      prompts.delete(e.prompt);
+    }
     // The task queue: slice changes the agent has to react to, oldest first. A newer change to the same
     // slice replaces its queued task (and goes to the back); `task-done` names a task by id, so a change that
     // arrived while the agent was working the old one is a new task and survives.
@@ -109,7 +116,7 @@ export function fold(events) {
     if (!e.slice || !Object.hasOwn(apply, e.type)) continue;
     apply[e.type](slices[e.slice] ??= emptySlice(), e);
   }
-  return { slices, learnings, tasks };
+  return { slices, learnings, tasks, prompts: [...prompts.values()] };
 }
 
 // The curator (an LLM, writing events) is worth a turn once this many learnings have been recorded since
