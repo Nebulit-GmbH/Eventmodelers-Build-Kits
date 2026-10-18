@@ -21,6 +21,7 @@ import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './sl
 import { isTreeClean } from './slice-git.js';
 import { syncLearnings } from './slice-learnings.js';
 import { curateIfDue } from './slice-curation.js';
+import { defaultAgentName } from './agent-name.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -927,7 +928,8 @@ export function connectHeader(cfg, localOnly) {
 // it hands its `claude` is built then. Idempotent: ensureAgentId returns the id it persisted.
 export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLocalConfig(kitDir)) {
   const agentId = process.env.RALPH_AGENT_ID || ensureAgentId(kitDir, agentType);
-  const agentName = process.env.RALPH_AGENT_NAME || cfg.agentName || '';
+  // --name, else the configured agentName, else the repository's name — never the bare uuid on the board.
+  const agentName = process.env.RALPH_AGENT_NAME || cfg.agentName || defaultAgentName(dirname(kitDir), agentType);
   process.env.EVENTMODELERS_AGENT_ID = agentId;
   return { agentId, agentName, agentType };
 }

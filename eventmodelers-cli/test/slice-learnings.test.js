@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
-import { curationRequest, mergeLearnings, parseAgentsFile, recordLearning, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
+import { curationRequest, mergeLearnings, parseAgentsFile, parseTurnLearnings, recordLearning, recordTurnLearnings, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
 import { tempKit } from './helpers.js';
 
 // AGENTS.md is a projection of the learning events — and hand edits to it (old prompts, a pull that merged
@@ -196,4 +196,49 @@ test('the curation request lists every learning with its short id, topic, scope 
 
 test('with nothing to curate there is no request', () => {
   assert.equal(curationRequest([]), '');
+});
+
+// ── learnings a turn states in its reply (the locked-down modeling agent never runs `learn` itself) ──
+
+test('a reply states learnings as `Learning [Topic]: text` lines; the topic is optional', () => {
+  const reply = 'Added the OrderPlaced event.\nLearning [Modeling]: an event name is past tense\nLearning: slices end at the read model\n<promise>DONE</promise>';
+  assert.deepEqual(parseTurnLearnings(reply), [
+    { topic: 'Modeling', text: 'an event name is past tense' },
+    { topic: undefined, text: 'slices end at the read model' },
+  ]);
+});
+
+test('learning lines are read case-insensitively, with a bullet, and "none" or nothing is no learning', () => {
+  assert.deepEqual(parseTurnLearnings('- learning: bulleted\n* LEARNING [T]: shouting'), [{ topic: undefined, text: 'bulleted' }, { topic: 'T', text: 'shouting' }]);
+  assert.deepEqual(parseTurnLearnings('Learning: none\nLearning:   \nLearning [T]: none.'), []);
+  assert.deepEqual(parseTurnLearnings(''), []);
+  assert.deepEqual(parseTurnLearnings(undefined), []);
+});
+
+test('learning lines inside a code fence, or in the middle of a sentence, are not learnings', () => {
+  assert.deepEqual(parseTurnLearnings('```\nLearning: in a fence\n```\nWe discussed Learning: in a sentence'), []);
+});
+
+test('a reply yields at most five learnings of at most 300 characters each', () => {
+  const many = Array.from({ length: 8 }, (_, i) => `Learning: number ${i}`).join('\n');
+  assert.equal(parseTurnLearnings(many).length, 5);
+  assert.deepEqual(parseTurnLearnings(`Learning: ${'x'.repeat(301)}\nLearning: ${'y'.repeat(300)}`).map((l) => l.text.length), [300]);
+});
+
+test('turn learnings are recorded as system-scoped modeling learnings, duplicates once', (t) => {
+  const kit = kitDir(t);
+  const n = recordTurnLearnings({ kitDir: kit, meta: META, reply: 'Learning [Modeling]: events are past tense\nLearning: events are PAST tense\nLearning: a second one' });
+  assert.equal(n, 2);
+  const [first] = learnings(kit);
+  assert.deepEqual({ topic: first.topic, scope: first.scope, tags: first.tags }, { topic: 'Modeling', scope: 'system', tags: ['modeling'] });
+  assert.deepEqual(readEvents(kit)[0].meta, META);
+  assert.match(agents(kit), /## Modeling\n- events are past tense\n/);
+  assert.equal(recordTurnLearnings({ kitDir: kit, meta: META, reply: 'Learning: a second one' }), 0);
+});
+
+test('a reply without learnings writes nothing', (t) => {
+  const kit = kitDir(t);
+  assert.equal(recordTurnLearnings({ kitDir: kit, meta: META, reply: 'All done. <promise>DONE</promise>' }), 0);
+  assert.equal(existsSync(join(kit, 'events.log')), false);
+  assert.equal(existsSync(join(kit, 'AGENTS.md')), false);
 });

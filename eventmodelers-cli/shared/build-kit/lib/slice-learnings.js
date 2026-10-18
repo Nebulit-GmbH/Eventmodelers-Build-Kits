@@ -152,3 +152,38 @@ Learnings:
 ${list}
 `;
 }
+
+// ── learnings a turn states in its reply ────────────────────────────────────────
+// The locked-down modeling agent cannot run `learn` (its Bash is an allowlist, and it takes chat from any
+// collaborator on the board), so it ends a reply with `Learning [<topic>]: <one terse line>` lines and the
+// CLI — trusted code — records them. A reply yields at most five learnings of at most 300 characters:
+// what a board collaborator can talk the agent into saying stays small.
+const MAX_TURN_LEARNINGS = 5;
+const MAX_LEARNING_LENGTH = 300;
+const TURN_LEARNING = /^\s*(?:[-*]\s+)?learning(?:\s*\[([^\]]{1,60})\])?:\s*(.*?)\s*$/i;
+
+export function parseTurnLearnings(reply) {
+  const found = [];
+  let fenced = false;
+  for (const line of String(reply ?? '').split('\n')) {
+    if (line.trim().startsWith('```')) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    const m = TURN_LEARNING.exec(line);
+    if (!m) continue;
+    const text = m[2];
+    if (!text || /^none\.?$/i.test(text) || text.length > MAX_LEARNING_LENGTH) continue;
+    found.push({ topic: m[1]?.trim() || undefined, text });
+    if (found.length === MAX_TURN_LEARNINGS) break;
+  }
+  return found;
+}
+
+// Records what a turn's reply states as modeling learnings (scope system: they are about the model).
+// Returns how many were new.
+export function recordTurnLearnings({ kitDir, reply, meta }) {
+  let recorded = 0;
+  for (const { topic, text } of parseTurnLearnings(reply)) {
+    if (!recordLearning({ kitDir, text, topic, scope: 'system', tags: ['modeling'], meta }).duplicate) recorded++;
+  }
+  return recorded;
+}

@@ -84,7 +84,7 @@ Why per commit: when the range contains the commit that **created** a file (e.g.
 | Group | Examples | Handling |
 |-------|----------|----------|
 | **Behavior** | controllers/handlers, services, entities/aggregates, events, projections/queries, schema & migrations, validation, templates/UI, tests | compared in Step 5 |
-| **Noise** | dependency bumps, build/CI config, gradle/maven wrappers, formatting-only diffs, docs, `.build-kit/`, `.claude/`, `.agent-modeling-kit/`, `.eventmodelers/`, `.mcp.json`, `CLAUDE.md`, `progress.txt`, generated files | listed in the report footer as *not relevant*, never a finding |
+| **Noise** | dependency bumps, build/CI config, gradle/maven wrappers, formatting-only diffs, docs, `.build-kit/`, `.claude/`, `.agent-modeling-kit/`, `.eventmodelers/`, `.mcp.json`, `CLAUDE.md`, generated files | listed in the report footer as *not relevant*, never a finding |
 
 **Build-kit commits vs. hand-made commits.** A commit is the build kit's only if an `Implementation — <Slice>` evidence note names its sha, or — without evidence notes — its subject is `feat: <Slice Name>` for a slice on the board. It implemented the board, so its files are the **as-built state**: compare it cheaply against that slice only. Every other commit — including any commit after it that touches the same files — is a **hand-made change** and the main subject of this skill: for each file the build kit wrote, the drift candidates are `git diff <buildSha>..<REF> -- <file>`, attributed to the later commits.
 

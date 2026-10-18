@@ -30,7 +30,9 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
-import { listLearnings, mergeLearnings, recordLearning, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
+import { defaultAgentName } from './shared/build-kit/lib/agent-name.js';
+import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
+import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -2028,6 +2030,11 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // resolveModelingCredentials just minted for this run, which would otherwise win back over
   // an explicit --id.
   const cfg = { ...applyEnvOverrides(await fetchPlatformConfig(local)), ...(overrides ?? {}), ...(identity.agentId ? { agentId: identity.agentId } : {}), ...(identity.agentName ? { agentName: identity.agentName } : {}), ...(model ? { model } : {}) }; // adds realtimeProvider + its provider-specific fields (supabaseUrl/supabaseAnonKey or pocketbaseUrl), + boardId if the config has a default one
+  // No name given (--name, agentName in the config): the repository's, so the board shows which agent is live.
+  if (!cfg.agentName) cfg.agentName = defaultAgentName(projectDir, 'MODELING');
+  // A standalone session writes nothing to disk. Otherwise the learnings the agent states in its replies are recorded as
+  // events in this kit, and the event store stays out of git.
+  if (!standalone) ensureLearningsGitRules(kitDir);
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
@@ -2586,7 +2593,17 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         }
         log(`prompt received: "${p.prompt}" (board=${p.board_id ?? cfg.boardId ?? 'n/a'}, priority=${p.priority})`);
         try {
-          await runTurn(buildTurn(p));
+          const reply = await runTurn(buildTurn(p));
+          // The agent cannot run `learn` (locked-down Bash), so it states learnings in its reply and they are recorded here.
+          // Best effort: a failed write never takes the prompt queue down.
+          if (!standalone) {
+            try {
+              const n = recordTurnLearnings({ kitDir, reply, meta: { agent_id: cfg.agentId, organization_id: cfg.organizationId, board_id: cfg.boardId } });
+              if (n) log(`recorded ${n} learning${n === 1 ? '' : 's'} from the turn`);
+            } catch (err) {
+              log(`could not record the turn's learnings: ${err.message}`);
+            }
+          }
         } catch (err) {
           log(`turn failed: ${err.message}`);
         }
@@ -4362,13 +4379,16 @@ program
     console.log(`✅ Pushed status change to the board (node ${slice.id}).`);
   });
 
-// The build kit a build agent's command works against: same resolution as run-checks — a build kit, not the
-// modeling/bridge kit that may sit beside it. Exits with a message when there is none.
+// The kit a command that records events works against: a build kit if one is installed, else the modeling
+// kit. A bridge kit is never one (it has its own prompt and no learnings or slices). The build kit wins when
+// both are installed — the modeling agent never runs these commands itself (its Bash is an allowlist); it
+// states its learnings in its reply and `runModeling` records them.
 function requireBuildKitDir(cwd) {
   const installed = findAllInstalledKitDirs(cwd);
-  const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName)) ?? installed[0];
+  const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName))
+    ?? installed.find((d) => d.endsWith(MODELING_KIT.kitDirName));
   if (!kitDir) {
-    console.error('❌ No build kit found in this directory — run this from the project root.');
+    console.error('❌ This command needs a build or modeling kit (npx @eventmodelers/cli init --stack <name> or init --modeling) — only the bridge kit is installed here, and it has no slices or learnings to record into.');
     process.exit(1);
   }
   return kitDir;

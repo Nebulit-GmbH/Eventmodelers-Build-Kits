@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
@@ -111,4 +111,35 @@ test('while a curation turn runs, recording new learnings is refused but merging
   const ids = curating('learnings', '--ids').stdout.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/)[0]);
   assert.equal(curating('learn', '--merge', ids.join(','), 'one and two').status, 0);
   assert.equal(fold(readEvents(kit)).learnings.length, 1);
+});
+
+// Which kit the commands record into: a build kit if there is one, else the modeling kit; a bridge kit is
+// never one (it has its own prompt and no learnings). A person can use them by hand in a modeling-only
+// project — the modeling agent itself states its learnings in its reply and the CLI records them.
+test('in a project that only has the modeling kit, learn records there', (t) => {
+  const root = tempKit(t);
+  mkdirSync(join(root, '.agent-modeling-kit'), { recursive: true });
+  const res = run(root, 'learn', 'Events are past tense', '--topic', 'Modeling', '--scope', 'system');
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(readFileSync(join(root, '.agent-modeling-kit', 'AGENTS.md'), 'utf-8'), /## Modeling\n- Events are past tense\n/);
+  assert.equal(run(root, 'learnings').status, 0);
+});
+
+test('in a project that only has the bridge kit, learn, learnings and slice-status refuse', (t) => {
+  const root = tempKit(t);
+  mkdirSync(join(root, '.bridge-kit'), { recursive: true });
+  for (const args of [['learn', 'x'], ['learnings'], ['slice-status', 'Done']]) {
+    const res = run(root, ...args);
+    assert.equal(res.status, 1, args.join(' '));
+    assert.match(res.stderr, /needs a build or modeling kit/, args.join(' '));
+  }
+  assert.equal(existsSync(join(root, '.bridge-kit', 'events.log')), false);
+});
+
+test('with a build kit and a modeling kit side by side, the build kit is the one that is used', (t) => {
+  const { root, kit } = project(t);
+  mkdirSync(join(root, '.agent-modeling-kit'), { recursive: true });
+  assert.equal(run(root, 'learn', 'Use npm test').status, 0);
+  assert.equal(readEvents(kit).length, 1);
+  assert.equal(existsSync(join(root, '.agent-modeling-kit', 'events.log')), false);
 });

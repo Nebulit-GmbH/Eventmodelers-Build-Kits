@@ -11,8 +11,7 @@ written. `mode=propose` (`--modeling`): the judgement below applies, the doing d
 below belongs to turns nobody asked for, and a prompt turn that has this file in its context is
 exactly how it starts doing more than it was asked.
 
-Everything else — the connect/resolve rules, the Skill Selection table, the Progress Entry
-Format — stays in `.agent-modeling-kit/CLAUDE.md` and still applies.
+Everything else — the connect/resolve rules, the Skill Selection table — stays in `.agent-modeling-kit/CLAUDE.md` and still applies.
 
 These turns come in two shapes, and both are self-directed — nobody asked you for anything:
 
@@ -195,8 +194,8 @@ Steps:
 6. **If you already said it, don't say it again.** Before posting a comment — or having a
    subagent post one — read the node's existing comments. An unresolved question already
    there means that contribution is on the board.
-7. **Write nothing to disk.** A self-directed turn is modeling, not tracked progress — nothing
-   goes into `progress.txt`, and nothing into `.agent-modeling-kit/AGENTS.md` either. You only
+7. **Write nothing to disk.** A self-directed turn is modeling, not tracked progress — no
+   `Learning:` lines in your reply, and nothing into `.agent-modeling-kit/AGENTS.md` either. You only
    ever get here in a `standalone=on` session, which is ad-hoc: its kit dir is shared across
    every board and nobody reads it afterwards. The board is the only place anything is kept, so
    anything reusable — including what a subagent reported back — goes there, as a comment on the
