@@ -1066,6 +1066,8 @@ Send `x-agent-id` here too: a prompt the user addressed to one preferred agent (
 
 Note what this endpoint does *not* do: an agent that sends its id still gets every untargeted prompt on top of its own. A caller that wants only what was addressed to it has to hand the rest back itself (`POST /prompts/:id/status` with `status: 'ADDED'`), which is what `eventmodelers run --exclusive` does.
 
+The claim records its holder: `claimed_by` is the caller's `x-agent-id` (`null` if it sent none) and `claimed_at` the time. That is what tells a prompt an agent is working from one a crashed agent left behind. Before claiming, this endpoint puts prompts whose known holder has **no live heartbeat** (and that were claimed more than 45 s ago) back to `ADDED`; a prompt with no recorded holder is never handed back, and an agent that is still pinging keeps its prompts however long a turn takes. An agent that restarts under the same id finds what it was holding with `GET /prompts?claimed_by=<its id>&status=CLAIMED,IN_PROGRESS` and hands it back itself.
+
 **Query params**: `board_id` (required)
 **Response**: `200` — the claimed row (now `status: "CLAIMED"`), including its parsed `context` and the `hidden` flag · `404` — no `ADDED` prompts available
 
@@ -1074,8 +1076,8 @@ Note what this endpoint does *not* do: an agent that sends its id still gets eve
 ### GET `/api/org/:orgId/prompts`
 List a board's prompts **with their status** — the only way to read a prompt's status. Read-only: nothing is claimed. Auth: `x-token`. A status write is unconditional (`CLAIMED` → `ADDED` works on a `DONE` prompt too), so an agent that wants to hand back prompts a crash left it holding looks here first and releases only the ones still `CLAIMED` / `IN_PROGRESS`.
 
-**Query params**: `board_id` (required) · `status` (optional, comma-separated subset of `ADDED`,`CLAIMED`,`IN_PROGRESS`,`DONE`) · `ids` (optional, comma-separated prompt ids, at most 200 — only these prompts of the board come back; an empty value asks about none, and the id of another board's prompt matches nothing) · `limit` (optional, default 200, max 500)
-**Response**: `200` — `{ "prompts": [ … ] }`, each row with `id`, `status`, `agent_id` (who it is addressed to), `priority`, `creation_time`, `node_id`, `comment_id`, the progress `comment` and the parsed `context`. Ordered like the claim: priority first, then oldest first.
+**Query params**: `board_id` (required) · `status` (optional, comma-separated subset of `ADDED`,`CLAIMED`,`IN_PROGRESS`,`DONE`) · `ids` (optional, comma-separated prompt ids, at most 200 — only these prompts of the board come back; an empty value asks about none, and the id of another board's prompt matches nothing) · `claimed_by` (optional, an agent id — only the prompts that agent holds) · `limit` (optional, default 200, max 500)
+**Response**: `200` — `{ "prompts": [ … ] }`, each row with `id`, `status`, `agent_id` (who it is addressed to), `claimed_by` / `claimed_at` (who holds it and since when), `priority`, `creation_time`, `node_id`, `comment_id`, the progress `comment` and the parsed `context`. Ordered like the claim: priority first, then oldest first.
 **Errors**: `400` missing `board_id`, unknown status (`PROMPT_STATUS_INVALID`), more than 200 ids or a bad `limit` · `403` the board is not in the token's organization
 
 ---
@@ -1092,6 +1094,8 @@ Set a prompt's status, optionally attaching a progress comment. Auth: `x-token` 
   comment?: string   // shown alongside the prompt in the board UI
 }
 ```
+
+Setting `ADDED` hands the prompt back to the queue and clears `claimed_by` / `claimed_at`; the other statuses leave the holder as it was.
 
 **Response**: `200` — the updated row
 **Errors**: `400` invalid/missing `status` · `403` token not for this prompt's org · `404` prompt not found · `409` (`PROMPT_STATUS_ALREADY_SET`) the prompt already carries that status — another agent already made this transition, so don't retry it

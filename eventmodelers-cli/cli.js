@@ -32,7 +32,7 @@ import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/ad
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 import { defaultAgentName } from './shared/build-kit/lib/agent-name.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
-import { journalPromptFinished, journalPromptReceived, recoverOpenPrompts } from './shared/build-kit/lib/prompt-journal.js';
+import { journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2387,20 +2387,14 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     if (!res.ok) throw Object.assign(new Error(`prompts/${promptId}/status: HTTP ${res.status}`), { status: res.status });
   }
 
-  // Where these prompts stand on the platform (GET /prompts?ids=, which reads status and claims nothing) — what
-  // crash recovery asks before it hands anything back: a status write is unconditional, so a prompt that is
-  // already DONE must not be released.
-  async function fetchPromptStatuses(ids) {
-    const statuses = new Map();
-    for (let i = 0; i < ids.length; i += 200) {
-      const chunk = ids.slice(i, i + 200);
-      const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts?board_id=${encodeURIComponent(cfg.boardId)}&ids=${chunk.map(encodeURIComponent).join(',')}`, {
-        headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
-      });
-      if (!res.ok) throw new Error(`prompts list: HTTP ${res.status}`);
-      for (const p of (await res.json()).prompts ?? []) statuses.set(p.id, p.status);
-    }
-    return statuses;
+  // The prompts the platform shows as held (CLAIMED / IN_PROGRESS) under this agent's id — GET /prompts?claimed_by=,
+  // which reads and claims nothing. At start an agent holds none, so these are what an earlier run left behind.
+  async function fetchHeldPrompts(agentId) {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/prompts?board_id=${encodeURIComponent(cfg.boardId)}&claimed_by=${encodeURIComponent(agentId)}&status=CLAIMED,IN_PROGRESS&limit=500`, {
+      headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
+    });
+    if (!res.ok) throw new Error(`prompts list: HTTP ${res.status}`);
+    return ((await res.json()).prompts ?? []).map((p) => ({ id: p.id, status: p.status }));
   }
 
   // ── Chat ───────────────────────────────────────────────────────────────────
@@ -2535,12 +2529,12 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     try { write(); } catch (err) { log(`could not write the prompt journal: ${err.message}`); }
   };
 
-  // Prompts a crashed run was holding are still CLAIMED / IN_PROGRESS — the platform never re-queues them by
-  // itself. Hand back the ones the platform still shows as held; close the ones that finished after all.
+  // Prompts an earlier run of this agent was holding are still CLAIMED / IN_PROGRESS — the platform never re-queues
+  // them by itself. This run holds none yet, so whatever the platform shows as held under this agent's id goes back.
   if (!standalone) {
-    const recovered = await recoverOpenPrompts({ kitDir, meta: journalMeta, fetchStatuses: fetchPromptStatuses, release: releasePrompt });
+    const recovered = await recoverOwnPrompts({ kitDir, meta: journalMeta, agentId: cfg.agentId, fetchHeld: fetchHeldPrompts, release: releasePrompt });
     if (recovered.released || recovered.settled || recovered.left) {
-      log(`unfinished prompts from an earlier run: ${recovered.released} handed back, ${recovered.settled} already settled${recovered.left ? `, ${recovered.left} left for the next start` : ''}`);
+      log(`prompts from an earlier run: ${recovered.released} handed back, ${recovered.settled} already settled${recovered.left ? `, ${recovered.left} left for the next start` : ''}`);
     }
   }
 

@@ -58,41 +58,20 @@ test('a finished event without a reason has no reason field', (t) => {
   assert.equal('reason' in readEvents(kit)[0], false);
 });
 
-// ── crash recovery: hand back what a dead process was holding ───────────────────
+// ── restart recovery: hand back what this agent was holding ─────────────────────
+// The platform records who holds a prompt (claimed_by) and never re-queues one by itself. A freshly started
+// agent holds nothing, so whatever the platform still shows as held by its id is what an earlier run left behind.
 
-import { decidePromptRecovery, recoverOpenPrompts } from '../shared/build-kit/lib/prompt-journal.js';
+import { recoverOwnPrompts } from '../shared/build-kit/lib/prompt-journal.js';
 
-const DEAD = 2 ** 22 + 12345;
-const prompt = (id, pid = DEAD) => ({ id, pid, text: `do ${id}`, board_id: 'b1', priority: 0, agent_id: null });
-const noneAlive = () => false;
-
-test('a prompt still CLAIMED or IN_PROGRESS on the platform is handed back; DONE, ADDED and vanished ones are not', () => {
-  const open = ['c', 'i', 'd', 'a', 'g'].map((id) => prompt(id));
-  const platform = new Map([['c', 'CLAIMED'], ['i', 'IN_PROGRESS'], ['d', 'DONE'], ['a', 'ADDED']]);
-  assert.deepEqual(decidePromptRecovery(open, platform, { isAlive: noneAlive, selfPid: 1 }), [
-    { id: 'c', action: 'release' },
-    { id: 'i', action: 'release' },
-    { id: 'd', action: 'finish', outcome: 'already-settled' },
-    { id: 'a', action: 'finish', outcome: 'already-settled' },
-    { id: 'g', action: 'finish', outcome: 'gone' },
-  ]);
-});
-
-test('a prompt held by another live process is left alone; one of this process or a dead one is recovered', () => {
-  const open = [prompt('live', 4242), prompt('mine', 7), prompt('dead', DEAD)];
-  const platform = new Map(open.map((p) => [p.id, 'CLAIMED']));
-  const plan = decidePromptRecovery(open, platform, { isAlive: (pid) => pid === 4242, selfPid: 7 });
-  assert.deepEqual(plan.map((a) => a.id), ['mine', 'dead']);
-});
-
-function fakePlatform(statuses, { failStatuses = false, releaseError = null } = {}) {
-  const calls = { released: [], asked: [] };
+function fakePlatform(held, { failHeld = false, releaseError = null } = {}) {
+  const calls = { asked: [], released: [] };
   return {
     calls,
-    fetchStatuses: async (ids) => {
-      calls.asked.push(ids);
-      if (failStatuses) throw new Error('HTTP 404');
-      return new Map(Object.entries(statuses).filter(([id]) => ids.includes(id)));
+    fetchHeld: async (agentId) => {
+      calls.asked.push(agentId);
+      if (failHeld) throw new Error('HTTP 404');
+      return held.map((id) => ({ id, status: 'IN_PROGRESS' }));
     },
     release: async (id) => {
       if (releaseError) throw releaseError;
@@ -100,62 +79,73 @@ function fakePlatform(statuses, { failStatuses = false, releaseError = null } = 
     },
   };
 }
-const recover = (kit, platform, extra = {}) => recoverOpenPrompts({ kitDir: kit, meta: META, fetchStatuses: platform.fetchStatuses, release: platform.release, isAlive: noneAlive, selfPid: 1, ...extra });
+const recover = (kit, platform) => recoverOwnPrompts({ kitDir: kit, meta: META, agentId: 'me', fetchHeld: platform.fetchHeld, release: platform.release });
 const receive = (kit, ...ids) => { for (const id of ids) journalPromptReceived({ kitDir: kit, prompt: { id, prompt: `do ${id}`, board_id: 'b1' }, meta: META }); };
 const outcomes = (kit) => Object.fromEntries(readEvents(kit).filter((e) => e.type === 'prompt-finished').map((e) => [e.prompt, e.outcome]));
+const err = (status) => Object.assign(new Error(`HTTP ${status}`), { status });
 
-test('recovery hands back what is still held, closes the rest, and says what it did', async (t) => {
-  const kit = kitDir(t);
-  receive(kit, 'c', 'd', 'g');
-  const platform = fakePlatform({ c: 'IN_PROGRESS', d: 'DONE' });
-  assert.deepEqual(await recover(kit, platform), { released: 1, settled: 2, left: 0 });
-  assert.deepEqual(platform.calls.released, ['c']);
-  assert.deepEqual(outcomes(kit), { c: 'released', d: 'already-settled', g: 'gone' });
-  assert.deepEqual(openPrompts(kit), []);
-  assert.deepEqual(readEvents(kit).find((e) => e.type === 'prompt-finished').reason, 'recovered after a restart');
-});
-
-test('with nothing open the platform is not asked', async (t) => {
-  const kit = kitDir(t);
-  const platform = fakePlatform({});
-  assert.deepEqual(await recover(kit, platform), { released: 0, settled: 0, left: 0 });
-  assert.deepEqual(platform.calls.asked, []);
-});
-
-test('it asks about its own prompts only, in one call', async (t) => {
+test('everything the platform shows as held by this agent is handed back, and its journal entries are closed', async (t) => {
   const kit = kitDir(t);
   receive(kit, 'a', 'b');
-  const platform = fakePlatform({ a: 'DONE', b: 'DONE' });
-  await recover(kit, platform);
-  assert.deepEqual(platform.calls.asked, [['a', 'b']]);
+  const platform = fakePlatform(['a', 'b']);
+  assert.deepEqual(await recover(kit, platform), { released: 2, settled: 0, left: 0 });
+  assert.deepEqual(platform.calls.asked, ['me']);
+  assert.deepEqual(platform.calls.released, ['a', 'b']);
+  assert.deepEqual(outcomes(kit), { a: 'released', b: 'released' });
+  assert.deepEqual(readEvents(kit).find((e) => e.type === 'prompt-finished').reason, 'recovered after a restart');
+  assert.deepEqual(openPrompts(kit), []);
 });
 
-test('a prompt held by another live process stays open and is not touched', async (t) => {
+test('a prompt held on the platform is handed back even when the journal never heard of it', async (t) => {
   const kit = kitDir(t);
-  receive(kit, 'p1');
-  const platform = fakePlatform({ p1: 'CLAIMED' });
-  assert.deepEqual(await recover(kit, platform, { isAlive: () => true, selfPid: 1 }), { released: 0, settled: 0, left: 1 });
-  assert.deepEqual(platform.calls.released, []);
-  assert.deepEqual(openPrompts(kit).map((p) => p.id), ['p1']);
+  const platform = fakePlatform(['lost']);
+  assert.deepEqual(await recover(kit, platform), { released: 1, settled: 0, left: 0 });
+  assert.deepEqual(platform.calls.released, ['lost']);
+  assert.deepEqual(outcomes(kit), {}, 'nothing to close in the journal');
+});
+
+test('a journal entry the platform no longer shows as held is closed without anything being released', async (t) => {
+  const kit = kitDir(t);
+  receive(kit, 'done', 'held');
+  const platform = fakePlatform(['held']);
+  assert.deepEqual(await recover(kit, platform), { released: 1, settled: 1, left: 0 });
+  assert.deepEqual(platform.calls.released, ['held']);
+  assert.deepEqual(outcomes(kit), { done: 'already-settled', held: 'released' });
+});
+
+test('with nothing held and nothing open the platform is asked once and nothing happens', async (t) => {
+  const kit = kitDir(t);
+  const platform = fakePlatform([]);
+  assert.deepEqual(await recover(kit, platform), { released: 0, settled: 0, left: 0 });
+  assert.deepEqual(platform.calls.asked, ['me']);
+  assert.deepEqual(readEvents(kit), []);
 });
 
 test('if the platform cannot be asked nothing is released and the journal stays open for the next start', async (t) => {
   const kit = kitDir(t);
   receive(kit, 'p1');
-  const platform = fakePlatform({}, { failStatuses: true });
+  const platform = fakePlatform([], { failHeld: true });
   assert.deepEqual(await recover(kit, platform), { released: 0, settled: 0, left: 1 });
   assert.deepEqual(platform.calls.released, []);
   assert.deepEqual(openPrompts(kit).map((p) => p.id), ['p1']);
 });
 
-test('a hand-back that fails stays open; one the platform says is already in that status, or gone, is closed', async (t) => {
+test('a hand-back that fails stays open; one the platform says is already back, or gone, is settled', async (t) => {
   const kit = kitDir(t);
   receive(kit, 'p1');
-  assert.deepEqual(await recover(kit, fakePlatform({ p1: 'CLAIMED' }, { releaseError: Object.assign(new Error('HTTP 503'), { status: 503 }) })), { released: 0, settled: 0, left: 1 });
+  assert.deepEqual(await recover(kit, fakePlatform(['p1'], { releaseError: err(503) })), { released: 0, settled: 0, left: 1 });
   assert.deepEqual(openPrompts(kit).map((p) => p.id), ['p1']);
-  assert.deepEqual(await recover(kit, fakePlatform({ p1: 'CLAIMED' }, { releaseError: Object.assign(new Error('HTTP 409'), { status: 409 }) })), { released: 0, settled: 1, left: 0 });
+  assert.deepEqual(await recover(kit, fakePlatform(['p1'], { releaseError: err(409) })), { released: 0, settled: 1, left: 0 });
   assert.deepEqual(outcomes(kit), { p1: 'already-settled' });
   receive(kit, 'p2');
-  assert.deepEqual(await recover(kit, fakePlatform({ p2: 'CLAIMED' }, { releaseError: Object.assign(new Error('HTTP 404'), { status: 404 }) })), { released: 0, settled: 1, left: 0 });
+  assert.deepEqual(await recover(kit, fakePlatform(['p2'], { releaseError: err(404) })), { released: 0, settled: 1, left: 0 });
   assert.equal(outcomes(kit).p2, 'gone');
+});
+
+test('an agent without an id recovers nothing', async (t) => {
+  const kit = kitDir(t);
+  receive(kit, 'p1');
+  const platform = fakePlatform(['p1']);
+  assert.deepEqual(await recoverOwnPrompts({ kitDir: kit, meta: META, agentId: '', fetchHeld: platform.fetchHeld, release: platform.release }), { released: 0, settled: 0, left: 1 });
+  assert.deepEqual(platform.calls.asked, []);
 });
