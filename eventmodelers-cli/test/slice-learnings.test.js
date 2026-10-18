@@ -27,8 +27,27 @@ test('parseAgentsFile reads topics from headings and one learning per bullet or 
 });
 
 test('parseAgentsFile skips the generated comment, blank lines and fenced code', () => {
-  const text = '<!-- Generated from the slice-state event log. -->\n# Learnings\n\n```sh\nnpm test\n```\n- kept\n';
-  assert.deepEqual(parseAgentsFile(text), [{ topic: 'Learnings', text: 'kept' }]);
+  const text = '<!-- Generated from the slice-state event log. -->\n## Dev\n\n```sh\nnpm test\n```\n- kept\n';
+  assert.deepEqual(parseAgentsFile(text), [{ topic: 'Dev', text: 'kept' }]);
+});
+
+test('a top-level heading is the file\'s title, not a topic', () => {
+  assert.deepEqual(parseAgentsFile('# Learnings\n\n- one\n\n## Git\n- two\n'), [{ topic: undefined, text: 'one' }, { topic: 'Git', text: 'two' }]);
+});
+
+test('when a file has bullets, only the bullets are learnings — an intro paragraph is not', () => {
+  const text = '# Learnings\n\nReusable learnings accumulated while processing prompts for this board. Append new\nones in a compressed form.\n\n- first\n- second\n';
+  assert.deepEqual(parseAgentsFile(text).map((l) => l.text), ['first', 'second']);
+});
+
+test('the AGENTS.md the modeling kit ships is adopted as its bullets, with no preamble and no title topic', async () => {
+  const { readFileSync } = await import('node:fs');
+  const text = readFileSync(new URL('../stacks/modeling-kit/templates/kit/AGENTS.md', import.meta.url), 'utf-8');
+  const learnings = parseAgentsFile(text);
+  assert.ok(learnings.length >= 10);
+  assert.ok(learnings.every((l) => l.topic === undefined && l.text.length > 20));
+  assert.equal(learnings.some((l) => /accumulated while processing/.test(l.text)), false);
+  assert.equal(learnings.some((l) => /^ones in a compressed/.test(l.text)), false);
 });
 
 test('parseAgentsFile of nothing is nothing', () => {

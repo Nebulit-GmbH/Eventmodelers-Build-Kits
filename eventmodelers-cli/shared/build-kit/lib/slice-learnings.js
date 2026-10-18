@@ -11,22 +11,32 @@ import { fold, learningKey, renderLearnings } from './slice-state.js';
 export const AGENTS_FILE = 'AGENTS.md';
 const SCOPES = ['system', 'repo'];
 
-// What an AGENTS.md says as learnings: a heading sets the topic, every other line is one learning
-// (a leading bullet is dropped). The generated comment and fenced code are not learnings.
+// What an AGENTS.md says as learnings. A `##` (or deeper) heading sets the topic; a top-level `#` is the file's
+// title and no topic. Bullets are learnings, and so are plain lines added after the list has begun (a hand-appended
+// line) — but not the paragraph a file opens with: whatever comes before the first bullet or sub-heading is an
+// introduction. A file with no bullets and no sub-heading at all is a hand-written list and is read line by line.
+// The generated comment and fenced code are never learnings.
 export function parseAgentsFile(text) {
   const items = [];
   let topic;
   let fenced = false;
+  let started = false;
+  let structured = false;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (line.startsWith('```')) { fenced = !fenced; continue; }
     if (fenced || !line || line.startsWith('<!--')) continue;
-    const heading = line.match(/^#{1,6}\s+(.*)$/);
-    if (heading) { topic = heading[1].trim() || undefined; continue; }
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      if (heading[1].length > 1) { topic = heading[2].trim() || undefined; started = true; structured = true; }
+      continue;
+    }
+    const bullet = /^[-*]\s+/.test(line);
+    if (bullet) { started = true; structured = true; }
     const learning = line.replace(/^[-*]\s+/, '').trim();
-    if (learning) items.push({ topic, text: learning });
+    if (learning) items.push({ topic, text: learning, introduction: !started });
   }
-  return items;
+  return items.filter((i) => structured ? !i.introduction : true).map(({ topic: t, text: x }) => ({ topic: t, text: x }));
 }
 
 function writeIfChanged(path, content) {
