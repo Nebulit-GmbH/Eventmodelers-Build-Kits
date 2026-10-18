@@ -3,6 +3,7 @@
 // loop (ralph-exec.js).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { spawnSync } from 'child_process';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
@@ -11,6 +12,18 @@ import { dirname, join } from 'path';
 export function shellQuote(s) {
   return `'${String(s).replace(/'/g, `'\\''`)}'`;
 }
+
+// Older OpenCode releases have no `run --standalone`; passing it makes `opencode run` print its
+// usage and exit 1, so every turn fails. Ask the installed binary once. Overridable for tests.
+let standaloneSupported = null;
+export function opencodeSupportsStandalone() {
+  if (standaloneSupported === null) {
+    const r = spawnSync('opencode', ['run', '--help'], { encoding: 'utf8' });
+    standaloneSupported = /--standalone\b/.test(`${r.stdout || ''}${r.stderr || ''}`);
+  }
+  return standaloneSupported;
+}
+export function setOpencodeStandaloneSupport(value) { standaloneSupported = value; }
 
 // Adds or refreshes one key in a project JSON config, leaving everything else in it alone. A file
 // that isn't plain JSON (a JSONC one with comments) is not rewritten — returns false instead, and
@@ -50,7 +63,10 @@ const MCP_REGISTRATIONS = {
     // A plain `opencode run` hands the turn to opencode's shared background service, which was
     // started with some other env: {env:EVENTMODELERS_TOKEN} resolves to nothing there and the
     // server refuses every call. --standalone runs a private server that inherits this one's env.
-    const standalone = /\s--(standalone|server)\b/.test(` ${command}`) ? command : `${command} --standalone`;
+    // A binary without the flag runs the turn in-process already, so the flag is dropped, not added.
+    const supported = opencodeSupportsStandalone();
+    const standalone = !supported ? command.replace(/\s--standalone\b/, '')
+      : /\s--(standalone|server)\b/.test(` ${command}`) ? command : `${command} --standalone`;
     return { command: standalone, file: ok ? 'opencode.json' : null, manual: ok ? null : `add mcp.eventmodelers = ${JSON.stringify(entry)} to opencode.json` };
   },
   gemini: (command, projectDir, url) => {

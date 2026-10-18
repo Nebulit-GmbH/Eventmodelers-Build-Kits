@@ -75,3 +75,40 @@ test('without a build kit there is nowhere to record', (t) => {
   assert.equal(res.status, 1);
   assert.match(res.stderr, /No eventmodelers kit installed/);
 });
+
+test('learn --merge replaces the named learnings by one, with a reason', (t) => {
+  const { root, kit } = project(t);
+  run(root, 'learn', 'run npm test', '--topic', 'Testing');
+  run(root, 'learn', 'tests run with npm test', '--topic', 'Testing');
+  const ids = run(root, 'learnings', '--ids').stdout.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/)[0]);
+  const res = run(root, 'learn', '--merge', ids.join(','), 'Run the suite with npm test', '--reason', 'same fact');
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(fold(readEvents(kit)).learnings.length, 1);
+  assert.match(agents(kit), /- Run the suite with npm test/);
+  assert.doesNotMatch(agents(kit), /tests run with/);
+  assert.equal(readEvents(kit).find((e) => e.type === 'learning-merged').reason, 'same fact');
+});
+
+test('learn --retract takes a reason', (t) => {
+  const { root, kit } = project(t);
+  run(root, 'learn', 'obsolete');
+  const id = run(root, 'learnings', '--ids').stdout.trim().split(/\s+/)[0];
+  assert.equal(run(root, 'learn', '--retract', id, '--reason', 'module deleted').status, 0);
+  assert.equal(readEvents(kit).find((e) => e.type === 'learning-retracted').reason, 'module deleted');
+});
+
+test('while a curation turn runs, recording new learnings is refused but merging and retracting work', (t) => {
+  const { root, kit } = project(t);
+  run(root, 'learn', 'one');
+  run(root, 'learn', 'two');
+  const curating = (...args) => spawnSync(process.execPath, [cli, ...args], {
+    cwd: root, encoding: 'utf-8', env: { ...process.env, RALPH_AGENT_ID: 'agent-7', EVENTMODELERS_TOKEN: '', EVENTMODELERS_CURATING: '1', FORCE_COLOR: '0' },
+  });
+  const refused = curating('learn', 'a brand new fact');
+  assert.equal(refused.status, 1);
+  assert.match(refused.stderr, /curat/i);
+  assert.equal(fold(readEvents(kit)).learnings.length, 2);
+  const ids = curating('learnings', '--ids').stdout.split('\n').filter(Boolean).map((l) => l.trim().split(/\s+/)[0]);
+  assert.equal(curating('learn', '--merge', ids.join(','), 'one and two').status, 0);
+  assert.equal(fold(readEvents(kit)).learnings.length, 1);
+});

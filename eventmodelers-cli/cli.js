@@ -30,7 +30,7 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
-import { listLearnings, recordLearning, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
+import { listLearnings, mergeLearnings, recordLearning, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -4411,21 +4411,31 @@ program
   .description("For a build agent: record one reusable learning (a codebase pattern, a gotcha, a command that works or doesn't, what a failed approach tried and why it failed). .build-kit/AGENTS.md is generated from the recorded learnings — never edit it by hand. --retract withdraws a wrong or obsolete one (ids: `learnings --ids`).")
   .option('--topic <topic>', 'Group the learning under this heading in AGENTS.md')
   .option('--tag <tag>', 'Label the learning (repeatable)', (tag, tags) => [...tags, tag], [])
-  .option('--scope <scope>', 'system: true of the modeled domain · repo: about the codebase and its tooling (default)', 'repo')
+  .option('--scope <scope>', 'system: true of the modeled domain · repo: about the codebase and its tooling (default repo)')
   .option('--slice <slice>', 'The slice it was learned on')
   .option('--retract <id>', 'Withdraw the learning with this id (or a unique prefix of it) instead of recording one')
+  .option('--merge <ids>', 'Replace these learnings (comma-separated ids) by one with the given text — the curator\'s tool')
+  .option('--reason <reason>', 'Why — recorded with a retraction or a merge')
   .action((text, opts, command) => {
     const cwd = process.cwd();
     const kitDir = requireBuildKitDir(cwd);
     const meta = agentEventMeta(cwd, kitDir, command);
     try {
       if (opts.retract !== undefined) {
-        const gone = retractLearning({ kitDir, id: opts.retract, meta });
+        const gone = retractLearning({ kitDir, id: opts.retract, reason: opts.reason, meta });
         console.log(`✅ Retracted: ${gone.text}`);
         return;
       }
-      if (text === undefined) throw new Error('give the learning as text, or --retract <id>');
-      const result = recordLearning({ kitDir, text, topic: opts.topic, tags: opts.tag, scope: opts.scope, slice: opts.slice, meta });
+      if (opts.merge !== undefined) {
+        const ids = opts.merge.split(',').map((id) => id.trim()).filter(Boolean);
+        const merged = mergeLearnings({ kitDir, ids, text, topic: opts.topic, scope: opts.scope, tags: opts.tag, reason: opts.reason, meta });
+        console.log(`✅ Merged ${ids.length} learnings into one (${merged.id.slice(0, 8)}).`);
+        return;
+      }
+      if (text === undefined) throw new Error('give the learning as text, or --retract <id>, or --merge <ids> <text>');
+      // The curator may only merge and retract — an LLM asked to tidy must not add facts of its own.
+      if (process.env.EVENTMODELERS_CURATING === '1') throw new Error('a curation turn only merges and retracts — new learnings are not recorded during it');
+      const result = recordLearning({ kitDir, text, topic: opts.topic, tags: opts.tag, scope: opts.scope ?? 'repo', slice: opts.slice, meta });
       console.log(result.duplicate ? `ℹ️  Already recorded (${result.id.slice(0, 8)}) — nothing to add.` : `✅ Recorded (${result.id.slice(0, 8)}) — .build-kit/AGENTS.md is updated.`);
     } catch (err) {
       console.error(`❌ ${err.message}`);

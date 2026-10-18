@@ -223,6 +223,13 @@ test('a merged learning has the tags of its sources plus the ones the merge name
   assert.deepEqual(state.learnings[0].tags, ['api', 'ui', 'testing']);
 });
 
+test('a merged learning takes the topic the merge names, else the first source\'s', () => {
+  const sources = [learning('l1', { topic: 'Testing' }), learning('l2', { topic: 'Git' })];
+  const merge = { type: 'learning-merged', id: 'm1', learnings: ['l1', 'l2'], text: 'x' };
+  assert.equal(fold([...sources, merge]).learnings[0].topic, 'Testing');
+  assert.equal(fold([...sources, { ...merge, topic: 'Tooling' }]).learnings[0].topic, 'Tooling');
+});
+
 test('a merge naming unknown learnings merges only the known ones; naming none changes nothing', () => {
   const events = [learning('l1'), learning('l2')];
   assert.deepEqual(texts([...events, { type: 'learning-merged', id: 'm1', learnings: ['l1', 'nope'], text: 'merged' }]), ['merged', 'learned l2']);

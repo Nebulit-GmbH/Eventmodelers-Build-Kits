@@ -20,6 +20,7 @@ import { readEvents } from './slice-events.js';
 import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './slice-run.js';
 import { isTreeClean } from './slice-git.js';
 import { syncLearnings } from './slice-learnings.js';
+import { curateIfDue } from './slice-curation.js';
 import { redactConsole } from './redact.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
@@ -808,7 +809,7 @@ function ensureLearningsGitRules(kitDir) {
   }
 }
 
-async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false) {
+async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false, onCurate = null) {
   const promptFile = join(kitDir, 'lib', 'prompt.md');
   const backendPromptFile = join(kitDir, 'lib', 'backend-prompt.md');
   // --local must mean zero board contact even when .eventmodelers/config.json
@@ -830,6 +831,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false)
 
     // AGENTS.md is the projection of the learning events; anything added to it by hand (or by a pull) is adopted first.
     syncLearnings({ kitDir, meta });
+    // Enough new learnings, and no build in progress: one agent turn tidies them (merge / retract only).
+    if (await curateIfDue({ kitDir, meta, onCurate })) didWork = true;
 
     if (credentialed && hasPendingTasks(kitDir)) {
       const prompt = readFileSync(promptFile, 'utf-8') + taskRequest();
@@ -929,7 +932,7 @@ export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLoca
   return { agentId, agentName, agentType };
 }
 
-export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
+export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, onCurate = null, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
   const local = loadLocalConfig(kitDir);
   redactConsole([local.token]);
   Object.assign(local, resolveAgentIdentity(kitDir, agentType, local));
@@ -944,7 +947,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
   // reaches out to the platform at all.
   if (localOnly || !hasCredentials(local)) {
     console.log(`         mode: local-only (no platform sync)${localOnly ? ' — forced by --local' : ''}\n`);
-    await ralphLoop(kitDir, local, onTask, onPlannedSlice, localOnly);
+    await ralphLoop(kitDir, local, onTask, onPlannedSlice, localOnly, onCurate);
     return;
   }
 
@@ -953,6 +956,6 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, a
 
   await Promise.all([
     startRealtimeAgent(cfg, kitDir, { agentType, queueAllStatuses }),
-    ralphLoop(kitDir, cfg, onTask, onPlannedSlice),
+    ralphLoop(kitDir, cfg, onTask, onPlannedSlice, false, onCurate),
   ]);
 }

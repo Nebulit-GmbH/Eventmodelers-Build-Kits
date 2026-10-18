@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setOpencodeStandaloneSupport } from '../shared/build-kit/lib/mcp-register.js';
 import { createModelingExecRunner, harnessOf, registerMcp } from '../lib/modeling-exec.js';
 
+setOpencodeStandaloneSupport(true);
 const cfg = { token: 'tok-123', agentId: 'agent-1', baseUrl: 'https://api.example.test' };
 const projectDir = mkdtempSync(join(tmpdir(), 'modeling-exec-test-'));
 const runner = (command) => createModelingExecRunner({ cfg, command, projectDir, log: () => {} });
@@ -114,4 +116,12 @@ test('hermes: never writes its user-wide config; registered only when it already
   } finally {
     delete process.env.HERMES_HOME;
   }
+});
+
+test('an OpenCode without run --standalone gets the flag dropped, not added', () => {
+  setOpencodeStandaloneSupport(false);
+  try {
+    assert.equal(registerMcp('opencode run --auto', freshDir(), BASE, () => {}).command, 'opencode run --auto');
+    assert.equal(registerMcp('opencode run --standalone --auto', freshDir(), BASE, () => {}).command, 'opencode run --auto');
+  } finally { setOpencodeStandaloneSupport(true); }
 });

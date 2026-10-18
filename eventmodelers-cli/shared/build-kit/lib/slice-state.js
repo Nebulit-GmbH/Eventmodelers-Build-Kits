@@ -80,7 +80,7 @@ function mergeLearnings(learnings, e) {
   const sources = learnings.filter((l) => e.learnings?.includes(l.id));
   if (!sources.length) return learnings;
   const tags = [...new Set([...sources.flatMap((l) => l.tags), ...(e.tags ?? [])])];
-  const merged = { id: e.id, text: e.text, topic: e.topic, slice: undefined, scope: e.scope ?? sources[0].scope, tags, curated: true };
+  const merged = { id: e.id, text: e.text, topic: e.topic ?? sources[0].topic, slice: undefined, scope: e.scope ?? sources[0].scope, tags, curated: true };
   return learnings.flatMap((l) => (l === sources[0] ? [merged] : sources.includes(l) ? [] : [l]));
 }
 

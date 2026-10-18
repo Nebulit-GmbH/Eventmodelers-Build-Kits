@@ -78,7 +78,7 @@ function describeToolUse(block) {
 }
 
 // `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
-function runClaude(prompt, slice = null) {
+function runClaude(prompt, slice = null, extraEnv = {}) {
   return new Promise((resolve, reject) => {
     // The prompt goes in on stdin, never as a `-p` argument: on Windows a multi-line argv entry
     // is cut at its first newline, so `claude` saw only the connect header, answered "I don't see
@@ -86,7 +86,7 @@ function runClaude(prompt, slice = null) {
     const proc = spawn('claude', [...claudeArgs, '-p'], {
       cwd: projectDir,
       stdio: ['pipe', 'pipe', 'inherit'],
-      env: claudeEnv,
+      env: { ...claudeEnv, ...extraEnv },
     });
     proc.stdin.end(inlineHeader + prompt);
     const turn = superviseTurn(proc, { timeoutMs, label: 'Claude turn', log: (line) => console.error(`[ralph] ${line}`) });
@@ -134,6 +134,8 @@ startRalph({
   projectDir,
   onTask: runClaude,
   onPlannedSlice: runClaude,
+  // The curation turn: the learnings tidied by an agent that may only merge and retract (see lib/slice-curation.js).
+  onCurate: (prompt, { env } = {}) => runClaude(prompt, null, env),
   localOnly,
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);

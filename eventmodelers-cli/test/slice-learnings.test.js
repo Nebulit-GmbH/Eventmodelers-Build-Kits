@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
-import { parseAgentsFile, recordLearning, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
+import { curationRequest, mergeLearnings, parseAgentsFile, recordLearning, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
 import { tempKit } from './helpers.js';
 
 // AGENTS.md is a projection of the learning events — and hand edits to it (old prompts, a pull that merged
@@ -130,4 +130,70 @@ test('with nothing learned there is no AGENTS.md to write, and an existing one i
   const before = readFileSync(join(kit, 'AGENTS.md'), 'utf-8');
   assert.equal(syncLearnings({ kitDir: kit }).written, false);
   assert.equal(readFileSync(join(kit, 'AGENTS.md'), 'utf-8'), before);
+});
+
+// ── the curator's tools: merge and retract with a reason ────────────────────────
+
+test('a merge replaces its sources by one learning, keeps their provenance on the event, and rewrites AGENTS.md', (t) => {
+  const kit = kitDir(t);
+  const a = recordLearning({ kitDir: kit, text: 'run npm test', topic: 'Testing', tags: ['ci'] });
+  const b = recordLearning({ kitDir: kit, text: 'tests are run with npm test', topic: 'Testing', tags: ['node'] });
+  recordLearning({ kitDir: kit, text: 'rebase before merging', topic: 'Git' });
+  const merged = mergeLearnings({ kitDir: kit, ids: [a.id.slice(0, 8), b.id], text: 'Run the suite with npm test', reason: 'same fact', meta: META });
+  assert.deepEqual(learnings(kit).map((l) => l.text), ['Run the suite with npm test', 'rebase before merging']);
+  assert.deepEqual(learnings(kit)[0].tags, ['ci', 'node']);
+  assert.equal(learnings(kit)[0].id, merged.id);
+  assert.match(agents(kit), /## Testing\n- Run the suite with npm test\n/);
+  assert.doesNotMatch(agents(kit), /tests are run with/);
+  const event = readEvents(kit).find((e) => e.type === 'learning-merged');
+  assert.deepEqual(event.sources, [{ id: a.id, text: 'run npm test' }, { id: b.id, text: 'tests are run with npm test' }]);
+  assert.deepEqual({ reason: event.reason, meta: event.meta }, { reason: 'same fact', meta: META });
+});
+
+test('a merge needs at least two known learnings and one text', (t) => {
+  const kit = kitDir(t);
+  const a = recordLearning({ kitDir: kit, text: 'one' });
+  const b = recordLearning({ kitDir: kit, text: 'two' });
+  assert.throws(() => mergeLearnings({ kitDir: kit, ids: [a.id], text: 'x' }), /at least two/);
+  assert.throws(() => mergeLearnings({ kitDir: kit, ids: [a.id, 'nope'], text: 'x' }), /no learning/i);
+  assert.throws(() => mergeLearnings({ kitDir: kit, ids: [a.id, a.id], text: 'x' }), /at least two/);
+  assert.throws(() => mergeLearnings({ kitDir: kit, ids: [a.id, b.id], text: '  ' }), /empty/);
+  assert.equal(readEvents(kit).filter((e) => e.type === 'learning-merged').length, 0);
+});
+
+test('learnings of different scopes are merged only when the scope is named', (t) => {
+  const kit = kitDir(t);
+  const a = recordLearning({ kitDir: kit, text: 'domain rule', scope: 'system' });
+  const b = recordLearning({ kitDir: kit, text: 'domain rule, reworded', scope: 'repo' });
+  assert.throws(() => mergeLearnings({ kitDir: kit, ids: [a.id, b.id], text: 'x' }), /scope/);
+  mergeLearnings({ kitDir: kit, ids: [a.id, b.id], text: 'The domain rule', scope: 'system' });
+  assert.equal(learnings(kit)[0].scope, 'system');
+});
+
+test('a retraction can carry the reason for it', (t) => {
+  const kit = kitDir(t);
+  const { id } = recordLearning({ kitDir: kit, text: 'obsolete' });
+  retractLearning({ kitDir: kit, id, reason: 'the module was deleted in 4f2a' });
+  assert.equal(readEvents(kit).find((e) => e.type === 'learning-retracted').reason, 'the module was deleted in 4f2a');
+});
+
+// ── the prompt the curator gets ─────────────────────────────────────────────────
+
+test('the curation request lists every learning with its short id, topic, scope and tags, and the rules', (t) => {
+  const kit = kitDir(t);
+  const a = recordLearning({ kitDir: kit, text: 'Run the suite with npm test', topic: 'Testing', tags: ['ci'] });
+  const b = recordLearning({ kitDir: kit, text: 'Domain rule X', scope: 'system' });
+  const prompt = curationRequest(fold(readEvents(kit)).learnings);
+  assert.match(prompt, new RegExp(`${a.id.slice(0, 8)}\\s+\\[Testing\\]\\s+\\(repo\\)\\s+Run the suite with npm test\\s+#ci`));
+  assert.match(prompt, new RegExp(`${b.id.slice(0, 8)}\\s+\\[General\\]\\s+\\(system\\)\\s+Domain rule X`));
+  assert.match(prompt, /learn --merge/);
+  assert.match(prompt, /learn --retract/);
+  assert.match(prompt, /--reason/);
+  assert.match(prompt, /no new/i);
+  assert.match(prompt, /evidence/i);
+  assert.match(prompt, /keep/i);
+});
+
+test('with nothing to curate there is no request', () => {
+  assert.equal(curationRequest([]), '');
 });

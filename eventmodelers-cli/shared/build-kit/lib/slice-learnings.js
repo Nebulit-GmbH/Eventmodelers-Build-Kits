@@ -80,20 +80,75 @@ export function recordLearning({ kitDir, text, topic, tags, scope = 'repo', slic
   return { id: events[events.length - 1].id, duplicate: false };
 }
 
-// Withdraws a learning by id or by a unique prefix of it.
-export function retractLearning({ kitDir, id, meta }) {
+// A learning by its id or by a unique prefix of it (`learnings --ids` shows the first eight characters).
+function resolveLearning(learnings, id) {
   const wanted = String(id ?? '').trim();
-  if (!wanted) throw new Error('name the learning to retract by its id (see `learnings --ids`)');
-  const { state } = syncLearnings({ kitDir, meta });
-  const matches = state.learnings.filter((l) => l.id === wanted || l.id.startsWith(wanted));
+  if (!wanted) throw new Error('name the learning by its id (see `learnings --ids`)');
+  const matches = learnings.filter((l) => l.id === wanted || l.id.startsWith(wanted));
   if (!matches.length) throw new Error(`no learning with id "${wanted}"`);
   if (matches.length > 1 && !matches.some((l) => l.id === wanted)) throw new Error(`"${wanted}" matches ${matches.length} learnings — use more of the id`);
-  const target = matches.find((l) => l.id === wanted) ?? matches[0];
-  appendEvent(kitDir, { type: 'learning-retracted', learning: target.id }, meta);
+  return matches.find((l) => l.id === wanted) ?? matches[0];
+}
+
+// Withdraws a learning by id or by a unique prefix of it; `reason` says why (the curator gives one).
+export function retractLearning({ kitDir, id, reason, meta }) {
+  const { state } = syncLearnings({ kitDir, meta });
+  const target = resolveLearning(state.learnings, id);
+  appendEvent(kitDir, { type: 'learning-retracted', learning: target.id, ...(reason?.trim() ? { reason: reason.trim() } : {}) }, meta);
   projectLearnings(kitDir, fold(readEvents(kitDir)));
   return { id: target.id, text: target.text };
 }
 
 export function listLearnings(kitDir) {
   return fold(readEvents(kitDir)).learnings.map(({ id, text, topic, scope, tags }) => ({ id, text, topic, scope, tags }));
+}
+
+// The curator's merge: two or more learnings that say the same thing become one. The event keeps what
+// the sources said, so a bad merge can be repaired. Sources of different scopes need the scope named.
+export function mergeLearnings({ kitDir, ids, text, topic, scope, tags, reason, meta }) {
+  const { state } = syncLearnings({ kitDir, meta });
+  const sources = [...new Set((ids ?? []).map((id) => resolveLearning(state.learnings, id)))];
+  if (sources.length < 2) throw new Error('a merge needs at least two learnings');
+  const clean = String(text ?? '').trim();
+  if (!clean) throw new Error('the merged learning is empty');
+  if (scope !== undefined && !SCOPES.includes(scope)) throw new Error(`scope must be ${SCOPES.join(' or ')}, not "${scope}"`);
+  if (scope === undefined && new Set(sources.map((l) => l.scope)).size > 1) throw new Error('the learnings have different scopes — name the scope of the merged one');
+  appendEvent(kitDir, {
+    type: 'learning-merged',
+    learnings: sources.map((l) => l.id),
+    text: clean,
+    ...(topic?.trim() ? { topic: topic.trim() } : {}),
+    ...(scope ? { scope } : {}),
+    tags,
+    ...(reason?.trim() ? { reason: reason.trim() } : {}),
+    sources: sources.map(({ id, text: was }) => ({ id, text: was })),
+  }, meta);
+  const events = readEvents(kitDir);
+  projectLearnings(kitDir, fold(events));
+  return { id: events[events.length - 1].id };
+}
+
+// What the curator (an LLM turn) is told: the learnings with their ids, and the two things it may do.
+// It changes the list only through those commands — AGENTS.md is regenerated from the events.
+export function curationRequest(learnings) {
+  if (!learnings.length) return '';
+  const list = learnings.map((l) => `  ${l.id.slice(0, 8)}  [${l.topic ?? 'General'}]  (${l.scope})  ${l.text}${l.tags?.length ? `  ${l.tags.map((t) => `#${t}`).join(' ')}` : ''}`).join('\n');
+  return `You are the curator of this project's learnings. Below is everything recorded so far: id, [topic], (scope), the learning, #tags. \`.build-kit/AGENTS.md\` is generated from this list — never edit that file. You change the list only with these two commands:
+
+- Merge learnings that say the same thing into one terse line:
+  npx @eventmodelers/cli learn --merge <id,id,…> "<combined text>" --reason "<why they are the same>"
+  (add --topic to set the heading, and --scope when the sources have different scopes)
+- Retract a learning that is wrong or obsolete:
+  npx @eventmodelers/cli learn --retract <id> --reason "<what you found>"
+
+Rules:
+- No new learnings — recording one is refused while you curate. Merge or retract only.
+- Retract only with evidence you have checked: the code, the git log, the slice definitions. Put it in --reason. If you cannot judge a learning, keep it.
+- A merge must not lose information: the combined text says everything its sources said, in one line, and adds nothing.
+- Learnings with scope "system" are about the modeled domain; merge or retract them only when the evidence is in the slices or the code.
+- Leave learnings that are fine alone. Finish with one line saying what you merged and retracted.
+
+Learnings:
+${list}
+`;
 }

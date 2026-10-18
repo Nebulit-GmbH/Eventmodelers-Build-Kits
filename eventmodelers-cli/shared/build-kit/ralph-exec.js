@@ -102,7 +102,7 @@ function collectUsage(stream) {
 }
 
 // `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
-function runExec(prompt, slice = null) {
+function runExec(prompt, slice = null, extraEnv = {}) {
   return new Promise((resolvePromise, reject) => {
     const full = inlineHeader + prompt;
     const promptFile = join(promptDir, 'prompt.md');
@@ -118,7 +118,7 @@ function runExec(prompt, slice = null) {
       cwd: projectDir,
       stdio: ['inherit', traced ? 'pipe' : 'inherit', 'inherit'],
       shell: true,
-      env: { ...childEnv, RALPH_PROMPT_FILE: promptFile },
+      env: { ...childEnv, RALPH_PROMPT_FILE: promptFile, ...extraEnv },
     });
     const turn = superviseTurn(proc, { timeoutMs, label: 'exec turn', viaShell: true, log: (line) => console.error(`[ralph-exec] ${line}`) });
     const usage = traced ? collectUsage(proc.stdout) : null;
@@ -141,6 +141,8 @@ startRalph({
   projectDir,
   onTask: runExec,
   onPlannedSlice: runExec,
+  // The curation turn: the learnings tidied by an agent that may only merge and retract (see lib/slice-curation.js).
+  onCurate: (prompt, { env } = {}) => runExec(prompt, null, env),
   localOnly,
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);
