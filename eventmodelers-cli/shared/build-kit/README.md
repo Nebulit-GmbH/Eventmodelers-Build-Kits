@@ -27,8 +27,6 @@ node .build-kit/ralph-claude.js /path/to/project
 | `ralph-claude.js` | Runs the full loop using Claude Code as the executor |
 | `ralph-local-ai.js` | Runs the full loop using a local/self-hosted model (Ollama, vLLM, LM Studio, llama.cpp) |
 | `ralph-exec.js` | Runs the full loop handing each prompt to an external agent command (Codex CLI, OpenCode, …) |
-| `ralph.sh` | Shell-based loop — alternative to the JS entry points |
-| `realtime-agent.js` | Standalone realtime agent — only needed to run it in a separate terminal |
 
 **Internals** (`lib/`):
 
@@ -36,7 +34,6 @@ node .build-kit/ralph-claude.js /path/to/project
 |------|---------|
 | `lib/ralph.js` | Shared library — realtime agent + loop logic; imported by the entry points |
 | `lib/local-ai-agent.js` | Local-AI executor — called by `ralph-local-ai.js`, can also run manually |
-| `lib/agent.sh` | Thin shell wrapper around `claude` — called by `ralph.sh` |
 | `lib/prompt.md` | Phase 1 prompt: tells Claude how to load a slice from the board |
 | `lib/backend-prompt.md` | Phase 2 prompt: tells Claude how to build a planned slice |
 | `lib/AGENT.md` | Agent instructions included in Claude's context |
@@ -54,18 +51,6 @@ node .build-kit/ralph-claude.js /path/to/project
 - Phase 2 (building slices) never runs with `--local-ai` — see *`--local-ai` does not build code*. Build with `--exec` instead
 
 Both phases run in a continuous loop with a 3-second idle sleep. The realtime agent runs concurrently in the same process.
-
-## Running the realtime agent separately
-
-If you want the board subscription in one terminal and the Claude loop in another:
-
-```bash
-# Terminal 1 — realtime agent only
-node .build-kit/realtime-agent.js
-
-# Terminal 2 — loop only (poll tasks.json without the realtime subscription)
-.build-kit/ralph.sh
-```
 
 ## Local-AI configuration
 

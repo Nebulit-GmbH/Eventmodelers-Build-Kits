@@ -39,8 +39,8 @@ const __dirname = dirname(__filename);
 
 // Each stack is a template set under stacks/<key>/templates/{.claude,root,<kitSubdir>}.
 // Stacks with useShared:true also get shared/build-kit/* copied into their kit dir
-// (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph-exec.js, ralph.sh, realtime-agent.js,
-// code-export.mjs, lib/agent.sh, lib/local-ai-agent.js, package.json, README.md) —
+// (ralph.js, ralph-claude.js, ralph-local-ai.js, ralph-exec.js,
+// code-export.mjs, lib/local-ai-agent.js, package.json, README.md) —
 // those files have no per-stack content, so they live once instead of being
 // copy-pasted into every stack (that copy-pasting is exactly how they drifted out
 // of sync before: a bugfix or default landing in one stack's copy but not another's).
@@ -121,8 +121,8 @@ function resolveAgentPreset(opts, loop) {
     console.error('❌ --agent and --exec are mutually exclusive — --agent is a shortcut for --exec.');
     process.exit(1);
   }
-  if (resolveLocalAiTarget(opts) !== null || opts.bash) {
-    console.error('❌ --agent is mutually exclusive with --local-ai/--bash — pick one runner.');
+  if (resolveLocalAiTarget(opts) !== null) {
+    console.error('❌ --agent is mutually exclusive with --local-ai — pick one runner.');
     process.exit(1);
   }
   const cmd = AGENT_PRESETS[name]?.[loop] ?? null;
@@ -1144,7 +1144,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // Make scripts executable
-    for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
+    for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
@@ -1255,7 +1255,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     } else if (isModelingKit) {
       console.log('  npx @eventmodelers/cli run --modeling\n');
     } else {
-      console.log('  npx @eventmodelers/cli run          (--local-ai or --bash for other runners)\n');
+      console.log('  npx @eventmodelers/cli run          (--local-ai or --exec for other runners)\n');
     }
     console.log('Connect this project to an MCP client (Claude Code, VS Code, ...):\n');
     console.log(`  npx @eventmodelers/cli init-mcp\n`);
@@ -1394,7 +1394,7 @@ async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
   if (existsSync(manifestPath)) {
     writeFileSync(manifestPath, JSON.stringify({ ...readJsonSafe(manifestPath), version: CLI_VERSION }, null, 2));
   }
-  for (const script of ['ralph.sh', 'lib/agent.sh', 'ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
+  for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
     const p = join(kitDir, script);
     if (existsSync(p)) {
       try { execSync(`chmod +x "${p}"`); } catch {}
@@ -3724,7 +3724,6 @@ credentialFlags(program
   .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec, --local-ai and --bash.`)
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
-  .option('--bash', 'Use the bash-only ralph.sh loop (build-kit stacks only, no realtime)')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('-f, --force', 'Ask for credentials again before the modeling loop starts, even when a config already has everything required. With a modeling kit in this directory it re-runs the same prompt as `init --modeling`, overwriting the project\'s .eventmodelers/config.json; with the global install it drops the "keep the stored credentials" choice, so a board\'s credentials have to be answered afresh. Applies to build-kit runs too, where it re-asks against the project\'s .eventmodelers/config.json. Cannot be combined with --non-interactive, --print or --local.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
@@ -3798,11 +3797,6 @@ credentialFlags(program
         process.exit(1);
       }
     }
-    // ralph.sh has no realtime agent and never pings /api/agent-alive, so there is no
-    // identity for either flag to override there.
-    if ((identity.agentId || identity.agentName) && opts.bash) {
-      console.log('ℹ️  --id/--name only apply to agents that ping the platform; the --bash loop does not, so they are ignored here.');
-    }
     // Both kit dirs can be installed side by side (e.g. running a build-kit and a
     // modeling-kit agent from the same project). findInstalledKitDir only ever
     // returns its first fixed-order match, which would silently prefer one stack
@@ -3813,13 +3807,13 @@ credentialFlags(program
     const bridgeKitDir = installedKitDirs.find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
     // A bridge kit is not a build-kit stand-in even though it also reuses
     // lib/ralph.js — it has its own `eventmodelers bridge` entrypoint (no
-    // onPlannedSlice/--local-ai/--bash support), so it's excluded here rather
+    // onPlannedSlice/--local-ai support), so it's excluded here rather
     // than falling through to the generic build-kit runner below.
     const buildKitDir = installedKitDirs.find((d) => d !== modelingKitDir && d !== bridgeKitDir) ?? null;
 
     // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
     // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
-    // cold-spawn/tasks.json loop (default, or --local-ai/--bash). Neither falls back
+    // cold-spawn/tasks.json loop (default, or --local-ai/--exec). Neither falls back
     // to the other's mechanism, so each side is gated explicitly below rather than
     // just being left to fail on a missing file.
     // --standalone implies --modeling: it already refused every other runner, so there
@@ -3828,14 +3822,8 @@ credentialFlags(program
     // no meaning for a build kit, which is scaffolded per project by definition.
     if (opts.modeling || opts.standalone || opts.worker || opts.global) {
       const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : opts.worker ? '--worker' : '--global';
-      // --bash stays build-kit only: it is the bash tasks.json loop, which the modeling loop has
-      // no equivalent of. --local-ai and --exec are different — they name what does a turn, not a
-      // queue, and the modeling loop has its own runner for each (lib/modeling-local-ai.js,
-      // lib/modeling-exec.js).
-      if (opts.bash) {
-        console.error(`❌ ${picked} is mutually exclusive with --bash — that selects a build-kit runner, which the modeling loop has no use for.`);
-        process.exit(1);
-      }
+      // --local-ai and --exec name what does a turn, not a queue, and the modeling loop has its own
+      // runner for each (lib/modeling-local-ai.js, lib/modeling-exec.js).
       const modelingLocalAi = resolveLocalAiTarget(opts);
       if (modelingLocalAi !== null && opts.exec) {
         console.error('❌ --local-ai and --exec are mutually exclusive — pick one runner.');
@@ -3941,9 +3929,9 @@ credentialFlags(program
     const kitDir = buildKitDir;
 
     const localAiTarget = resolveLocalAiTarget(opts);
-    const pickedCount = [opts.bash, localAiTarget !== null, !!opts.exec].filter(Boolean).length;
+    const pickedCount = [localAiTarget !== null, !!opts.exec].filter(Boolean).length;
     if (pickedCount > 1) {
-      console.error('❌ --bash, --local-ai and --exec are mutually exclusive — pick one runner.');
+      console.error('❌ --local-ai and --exec are mutually exclusive — pick one runner.');
       process.exit(1);
     }
 
@@ -3951,7 +3939,7 @@ credentialFlags(program
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
     // runner file to invoke. Users (and the agent itself, via AGENT.md) may customize these
     // files freely; `run` always executes whatever is currently on disk.
-    const runner = opts.bash ? 'ralph.sh' : opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
+    const runner = opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
@@ -4002,12 +3990,10 @@ credentialFlags(program
     console.log(`▶ Starting ${relative(cwd, runnerPath)}...\n`);
     const cmd = runner.endsWith('.sh') ? `"${runnerPath}"` : `node "${runnerPath}"`;
     try {
-      // Only ralph-claude.js reads RALPH_VERBOSE — the bash loop and the local-AI executor have
-      // their own separate output paths with no stream-json parsing to gate. RALPH_LOCAL is
-      // read by all three runners (ralph.js's startRalph, and ralph.sh directly) to force the
-      // local-only branch even when .eventmodelers/config.json has valid credentials.
-      // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read in ralph.js's startRalph, so
-      // they reach both node runners but not ralph.sh, which has no heartbeat to identify.
+      // Only ralph-claude.js reads RALPH_VERBOSE — the local-AI executor has its own separate output
+      // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
+      // the local-only branch even when .eventmodelers/config.json has valid credentials.
+      // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
       execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);

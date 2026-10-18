@@ -92,7 +92,6 @@ your-project/
 │   ├── ralph-claude.js            ← realtime agent + task loop
 │   ├── ralph-local-ai.js          ← same, via a local/self-hosted model
 │   ├── ralph-exec.js              ← same, via an external agent command (Codex CLI, OpenCode, …)
-│   ├── ralph.sh                   ← bash-only loop (no realtime)
 │   ├── lib/                       ← stack-specific agent prompts + helpers
 │   └── .slices/                   ← board slices, written by `fetch`/`listen` (or pre-seeded by `init --demo`)
 ├── .claude/
@@ -149,7 +148,6 @@ npx @eventmodelers/cli run --local-ai [target]      # board work only via a loca
 npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
-npx @eventmodelers/cli run --bash                   # bash-only loop, no realtime (ralph.sh)
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
 npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
@@ -273,7 +271,7 @@ pass `--model <id>` as usual.
 
 Claude and Gemini need a gateway (e.g. LiteLLM) in front of a non-native server, since they only speak their own protocol.
 
-`--agent`, `--exec`, `--local-ai` and `--bash` each pick the runner, so pass at most one of them —
+`--agent`, `--exec` and `--local-ai` each pick the runner, so pass at most one of them —
 any two together are rejected. For a local or self-hosted model use `--local-ai`, not `--agent`.
 
 To drive either one with a local model instead of Claude, see [Running the modeling agent on a local model](#running-the-modeling-agent-on-a-local-model).
@@ -763,7 +761,7 @@ npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit 
 npx @eventmodelers/cli re-init --stack supabase      # override which stack to refresh from (manifest missing/stale, or switching stacks)
 ```
 
-`re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/`ralph.sh`/skills without re-scaffolding a project you've since built on top of.
+`re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/skills without re-scaffolding a project you've since built on top of.
 
 You don't have to remember to: on startup every command prints a 💡 hint (on stderr) when a newer CLI is on npm, or when a kit in the current directory was installed by an older CLI than the one running — naming the exact `re-init` command to run. The npm lookup happens at most once a day (cached in `~/.eventmodelers/update-check.json`, 1.5 s timeout, silent when offline). Set `EVENTMODELERS_NO_UPDATE_CHECK=1` to turn it off; it is also off when `CI` is set.
 
