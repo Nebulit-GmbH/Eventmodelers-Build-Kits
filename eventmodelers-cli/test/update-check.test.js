@@ -47,7 +47,6 @@ test('updateHints flags kits written by an older CLI with the matching re-init c
   const kitDirs = [
     kit(root, '.build-kit', '1.0.80'),
     kit(root, '.agent-modeling-kit'),
-    kit(root, '.bridge-kit', '1.0.1'),
   ];
   const hints = updateHints({ currentVersion: '1.0.90', latestVersion: '1.0.90', kitDirs, cwd: root });
   assert.equal(hints.length, 2);

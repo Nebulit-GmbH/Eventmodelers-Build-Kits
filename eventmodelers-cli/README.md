@@ -522,39 +522,19 @@ npx @eventmodelers/cli init-modeling --global
 
 Everything else (the kit dir, project scaffold, credentials, MCP registration) still targets the current directory as usual — `--global` only changes where skills land.
 
-### Bridging to another spec framework
+### Syncing a context to Spec Kitty
 
-If you drive development with a different spec/task framework (Spec Kitty today; more later) instead of build-kit's own code generation, a **bridge** kit keeps that framework's artifacts in sync with the board instead of writing application code:
-
-```bash
-npx @eventmodelers/cli init --bridge --target spec-kitty
-npx @eventmodelers/cli bridge
-```
-
-`init --bridge` installs a `.bridge-kit/` (mirrors `.build-kit/`'s realtime + task-queue loop) plus only the skills for the chosen `--target` (`shared/bridge/<target>/`) — a `spec-kitty` bridge never installs Kiro's skills, and vice versa. `bridge` starts the loop: on every board slice change (not just "Planned", unlike build-kit), it regenerates that framework's spec artifacts from the current board state. It doesn't build code and doesn't claim slices.
-
-For `spec-kitty`, that sync is deterministic and stops well short of writing Spec Kitty's own artifacts — `lib/adapters/spec-kitty-adapter.js` fetches full slice detail and restates it as a plain markdown mission brief (one section per slice, its scenarios verbatim, nothing invented), then calls `spec-kitty intake --force` to install it at `.kittify/mission-brief.md`. It deliberately doesn't create the mission, write `spec.md`, or author work packages — Spec Kitty's own `/spec-kitty.specify` → `/spec-kitty.plan` → `/spec-kitty.tasks` pipeline does that, because those steps need real judgment (work package boundaries, which files a WP owns, which agent profile fits) that only makes sense with actual codebase context, which this adapter doesn't have. What it replaces is Spec Kitty's *interactive discovery interview*: `/spec-kitty.specify`'s own "Brief Context Detection" step reads `.kittify/mission-brief.md` when present and extracts requirements from it instead of asking the user, so the event model — not a live Q&A — becomes the input. No LLM call happens in this adapter's own path, and `bridge` picks it automatically whenever a target has one (`--claude` forces the Claude runner instead). Targets without a static adapter yet fall back to Claude re-running `bridge-<target>-specify`; pass `--local-ai` for the local-model runner instead (same caveat as build-kit's `--local-ai`: `lib/local-ai-agent.js` is shared as-is).
-
-Don't want the standing loop at all? `fetch` can call the same adapter for a single one-shot sync, no `.bridge-kit/` install required:
+If you drive development with Spec Kitty instead of build-kit's own code generation, `fetch` can restate a context for it in one shot:
 
 ```bash
 npx @eventmodelers/cli fetch --context Ticketing --spec-kitty
 ```
 
-Either way, `spec-kitty init` (Spec Kitty's own project setup) has to have already been run in the project root — the adapter checks for `.kittify/` first and stops with the exact command to run if it's missing, rather than failing deep inside a cryptic `spec-kitty` CLI error. After the sync, run `/spec-kitty.specify` in your coding agent to turn the brief into an actual mission (the plain `spec-kitty specify` CLI command only scaffolds — brief detection is in the agent-driven prompt).
+That sync is deterministic and stops well short of writing Spec Kitty's own artifacts — `lib/adapters/spec-kitty-adapter.js` fetches full slice detail and restates it as a plain markdown mission brief (one section per slice, its scenarios verbatim, nothing invented), then calls `spec-kitty intake --force` to install it at `.kittify/mission-brief.md`. It deliberately doesn't create the mission, write `spec.md`, or author work packages — Spec Kitty's own `/spec-kitty.specify` → `/spec-kitty.plan` → `/spec-kitty.tasks` pipeline does that, because those steps need real judgment (work package boundaries, which files a WP owns, which agent profile fits) that only makes sense with actual codebase context, which this adapter doesn't have. What it replaces is Spec Kitty's *interactive discovery interview*: `/spec-kitty.specify`'s own "Brief Context Detection" step reads `.kittify/mission-brief.md` when present and extracts requirements from it instead of asking the user, so the event model — not a live Q&A — becomes the input. No LLM call happens in this adapter.
 
-### Overriding the executor with a hook
+`spec-kitty init` (Spec Kitty's own project setup) has to have already been run in the project root — the adapter checks for `.kittify/` first and stops with the exact command to run if it's missing, rather than failing deep inside a cryptic `spec-kitty` CLI error. After the sync, run `/spec-kitty.specify` in your coding agent to turn the brief into an actual mission (the plain `spec-kitty specify` CLI command only scaffolds — brief detection is in the agent-driven prompt).
 
-Claude is only the default — some teams don't want an AI agent in this loop at all, e.g. they'd rather just commit + push the board export and let a CI pipeline own the actual translation. `--hook` replaces the AI executor with an arbitrary shell command, run once per batch of slice changes:
-
-```bash
-npx @eventmodelers/cli init --bridge --target spec-kitty --hook "git add .slices && git commit -m sync && git push"
-npx @eventmodelers/cli bridge
-```
-
-`init --bridge --hook` persists the command to `.bridge-kit/bridge.json` — a plain, **committed** file (unlike `.eventmodelers/config.json`, which is gitignored for credentials) since the hook is project policy meant to be shared by every teammate and CI runner, not per-machine state. `bridge --hook "<command>"` overrides it for a single run without touching that file. Only one executor runs per invocation — `--local-ai`, `--hook`, and `--claude` are mutually exclusive.
-
-The hook command runs with `BRIDGE_TASK_COUNT`, `BRIDGE_SLICE_ID`/`_TITLE`/`_STATUS` (the most recent change in the batch), and `BRIDGE_BATCH_FILE` (path to the full batch as JSON) in its environment. It's invoked once per batch, not once per slice — any change that arrives while the hook is still running is left queued for the next batch rather than dropped.
+(The standing bridge loop — `init --bridge` / `bridge` — is retired for now.)
 
 ### Claude execution & config resolution
 

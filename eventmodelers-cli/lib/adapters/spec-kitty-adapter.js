@@ -14,11 +14,8 @@
 // adapter's whole job is producing a good brief and calling `intake`, nothing
 // more.
 //
-// Lives here (not only inside a bridge-kit install) so it has exactly one
-// entry point regardless of caller: `eventmodelers fetch --spec-kitty` calls
-// it directly for a one-shot sync; `eventmodelers bridge` (via
-// ralph-static.js) calls the same run() from a copy the bridge-kit installer
-// places at .bridge-kit/adapters/ — see installStack in cli.js.
+// Its one entry point is `eventmodelers fetch --spec-kitty`, a one-shot sync. (A standing bridge loop that
+// ran the same run() from a copy in .bridge-kit/ is retired.)
 //
 // Exports run({ cfg, projectDir, contextName }).
 
@@ -43,8 +40,7 @@ function slugify(text) {
 
 // Mirrors lib/fetch.js's per-context call rather than importing runFetch
 // directly — this fetches raw JSON only, it never touches .slices/ (fetch.js
-// owns writing that), and a copy of this file also has to run standalone
-// inside an installed .bridge-kit/ with no access to lib/fetch.js at all.
+// owns writing that).
 async function fetchFullSliceData(cfg, contextName) {
   const baseUrl = cfg.baseUrl || DEFAULT_BASE_URL;
   const url = `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/slicedata?contextName=${encodeURIComponent(contextName)}`;

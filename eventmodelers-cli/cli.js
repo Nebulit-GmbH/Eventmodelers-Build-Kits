@@ -229,31 +229,6 @@ const MODELING_KIT = {
   needsBoardId: false,
 };
 
-// Frameworks a bridge install can translate board slices into. Each key needs
-// a matching `bridge-<key>-specify` skill under shared/bridge/ — see
-// stacks/bridge/templates/bridge/lib/prompt.md for how the loop picks it up.
-const BRIDGE_TARGETS = {
-  'spec-kitty': { label: 'Spec Kitty' },
-};
-
-// Also not a stack — no backend scaffold, just the bridge-*/shared skills +
-// the agent loop. Installed via `init --bridge --target <name>` instead of
-// the `init --stack <name>` picker. useShared:true (unlike modeling-kit): a
-// bridge agent reuses build-kit's cold-spawn/tasks.json engine as-is
-// (lib/ralph.js) — it just reacts to every slice change instead of only
-// "Planned" ones (see queueAllStatuses in lib/ralph.js) and translates
-// instead of building. Its own templates/bridge overlay swaps in
-// bridge-specific prompt.md/AGENT.md and a ralph-claude.js that omits
-// onPlannedSlice entirely — see stacks/bridge/templates/bridge.
-const BRIDGE_KIT = {
-  key: 'bridge',
-  label: 'Bridge — translate board slices into another spec framework, no backend scaffold',
-  kitSubdir: 'bridge',
-  kitDirName: '.bridge-kit',
-  useShared: true,
-  needsBoardId: true,
-};
-
 // Also not a stack — installed via `init --build-kit` instead of `init --stack <name>`.
 // useShared:true, same as any real backend stack: it reuses build-kit's cold-spawn/
 // tasks.json engine as-is (lib/ralph.js). Its templates/build-kit/CLAUDE.md,
@@ -271,7 +246,7 @@ const BLANK_BUILD_KIT = {
   needsBoardId: true,
 };
 
-const KIT_DIR_NAMES = [...new Set([...Object.values(STACKS), MODELING_KIT, BRIDGE_KIT, BLANK_BUILD_KIT].map((s) => s.kitDirName))];
+const KIT_DIR_NAMES = [...new Set([...Object.values(STACKS), MODELING_KIT, BLANK_BUILD_KIT].map((s) => s.kitDirName))];
 
 // What `init --demo` installs, for the messages it prints. Kept in step with
 // shared/demo-slices/ (context.json's name, and the slice folders beside it).
@@ -957,7 +932,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // install TO, versus where we install FROM.
     const targetDir = options.targetDir ? resolve(options.targetDir) : process.cwd();
     // `init --git <url>` passes a resolved clone dir's templates/ here instead — every
-    // other input (STACKS, MODELING_KIT, BRIDGE_KIT) keeps using the built-in path.
+    // other input (STACKS, MODELING_KIT) keeps using the built-in path.
     const templatesSource = options.templatesSource || join(__dirname, 'stacks', stackKey, 'templates');
     const sharedBuildKit = join(__dirname, 'shared', 'build-kit');
     // Skills with no stack-specific content (connect, learn-eventmodelers-api,
@@ -966,15 +941,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     // of sync with each other before (e.g. one stack's connect skill silently
     // missing a bugfix another stack's copy had).
     const sharedSkills = join(__dirname, 'shared', 'skills');
-    // Adapter skills that translate board slices for another spec framework —
-    // one subfolder per target (shared/bridge/spec-kitty/bridge-spec-kitty-*,
-    // shared/bridge/kiro/..., etc.), so a bridge install only ever pulls in
-    // the target it was actually configured for, not every framework's
-    // skills. Only relevant to a bridge install — never copied into the four
-    // backend stacks or modeling-kit.
-    const isBridge = stackKey === BRIDGE_KIT.key;
     const isModelingKit = stackKey === MODELING_KIT.key;
-    const sharedBridgeSkills = isBridge ? join(__dirname, 'shared', 'bridge', options.target) : null;
 
     if (!existsSync(templatesSource)) {
       console.error('❌ Templates directory not found at:', templatesSource);
@@ -987,7 +954,6 @@ async function installStack(stackKey, stackCfg, options = {}) {
     const claudeSkillsSrc = join(templatesSource, '.claude', 'skills');
     const installedSkills = [
       ...(existsSync(sharedSkills) ? readdirSync(sharedSkills) : []),
-      ...(isBridge && existsSync(sharedBridgeSkills) ? readdirSync(sharedBridgeSkills) : []),
       ...(existsSync(claudeSkillsSrc) ? readdirSync(claudeSkillsSrc) : []),
     ];
     let claudeExtras = [];
@@ -996,14 +962,12 @@ async function installStack(stackKey, stackCfg, options = {}) {
       const globalSkillsDir = join(homedir(), '.claude', 'skills');
       console.log('📦 Installing skills globally...');
       copyDirContents(sharedSkills, globalSkillsDir);
-      if (isBridge) copyDirContents(sharedBridgeSkills, globalSkillsDir);
       copyDirContents(claudeSkillsSrc, globalSkillsDir);
     } else {
       console.log('📦 Installing skills...');
       // Shared skills first, the stack's own templates last — so a build kit can override
       // a shared skill (e.g. `ui-contract`) just by shipping a skill of the same name.
       copyDirContents(sharedSkills, join(targetDir, '.claude', 'skills'));
-      if (isBridge) copyDirContents(sharedBridgeSkills, join(targetDir, '.claude', 'skills'));
       copyDirContents(join(templatesSource, '.claude'), join(targetDir, '.claude'));
       claudeExtras = existsSync(join(templatesSource, '.claude'))
         ? readdirSync(join(templatesSource, '.claude')).filter((f) => f !== 'skills')
@@ -1045,7 +1009,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
       }
     }
 
-    // A modeling-kit + build-kit (or bridge) combo in the same project is supported
+    // A modeling-kit + build-kit combo in the same project is supported
     // (they share one config.json — see ensureAgentId) but each kit's own instructions
     // now live in its own kit dir (.build-kit/CLAUDE.md, .agent-modeling-kit/CLAUDE.md)
     // instead of root/CLAUDE.md, precisely so a second kit's install can never clobber
@@ -1133,14 +1097,6 @@ async function installStack(stackKey, stackCfg, options = {}) {
         copyFileSync(stackRootClaudeSrc, kitClaudeDest);
         console.log(`  ✓ Relocated this stack's CLAUDE.md into ${stackCfg.kitDirName}/ (root/CLAUDE.md is reserved for the shared router)`);
       }
-    }
-
-    // Static (no-LLM) bridge adapters live once in this package's own lib/
-    // adapters/ — `fetch --spec-kitty` imports them directly, and a bridge
-    // install gets its own copy here so ralph-static.js can run standalone
-    // with no access back to the published package.
-    if (isBridge) {
-      copyDirContents(join(__dirname, 'lib', 'adapters'), join(kitDir, 'adapters'));
     }
 
     // Make scripts executable
@@ -1250,9 +1206,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     if (options.skipEpilogue) return;
 
     console.log('\n✅ Done! Start your agent:\n');
-    if (isBridge) {
-      console.log('  npx @eventmodelers/cli bridge\n');
-    } else if (isModelingKit) {
+    if (isModelingKit) {
       console.log('  npx @eventmodelers/cli run --modeling\n');
     } else {
       console.log('  npx @eventmodelers/cli run          (--local-ai or --exec for other runners)\n');
@@ -3247,7 +3201,6 @@ program.hook('preAction', (_thisCommand, actionCommand) => {
   console.error('   Run one of these first:');
   console.error(`     npx @eventmodelers/cli init --stack <name>   (${Object.keys(STACKS).join(', ')})`);
   console.error('     npx @eventmodelers/cli init --modeling');
-  console.error(`     npx @eventmodelers/cli init --bridge --target <name>   (${Object.keys(BRIDGE_TARGETS).join(', ')})`);
   process.exit(1);
 });
 
@@ -3297,15 +3250,12 @@ function identityOverridesFromOpts(opts) {
 credentialFlags(program
   .command('init')
   .alias('install')
-  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --bridge to translate board slices into another spec framework; or --build-kit for a blank build-kit scaffold to fill in for a stack not built into this CLI yet; or --git to install a community/custom build kit from a git repo)')
+  .description('Scaffold a stack + install the agent kit into the current directory (or --modeling for skills + agent loop only, no backend scaffold; or --build-kit for a blank build-kit scaffold to fill in for a stack not built into this CLI yet; or --git to install a community/custom build kit from a git repo)')
   .option('--stack <name>', `Stack to install (${Object.keys(STACKS).join(', ')}), or a name of your choosing when combined with --git`)
   .option('--git <url>', 'Install a build kit not built into this CLI by cloning this git repo (used with --stack <name> to name it) — the repo must mirror the templates/.claude, templates/root, templates/<kitSubdir> layout of this CLI\'s own stacks/<name>/templates, optionally with a stack.json declaring label/kitSubdir/useShared/needsBoardId')
   .option('--branch <name>', 'Branch to clone — only meaningful with --git (defaults to the repo\'s default branch)')
-  .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--bridge/--build-kit.')
-  .option('--bridge', 'Install a bridge kit — translates board slices into another spec framework instead of building code. Mutually exclusive with --stack/--modeling/--build-kit. Requires --target.')
-  .option('--target <name>', `Bridge target framework (${Object.keys(BRIDGE_TARGETS).join(', ')}) — only meaningful with --bridge`)
-  .option('--hook <command>', 'Persist a default shell command hook for `bridge` to run per batch of slice changes instead of Claude/Ollama (e.g. commit + push .slices/ for a CI pipeline to pick up) — only meaningful with --bridge. Can also be set per-run with `bridge --hook`.')
-  .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling/--bridge.')
+  .option('--modeling', 'Install skills + the agent loop only — no backend scaffold. Mutually exclusive with --stack/--build-kit.')
+  .option('--build-kit', 'Install a blank build-kit scaffold (.build-kit/ + .claude/skills/build-*/SKILL.md placeholders, all TODO-marked) for a stack not built into this CLI yet — no fixed backend. Mutually exclusive with --stack/--modeling.')
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
@@ -3315,10 +3265,10 @@ credentialFlags(program
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
 
-    if (opts.modeling || opts.bridge || opts.buildKit) {
-      const modeCount = [opts.modeling, opts.bridge, opts.buildKit].filter(Boolean).length;
+    if (opts.modeling || opts.buildKit) {
+      const modeCount = [opts.modeling, opts.buildKit].filter(Boolean).length;
       if (opts.stack || opts.git || modeCount > 1) {
-        console.error('❌ --stack/--git, --modeling, --bridge, and --build-kit are mutually exclusive — pick one.');
+        console.error('❌ --stack/--git, --modeling and --build-kit are mutually exclusive — pick one.');
         process.exit(1);
       }
     }
@@ -3344,38 +3294,6 @@ credentialFlags(program
         credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
         demo: opts.demo,
       });
-      return;
-    }
-
-    if (opts.bridge) {
-      if (!opts.target) {
-        console.error(`❌ --bridge requires --target (${Object.keys(BRIDGE_TARGETS).join(', ')}).`);
-        process.exit(1);
-      }
-      if (!BRIDGE_TARGETS[opts.target]) {
-        console.error(`❌ Unknown bridge target "${opts.target}". Available: ${Object.keys(BRIDGE_TARGETS).join(', ')}`);
-        process.exit(1);
-      }
-      await installStack(BRIDGE_KIT.key, BRIDGE_KIT, {
-        configPath: globalOpts.config,
-        print: globalOpts.print,
-        global: opts.global,
-        force: opts.force,
-        credentialOverrides: { ...credentialOverridesFromOpts(opts), ...identityOverridesFromOpts(opts) },
-        demo: opts.demo,
-        target: opts.target,
-      });
-      // Deliberately NOT under .bridge-kit/.eventmodelers/ — that whole name is
-      // gitignored (a bare `.eventmodelers` pattern matches at any depth, since
-      // it protects the root credentials file), so anything written there is
-      // per-machine only. target/hookCommand are project policy — how this repo
-      // reacts to board changes — meant to be committed and shared by every
-      // teammate and CI runner, so they live in a plain sibling file instead.
-      const bridgeConfigPath = join(process.cwd(), BRIDGE_KIT.kitDirName, 'bridge.json');
-      const existingBridgeCfg = readJsonSafe(bridgeConfigPath);
-      mkdirSync(dirname(bridgeConfigPath), { recursive: true });
-      writeFileSync(bridgeConfigPath, JSON.stringify({ ...existingBridgeCfg, target: opts.target, ...(opts.hook ? { hookCommand: opts.hook } : {}) }, null, 2));
-      console.log(`  ✓ Bridge target set to "${opts.target}"${opts.hook ? ` with hook: ${opts.hook}` : ''}`);
       return;
     }
 
@@ -3580,13 +3498,11 @@ program
   .description("Run this project's commit-scope checks (.build-kit/lib/check-commit-scope.cjs, the same runner .githooks/pre-commit calls) against the currently staged changeset. Works for any build-kit stack — stacks/installs that ship no checks yet report that and exit 0, so this is safe to call unconditionally (e.g. from an agent loop) without checking the stack first.")
   .action(() => {
     const cwd = process.cwd();
-    // Mirrors `run`'s buildKitDir resolution: modeling-kit/bridge-kit installs share
-    // KIT_DIR_NAMES but never ship check-commit-scope.cjs, so prefer whichever
-    // installed dir isn't one of those over blindly taking the first match.
+    // Mirrors `run`'s buildKitDir resolution: a modeling-kit install shares KIT_DIR_NAMES but never ships
+    // check-commit-scope.cjs, so prefer whichever installed dir isn't the modeling kit.
     const installedKitDirs = findAllInstalledKitDirs(cwd);
     const modelingKitDir = installedKitDirs.find((d) => d.endsWith(MODELING_KIT.kitDirName)) ?? null;
-    const bridgeKitDir = installedKitDirs.find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
-    const kitDir = installedKitDirs.find((d) => d !== modelingKitDir && d !== bridgeKitDir) ?? installedKitDirs[0];
+    const kitDir = installedKitDirs.find((d) => d !== modelingKitDir) ?? installedKitDirs[0];
 
     const checkScript = join(kitDir, 'lib', 'check-commit-scope.cjs');
     if (!existsSync(checkScript)) {
@@ -3804,12 +3720,7 @@ credentialFlags(program
     // we resolve each stack's dir independently instead of relying on that order.
     const installedKitDirs = findAllInstalledKitDirs(cwd);
     const modelingKitDir = installedKitDirs.find((d) => d.endsWith(MODELING_KIT.kitDirName)) ?? null;
-    const bridgeKitDir = installedKitDirs.find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
-    // A bridge kit is not a build-kit stand-in even though it also reuses
-    // lib/ralph.js — it has its own `eventmodelers bridge` entrypoint (no
-    // onPlannedSlice/--local-ai support), so it's excluded here rather
-    // than falling through to the generic build-kit runner below.
-    const buildKitDir = installedKitDirs.find((d) => d !== modelingKitDir && d !== bridgeKitDir) ?? null;
+    const buildKitDir = installedKitDirs.find((d) => d !== modelingKitDir) ?? null;
 
     // No overlap between the two stacks' runtimes: modeling-kit only ever runs the
     // warm, direct-dispatch loop (--modeling); build-kit only ever runs the
@@ -3918,8 +3829,6 @@ credentialFlags(program
     if (!buildKitDir) {
       if (modelingKitDir) {
         console.error(`❌ A modeling-kit install (${MODELING_KIT.kitDirName}/) only runs via \`eventmodelers run --modeling\` — there is no cold-spawn/tasks.json loop for modeling-only projects.`);
-      } else if (bridgeKitDir) {
-        console.error(`❌ A bridge-kit install (${BRIDGE_KIT.kitDirName}/) only runs via \`eventmodelers bridge\` — it has no --modeling/--local-ai/--bash modes.`);
       } else {
         console.error(`❌ No kit installed in ${cwd} — run \`eventmodelers install\` first.`);
         console.error('   (A modeling agent needs no install at all: eventmodelers run --standalone --board-id <uuid>)');
@@ -3995,65 +3904,6 @@ credentialFlags(program
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
       execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
-    } catch (err) {
-      process.exit(err.status || 1);
-    }
-  });
-
-program
-  .command('bridge')
-  .description('Start the bridge agent loop from the installed .bridge-kit/ — translates board slice changes into another spec framework instead of building code. A deterministic adapter runs with no LLM call if one exists for the configured target (e.g. spec-kitty); otherwise Claude is the default executor. --local-ai, --hook, or --claude override the pick.')
-  .option('--local-ai [target]', `Use ralph-local-ai.js instead of the default runner — a local or self-hosted model. Optional target preset: ${LOCAL_AI_TARGETS.join(', ')} (bare flag means ollama).`)
-  .option('--hook <command>', 'Run this shell command instead of an AI agent for each batch of slice changes (e.g. commit + push .slices/ for a CI pipeline to pick up) — overrides any hook persisted via `init --bridge --hook` for this run only')
-  .option('--claude', 'Force the Claude runner even if a static adapter exists for this target')
-  .action((opts) => {
-    const cwd = process.cwd();
-    const kitDir = findAllInstalledKitDirs(cwd).find((d) => d.endsWith(BRIDGE_KIT.kitDirName)) ?? null;
-    if (!kitDir) {
-      console.error(`❌ No bridge-kit installed in ${cwd} — run \`eventmodelers init --bridge --target <name>\` first.`);
-      process.exit(1);
-    }
-
-    const localAiTarget = resolveLocalAiTarget(opts);
-    if ([localAiTarget !== null, opts.hook, opts.claude].filter(Boolean).length > 1) {
-      console.error('❌ --local-ai, --hook, and --claude are mutually exclusive — pick one executor.');
-      process.exit(1);
-    }
-
-    // A persisted default (from `init --bridge --hook`) lives in bridge.json, a
-    // plain sibling file — NOT under .eventmodelers/, which is gitignored (see
-    // the comment in `init`'s --bridge branch) and would otherwise make this
-    // per-machine instead of a shared, checked-in team/CI convention.
-    const bridgeCfg = readJsonSafe(join(kitDir, 'bridge.json'));
-    const persistedHook = bridgeCfg.hookCommand;
-    const hookCmd = opts.hook || persistedHook;
-
-    // A static adapter (adapters/<target>-adapter.js, e.g. spec-kitty-adapter.js)
-    // is deterministic and costs no LLM call, so it wins over the Claude default
-    // whenever one exists for the configured target — --claude opts back out.
-    const staticAdapterPath = join(kitDir, 'adapters', `${bridgeCfg.target}-adapter.js`);
-    const hasStaticAdapter = bridgeCfg.target && existsSync(staticAdapterPath);
-
-    const runner = hookCmd
-      ? 'ralph-hook.js'
-      : localAiTarget !== null
-        ? 'ralph-local-ai.js'
-        : !opts.claude && hasStaticAdapter
-          ? 'ralph-static.js'
-          : 'ralph-claude.js';
-    const runnerPath = join(kitDir, runner);
-    if (!existsSync(runnerPath)) {
-      console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
-      process.exit(1);
-    }
-
-    console.log(`▶ Starting ${relative(cwd, runnerPath)}${hookCmd ? ` (hook: ${hookCmd})` : ''}...\n`);
-    try {
-      execSync(`node "${runnerPath}"`, {
-        cwd: kitDir,
-        stdio: 'inherit',
-        env: hookCmd ? { ...process.env, BRIDGE_HOOK_CMD: hookCmd } : process.env,
-      });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -4366,15 +4216,13 @@ program
   });
 
 // The kit a command that records events works against: a build kit if one is installed, else the modeling
-// kit. A bridge kit is never one (it has its own prompt and no learnings or slices). The build kit wins when
-// both are installed — the modeling agent never runs these commands itself (its Bash is an allowlist); it
-// states its learnings in its reply and `runModeling` records them.
+// kit. The build kit wins when both are installed — the modeling agent never runs these commands itself
+// (its Bash is an allowlist); it states its learnings in its reply and `runModeling` records them.
 function requireBuildKitDir(cwd) {
   const installed = findAllInstalledKitDirs(cwd);
-  const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName) && !d.endsWith(BRIDGE_KIT.kitDirName))
-    ?? installed.find((d) => d.endsWith(MODELING_KIT.kitDirName));
+  const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName)) ?? installed.find((d) => d.endsWith(MODELING_KIT.kitDirName));
   if (!kitDir) {
-    console.error('❌ This command needs a build or modeling kit (npx @eventmodelers/cli init --stack <name> or init --modeling) — only the bridge kit is installed here, and it has no slices or learnings to record into.');
+    console.error('❌ This command needs a build or modeling kit (npx @eventmodelers/cli init --stack <name> or init --modeling).');
     process.exit(1);
   }
   return kitDir;
@@ -4564,16 +4412,14 @@ program
   .description('Remove everything init (with or without --modeling) installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), its MCP entry in .claude/settings.json, and any files written by init-agents. Leaves the root project scaffold untouched.')
   .option('--build-kit', `Remove ${STACKS.node.kitDirName}/ (the backend-stack kit dir)`)
   .option('--modeling-kit', `Remove ${MODELING_KIT.kitDirName}/ (the modeling-only kit dir)`)
-  .option('--bridge-kit', `Remove ${BRIDGE_KIT.kitDirName}/ (the bridge kit dir)`)
   .action((opts) => {
     const cwd = process.cwd();
     let targets;
 
-    if (opts.buildKit || opts.modelingKit || opts.bridgeKit) {
+    if (opts.buildKit || opts.modelingKit) {
       targets = [];
       if (opts.buildKit) targets.push(join(cwd, STACKS.node.kitDirName));
       if (opts.modelingKit) targets.push(join(cwd, MODELING_KIT.kitDirName));
-      if (opts.bridgeKit) targets.push(join(cwd, BRIDGE_KIT.kitDirName));
       targets = targets.filter((p) => existsSync(p));
       if (!targets.length) {
         console.log('ℹ️  Nothing to remove for the requested option(s).');
@@ -4586,7 +4432,7 @@ program
         return;
       }
       if (targets.length > 1) {
-        console.log('⚠️  Multiple kit dirs found — re-run with --build-kit, --modeling-kit, and/or --bridge-kit to pick which to remove.');
+        console.log('⚠️  Multiple kit dirs found — re-run with --build-kit and/or --modeling-kit to pick which to remove.');
         targets.forEach((t) => console.log(`     ${t}`));
         return;
       }

@@ -41,8 +41,8 @@ for (const stack of stacks) {
 
 // progress.txt is gone: learnings are events (`learn`), AGENTS.md is generated from them, what a failed
 // attempt tried is in slice.json's `lastAttempt`, assumptions are code comments. A prompt or skill that
-// still tells the agent to write progress.txt sends it to a file nothing reads. (The modeling kit and the
-// bridge keep their own journals and are not build kits.)
+// still tells the agent to write progress.txt sends it to a file nothing reads. (The modeling kit is not a
+// build kit; it states its learnings in its reply — see modeling-prompts.test.js.)
 const buildKitFiles = (stack) => {
   const root = join(stacksDir, stack, 'templates');
   const files = [join(root, 'build-kit/CLAUDE.md'), join(root, 'build-kit/lib/prompt.md'), join(root, 'build-kit/lib/backend-prompt.md'), join(root, 'build-kit/lib/AGENT.md')];

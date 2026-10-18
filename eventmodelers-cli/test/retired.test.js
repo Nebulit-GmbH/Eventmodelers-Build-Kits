@@ -19,3 +19,26 @@ test('run --bash is an unknown option', () => {
   assert.notEqual(res.status, 0);
   assert.match(res.stderr, /unknown option '--bash'/);
 });
+
+// The bridge kit (init --bridge / the bridge command, which ran on the same tasks.json queue) is retired too.
+// `fetch --spec-kitty` stays: it is the adapter on its own, with no standing loop.
+
+test('the bridge kit templates, skills and command are gone', () => {
+  assert.equal(existsSync(join(root, 'stacks/bridge')), false);
+  assert.equal(existsSync(join(root, 'shared/bridge')), false);
+  assert.equal(existsSync(join(root, 'lib/adapters/spec-kitty-adapter.js')), true);
+});
+
+test('init --bridge is an unknown option and bridge is an unknown command', () => {
+  const init = spawnSync(process.execPath, [join(root, 'cli.js'), 'init', '--bridge'], { encoding: 'utf-8' });
+  assert.notEqual(init.status, 0);
+  assert.match(init.stderr, /unknown option '--bridge'/);
+  const bridge = spawnSync(process.execPath, [join(root, 'cli.js'), 'bridge'], { encoding: 'utf-8' });
+  assert.notEqual(bridge.status, 0);
+  assert.match(bridge.stderr, /unknown command 'bridge'/);
+});
+
+test('fetch still offers --spec-kitty', () => {
+  const help = spawnSync(process.execPath, [join(root, 'cli.js'), 'fetch', '--help'], { encoding: 'utf-8' });
+  assert.match(help.stdout, /--spec-kitty/);
+});

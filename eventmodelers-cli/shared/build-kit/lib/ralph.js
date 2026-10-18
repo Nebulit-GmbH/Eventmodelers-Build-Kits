@@ -157,11 +157,11 @@ function hasCredentials(cfg) {
 }
 
 // Distinguishes this agent process from any other agent pinging the same
-// token/board — e.g. a build-kit and a bridge-kit install in the same project
+// token/board — e.g. a build-kit and a modeling-kit install in the same project
 // share one root config.json, and without a per-agent id both would upsert the
 // same alive row and race each other. The platform already keys the alive-ping
 // on the (agent_type, agent_id) pair, so one shared file works: agentIds is
-// namespaced by agentType (BUILD/BRIDGE/MODELING/...) inside the project ROOT
+// namespaced by agentType (BUILD/MODELING/...) inside the project ROOT
 // .eventmodelers/config.json — the same file credentials already live in —
 // instead of each kit dir keeping its own separate config.json. Falls back to
 // a pre-existing kit-local agentId (older installs, before this consolidation)
@@ -417,7 +417,7 @@ async function inTurn(kitDir, fn) {
   }
 }
 
-async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
+async function handleSliceChanged(payload, cfg, kitDir) {
   console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
   // as slice:changed. Queuing them only buys a turn in which the agent reads its own echo and
@@ -434,17 +434,14 @@ async function handleSliceChanged(payload, cfg, kitDir, queueAllStatuses) {
   );
   // Slices in the kit's pickup status (Planned, or Handover for UI kits) are handled by
   // onPlannedSlice directly — no task needed.
-  // queueAllStatuses opts out of that split entirely (e.g. bridge has no
-  // onPlannedSlice consumer, so a lingering Planned slice would otherwise
-  // never naturally clear its own trigger — see lib/ralph.js callers).
-  if (queueAllStatuses || (payload.sliceStatus || '').toLowerCase() !== readPickupStatus(kitDir).toLowerCase()) {
+  if ((payload.sliceStatus || '').toLowerCase() !== readPickupStatus(kitDir).toLowerCase()) {
     await writeTask(payload, kitDir).catch((err) => console.error('[agent] writeTask error:', err));
   }
 }
 
 // createAdapter is the realtime transport factory — injectable so the channel handling can be
 // tested against a fake transport.
-async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllStatuses = false, createAdapter = createRealtimeAdapter } = {}) {
+async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdapter = createRealtimeAdapter } = {}) {
   let realtimeToken = await retryTransient('getRealtimeToken', () => getRealtimeToken(cfg));
 
   await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
@@ -493,7 +490,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', queueAllSt
       console.log(`[agent] ${ts()} Received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
       process.exit(0);
     },
-    'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir, queueAllStatuses),
+    'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir),
   }, {
     log: (msg) => console.log(`[agent] ${ts()} ${msg}`),
     refreshToken,
@@ -934,7 +931,7 @@ export function resolveAgentIdentity(kitDir, agentType = 'BUILD', cfg = loadLoca
   return { agentId, agentName, agentType };
 }
 
-export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, onCurate = null, agentType = 'BUILD', queueAllStatuses = false, localOnly = false }) {
+export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, onCurate = null, agentType = 'BUILD', localOnly = false }) {
   const local = loadLocalConfig(kitDir);
   redactConsole([local.token]);
   Object.assign(local, resolveAgentIdentity(kitDir, agentType, local));
@@ -957,7 +954,7 @@ export async function startRalph({ kitDir, projectDir, onTask, onPlannedSlice, o
   console.log(`         org=${cfg.organizationId}, board=${cfg.boardId}, base=${cfg.baseUrl}\n`);
 
   await Promise.all([
-    startRealtimeAgent(cfg, kitDir, { agentType, queueAllStatuses }),
+    startRealtimeAgent(cfg, kitDir, { agentType }),
     ralphLoop(kitDir, cfg, onTask, onPlannedSlice, false, onCurate),
   ]);
 }

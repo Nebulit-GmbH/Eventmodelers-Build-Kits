@@ -113,8 +113,7 @@ test('while a curation turn runs, recording new learnings is refused but merging
   assert.equal(fold(readEvents(kit)).learnings.length, 1);
 });
 
-// Which kit the commands record into: a build kit if there is one, else the modeling kit; a bridge kit is
-// never one (it has its own prompt and no learnings). A person can use them by hand in a modeling-only
+// Which kit the commands record into: a build kit if there is one, else the modeling kit. A person can use them by hand in a modeling-only
 // project — the modeling agent itself states its learnings in its reply and the CLI records them.
 test('in a project that only has the modeling kit, learn records there', (t) => {
   const root = tempKit(t);
@@ -123,17 +122,6 @@ test('in a project that only has the modeling kit, learn records there', (t) => 
   assert.equal(res.status, 0, res.stderr);
   assert.match(readFileSync(join(root, '.agent-modeling-kit', 'AGENTS.md'), 'utf-8'), /## Modeling\n- Events are past tense\n/);
   assert.equal(run(root, 'learnings').status, 0);
-});
-
-test('in a project that only has the bridge kit, learn, learnings and slice-status refuse', (t) => {
-  const root = tempKit(t);
-  mkdirSync(join(root, '.bridge-kit'), { recursive: true });
-  for (const args of [['learn', 'x'], ['learnings'], ['slice-status', 'Done']]) {
-    const res = run(root, ...args);
-    assert.equal(res.status, 1, args.join(' '));
-    assert.match(res.stderr, /needs a build or modeling kit/, args.join(' '));
-  }
-  assert.equal(existsSync(join(root, '.bridge-kit', 'events.log')), false);
 });
 
 test('with a build kit and a modeling kit side by side, the build kit is the one that is used', (t) => {
