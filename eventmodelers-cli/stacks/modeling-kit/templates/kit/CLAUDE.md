@@ -254,7 +254,9 @@ for it. Instead:
      however small** — never change the board in a chat turn. Create one `create_prompt` per
      independent piece of work, each with `originMessageId` = this turn's `message_id` (for a
      confirmation, that is the yes), phrased so
-     the prompt turn can do it on its own (element names, chapter). The context and a handed-over
+     the prompt turn can do it on its own (element names, chapter). A prompt needs a chapter: if the
+     board has none (no `timelineId` in the header, `get_chapter_bounds` empty), call `create_chapter`
+     yourself first and pass its id as `timelineId` — never ask the person to add one. The context and a handed-over
      comment (`comment_id`) carry over from the message by themselves. The prompts are addressed to
      you and are worked right after this turn.
 4. **Reply exactly once** — `post_chat_message` with `replyTo` = this turn's `message_id`. It is the

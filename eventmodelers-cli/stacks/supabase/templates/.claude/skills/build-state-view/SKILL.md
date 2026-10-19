@@ -42,7 +42,21 @@ CREATE TABLE IF NOT EXISTS "public"."{tablename}"
     -- use snake_case for all column names
     created_at  TIMESTAMP DEFAULT NOW()
 );
+
+-- The UI reads this table DIRECTLY through Supabase (no read endpoint in between), so it must be readable.
+-- RLS on with no policy returns an EMPTY list, not an error - always ship the policy with the table.
+ALTER TABLE "public"."{tablename}" ENABLE ROW LEVEL SECURITY;
+GRANT SELECT ON "public"."{tablename}" TO authenticated;
+CREATE POLICY "{tablename}_select" ON "public"."{tablename}"
+    FOR SELECT TO authenticated USING (true);
 ```
+
+**The UI reads the read-model table directly.** The frontend never goes through the `GET` route for a
+read model: it selects from this table with the user's session, and Row Level Security decides which
+rows come back. `USING (true)` is the default (every signed-in user sees every row); when the read
+model is per user or per tenant (an owner/user/tenant column, or `description`/`comments[]` say so),
+narrow the policy to it, e.g. `USING (owner_id = auth.uid()::text)`. The `GET` route in Step 5 stays
+for API consumers and tests; the UI does not depend on it.
 
 **Column type guide** — field `type` values are the canonical set from the [event-modeling-spec schema](https://github.com/dilgerma/event-modeling-spec/blob/main/eventmodeling.schema.json):
 
@@ -487,6 +501,7 @@ src/common/
 ## Checklist
 
 - [ ] Migration file created with correct version number and all columns
+- [ ] Migration enables RLS, grants `SELECT` to `authenticated` and creates a select policy: the UI reads the table directly, and no policy means an empty list
 - [ ] `tableName` constant matches the migration table name exactly
 - [ ] Projection registered in `loadPostgresEventstore.ts`
 - [ ] `canHandle` lists every event type the projection reacts to

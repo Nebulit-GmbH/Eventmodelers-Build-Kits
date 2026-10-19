@@ -35,6 +35,7 @@ import { modelingPermissions } from './lib/agent-permissions.js';
 // shared/build-kit/lib/adapters/realtime-adapter.js for why it lives there instead.
 import { createRealtimeAdapter, keepSubscribed } from './shared/build-kit/lib/adapters/realtime-adapter.js';
 import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
+import { findSliceDir, fingerprint, readBaseline, writeBaseline, compare } from './lib/ui-baseline.js';
 import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/agent-name.js';
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
 import { readEvents } from './shared/build-kit/lib/slice-events.js';
@@ -465,6 +466,30 @@ function getSharedRl() {
     });
   }
   return sharedRl;
+}
+
+// --force on a build kit: the credentials step of `init-config` against the project-root config the
+// runner reads. Interactive, so under `run --all` the parent runs it for each kit one after the other —
+// the supervised children have no stdin to ask on. `shared` (another kit's answer) is applied
+// instead of asking, so every kit of one run ends up on the same credentials.
+async function forceBuildKitCredentials(kitDir, cwd, opts, globalOpts, shared = null) {
+  const projectDir = dirname(kitDir);
+  const configPath = globalOpts.config
+    ? resolve(projectDir, globalOpts.config)
+    : join(projectDir, '.eventmodelers', 'config.json');
+  const cfg = await configureCredentials({
+    config: loadEffectiveConfig(cwd, kitDir, globalOpts.config).config,
+    configPath,
+    targetDir: projectDir,
+    requiredFields: ['organizationId', 'boardId', 'token'],
+    overrides: shared ?? credentialOverridesFromOpts(opts),
+    print: false,
+    force: !shared,
+  });
+  ensureMcpRegistered(projectDir, cfg.baseUrl || DEFAULT_BASE_URL);
+  ensureEnvToken(projectDir, cfg.token);
+  ensureMcpEnabled(projectDir);
+  return cfg;
 }
 
 // Pulls one line from the shared readline's own async iterator rather than calling
@@ -3787,7 +3812,7 @@ credentialFlags(program
   .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
-  .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured. With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
+  .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured (except with --force, which asks once per kit up front, here, before the runs start). With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('-f, --force', 'Ask for credentials again before the modeling loop starts, even when a config already has everything required. With a modeling kit in this directory it re-runs the same prompt as `init --modeling`, overwriting the project\'s .eventmodelers/config.json; with the global install it drops the "keep the stored credentials" choice, so a board\'s credentials have to be answered afresh. Applies to build-kit runs too, where it re-asks against the project\'s .eventmodelers/config.json. Cannot be combined with --non-interactive, --print or --local.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
@@ -3823,7 +3848,26 @@ credentialFlags(program
       }
       // Each kit runs as its own `run` with whatever else was typed; only --all is dropped, and
       // --modeling too — that one is its own run, below, not something a build kit takes.
-      const forwarded = process.argv.slice(2).filter((a) => a !== '--all' && a !== '--modeling');
+      // --force is the one flag that asks questions, and the children have no terminal to ask on
+      // (the supervisor pipes their stdin, so the first prompt dies with ERR_USE_AFTER_CLOSE). The
+      // credentials step runs here once per kit instead, then --force is not forwarded.
+      if (opts.force) {
+        if (opts.nonInteractive || globalOpts.print) {
+          console.error('❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.');
+          process.exit(1);
+        }
+        // Asked once, for the kit in this directory (the first one found when there is none), and
+        // handed to the others — the modeling agent reads this directory's config.
+        const rootDir = dirs.find((dir) => dirname(dir) === cwd) ?? dirs[0];
+        console.log(`\n🔑 Credentials for ${relative(cwd, rootDir) || '.'}, shared by all`);
+        const { organizationId, boardId, token, baseUrl } = await forceBuildKitCredentials(rootDir, cwd, opts, globalOpts);
+        for (const dir of dirs.filter((d) => d !== rootDir)) {
+          await forceBuildKitCredentials(dir, cwd, opts, globalOpts, { organizationId, boardId, token, baseUrl });
+        }
+        if (sharedRl) sharedRl.close();
+        console.log('');
+      }
+      const forwarded = process.argv.slice(2).filter((a) => a !== '--all' && a !== '--modeling' && !(opts.force && a === '--force'));
       const cliJs = join(__dirname, 'cli.js');
       const specs = dirs.map((dir) => ({ name: relative(cwd, dir) || '.', file: process.execPath, args: [cliJs, ...forwarded], cwd: dir }));
       // --modeling adds the modeling agent next to the build kits: one process, from this directory
@@ -4048,22 +4092,7 @@ credentialFlags(program
         console.error('❌ --force asks for credentials, which --local (no platform config) never uses — pick one.');
         process.exit(1);
       }
-      const projectDir = dirname(kitDir);
-      const configPath = globalOpts.config
-        ? resolve(projectDir, globalOpts.config)
-        : join(projectDir, '.eventmodelers', 'config.json');
-      const cfg = await configureCredentials({
-        config: loadEffectiveConfig(cwd, kitDir, globalOpts.config).config,
-        configPath,
-        targetDir: projectDir,
-        requiredFields: ['organizationId', 'boardId', 'token'],
-        overrides: credentialOverridesFromOpts(opts),
-        print: false,
-        force: true,
-      });
-      ensureMcpRegistered(projectDir, cfg.baseUrl || DEFAULT_BASE_URL);
-      ensureEnvToken(projectDir, cfg.token);
-      ensureMcpEnabled(projectDir);
+      await forceBuildKitCredentials(kitDir, cwd, opts, globalOpts);
     }
 
     // ralph-claude.js hands every turn to a `claude` that only discovers MCP servers from
@@ -4190,14 +4219,42 @@ program
   });
 
 program
-  .command('scaffold <target>')
-  .description('Generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
+  .command('scaffold <target> [args...]')
+  .description('`scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
   .option('--type <name>', `Kind of app to scaffold (${scaffoldTypeNames().join(', ')})`, 'supabase')
   .option('--no-install', 'Stop after generating the skeleton: no npm install, checks or commit')
   .option('--no-check', 'Install dependencies but skip the type-check, tests and web build/lint')
   .option('--templates <dir>', 'Folder of *.tmpl files that replace the built-in skeleton template of the same path (or add files). Default: the target\'s own templates/ folder when it exists, so customisations survive a refresh')
   .option('--port <name=value>', "Pin one of the type's ports instead of picking a free one, e.g. --port api=3200 (repeatable; the names are listed in the error when one is unknown). A refresh keeps its ports unless pinned here", (v, all) => [...all, v], [])
-  .action(async (target, opts, command) => {
+  .action(async (target, args, opts, command) => {
+    if (target === 'add-user') {
+      const [email, password, dir] = args;
+      if (!email || !password) {
+        console.error('❌ usage: eventmodelers scaffold add-user <email> <password> [dir]');
+        process.exit(1);
+      }
+      const addUser = SCAFFOLD_TYPES[opts.type]?.addUser;
+      if (!addUser) {
+        console.log(`ℹ️  The "${opts.type}" scaffold has no users — nothing to do.`);
+        return;
+      }
+      const appDir = resolve(process.cwd(), dir ?? '.');
+      if (!existsSync(join(appDir, addUser.requires))) {
+        console.error(`❌ ${appDir} is not a scaffolded "${opts.type}" app (no ${addUser.requires}) — run this in its folder or pass the folder as the last argument.`);
+        process.exit(1);
+      }
+      const [file, ...fileArgs] = addUser.command(email, password);
+      try {
+        execFileSync(file, fileArgs, { cwd: appDir, stdio: 'inherit' });
+      } catch {
+        process.exit(1);
+      }
+      return;
+    }
+    if (args.length) {
+      console.error(`❌ Unexpected argument(s): ${args.join(' ')}`);
+      process.exit(1);
+    }
     const type = SCAFFOLD_TYPES[opts.type];
     if (!type) {
       console.error(`❌ Unknown --type "${opts.type}". Available: ${scaffoldTypeNames().join(', ')}`);
@@ -4280,7 +4337,7 @@ program
       });
       console.log(`\n✅ Skeleton ready in ${root}`);
       console.log(`   cd ${relative(cwd, root) || '.'} && npm run up        # ${Object.entries(ports).map(([n, v]) => `${n} :${v}`).join(', ')}`);
-      console.log('   npm run user -- <email> <password>   # a user to sign in with (no sign-up screen)');
+      console.log('   npx @eventmodelers/cli scaffold add-user <email> <password>   # a user to sign in with (no sign-up screen)');
       console.log('   npx @eventmodelers/cli run --all   # then build: every kit in the project, in this terminal');
     } catch (err) {
       console.error(`❌ ${err.message}`);
@@ -4571,6 +4628,79 @@ program
       console.error(`❌ ${err.message}`);
       process.exit(1);
     }
+  });
+
+program
+  .command('ui-baseline <action>')
+  .alias('build-baseline')
+  .description("For a build agent: decide whether a slice's UI needs work. `check` compares the board's hashes of the slice's screen and of every element of the slice and its codeGen.uiPrompts with what was recorded after the last UI build and prints NO_BASELINE, UNCHANGED or CHANGED (UNCHANGED = skip all UI work). `record` stores the current state once the UI is built — commit the resulting ui-baseline.json with the slice.")
+  .option('--slice <idOrTitle>', 'The slice (default: the one the run loop has claimed)')
+  .option('--scope <scope>', 'ui (default): screen, elements and UI prompts · backend: elements only, for a kit that builds no UI', 'ui')
+  .action(async (action, opts, command) => {
+    if (!['ui', 'backend'].includes(opts.scope)) {
+      console.error('❌ --scope must be `ui` or `backend`.');
+      process.exit(1);
+    }
+    if (!['check', 'record'].includes(action)) {
+      console.error('❌ Action must be `check` or `record`.');
+      process.exit(1);
+    }
+    const cwd = process.cwd();
+    const kitDir = requireBuildKitDir(cwd);
+    let wanted = opts.slice;
+    if (!wanted) {
+      const claimed = Object.entries(fold(readEvents(kitDir)).slices).filter(([, s]) => s.claim);
+      if (claimed.length !== 1) {
+        console.error(`❌ ${claimed.length ? `${claimed.length} slices are claimed` : 'No slice is claimed by the run loop'} — name the slice with --slice.`);
+        process.exit(1);
+      }
+      wanted = claimed[0][0];
+    }
+    const found = findSliceDir(kitDir, wanted);
+    if (!found) {
+      console.error(`❌ Slice "${wanted}" not found under ${relative(cwd, join(kitDir, '.slices'))}.`);
+      process.exit(1);
+    }
+    const globalOpts = command.optsWithGlobals();
+    const cfg = loadEffectiveConfig(cwd, kitDir, globalOpts.config).config;
+    const fetchNodes = async (ids) => {
+      if (['organizationId', 'boardId', 'token'].some((f) => !cfg[f])) throw new Error('token/organizationId/boardId are not configured (.eventmodelers/config.json)');
+      const res = await fetch(`${cfg.baseUrl || DEFAULT_BASE_URL}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'cli-ui-baseline', ...agentHeaders(cfg) },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(`board returned HTTP ${res.status}`);
+      return res.json();
+    };
+    let fp;
+    try {
+      fp = await fingerprint({ slice: found.slice, fetchNodes, scope: opts.scope });
+    } catch (err) {
+      // Cannot tell — the safe answer is the full check, never a skip.
+      console.log('UNKNOWN');
+      console.log(`Could not read the screen from the board (${err.message}) — do the full screen diff.`);
+      return;
+    }
+    if (action === 'record') {
+      writeBaseline(found.path, fp, opts.scope);
+      console.log(`✅ Recorded the ${opts.scope === 'backend' ? 'build' : 'UI'} baseline for "${found.slice.title}" (${relative(cwd, join(found.path, 'ui-baseline.json'))}) — commit it with the slice.`);
+      return;
+    }
+    const result = compare(readBaseline(found.path), fp, opts.scope);
+    console.log(result.verdict);
+    if (result.verdict === 'UNCHANGED') {
+      console.log('Screen, elements and UI prompts are as of the last UI build — skip all UI work.');
+      return;
+    }
+    if (result.verdict === 'NO_BASELINE') console.log('No UI build recorded for this slice yet — do one full screen diff, apply every UI prompt, then `ui-baseline record`.');
+    const nodeLine = (label, list) => (list.length ? `\n  ${label}: ${list.map((n) => `${n.title} (${n.kind === 'screen' ? 'screen' : n.kind.replace(/s$/, '')})`).join(', ')}` : '');
+    const nodeDetail = nodeLine('changed', result.changedNodes) + nodeLine('added', result.addedNodes) + nodeLine('removed', result.removedNodes);
+    if (nodeDetail) console.log(`Since the last recorded build:${nodeDetail}\nWork on exactly these; leave what matches alone.`);
+    if (result.screenChanged && result.verdict === 'CHANGED') console.log('SCREEN_CHANGED: re-fetch the screen node, diff the components against it and adjust the UI.');
+    if (result.elementsChanged && result.verdict === 'CHANGED') console.log('ELEMENTS_CHANGED: an element of the slice (command, event, read model, processor, table, actor, aggregate, specification, ...) changed on the board — diff slice.json against the code field by field.');
+    if (result.promptsChanged) console.log(`PROMPTS_CHANGED: apply ${result.newPrompts.length ? 'these new/changed UI prompts' : 'the UI prompts (they were edited or removed — re-read them)'}:${result.newPrompts.map((p) => `\n  - ${p.trim()}`).join('')}`);
+    console.log('When the UI is done, run `ui-baseline record`.');
   });
 
 program

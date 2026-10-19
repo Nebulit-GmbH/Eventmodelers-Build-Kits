@@ -56,6 +56,33 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 4. Invoke the matching skill and follow its instructions **completely**. Do NOT implement the slice manually.
 
+   **UI baseline gate** — before touching any code, run `npx @eventmodelers/cli ui-baseline check`. It
+   compares the board's node hashes (the slice's screen and every element) and `codeGen.uiPrompts` with
+   what was recorded after the last UI build, and decides what this build has to do:
+   - `UNCHANGED` — nothing on the board changed since the last UI build. Skip all UI work; do not
+     re-fetch or diff the screen. Only now is "no code changes needed" a valid outcome.
+   - `NO_BASELINE` — no UI build recorded yet (first build, or the slice predates the baseline). Do one
+     full screen diff (below), apply every UI prompt.
+   - `UNKNOWN` — the board could not be read. Treat it as `NO_BASELINE`; never as `UNCHANGED`.
+   - `CHANGED` — it also lists, per element, what changed, was added or was removed since the last recorded
+     build (e.g. `changed: Contact Details (screen), Assign Tag (command)`). Work on exactly those nodes
+     and leave what matches alone. Act on the parts it flags:
+     - `SCREEN_CHANGED`: re-fetch the live screen node (`get_node`, its `meta.pages` / `meta.marks`) —
+       never trust the JSX already in the repo — and diff the existing component(s) against the marked
+       (or whole, if unmarked) HTML: tags, classes, layout, copy, fields/buttons added, removed or
+       reordered, and `cssFrameworks`. Edit the components (and `src/pages/<ScreenTitle>.tsx`, for this
+       slice's marked position only) until they match 1:1 and update `samples/`. Keep what already
+       matches; do not regenerate the slice from scratch.
+     - `ELEMENTS_CHANGED`: diff slice.json against the code field by field (fields,
+       `apiEndpoint`/UI contract) and fix every drift.
+     - `PROMPTS_CHANGED`: apply the UI prompts it prints — each is an instruction the user typed on the
+       board for this slice's UI (e.g. "adjust the UI to the new layout!") — to the component(s) and
+       screen markup. Name each prompt and the change you made for it in your final reply.
+
+   When the UI work is done and the checks in step 6 pass, run `npx @eventmodelers/cli ui-baseline record`
+   **before committing**, so `ui-baseline.json` is committed with the slice. Never record without having
+   done the work the verdict asked for.
+
 5. **Verify against slice.json**: cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code. No invented fields — if it is not in slice.json, it must not be in the code.
 
 6. Run quality checks (TODO: your stack's build + test commands — slice-scoped tests only, not the full suite).

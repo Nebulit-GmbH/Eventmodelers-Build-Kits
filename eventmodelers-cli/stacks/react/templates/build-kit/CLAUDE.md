@@ -43,9 +43,10 @@ When asked to build a slice, always follow this flow:
    - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
-4. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation. No invented fields — if it is not in slice.json, it must not be in the code.
-5. Run quality checks (TODO: this stack's build + test commands), then the slice tests only.
-6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
+4. **UI baseline gate**: run `npx @eventmodelers/cli ui-baseline check` first and act only on its verdict — `UNCHANGED` means skip all UI work; `NO_BASELINE`/`UNKNOWN` mean one full screen diff and every `codeGen.uiPrompts` entry; `CHANGED` names the elements that changed, were added or removed (work on exactly those) and flags `SCREEN_CHANGED` (re-fetch the screen node and adjust the components to it), `ELEMENTS_CHANGED` (diff slice.json against the code) and `PROMPTS_CHANGED` (apply the printed prompts). Details in `lib/prompt.md`, Step 4. After the checks pass and before committing, run `ui-baseline record`.
+5. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation. No invented fields — if it is not in slice.json, it must not be in the code.
+6. Run quality checks (TODO: this stack's build + test commands), then the slice tests only.
+7. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`.
 
 After you are done, automatically run the tests for the slice that was edited.
 

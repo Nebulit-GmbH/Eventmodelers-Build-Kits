@@ -71,14 +71,19 @@ Extract:
 - **screens[]** — the actor `SCREEN` element(s) that trigger this command, if any. Empty when the
   command has no UI trigger (rare — build the component from fields alone in that case, skip Step
   2).
-- **specifications[]** — GWT scenarios; treat as acceptance criteria for the component's business
-  logic (e.g. "given empty `email`, submit is disabled").
+- **specifications[]** and **storylines[]** (optional) — GWT scenarios / board walkthroughs. These
+  describe how the slice should **behave** — read them in full (Step 3a) to understand the outcomes
+  and states the UI must present. The business logic itself lives in the backend; the UI does not implement it.
 
 > **Comments**: each element carries `comments: string[]` (board comments) — read them as
 > implementation hints, and resolve consumed ones via
 > `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
 
 ## Step 2 — Read the screen, and especially its marks
+
+> **Gated by `ui-baseline check`** (build prompt, `lib/prompt.md`, Step 4): do this step when the verdict
+> is `SCREEN_CHANGED`, `NO_BASELINE` or `UNKNOWN` — and then also diff the existing JSX against the fetched
+> screen and adjust the UI to it. On `UNCHANGED` skip it.
 
 `slice.json`'s `screens[]` entries only carry `id`/`title`/`fields[]`/`description` (fields already
 scoped to this slice) — not the actual markup. Fetch the live node to get that:
@@ -132,18 +137,75 @@ lane concept, so the frontend path isn't a strict 1:1 mirror of it. `CommandTitl
 **Markup**: translate the blueprint HTML from Step 2 into JSX **1:1** — same tags, same classes
 (the screen's `cssFrameworks` framework), same layout and copy. This is not a redesign; the screen *is*
 the design. Only change what must become dynamic:
-- A field's example value becomes that input's controlled `value`.
+- A field's example value becomes that input's **initial/default** `value` only for what the user is
+  *entering* (a new-record form). Anything the screen *displays* about an existing entity (names,
+  titles, current selection, existing tags, list rows) is **not** static — see "Data binding" below.
 - An element repeated for a `cardinality: "List"` field becomes a `.map()` over that field.
 - `class`/`style`/structure otherwise stay exactly as drawn — except the board's own mark plumbing:
   drop every `data-em-mark-id` attribute and `em-mark`/`em-mark-<hex>` class (they only draw the
   highlight outline on the canvas; the app never ships it).
 - The classes only render correctly if the screen's CSS framework (`cssFrameworks`) is loaded in the app — see Step 7 (styles); don't hand-write CSS to compensate.
 
+**Data binding — mockup text is sample data, not copy.** The example values drawn in a screen are
+placeholders from the model. Before translating, classify every piece of text/value in the fragment:
+*label/copy* (headings like "Tags", button captions, placeholders — keep verbatim) vs. *data* (a person's
+name, a role/organisation line, a pre-selected dropdown value, dropdown options, existing list rows,
+badges, counts, dates). For each *data* item find its source in `slice.json` / the model — the
+`readmodels[]` whose fields carry it, or the command's own `fields[]` — and render it from there.
+**Never hardcode a data value from the mockup into JSX.**
+
+**Find the screen's data sources on the board, not just in `slice.json`.** A screen is often shown by
+one slice but fed by a read model that belongs to *another* slice (e.g. the Contact Details screen
+sits in the Assign Tag slice, yet its contact data comes from the Contact List read model via an edge
+READMODEL → SCREEN). `slice.json` only lists this slice's own elements, so also call
+`mcp__eventmodelers__get_connected_nodes { boardId, nodeId: <screen.id> }` and take every READMODEL
+wired into the screen. Each one is a data source for the displayed values; look up its fields in that
+read model's slice (`.build-kit/.slices/*/*/slice.json`, or `get_node`). A list read model feeding a
+detail screen (`Contact List[]` → one contact) means: query it filtered by the entity id the page
+gets from the route (match the id field, e.g. `contactId` / the command's `recordId`) and render that
+row. If the source read model's slice isn't built, still type and wire against its fields (TODO), do
+not substitute the mockup's values.
+
+- Data comes from a read model (query component of the same page/screen, via `queryReadModel` /
+  `getReadModel`) → bind it to that data (props from the parent that fetched it, or fetch it here
+  when this component owns that read). If that read-model slice is not built yet, wire the component
+  against the typed shape and leave a `// TODO(<read model title>)` — do not paste the example in.
+- Select/dropdown *options* come from a read model (e.g. the customer list), never from the
+  options drawn in the mockup; the *selected* value comes from the entity's own read model.
+- The only legitimate static content is label/copy and `VITE_DATA_MODE=mock` samples in `samples/*.json`.
+- Self-check before finishing: grep the component for the mockup's example strings (e.g. the person's
+  name, organisation, tag text). Any hit outside `samples/` is a bug.
+
 **Props**: exactly `command.fields[]`, typed per each field's `type` (`String`→`string`,
 `Boolean`→`boolean`, `Int`/`Long`→`number`, etc. — `subfields[]` become a nested object type),
 respecting `optional`. Add two callback props: `onSuccess?: (result: TResponse) => void` and
 `onError?: (error: ApiError) => void`. **No other inputs** — no context/store reads, no fetching
 inside the component. All business data the component needs arrives via props from its parent.
+
+### Step 3a — Read the scenarios to understand behavior (not to implement rules)
+
+**Business logic lives in the backend. The UI never re-implements it.** Do not copy a scenario's
+rules (preconditions, limits, uniqueness, state checks) into the component as validation or guards —
+the backend decides, and a duplicated rule drifts the moment the model changes.
+
+Read every entry in `specifications[]` (and the beat runs in `storylines[]` containing this command)
+to understand **how the component should behave around the command**: what the user is trying to
+accomplish, what outcomes exist, and what each outcome must look like. Use them to decide:
+
+| Scenario shows | What it tells the UI |
+|---|---|
+| `when` this command → `then` EVENT(s) | the success outcome: what to confirm or reset after `postCommand` resolves, and what `onSuccess` hands the parent |
+| `when` this command → `then` an error / rejection (e.g. "already reserved") | the failure outcomes that exist: render each as its own readable message from the `ApiError` the backend returns — not one generic failure. The backend decides *whether* it fails; the UI only shows it |
+| `optional` fields, fields that vary between scenarios | which inputs are required vs. optional in the form (mirror the flags, no invented rules) |
+| `given` events before the command | context for what the user was doing — background to understand the flow, not logic to reproduce |
+| a `STORYLINE_NOTE` beat | background only |
+
+Rules:
+- Understand, don't implement: no business validation, no precondition checks, no computed outcomes
+  in the component. Only presentation: states (idle/submitting/success/error), required-vs-optional
+  inputs, and showing what the backend returns.
+- If a scenario's outcome needs a UI state the markup doesn't show, add the minimal state and note
+  the scenario in a one-line comment (e.g. `// spec: "already reserved" → backend 409 shown inline`).
 
 **Default — keep the logic in the component.** For an ordinary command (one form, one submit
 action, which is most of them) local state and the `postCommand` call live directly inside the
@@ -211,9 +273,10 @@ is driven entirely by props, each sample is a **full set of prop values** — th
 renders this component in isolation (a `src/pages/` composition, or ad hoc while developing) to
 spread as props, e.g. `<ReserveBike {...sample1} onSuccess={...} />`.
 
-Add `sample-1.json` for the ordinary case (`command.fields[].example` values); add more numbered
-ones for other scenarios `specifications[]` calls out (an edge case, an `optional` field omitted,
-...). As in `build-state-view`, the same number across different components' samples is meant to
+Add `sample-1.json` for the ordinary case (`command.fields[].example` values); add a numbered
+sample for **each** scenario in `specifications[]` that changes what the component does (an invalid
+input that blocks submit, an `optional` field omitted, a precondition that disables the trigger).
+Take the values from the scenario's own example data. As in `build-state-view`, the same number across different components' samples is meant to
 represent one coherent scenario across the app, not an arbitrary per-component index.
 
 ## Step 5 — Context/Provider, only if the marked fragment needs shared local state
@@ -290,6 +353,13 @@ how many pages this app needs — not one page per slice.
      content there, passing whatever props it declares. Only substitute positions whose slice
      component already exists; leave any not-yet-built slice's marked area as the mockup's static
      placeholder until that slice is built and this step runs again for it.
+   - **Unmarked/unbuilt regions are not an excuse to hardcode data.** Static placeholder is only for
+     label/copy. A displayed data value (e.g. the contact's name and "role · organisation" line, the
+     selected organisation and the organisation dropdown options) must be bound to the read model that
+     carries it — if that read model's component exists (e.g. the contact list/details read), fetch
+     through it and pass the values down; if not, type the prop and leave a `// TODO(<read model>)`.
+     Never paste the mockup's example (or a slice's `samples/sample-1.json`) into the page as the
+     data. The page reads the entity id from the route/query param.
    - The page owns threading shared inputs (route/query params, the current session, etc.) down as
      props to each slice component — a slice component still only knows its own declared props, not
      the rest of the page or its siblings.
@@ -348,6 +418,8 @@ After writing the hook/component (and context/page/base page, if any), confirm:
   time, the provisional `/api/mock/...` path noted in a comment (Step 1).
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   this component's props.
+- Every scenario outcome (success, each named failure) has a rendered state, and **no business rule
+  from a scenario was re-implemented in the component** — the backend owns it.
 - If a screen was read in Step 2, the rendered JSX matches the marked (or whole, if unmarked)
   HTML fragment structurally — no invented buttons/fields the mockup didn't show, nothing from
   the mockup silently dropped.

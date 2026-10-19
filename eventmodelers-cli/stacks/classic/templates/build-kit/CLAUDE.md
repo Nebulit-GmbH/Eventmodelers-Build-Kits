@@ -48,11 +48,12 @@ When asked to build a slice, always follow this flow:
    - **State-view** — `projections` or `queries` array is non-empty → invoke `/build-state-view`
    - **State-change** — default (has `commands` / `events`) → invoke `/build-state-change`
 4. Invoke the matching skill and follow its instructions completely. Do not deviate.
-5. **Verify against slice.json**: After the skill completes, check that every command field, event field, read model field and specification in slice.json has its counterpart in the implementation. No invented fields — if it is not in slice.json, it must not be in the code. This applies even when the slice was previously `Done` and reappears as `Planned` — never dismiss a mismatch as "already implemented" or harmless drift; diff slice.json against the code field by field and update the code to match every change.
-6. Run the quality checks from `.build-kit/ARCHITECTURE.md` (build/compile, then only the tests this slice touched).
-7. If checks pass, make sure the slice's row in the Slice map is added/updated and commit with `feat: [Slice Name]`.
-8. Invoke `/record-evidence` — it writes the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a markdown note into the slice's column, in the chapter's `Implementation` feedback lane.
-9. Set slice status to `Done`.
+5. **Baseline gate**: run `npx @eventmodelers/cli build-baseline check --scope backend` first and act only on its verdict — `UNCHANGED` means nothing on the board changed since the last recorded build: do not rebuild, just run the slice's tests and finish; `NO_BASELINE`/`UNKNOWN` mean one full field-by-field diff of slice.json against the code; `CHANGED` lists exactly which elements changed, were added or removed — diff and fix only those. After the checks pass and before committing, run `build-baseline record --scope backend`. A screen or UI prompt change never triggers a backend build.
+6. **Verify against slice.json**: After the skill completes, check that every command field, event field, read model field and specification in slice.json has its counterpart in the implementation. No invented fields — if it is not in slice.json, it must not be in the code. This applies even when the slice was previously `Done` and reappears as `Planned` — never dismiss a mismatch as "already implemented" or harmless drift; diff slice.json against the code field by field and update the code to match every change.
+7. Run the quality checks from `.build-kit/ARCHITECTURE.md` (build/compile, then only the tests this slice touched).
+8. If checks pass, make sure the slice's row in the Slice map is added/updated and commit with `feat: [Slice Name]`.
+9. Invoke `/record-evidence` — it writes the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a markdown note into the slice's column, in the chapter's `Implementation` feedback lane.
+10. Set slice status to `Done`.
 
 After you are done, automatically run the tests for the slice that was edited.
 

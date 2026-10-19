@@ -7,7 +7,8 @@
 // --templates: a folder whose *.tmpl files replace the built-in template of the same path, or add files (same tokens).
 // model.json is written by "eventmodelers scaffold" from the board (lib/scaffold-model.js).
 import {existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, appendFileSync} from 'node:fs';
-import {basename, dirname, join, relative, sep} from 'node:path';
+import {createHash} from 'node:crypto';
+import {basename, dirname, join, relative, resolve, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -232,10 +233,15 @@ if (existsSync(indexHtml)) {
     write('web/index.html', html);
 }
 
-// Supabase: own project id and ports, so the stack can run beside other local stacks.
+// Supabase: own project id and ports, so the stack can run beside other local stacks. The project id names the
+// containers, so two apps in folders called "target" must not share it: `supabase start` in the second would find
+// the first one's containers, report them as its own and leave its ports with nothing listening. The hash of the
+// absolute path keeps it unique per folder and stable across refreshes.
+const projectId = args['project-id']
+    || `${slug(basename(resolve(target)))}-${createHash('sha1').update(resolve(target)).digest('hex').slice(0, 6)}`;
 let toml = readFileSync(join(target, 'supabase/config.toml'), 'utf8');
 toml = toml
-    .replace(/^project_id = ".*"$/m, `project_id = "${slug(args['project-id'] || basename(target))}"`)
+    .replace(/^project_id = ".*"$/m, `project_id = "${projectId}"`)
     .replace(/^(\s*(?:shadow_)?port = )\d{3}(\d{2})$/gm, `$1${dbPrefix}$2`)
     .replace(/^(\s*#?\s*(?:smtp|pop3)_port = )\d{3}(\d{2})$/gm, `$1${dbPrefix}$2`)
     .replace(/^site_url = ".*"$/m, `site_url = "http://localhost:${webPort}"`)
@@ -265,7 +271,8 @@ const notes = {
 ## App skeleton (em-scaffold)
 - Every distinct screen title already has a page at \`src/pages/<ScreenTitle>.tsx\` (PascalCase, export of the same name), routed from \`src/app/model.ts\`. Compose slice components into that page, even when only one slice uses the screen. Never create a second page for the same screen and never edit \`App.tsx\`, \`src/app/*\` or the router: a new \`src/pages/*.tsx\` file is routed automatically.
 - A 501 from the backend means "slice not built yet". \`src/lib/api.ts\` turns it into \`NOT_BUILT_MESSAGE\`; a missing read-model table gives the same 501. Render it with \`<NotBuilt />\` from \`src/lib/NotBuilt.tsx\` (\`isNotBuilt(err)\` from \`src/lib/api.ts\`), not as a failure.
-- Prefer \`getReadModel('/api/query/<slicename>-collection')\` over \`queryReadModel\`: a table with RLS on and no policies returns an empty list through Supabase.
+- A read model is read straight from its table with \`queryReadModel\` (never \`supabase.from\` in a component, never the backend \`GET\` route). An empty list from a table that has rows means the migration lacks the RLS select policy: fix the migration (build-state-view Step 2), do not switch the page to \`getReadModel\`.
+- A page that shows one record of a list (the screen's id field is mapped from a list read model) receives that id from the list: the list row links to \`/<route>?<idParam>=<id>\`, and the page selects that record from the table with \`queryReadModel\` filtered on the id, never by loading the whole list and searching it.
 `,
 };
 for (const [rel, text] of Object.entries(notes)) {

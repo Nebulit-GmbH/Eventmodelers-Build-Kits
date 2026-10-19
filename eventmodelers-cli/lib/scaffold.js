@@ -30,6 +30,8 @@ export const SCAFFOLD_TYPES = {
       { command: 'java', name: 'Java (Flyway runtime)' },
     ],
     minNode: 22,
+    // Command (run in the app root) that adds a sign-in user; omit it for a type without sign-in — `scaffold add-user` is then a no-op.
+    addUser: { requires: 'scripts/create-user.mjs', command: (email, password) => [process.execPath, 'scripts/create-user.mjs', email, password] },
     // Run in the target after the generator; the first failure stops the run.
     installSteps: [
       ['npm', 'install'],

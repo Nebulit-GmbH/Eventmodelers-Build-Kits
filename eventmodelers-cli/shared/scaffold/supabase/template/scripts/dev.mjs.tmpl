@@ -34,13 +34,30 @@ const must = (result, what) => {
 };
 const supabaseRunning = () => run('supabase', ['status'], {stdio: 'ignore'}).status === 0;
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// `supabase status` reads the ports from config.toml, not from the containers: after a port change in
+// config.toml it still reports "running" while the old stack listens on the old ports.
+const dbReachable = () => {
+    let port;
+    try {
+        const status = JSON.parse(spawnSync(...launch('supabase', ['status', '-o', 'json']), {encoding: 'utf8'}).stdout);
+        port = Number(new URL(status.DB_URL).port);
+    } catch {
+        return Promise.resolve(false);
+    }
+    return new Promise((resolve) => {
+        net.connect(port, '127.0.0.1').once('connect', function () { this.destroy(); resolve(true); }).once('error', () => resolve(false));
+    });
+};
 const free = (port) => new Promise((resolve) => {
     const s = net.createServer().once('error', () => resolve(false)).once('listening', () => s.close(() => resolve(true))).listen(port);
 });
 
 const commands = {
-    'db:start'() {
-        if (!supabaseRunning()) must(run('supabase', ['start']), 'supabase');
+    async 'db:start'() {
+        if (supabaseRunning() && (await dbReachable())) return;
+        // Not running, or running on stale ports: a stop is harmless in the first case and fixes the second.
+        run('supabase', ['stop'], {stdio: 'ignore'});
+        must(run('supabase', ['start']), 'supabase');
     },
     'db:stop'() {
         must(run('supabase', ['stop']), 'supabase');
@@ -73,7 +90,7 @@ const commands = {
         for (const dir of ['.', 'web']) {
             if (!existsSync(`${dir}/node_modules`)) must(run('npm', ['install'], {cwd: dir}), 'npm');
         }
-        commands['db:start']();
+        await commands['db:start']();
         commands.env();
 
         const {apiPort, webPort} = JSON.parse(readFileSync('skeleton.json', 'utf8'));

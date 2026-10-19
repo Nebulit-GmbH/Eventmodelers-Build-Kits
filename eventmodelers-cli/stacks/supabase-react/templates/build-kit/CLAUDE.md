@@ -28,7 +28,7 @@ not attempt to build it, flag it via `request-feedback` instead.
 2. Maintain clear separation of concerns within each slice
 3. Headers, auth, `fetch`, and Supabase table access live exclusively in `src/lib/api.ts` — a
    slice component never imports `src/lib/supabase.ts` itself, never calls `fetch`, and never
-   calls `supabase.from(...)` directly; when the backend slice published a UI contract (`ui-contract` skill, `slice.json` `notes[]`) the slice is built *from* it — path, parameters, body and every error response — and falls back to `apiEndpoint`/`fields[]` only when none exists; it calls `postCommand`/`getReadModel`/`queryReadModel` and only contains
+   calls `supabase.from(...)` directly; a table-backed read model is always read directly with `queryReadModel` (the backend's `GET` contract is ignored for it); when the backend slice published a UI contract (`ui-contract` skill, `slice.json` `notes[]`) for a *write* or a non-table read, the slice is built *from* it — path, parameters, body and every error response — and falls back to `apiEndpoint`/`fields[]` only when none exists; it calls `postCommand`/`getReadModel`/`queryReadModel` and only contains
    business logic (validation, request-body shaping, response handling)
 4. A command's/read-model's screen markup (`meta.pages` on its actor HTML_SCREEN node, scoped to
    this slice's `meta.marks` when the screen is shared) is the visual blueprint — translate it into
@@ -122,9 +122,10 @@ When asked to build a slice, always follow this flow:
    - **`AUTOMATION`** → not this stack's job (no UI counterpart) — invoke `request-feedback`
      rather than building it; it belongs to whichever backend stack is installed alongside this one
 3. Invoke the matching skill and follow its instructions completely. Do not deviate.
-4. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation. No invented fields — if it is not in slice.json, it must not be in the code.
-5. Run `npm run build` and `npm run lint` (both must pass clean), then the slice's own tests only, if any exist.
-6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done` — **unless** the
+4. **UI baseline gate**: run `npx @eventmodelers/cli ui-baseline check` first and act only on its verdict — `UNCHANGED` means skip all UI work; `NO_BASELINE`/`UNKNOWN` mean one full screen diff and every `codeGen.uiPrompts` entry; `CHANGED` names the elements that changed, were added or removed (work on exactly those) and flags `SCREEN_CHANGED` (re-fetch the screen node and adjust the components to it), `ELEMENTS_CHANGED` (diff slice.json against the code) and `PROMPTS_CHANGED` (apply the printed prompts). Details in `lib/prompt.md`, Step 4. After the checks pass and before committing, run `ui-baseline record`.
+5. **Verify against slice.json**: After the skill completes, check that every command field, event field, and specification in slice.json appears in the implementation — specifications are read (Step 3a of the build skill) to understand how the UI should behave and present outcomes; the business logic lives in the backend and is not re-implemented here. No invented fields — if it is not in slice.json, it must not be in the code.
+6. Run `npm run build` and `npm run lint` (both must pass clean), then the slice's own tests only, if any exist.
+7. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done` — **unless** the
    matching build skill flagged a missing `apiEndpoint` and already marked the slice `Blocked`
    (Step 1 exception above); in that case, commit as normal but leave the status `Blocked`.
 

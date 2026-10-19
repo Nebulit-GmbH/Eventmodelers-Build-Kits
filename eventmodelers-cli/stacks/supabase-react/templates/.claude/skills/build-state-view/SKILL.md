@@ -67,10 +67,13 @@ Extract:
        a Slice" step 6) — the built, mocked component still needs a real table/view before it's done,
        so don't flip it to `Done`.
   - `description` — implementation hints (filtering rules, sort order, business meaning).
-- **UI contract (read)** — the backend slice's published `GET` contract: look it up as described in
+- **UI contract (read)** — **not used for a read model backed by a table, which is the normal case on this
+  stack: that is always read directly with `queryReadModel`, even when the backend published a `GET`
+  contract.** Only when `slice.json` says the read model is not a persisted table (a computed view, an
+  external source) does the backend's published `GET` contract apply: look it up as described in
   the `ui-contract` skill ("How the UI build kit looks the contract up" — the `## UI Contract` entry in
-  `slice.json` `notes[]`; parse only its `ui-contract` block — an OpenAPI operation). **When present it
-  is the specification and you build the call from it** — it overrides `apiEndpoint` and the table read:
+  `slice.json` `notes[]`; parse only its `ui-contract` block — an OpenAPI operation). **In that case it
+  is the specification and you build the call from it** — it overrides `apiEndpoint`:
   - fetch with `getReadModel(buildPath('<contract path>', { <path params> }), { <query params> }, samples)`
     from `src/lib/api.ts` — path and query `parameters` exactly as the contract names them, never a
     guessed URL, never `supabase.from(...)`;
@@ -84,13 +87,18 @@ Extract:
   `readmodel.apiEndpoint` (table/view name) + `fields[]` via `queryReadModel` — and note the assumption
   as a code comment.
 - **screens[]** — the actor `SCREEN` element(s) that display this data, if any (see Step 2).
-- **specifications[]** — GWT scenarios/storyline; treat as acceptance criteria (e.g. "given no
-  active reservation, show an empty state").
+- **specifications[]** and **storylines[]** (optional) — GWT scenarios / board walkthroughs. These
+  describe how the slice should **behave** — read them in full (Step 3a) to understand the outcomes
+  and states the UI must present. The business logic itself lives in the backend; the UI does not implement it.
 
 > **Comments**: as in `build-state-change` — resolve consumed ones via the same node-comment
 > endpoint.
 
 ## Step 2 — Read the screen, and especially its marks
+
+> **Gated by `ui-baseline check`** (build prompt, `lib/prompt.md`, Step 4): do this step when the verdict
+> is `SCREEN_CHANGED`, `NO_BASELINE` or `UNKNOWN` — and then also diff the existing JSX against the fetched
+> screen and adjust the UI to it. On `UNCHANGED` skip it.
 
 Identical to `build-state-change` Step 2 — fetch the live screen node
 (`mcp__eventmodelers__get_node`), find this slice's marked fragment in `meta.pages`/`meta.marks`
@@ -112,16 +120,39 @@ multi-read-model component.
 **Markup**: same rule as `build-state-change` — translate the blueprint from Step 2 1:1 into JSX;
 the mockup is the design, not a starting point for a redesign.
 
+**Data binding — the whole point of a read-model component.** Every *data* value in the mockup (names,
+role/organisation lines, selected values, dropdown options, list rows, badges, counts, dates) is a
+sample taken from the model's examples; it must be rendered from the queried data, mapped from
+`readmodel.fields[]` — keep only label/copy (headings, button captions, placeholders) verbatim.
+Check where each displayed value comes from before writing JSX: a field of this read model → bind it;
+a field of another read model on the same screen → it arrives as a prop from the parent that fetched
+it (or a sibling read-model component), never from the mockup. List rows are a `.map()` over the
+fetched rows, not the rows drawn. Self-check: grep the component for the mockup's example strings;
+any hit outside `samples/` means hardcoded data — fix it.
+
+**Find the screen's data sources on the board, not just in `slice.json`.** A screen is often shown by
+one slice but fed by a read model that belongs to *another* slice (e.g. the Contact Details screen
+sits in the Assign Tag slice, yet its contact data comes from the Contact List read model via an edge
+READMODEL → SCREEN). `slice.json` only lists this slice's own elements, so also call
+`mcp__eventmodelers__get_connected_nodes { boardId, nodeId: <screen.id> }` and take every READMODEL
+wired into the screen. Each one is a data source for the displayed values; look up its fields in that
+read model's slice (`.build-kit/.slices/*/*/slice.json`, or `get_node`). A list read model feeding a
+detail screen (`Contact List[]` → one contact) means: query it filtered by the entity id the page
+gets from the route (match the id field, e.g. `contactId` / the command's `recordId`) and render that
+row. If the source read model's slice isn't built, still type and wire against its fields (TODO), do
+not substitute the mockup's values.
+
+
 **Props**: whatever the component needs to *scope* its query (e.g. `customerId`) — passed in from
 its parent, never read from a global store. The queried data itself is **not** a prop — the
 component fetches it.
 
-**With a UI contract (Step 1)**: call `getReadModel(buildPath(path, pathParams), queryParams, samples)`
+**With a UI contract (Step 1, non-table read models only)**: call `getReadModel(buildPath(path, pathParams), queryParams, samples)`
 from `src/lib/api.ts` inside the component instead of the `queryReadModel` snippet below — same
 effect shape (`useEffect` → loading / empty / error / data), but each documented non-2xx response
 (`ApiError.status`) maps to its own state. Never a raw `fetch`.
 
-**Default (no contract) — call `queryReadModel` from `src/lib/api.ts` inside the component**. Never
+**Default (a table-backed read model — always, unless the contract case above applies) — call `queryReadModel` from `src/lib/api.ts` inside the component**. Never
 `supabase.from(...)` directly, never a raw `fetch`:
 
 ```tsx
@@ -182,6 +213,26 @@ export function ActiveReservationView({ customerId }: ActiveReservationViewProps
 }
 ```
 
+### Step 3a — Read the scenarios to understand behavior (not to implement rules)
+
+**Business logic lives in the backend (the projection). The UI never re-derives it** — no
+recomputing totals, statuses or membership from events; render what the read model holds.
+
+Read every entry in `specifications[]` (and the READMODEL beats in `storylines[]`) to understand
+**what the read model looks like in different situations and how the component should present each**:
+
+| Scenario shows | What it tells the UI |
+|---|---|
+| `then` read model is empty (`expectEmptyList` / no rows) | an **empty state** must exist, distinct from loading and error |
+| the same field takes different values across scenarios (e.g. status `open` → `closed`) | each value needs a sensible presentation (label, badge, shown/hidden actions) — presentation only |
+| rows appear/disappear between scenarios | the component renders whatever rows the read model returns; it does not decide which belong |
+| row order visible across scenarios | hint for `order`/sort on the query, if the read model doesn't already guarantee it |
+| a `STORYLINE_NOTE` beat | background only |
+
+Rules:
+- Understand, don't implement: presentation of what the backend provides, nothing more.
+- Cite the scenario behind a non-obvious state in a one-line comment.
+
 Select fields explicitly by name rather than `select('*')`. Map each field's `name` to its actual
 column name — check the paired backend stack's migrations if the naming convention (e.g. camelCase
 vs. snake_case) isn't obvious rather than guessing; if genuinely unclear, use `request-feedback`.
@@ -202,7 +253,9 @@ otherwise; use `null`/`[]` for a sample meant to exercise the empty/background s
 
 Add at least one sample (`sample-1.json`) covering the ordinary case from
 `readmodel.fields[].example` values; add more numbered ones for whatever other scenarios this
-read model's `specifications[]` call out (e.g. an empty result, a second customer's data). The
+read model's `specifications[]` show — **one sample per distinct scenario outcome**, using the
+scenario's own example values (an empty result, each status a row can take, a second customer's
+data). The
 same number across *different* components' `samples/` folders is meant to represent one coherent
 scenario across the whole app (e.g. every component's `sample-2.json` together tell the story of
 "a long-time customer") — keep that in mind when choosing what a given number represents, rather
@@ -230,7 +283,7 @@ one page per slice.
    one place allowed to import across slice folders. Translate the screen's whole, unmarked
    `meta.pages` markup into JSX (the page-level layout), and at each `data-em-mark-id` position
    render that mark's owning slice's component (only for slices already built; leave the rest as
-   the mockup's static content until they are). The page threads shared inputs down as props; a
+   the mockup's static content until they are). Static placeholder content is label/copy only — displayed data (names, selections, options, rows) is bound to its read model, never the mockup's examples or a sample file. The page threads shared inputs down as props; a
    slice component still only knows its own declared props. Update only this slice's marked
    position if the page file already exists.
 
@@ -289,8 +342,8 @@ leaves it alone.
   slice.json.
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   `queryReadModel`'s return value.
-- The component renders a sensible empty/background state, distinct from loading/error, when the
-  data is `null`/`[]`.
+- Every scenario situation (empty, each distinct field value) has a rendered presentation, and the
+  component re-derives nothing the read model already holds.
 - If a screen was read in Step 2, the rendered JSX matches the marked (or whole, if unmarked) HTML
   fragment structurally.
 - Nothing in this slice's folder is imported from another slice's folder, and nothing outside it

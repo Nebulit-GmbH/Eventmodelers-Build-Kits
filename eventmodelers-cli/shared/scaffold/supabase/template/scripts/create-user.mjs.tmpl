@@ -12,6 +12,10 @@ const env = Object.fromEntries(readFileSync('.env', 'utf8').split('\n').map((l) 
 const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {auth: {persistSession: false}}).auth.admin;
 
 const {error} = await admin.createUser({email, password, email_confirm: true});
+if (error?.name === 'AuthRetryableFetchError') {
+    console.error(`Cannot reach Supabase at ${env.SUPABASE_URL}. Start it with npm run db:start (or npm run up), then try again.`);
+    process.exit(1);
+}
 if (error && /already been registered|already exists/i.test(error.message)) {
     const {data} = await admin.listUsers();
     const user = data.users.find((u) => u.email === email);

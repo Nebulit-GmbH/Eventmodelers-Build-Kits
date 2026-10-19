@@ -58,6 +58,20 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 4. Invoke the matching skill and follow its instructions **completely**. Do NOT implement the slice manually.
 
+   **Baseline gate** — before touching any code, run `npx @eventmodelers/cli build-baseline check --scope backend`.
+   It compares the board's node hashes of every element of the slice (commands, events, read models,
+   processors, specifications, ...) with what was recorded after the last successful build:
+   - `UNCHANGED` — nothing on the board changed. Do not rebuild or re-diff; run the slice's tests and
+     finish. Only now is "no code changes needed" a valid outcome.
+   - `NO_BASELINE` / `UNKNOWN` — no recorded build, or the board could not be read: do one full
+     field-by-field diff of slice.json against the code (never treat `UNKNOWN` as `UNCHANGED`).
+   - `CHANGED` — it lists the elements that changed, were added or were removed. Diff slice.json
+     against the code for exactly those and fix every drift; leave what matches alone.
+
+   When the checks pass, run `npx @eventmodelers/cli build-baseline record --scope backend` **before
+   committing**, so `ui-baseline.json` is committed with the slice. Never record without having done the
+   work the verdict asked for. Screens and UI prompts are not this kit's business and never trigger a build.
+
 5. **Verify against slice.json**: Cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code. No invented fields — if it is not in slice.json, it must not be in the code.
 
 6. Run quality checks:
