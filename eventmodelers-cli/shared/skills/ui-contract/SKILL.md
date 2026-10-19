@@ -18,7 +18,7 @@ records that as a contract — the endpoint's **OpenAPI operation**, one per sli
 
 ## When
 
-**Only when handover is on** — the task request's `Handover: on|off` line (authoritative; the runner resolves `run --handover` over the project setting), else `"handover": true` in `.eventmodelers/config.json`. With handover **off/unset**, do nothing: publish no contract, write no `## UI Contract` section, and finish the slice as `Done` (Step 4). The contract exists only for the UI kit that picks up `Handover` slices.
+**Only when handover is on** — the task request's `Handover: on|off` line (authoritative; the runner resolves `run --handover` over the project setting), else `"handover": true` in `.eventmodelers/config.json`. With handover **off/unset**, do nothing: publish no contract, write no `## UI Contract` section, and finish the slice as `Done` (Step 4). The contract exists only for the UI kit that picks up `Waiting` slices.
 
 At the end of building a slice, **after** the endpoint exists (so the contract describes the real
 route, not the plan), before the final commit:
@@ -99,7 +99,7 @@ every MARKDOWN node of the slice's column as a plain string in `slice.json` `not
 `outline` / `fields` / `specs` projections leave `notes` out). The UI build kit therefore needs no
 extra file and no board call.
 
-## Step 4 — Completion status: `Handover` instead of `Done`
+## Step 4 — Completion status: `Waiting` instead of `Done`
 
 A slice with a UI is only finished once the UI kit has built its half. Whether this build kit hands
 over is decided per run, in this order: the task request's `Handover: on|off` line (authoritative — the
@@ -107,11 +107,11 @@ runner resolves `run --handover` over the project setting), else `"handover": tr
 `.eventmodelers/config.json` (saved by `init --handover` / `eventmodelers config --handover on|off`).
 
 - **On** — the build kit's "set the slice to `Done`" for a STATE_VIEW / STATE_CHANGE slice means
-  **`Handover`** instead: after the contract is published and the commit/merge succeeded. Where the build
-  kit's prompt says to call `update-slice-status` (a queued task), set `Handover` through it,
+  **`Waiting`** instead: after the contract is published and the commit/merge succeeded. Where the build
+  kit's prompt says to call `update-slice-status` (a queued task), set `Waiting` through it,
   mirrored in the local `index.json`. For a run-loop build (the task request names the slice), record it
-  with `npx @eventmodelers/cli slice-status Handover` — the run loop pushes it to the board; do not call
-  `update-slice-status`. The UI kit claims `Handover` slices and sets `Done` when its UI is built.
+  with `npx @eventmodelers/cli slice-status Waiting` — the run loop pushes it to the board; do not call
+  `update-slice-status`. The UI kit claims `Waiting` slices and sets `Done` when its UI is built.
 - **Off / unset** — nothing changes: `Done`.
 - Automations and translations have no UI → always `Done`.
 

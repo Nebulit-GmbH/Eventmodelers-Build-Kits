@@ -85,10 +85,23 @@ export function formatPayload(e) {
   return JSON.stringify(rest, null, 2).split('\n').map((l) => `    ${l}`).join('\n');
 }
 
+// The kit's first look at each slice: its first `board-observed` event. A fresh kit records every slice already on
+// the board this way, which says nothing happened — the ids to leave out of the default view of the log.
+export function baselineIds(events) {
+  const seen = new Set();
+  const ids = new Set();
+  for (const e of events) {
+    if (e.type !== 'board-observed' || !e.slice || seen.has(e.slice)) continue;
+    seen.add(e.slice);
+    ids.add(e.id);
+  }
+  return ids;
+}
+
 // types / slice (an id prefix or part of a title) / tag / board (an id prefix — a global kit's log mixes boards) narrow
-// the log; last keeps the final N that remain.
-export function filterEvents(events, { types, slice, tag, board, last } = {}, titles = {}) {
-  let out = events;
+// the log; omit is a set of event ids to leave out (see baselineIds); last keeps the final N that remain.
+export function filterEvents(events, { types, slice, tag, board, last, omit } = {}, titles = {}) {
+  let out = omit?.size ? events.filter((e) => !omit.has(e.id)) : events;
   if (board) out = out.filter((e) => String(e.meta?.board_id ?? '').toLowerCase().startsWith(board.toLowerCase()));
   if (types?.length) out = out.filter((e) => types.includes(e.type));
   if (slice) {

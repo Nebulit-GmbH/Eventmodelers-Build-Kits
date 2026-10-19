@@ -39,7 +39,7 @@ test('an unknown status is refused and lists the valid ones', async (t) => {
   const { root, kit } = await projectWithClaim(t);
   const res = run(root, 'slice-status', 'Finished');
   assert.equal(res.status, 1);
-  assert.match(res.stderr, /Handover/);
+  assert.match(res.stderr, /Waiting/);
   assert.equal(readEvents(kit).some((e) => e.type === 'agent-recorded'), false);
 });
 

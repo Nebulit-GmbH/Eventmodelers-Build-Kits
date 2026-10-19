@@ -9,9 +9,9 @@ The structure defined in the Project-Skills is relevant.
 You work within **exactly ONE context at a time** — the one named in `.build-kit/.slices/current_context.json` (the runner picks it).
 
 - **ONLY** look for and build slices inside `.build-kit/.slices/<currentContext>/`.
-- **NEVER** read, scan, or build slices from any other context directory, even if it has "Handover" slices, and even if the current context has no work left.
-- A "Handover" slice in a *different* context is **NOT yours to build**. Ignore it completely.
-- If the current context has no "Handover" slice, you are **done for this iteration** — reply `<promise>NO_TASKS</promise>` and stop. Do not go looking elsewhere. The runner moves `current_context.json` on to the next context with Handover work between iterations — never change it yourself.
+- **NEVER** read, scan, or build slices from any other context directory, even if it has "Waiting" slices, and even if the current context has no work left.
+- A "Waiting" slice in a *different* context is **NOT yours to build**. Ignore it completely.
+- If the current context has no "Waiting" slice, you are **done for this iteration** — reply `<promise>NO_TASKS</promise>` and stop. Do not go looking elsewhere. The runner moves `current_context.json` on to the next context with Waiting work between iterations — never change it yourself.
 
 ## Your Task
 
@@ -19,8 +19,8 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 1. Read `.build-kit/.slices/current_context.json` to find the active context name, then read `.build-kit/.slices/<contextName>/index.json`. Every item in status "handover" is a task.
 2. Read `.build-kit/AGENTS.md` **if it exists** — the project's accumulated learnings, generated from what earlier builds recorded. If the slice's `slice.json` has a `lastAttempt`, an earlier attempt at it failed: read its `reason`, `lastReply`, `branch` and `changed`, and do not repeat what failed.
 3. Make sure you are on the right branch "feature/<slicename>", if unsure, start from main.
-5. Your slice is the one the task request names (the run loop picked the highest priority slice with status "Handover"); it becomes your PRD. The run loop has already claimed it — its status is "InProgress" in index.json and on the board. Build that slice and do not call `update-slice-status`: the run loop owns the slice's status on the board.
-   **IMPORTANT: Only work on the slice named in the task request. Never switch to another slice, whatever its status. If the task request names no slice and no slice has status "Handover" in the current context, reply with:**
+5. Your slice is the one the task request names (the run loop picked the highest priority slice with status "Waiting"); it becomes your PRD. The run loop has already claimed it — its status is "InProgress" in index.json and on the board. Build that slice and do not call `update-slice-status`: the run loop owns the slice's status on the board.
+   **IMPORTANT: Only work on the slice named in the task request. Never switch to another slice, whatever its status. If the task request names no slice and no slice has status "Waiting" in the current context, reply with:**
    <promise>NO_TASKS</promise> and stop immediately. Do not work on other slices and do not switch to another context.
 6. Pick the slice definition from `.build-kit/.slices/<contextName>/<folder>/slice.json` as defined in the prd. Never work on more than one slice per iteration.
 7. A slice can define additional prompts as codegen/backendPrompt. Any additional prompts defined in backend are hints for the implementation of the slice and have to be taken into account.
@@ -90,12 +90,12 @@ A Slice is not complete if specifications are missing or can't be executed.
 
 ## Stop Condition
 
-**After completing ONE slice, always stop — regardless of whether more slices are in Handover.** The ralph loop will invoke you again for the next slice. Never chain multiple slices in one iteration.
+**After completing ONE slice, always stop — regardless of whether more slices are in Waiting.** The ralph loop will invoke you again for the next slice. Never chain multiple slices in one iteration.
 
 If the slice was completed and committed successfully, reply with:
 <promise>DONE</promise>
 
-If no slice has status "Handover" in the current context, reply with:
+If no slice has status "Waiting" in the current context, reply with:
 <promise>NO_TASKS</promise>
 (Do NOT switch to another context to find work — stop here.)
 

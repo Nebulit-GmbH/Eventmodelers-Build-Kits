@@ -32,9 +32,10 @@ function project(t, { events = true } = {}) {
 
 test('prints one decoded line per event, with the slice\'s title and the agent', (t) => {
   const { root } = project(t);
-  const res = run(root, 'events');
+  // --verbose shows the baseline (the kit's first look at the slice) too; the payload lines are indented, so drop them.
+  const res = run(root, 'events', '--verbose');
   assert.equal(res.status, 0, res.stderr);
-  const lines = res.stdout.trim().split('\n');
+  const lines = res.stdout.trim().split('\n').filter((l) => /^\d{4}-/.test(l));
   assert.equal(lines.length, 5);
   assert.match(lines[0], /board-observed +ccc5e66b "State Change"? +Planned +cc9a$/);
   assert.match(lines[1], /claimed +ccc5e66b "State Change" +pid 4711, clean tree, main@1252bd0c/);
@@ -42,12 +43,22 @@ test('prints one decoded line per event, with the slice\'s title and the agent',
   assert.match(lines[4], /settled +ccc5e66b "State Change" +Done/);
 });
 
+test('the baseline (each slice\'s first board-observed) is hidden unless --verbose, --json or --type asks for it', (t) => {
+  const { root, kit } = project(t);
+  appendEvent(kit, { type: 'board-observed', slice: S, status: 'Done' }, META); // a later observation is a real change
+  const types = (...args) => run(root, 'events', ...args).stdout.split('\n').filter((l) => /^\d{4}-/.test(l)).map((l) => l.split(/ {2,}/)[1]);
+  assert.deepEqual(types(), ['claimed', 'claim-confirmed', 'learning-recorded', 'settled', 'board-observed']);
+  assert.equal(types('--verbose').length, 6);
+  assert.equal(types('--type', 'board-observed').length, 2);
+  assert.equal(run(root, 'events', '--json').stdout.trim().split('\n').length, 6);
+});
+
 test('--type, --slice, --tag and --last narrow it down', (t) => {
   const { root } = project(t);
   const count = (...args) => run(root, 'events', ...args).stdout.trim().split('\n').filter(Boolean).length;
   assert.equal(count('--type', 'claimed,settled'), 2);
-  assert.equal(count('--slice', 'state change'), 4);
-  assert.equal(count('--slice', 'ccc5'), 4);
+  assert.equal(count('--slice', 'state change'), 3); // the baseline board-observed is hidden
+  assert.equal(count('--slice', 'ccc5'), 3);
   assert.equal(count('--tag', 'ci'), 1);
   assert.equal(count('--last', '2'), 2);
   assert.match(run(root, 'events', '--last', '1').stdout, /settled/);

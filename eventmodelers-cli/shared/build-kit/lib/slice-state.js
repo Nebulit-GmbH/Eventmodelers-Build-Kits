@@ -18,7 +18,9 @@ const emptySlice = () => ({
   blocked: null,
 });
 
-const same = (a, b) => typeof a === 'string' && typeof b === 'string' && a.toLowerCase() === b.toLowerCase();
+// `Handover` is the old name of `Waiting`: boards and files written before the rename still hold it.
+export const statusKey = (s) => { const k = (s || '').toLowerCase(); return k === 'handover' ? 'waiting' : k; };
+const same = (a, b) => typeof a === 'string' && typeof b === 'string' && statusKey(a) === statusKey(b);
 
 const apply = {
   // While a claim is open the board's view is recorded but does not touch `status`: a refresh that
@@ -29,7 +31,7 @@ const apply = {
     if (s.claim) return;
     s.status = e.status;
     // Attempts count builds that failed to move the slice off the status it was put back to (Planned, or
-    // Handover for UI kits); any other status means it moved. Any status but Blocked lifts a block.
+    // Waiting for UI kits); any other status means it moved. Any status but Blocked lifts a block.
     if (!same(e.status, s.retryStatus ?? 'Planned')) { s.attempts = 0; s.lastFailure = null; }
     if (!same(e.status, 'Blocked')) s.blocked = null;
   },
@@ -150,7 +152,7 @@ export function renderLearnings(state) {
 
 // What to do with a claimed slice once its build is over. `boardStatus` is the board's current status
 // for it (null when unknown or there is no board); `pickupStatus` is what an unfinished slice goes back
-// to (Planned, or Handover for UI kits). Actions: discard {base, skip}, push {status}, release {reason} —
+// to (Planned, or Waiting for UI kits). Actions: discard {base, skip}, push {status}, release {reason} —
 // the loop appends `settled` after a successful push and `released` for a release. A failed push appends
 // nothing, so the claim stays open and the next iteration settles it again.
 export function decideSettle(state, sliceId, { boardStatus = null, pickupStatus = 'Planned' } = {}) {

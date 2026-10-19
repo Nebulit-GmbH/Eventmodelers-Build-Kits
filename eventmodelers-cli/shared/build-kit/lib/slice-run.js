@@ -6,7 +6,7 @@
 // no board (--local): nothing is pushed or read, the log alone decides.
 
 import { appendEvent, readEvents } from './slice-events.js';
-import { fold, decideSettle, decideRecovery } from './slice-state.js';
+import { fold, decideSettle, decideRecovery, statusKey } from './slice-state.js';
 import { adoptAgentEdits, projectStatus } from './slice-projection.js';
 import { discardUnfinishedWork, gitBase } from './slice-git.js';
 
@@ -71,7 +71,7 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
       console.error(`[ralph] Could not read the board before claiming "${planned.title}":`, err.message);
       return 'lost';
     }
-    if (current && current.toLowerCase() !== pickupStatus.toLowerCase()) {
+    if (current && statusKey(current) !== statusKey(pickupStatus)) {
       console.log(`[ralph] "${planned.title}" is ${current} on the board, not ${pickupStatus} — someone else got there first.`);
       recordEvent(kitDir, { type: 'board-observed', slice: planned.id, status: current }, meta);
       return 'lost';

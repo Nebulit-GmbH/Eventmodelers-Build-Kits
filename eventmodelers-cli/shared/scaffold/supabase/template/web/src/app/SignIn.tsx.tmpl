@@ -1,0 +1,42 @@
+import { useState, type FormEvent } from 'react';
+import { supabase } from '../lib/supabase';
+import { APP_TITLE } from './model';
+
+// Supabase email + password sign-in. Users are created with `npm run user -- <email> <password>`.
+export function SignIn() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) setError(error.message);
+    setBusy(false);
+  }
+
+  return (
+    <section className="section">
+      <div className="container" style={{ maxWidth: 400 }}>
+        <h1 className="title">{APP_TITLE}</h1>
+        <form onSubmit={onSubmit}>
+          <div className="field">
+            <label className="label" htmlFor="email">Email</label>
+            <input id="email" className="input" type="email" autoComplete="username" required
+              value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label className="label" htmlFor="password">Password</label>
+            <input id="password" className="input" type="password" autoComplete="current-password" required
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          {error && <p className="help is-danger mb-3">{error}</p>}
+          <button className={`button is-primary${busy ? ' is-loading' : ''}`} type="submit">Sign in</button>
+        </form>
+      </div>
+    </section>
+  );
+}

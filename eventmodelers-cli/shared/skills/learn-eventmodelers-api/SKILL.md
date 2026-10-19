@@ -646,7 +646,7 @@ Create a complete slice (1 column + its nodes automatically placed).
     interaction?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
     swimlane?: Partial<NodeData> & { rowId?: string, fields?: FieldDef[] }
   }
-  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Handover' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
+  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Waiting' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
 }
 ```
 
@@ -673,7 +673,7 @@ Create a standalone SLICE_BORDER node spanning an **existing** column. Unlike th
 {
   columnId: string   // id of an existing column on this timeline
   title: string      // slice title — always taken from this field, never derived
-  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Handover' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
+  status?: 'Created' | 'Ready' | 'Planned' | 'InProgress' | 'Waiting' | 'Review' | 'Done' | 'Blocked' | 'Assigned' | 'Informational'
   data?: Record<string, unknown>   // optional node.data payload
   meta?: Record<string, unknown>   // optional extra meta fields (type, colId, title are always set explicitly and cannot be overridden here)
 }
@@ -847,8 +847,8 @@ How much each slice of one context has been reworked — read-only, derived from
 for it.
 
 A slice's rework is read from its own SLICE_BORDER history. Going backwards means a step down the progress order
-(Created → Ready → Planned → Assigned → InProgress → Handover → Review → Done), or reaching `Blocked` from
-`Handover`/`Review`/`Done`;
+(Created → Ready → Planned → Assigned → InProgress → Waiting → Review → Done), or reaching `Blocked` from
+`Waiting`/`Review`/`Done`;
 `Informational` is never scored. `reopens` counts transitions leading away from `Done`, `changes` counts writes to the
 slice itself. This says nothing about edits to the elements inside a slice.
 

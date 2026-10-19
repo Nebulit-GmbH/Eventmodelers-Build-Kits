@@ -12,8 +12,8 @@ test('a kit without lib/kit.json claims Planned slices', (t) => {
 test('lib/kit.json names the status the kit claims from', (t) => {
   const kit = tempKit(t);
   mkdirSync(join(kit, 'lib'));
-  writeFileSync(join(kit, 'lib', 'kit.json'), '{ "pickupStatus": "Handover" }');
-  assert.equal(readPickupStatus(kit), 'Handover');
+  writeFileSync(join(kit, 'lib', 'kit.json'), '{ "pickupStatus": "Waiting" }');
+  assert.equal(readPickupStatus(kit), 'Waiting');
 });
 
 test('an unreadable or empty kit.json falls back to Planned', (t) => {
@@ -37,4 +37,11 @@ test('handover is off unless the project setting or this run turns it on', (t) =
   assert.equal(resolveHandover({}), true);
   process.env.RALPH_HANDOVER = '';
   assert.equal(resolveHandover({}), false);
+});
+
+test('a kit.json written before the rename (Handover) still reads as Waiting', (t) => {
+  const kit = tempKit(t);
+  mkdirSync(join(kit, 'lib'), { recursive: true });
+  writeFileSync(join(kit, 'lib', 'kit.json'), '{ "pickupStatus": "Handover" }');
+  assert.equal(readPickupStatus(kit), 'Waiting');
 });

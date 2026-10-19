@@ -1,0 +1,25 @@
+// Creates (or resets the password of) a confirmed Supabase auth user to sign in with. There is no sign-up screen.
+// Usage: npm run create-user -- <email> <password>
+import {readFileSync} from 'node:fs';
+import {createClient} from '@supabase/supabase-js';
+
+const [email, password] = process.argv.slice(2);
+if (!email || !password) {
+    console.error('usage: npm run create-user -- <email> <password>');
+    process.exit(1);
+}
+const env = Object.fromEntries(readFileSync('.env', 'utf8').split('\n').map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2]]));
+const admin = createClient(env.SUPABASE_URL, env.SUPABASE_SECRET_KEY, {auth: {persistSession: false}}).auth.admin;
+
+const {error} = await admin.createUser({email, password, email_confirm: true});
+if (error && /already been registered|already exists/i.test(error.message)) {
+    const {data} = await admin.listUsers();
+    const user = data.users.find((u) => u.email === email);
+    const {error: updateError} = await admin.updateUserById(user.id, {password});
+    if (updateError) throw updateError;
+    console.log(`password reset for ${email}`);
+} else if (error) {
+    throw error;
+} else {
+    console.log(`created ${email}`);
+}

@@ -96,9 +96,9 @@ test('attempt-failed counts attempts; they reset once the board shows the slice 
   assert.equal(slice([...two, { type: 'board-observed', slice: 's1', status: 'Done' }]).attempts, 0);
 });
 
-test('attempts reset against the status the slice went back to, not a hard-coded Planned (UI kits pick up Handover)', () => {
-  const failed = { type: 'attempt-failed', slice: 's1', reason: 'no-outcome', lastReply: null, status: 'Handover' };
-  const waiting = [failed, failed, { type: 'board-observed', slice: 's1', status: 'Handover' }];
+test('attempts reset against the status the slice went back to, not a hard-coded Planned (UI kits pick up Waiting)', () => {
+  const failed = { type: 'attempt-failed', slice: 's1', reason: 'no-outcome', lastReply: null, status: 'Waiting' };
+  const waiting = [failed, failed, { type: 'board-observed', slice: 's1', status: 'Waiting' }];
   assert.equal(slice(waiting).attempts, 2);
   assert.equal(slice([...waiting, { type: 'board-observed', slice: 's1', status: 'Done' }]).attempts, 0);
 });
@@ -110,9 +110,9 @@ test('a block starts the count afresh, so an unblocked slice gets a full budget 
   assert.equal(slice([failed, { type: 'blocked', slice: 's1', reason: 'x', at: 'now' }, failed]).attempts, 1);
 });
 
-test('any status but Blocked on the board lifts the block (a person may set Handover, not only Planned)', () => {
+test('any status but Blocked on the board lifts the block (a person may set Waiting, not only Planned)', () => {
   const blocked = { type: 'blocked', slice: 's1', reason: 'x', at: 'now' };
-  assert.equal(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Handover' }]).blocked, null);
+  assert.equal(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Waiting' }]).blocked, null);
   assert.notEqual(slice([blocked, { type: 'board-observed', slice: 's1', status: 'Blocked' }]).blocked, null);
 });
 
@@ -353,7 +353,7 @@ test('settle with no outcome discards the build and puts the slice back to the p
     { type: 'discard', base: BASE, skip: false },
     { type: 'push', status: 'Planned' },
   ]);
-  assert.deepEqual(decideSettle(open(), 's1', { boardStatus: 'InProgress', pickupStatus: 'Handover' }).at(-1), { type: 'push', status: 'Handover' });
+  assert.deepEqual(decideSettle(open(), 's1', { boardStatus: 'InProgress', pickupStatus: 'Waiting' }).at(-1), { type: 'push', status: 'Waiting' });
 });
 
 test('an agent that recorded only the pickup status counts as unfinished', () => {

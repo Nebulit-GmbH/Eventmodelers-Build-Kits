@@ -36,7 +36,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 14. even if the slice is fully implemented, run your test-analyzer skill and provide the code-slice.json file as defined in the skill
 15. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge ( update
     first )
-16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Handover`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
+16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Waiting`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
 17. Record any reusable learning you have not recorded yet (see **Recording Learnings**).
  18. If an entry in `.build-kit/AGENTS.md` turned out wrong or obsolete, retract it (see **Recording Learnings**).
 19. Finish the iteration.

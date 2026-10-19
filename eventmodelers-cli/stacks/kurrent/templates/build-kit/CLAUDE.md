@@ -93,7 +93,7 @@ When asked to build a slice, always follow this flow:
    reappears as `Planned` — never dismiss a mismatch as "already implemented" or harmless drift; diff
    slice.json against the code field by field and update the code to match every change.
 5. Run quality checks (`./mvnw compile -q`, then the slice tests only).
-6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to set is `Handover`, not `Done` — see the `ui-contract` skill, Step 4.
+6. If checks pass, commit with `feat: [Slice Name]` and set slice status to `Done`. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to set is `Waiting`, not `Done` — see the `ui-contract` skill, Step 4.
 
 After you are done, automatically run the tests for the slice that was edited.
 

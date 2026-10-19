@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filterEvents, formatEvent, formatPayload, summarize } from '../shared/build-kit/lib/events-view.js';
+import { baselineIds, filterEvents, formatEvent, formatPayload, summarize } from '../shared/build-kit/lib/events-view.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
 
 // `eventmodelers events`: the event log, decoded for a terminal. One line per event; filters; and the state the
@@ -125,4 +125,19 @@ test('a call shows how long it took, and that it failed', () => {
   assert.match(line(ev('tool-call', { prompt: 'p1', tool: 'get_node', detail: 'get_node', durationMs: 420 })), /get_node \(420ms\)/);
   assert.match(line(ev('prompt-action', { prompt: 'p1', action: 'commented', detail: '1 comment', durationMs: 2340, error: true })), /commented 1 comment \(2\.3s, failed\)/);
   assert.doesNotMatch(line(ev('tool-call', { prompt: 'p1', tool: 'get_node' })), /\(/);
+});
+
+test('the baseline is each slice\'s first board-observed event, and omit leaves it out', () => {
+  const A = 'aaaaaaaa-0000-0000-0000-000000000000';
+  const log = [
+    ev('board-observed', { id: 'e1', slice: S, status: 'Created' }),
+    ev('board-observed', { id: 'e2', slice: A, status: 'Done' }),
+    ev('board-observed', { id: 'e3', slice: S, status: 'Planned' }),
+    ev('claimed', { id: 'e4', slice: S, pid: 1 }),
+  ];
+  assert.deepEqual([...baselineIds(log)], ['e1', 'e2']);
+  assert.deepEqual(filterEvents(log, { omit: baselineIds(log) }).map((e) => e.id), ['e3', 'e4']);
+  assert.deepEqual(filterEvents(log, {}).map((e) => e.id), ['e1', 'e2', 'e3', 'e4']);
+  // --last counts what is left after the baseline is gone
+  assert.deepEqual(filterEvents(log, { omit: baselineIds(log), last: 1 }).map((e) => e.id), ['e4']);
 });

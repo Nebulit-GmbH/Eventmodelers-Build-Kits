@@ -104,7 +104,7 @@ note), not learnings.
 
 ### B. `decide*` — pure
 
-`decideSettle(state, slice, { boardStatus, pickupStatus })` (`pickupStatus` is `Planned`, or `Handover` for UI kits):
+`decideSettle(state, slice, { boardStatus, pickupStatus })` (`pickupStatus` is `Planned`, or `Waiting` for UI kits):
 
 | facts | actions | covers |
 |---|---|---|

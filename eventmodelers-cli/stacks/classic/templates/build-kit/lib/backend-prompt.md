@@ -36,7 +36,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 13. Run the quality checks listed in `.build-kit/ARCHITECTURE.md` — build/compile, then only the tests touched by this slice (do not run all tests).
 14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
 15. Invoke `/record-evidence` to write the implementation evidence (element → code mapping, files, specification → test mapping, seams, assumptions, commit) as a note into the slice's column, in the chapter's `Implementation` feedback lane.
-16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Handover`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
+16. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Waiting`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
 17. Record any reusable learning you have not recorded yet (see **Recording Learnings**).
 18. If an entry in `.build-kit/AGENTS.md` turned out wrong or obsolete, retract it (see **Recording Learnings**).
 19. Finish the iteration.

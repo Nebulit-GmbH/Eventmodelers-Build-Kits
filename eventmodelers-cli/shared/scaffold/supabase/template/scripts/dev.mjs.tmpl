@@ -1,0 +1,128 @@
+// Runs the app locally with Node only: no extra tools, no extra dependencies.
+// Usage: npm run up | down | db:start | db:stop | env | check
+//   up        start Supabase if needed, write the .env files, then run the API (tsx watch) and the web (vite) with hot reload.
+//             Ctrl+c stops API and web; Supabase keeps running.
+//   down      stop an `npm run up` from another terminal.
+//   db:start  start the local Supabase stack (ports in supabase/config.toml).
+//   db:stop   stop the local Supabase stack.
+//   env       write .env and web/.env from the running Supabase stack and skeleton.json.
+//   check     backend tests (Docker), then the web build and lint.
+import {spawn, spawnSync} from 'node:child_process';
+import {existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import net from 'node:net';
+
+const PID_FILE = '.dev.pid';
+const WIN = process.platform === 'win32';
+// npm, npx and the Supabase CLI are .cmd shims on Windows, which only start through a shell.
+const launch = (cmd, args) => (WIN ? [[cmd, ...args].join(' '), [], {shell: true}] : [cmd, args, {}]);
+const run = (cmd, args, opts = {}) => {
+    const [file, fileArgs, extra] = launch(cmd, args);
+    return spawnSync(file, fileArgs, {stdio: 'inherit', ...extra, ...opts});
+};
+// Stops a process and everything it started (npm, tsx watch, vite). POSIX: the child leads its own process
+// group, so one signal reaches all of them. Windows has no groups: taskkill walks the tree.
+const killTree = (pid, signal = 'SIGINT') => {
+    if (WIN) spawnSync('taskkill', ['/pid', String(pid), '/T', '/F'], {stdio: 'ignore'});
+    else try { process.kill(-pid, signal); } catch {}
+};
+const must = (result, what) => {
+    if (result.error?.code === 'ENOENT') {
+        console.error(`${what}: command not found. Install it and try again.`);
+        process.exit(1);
+    }
+    if (result.status !== 0) process.exit(result.status ?? 1);
+};
+const supabaseRunning = () => run('supabase', ['status'], {stdio: 'ignore'}).status === 0;
+const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+const free = (port) => new Promise((resolve) => {
+    const s = net.createServer().once('error', () => resolve(false)).once('listening', () => s.close(() => resolve(true))).listen(port);
+});
+
+const commands = {
+    'db:start'() {
+        if (!supabaseRunning()) must(run('supabase', ['start']), 'supabase');
+    },
+    'db:stop'() {
+        must(run('supabase', ['stop']), 'supabase');
+    },
+    env() {
+        must(run(process.execPath, ['scripts/write-env.mjs']), 'node');
+    },
+    check() {
+        for (const [cmd, args] of [['npm', ['test']], ['npm', ['--prefix', 'web', 'run', 'build']], ['npm', ['--prefix', 'web', 'run', 'lint']]]) {
+            must(run(cmd, args), cmd);
+        }
+    },
+    down() {
+        const pid = existsSync(PID_FILE) ? Number(readFileSync(PID_FILE, 'utf8')) : 0;
+        if (pid && alive(pid)) {
+            if (WIN) killTree(pid);
+            else process.kill(pid, 'SIGINT');
+            console.log('stopping API and web (Supabase keeps running; npm run db:stop stops it)');
+        } else {
+            console.log('nothing running (no live npm run up found)');
+        }
+        rmSync(PID_FILE, {force: true});
+    },
+    async up() {
+        const previous = existsSync(PID_FILE) ? Number(readFileSync(PID_FILE, 'utf8')) : 0;
+        if (previous && alive(previous)) {
+            console.error(`Already running (pid ${previous}). Stop it with: npm run down`);
+            process.exit(1);
+        }
+        for (const dir of ['.', 'web']) {
+            if (!existsSync(`${dir}/node_modules`)) must(run('npm', ['install'], {cwd: dir}), 'npm');
+        }
+        commands['db:start']();
+        commands.env();
+
+        const {apiPort, webPort} = JSON.parse(readFileSync('skeleton.json', 'utf8'));
+        const busy = [];
+        for (const [name, port] of [['API', apiPort], ['web', webPort]]) if (!(await free(port))) busy.push(`${name} port ${port}`);
+        if (busy.length) {
+            console.error(`In use: ${busy.join(', ')}. Is the app already running (npm run down)? Otherwise find what uses it (macOS/Linux: lsof -nP -iTCP -sTCP:LISTEN; Windows: netstat -ano), or change the ports in skeleton.json and run npm run env.`);
+            process.exit(1);
+        }
+
+        writeFileSync(PID_FILE, String(process.pid));
+        // POSIX: each child leads its own process group (see killTree). Windows: no detach, it would open a console window.
+        const children = [['api', 'npm', ['run', 'dev']], ['web', 'npm', ['--prefix', 'web', 'run', 'dev']]].map(([name, cmd, args]) => {
+            const [file, fileArgs, extra] = launch(cmd, args);
+            const child = spawn(file, fileArgs, {detached: !WIN, stdio: ['ignore', 'pipe', 'pipe'], ...extra});
+            for (const out of [child.stdout, child.stderr]) {
+                let rest = '';
+                out.on('data', (chunk) => {
+                    const lines = (rest + chunk).split('\n');
+                    rest = lines.pop();
+                    for (const line of lines) console.log(`${name.padEnd(4)} | ${line}`);
+                });
+            }
+            return {name, child};
+        });
+
+        let stopping = false;
+        const stop = (code = 0) => {
+            if (stopping) return;
+            stopping = true;
+            for (const {child} of children) killTree(child.pid);
+            rmSync(PID_FILE, {force: true});
+            setTimeout(() => process.exit(code), 1500).unref();
+        };
+        process.on('SIGINT', () => stop());
+        process.on('SIGTERM', () => stop());
+        for (const {name, child} of children) {
+            child.on('exit', (code) => {
+                if (!stopping) console.error(`${name} exited (${code}); stopping the rest`);
+                stop(code ?? 0);
+            });
+        }
+        console.log(`API http://localhost:${apiPort}  web http://localhost:${webPort}  (Ctrl+c to stop)`);
+    },
+};
+
+const name = process.argv[2];
+if (!commands[name]) {
+    console.error(`usage: node scripts/dev.mjs <${Object.keys(commands).join('|')}>`);
+    process.exit(1);
+}
+await commands[name]();

@@ -137,13 +137,30 @@ Use skills in Claude Code with `/skill-name`:
 
 Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, `/update-slice-status`, and `/request-feedback` have no stack-specific content and install into every stack from `shared/skills/` instead.
 
+## `scaffold`: a runnable app from your board
+
+`scaffold <dir>` reads the board and generates an app skeleton around the build kits, so slice building starts from an app that already runs. `--type` picks what gets installed and generated:
+
+| Type | Installs | You get |
+|---|---|---|
+| `supabase` (default) | `supabase` at the root, `supabase-react` in `web/` | Supabase email/password sign-in, a layout with one navigation entry per timeline, a page shell per screen at `web/src/pages/<ScreenTitle>.tsx`, `501 Not Implemented` for every modeled endpoint without a slice (a built route always wins), a "not built yet" placeholder in the UI, hot reload for both halves, `npm run up` |
+
+Needs on the machine: Node 22, Docker, Supabase CLI, Flyway + Java (the command lists what is missing). The skeleton itself needs nothing beyond Node, on macOS, Linux and Windows: `npm run up` / `down` / `db:stop` / `user -- <email> <password>` / `check` all go through one plain script, `scripts/dev.mjs`. `<dir>` must be empty or new, or an earlier skeleton, which is refreshed from the current model — generated files are rewritten, pages and anything a builder wrote are kept. Titles come from the board verbatim; a screen's route comes only from a `route /orders` line in its description, the post-sign-in page from a "home page" line, and Bulma is used when the screen mockups use it. `--no-install` stops after generating, `--no-check` skips the checks; ports are picked free automatically and a refresh keeps them (`--port api=3200` pins one; repeatable).
+
+**Your own templates.** `npx @eventmodelers/cli init-templates [paths...]` copies the built-in templates into `./templates/` for you to edit (`--list` shows the paths; name a file such as `web/src/app/Layout.tsx` or a folder such as `web/src/app` to copy only those, and take only what you mean to change — a copied template stops following the CLI's updates; existing files are kept unless `--force`). `scaffold` uses what it finds there and the built-in template for everything else. Or put `*.tmpl` files in a `templates/` folder in the app's root (or point `--templates <dir>` at one, which also works on the first run). A file there replaces the built-in template at the same path — `templates/web/src/app/Layout.tsx.tmpl` replaces `web/src/app/Layout.tsx` — and a path with no built-in counterpart is simply added. The same tokens apply (`__APP_TITLE__`, `__API_PORT__`, `__WEB_PORT__`, `__DB_PORT__`), and every refresh uses them again, so customisations survive a model change. Only `*.tmpl` files count, so nothing in `templates/` is compiled as project code. Files the scaffold writes once (pages, `extraEndpoints.ts`) are never overwritten whatever you put there; edit those in place.
+
+The `supabase` skeleton generator is adapted from the em-scaffold skill by Adrian Mowat (MIT, `shared/scaffold/LICENSE-em-scaffold`).
+
 ## Everyday commands
 
 ```bash
 npx @eventmodelers/cli init --stack <name>          # scaffold a stack + install + configure (alias: install)
 npx @eventmodelers/cli init --stack <name> --demo   # same, plus a ready-made demo model in the kit's .slices/ to build against
+npx @eventmodelers/cli scaffold <dir> --type supabase  # app skeleton from the board (sign-in, navigation, a page per screen, 501 for unbuilt slices) + both kits installed, ready for `run`
 npx @eventmodelers/cli re-init                      # refresh an already-installed kit's scripts/skills only — never touches the root scaffold
 npx @eventmodelers/cli run                          # start the agent loop (ralph-claude.js) from the installed kit dir
+npx @eventmodelers/cli run --all                      # every build kit in the project at once (this directory and up to two levels below, e.g. a scaffolded app's root and web/), prefixed output, Ctrl+c stops all; other flags (--agent, --handover, …) go to each
+npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
 npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
@@ -153,7 +170,7 @@ npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude 
 npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
 npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
 npx @eventmodelers/cli run --id <id> --name <label>  # override this run's agent identity (id + display name); `init --name` persists a name instead
-npx @eventmodelers/cli run --handover               # backend kit, this run only: finish slices that have a UI at `Handover` instead of `Done` (see Backend → UI handover)
+npx @eventmodelers/cli run --handover               # backend kit, this run only: finish slices that have a UI at `Waiting` instead of `Done` (see Backend → UI handover)
 npx @eventmodelers/cli config --handover on|off      # persist that choice for the project (`handover` in .eventmodelers/config.json)
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
@@ -198,7 +215,7 @@ npx @eventmodelers/cli run --local
 
 and the agent starts building — `--local` skips platform config and credential lookup entirely, so it works straight out of `init` with nothing connected. Every TODO you fill in gets exercised on the next iteration against real slice data covering all four slice types (state change, state view, automation, translation), which is exactly the coverage a new stack's `build-*` skills need before it's worth promoting.
 
-**Backend → UI handover.** Besides the usual statuses a slice can be `Ready` (modeling done, waiting to be planned) and `Handover` (backend built, UI contract published, waiting for the UI kit). The flow is `Ready → Planned → InProgress → Handover → InProgress → Done`. Install with `init --handover` (or `re-init --handover`; switch later with `eventmodelers config --handover on|off`; for a single run `run --handover` overrides the setting without saving anything), which saves `"handover": true` in `.eventmodelers/config.json` — then a backend kit ends STATE_VIEW / STATE_CHANGE slices at `Handover` instead of `Done` (the `ui-contract` skill, Step 4, owns that rule); without the flag nothing changes: slices end at `Done`, exactly as before. A kit claims work from the status named in its `lib/kit.json` — `{ "pickupStatus": "Handover" }` for the `react` / `supabase-react` UI kits, absent (= `Planned`) for backend kits. A new UI kit ships that file and sets `Done` when its half is built; a new backend kit just invokes `ui-contract`. Needs a platform with the `Ready` / `Handover` statuses.
+**Backend → UI handover.** Besides the usual statuses a slice can be `Ready` (modeling done, waiting to be planned) and `Waiting` (backend built, UI contract published, waiting for the UI kit). The flow is `Ready → Planned → InProgress → Waiting → InProgress → Done`. Install with `init --handover` (or `re-init --handover`; switch later with `eventmodelers config --handover on|off`; for a single run `run --handover` overrides the setting without saving anything), which saves `"handover": true` in `.eventmodelers/config.json` — then a backend kit ends STATE_VIEW / STATE_CHANGE slices at `Waiting` instead of `Done` (the `ui-contract` skill, Step 4, owns that rule); without the flag nothing changes: slices end at `Done`, exactly as before. A kit claims work from the status named in its `lib/kit.json` — `{ "pickupStatus": "Waiting" }` for the `react` / `supabase-react` UI kits, absent (= `Planned`) for backend kits. A new UI kit ships that file and sets `Done` when its half is built; a new backend kit just invokes `ui-contract`. Needs a platform with the `Ready` / `Waiting` statuses.
 
 **UI contract (handover only).** With handover on, the scaffolded `build-state-view` / `build-state-change` skills end by invoking the shared `ui-contract` skill, which publishes each slice's read (`GET`) or write (`POST`) contract — the endpoint's OpenAPI operation, as a ```` ```yaml ui-contract ```` block — as a `## UI Contract` section in the slice's feedback-lane markdown node (exported in `slice.json` `notes[]`, so a UI build kit can look it up directly). Two things are yours to decide: *where the contract is derived from* (point the `UI Contract` section of those skills at your stack's machine-readable API description, if it has one — the `node`/`supabase` stacks use their `@openapi` blocks via a `ui-contract-from-openapi.md` reference, taking the operation verbatim — otherwise the skill writes the equivalent OpenAPI operation from the route code), and, if you need a different shape or location, a whole-skill override: ship `.claude/skills/ui-contract/SKILL.md` in the stack's templates and it replaces the shared one (stack templates are applied after `shared/skills/`).
 
@@ -652,7 +669,7 @@ Pair it with `--id`: a `--standalone`/`--global` run mints a fresh id per run, s
 
 ### Backend → UI handover (`--handover`)
 
-A slice with a UI is only finished once two kits have each built their half: the backend kit builds the endpoint and publishes its contract, the UI kit builds the frontend against it. `--handover` makes the first kit stop at `Handover` instead of `Done`, so the second one can claim the slice.
+A slice with a UI is only finished once two kits have each built their half: the backend kit builds the endpoint and publishes its contract, the UI kit builds the frontend against it. `--handover` makes the first kit stop at `Waiting` instead of `Done`, so the second one can claim the slice.
 
 ```bash
 npx @eventmodelers/cli init --stack node --handover   # persisted: "handover": true in .eventmodelers/config.json (also re-init)
@@ -663,18 +680,18 @@ npx @eventmodelers/cli run --handover                 # this run only — writes
 
 | | Handover off (default) | Handover on |
 |---|---|---|
-| Backend kit, STATE_VIEW / STATE_CHANGE slice | ends at `Done`, no UI contract published | publishes the UI contract, ends at `Handover` |
+| Backend kit, STATE_VIEW / STATE_CHANGE slice | ends at `Done`, no UI contract published | publishes the UI contract, ends at `Waiting` |
 | Backend kit, automation / translation | `Done` | `Done` — no UI counterpart |
-| UI kit (`react`, `supabase-react`) | claims `Handover` only | claims `Handover` only, sets `Done` when its UI is built |
+| UI kit (`react`, `supabase-react`) | claims `Waiting` only | claims `Waiting` only, sets `Done` when its UI is built |
 
-Flow: `Ready → Planned → InProgress → Handover → InProgress → Done`. Precedence for a run is `run --handover` over the project's `handover` setting; the runner states the effective value to the agent as a `Handover: on|off` line in its task, so the agent never has to work it out from `config.json`. `config --handover` writes to the project's config (the installed kit's project, else the nearest `.eventmodelers/config.json` up the tree — never the account-wide one in `~/`).
+Flow: `Ready → Planned → InProgress → Waiting → InProgress → Done`. Precedence for a run is `run --handover` over the project's `handover` setting; the runner states the effective value to the agent as a `Handover: on|off` line in its task, so the agent never has to work it out from `config.json`. `config --handover` writes to the project's config (the installed kit's project, else the nearest `.eventmodelers/config.json` up the tree — never the account-wide one in `~/`).
 
 **What to know before relying on it**
 
-- **UI kits only ever claim `Handover`.** Against a board whose backend finished slices at `Done`, a `react` / `supabase-react` kit has nothing to do and replies `NO_TASKS` — the backend side must run with handover on.
+- **UI kits only ever claim `Waiting`.** Against a board whose backend finished slices at `Done`, a `react` / `supabase-react` kit has nothing to do and replies `NO_TASKS` — the backend side must run with handover on.
 - **Both sides need the new kit.** An already-installed backend kit keeps its old `ralph.js` and prompts and silently ignores `--handover` (slices still end at `Done`); `re-init` it to pick the feature up.
-- **The platform must know the `Ready` / `Handover` statuses.**
-- A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Handover" }`; absent means `Planned`.
+- **The platform must know the `Ready` / `Waiting` statuses.**
+- A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Waiting" }`; absent means `Planned`.
 - `run --status-trigger <status>` overrides that pickup status for a single run (e.g. `--status-trigger Ready`); nothing is saved.
 
 The contract itself is the shared `ui-contract` skill's job (see above); it also owns the rule for which status a slice ends at.

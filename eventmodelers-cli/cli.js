@@ -20,6 +20,10 @@ import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from
 import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
+import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, builtInTemplates, initTemplates } from './lib/scaffold.js';
+import { supervise } from './lib/supervise.js';
+import { findBuildKitDirs } from './lib/build-kits.js';
+import { buildModel } from './lib/scaffold-model.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
 import { latestPublishedVersion, updateHints } from './lib/update-check.js';
@@ -37,7 +41,7 @@ import { readEvents } from './shared/build-kit/lib/slice-events.js';
 import { findPromptEvent, replayRequest } from './shared/build-kit/lib/prompt-replay.js';
 import { prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from './shared/build-kit/lib/event-prune.js';
 import { fold } from './shared/build-kit/lib/slice-state.js';
-import { filterEvents, formatEvent, formatPayload, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
+import { filterEvents, baselineIds, formatEvent, formatPayload, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
 import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
@@ -3286,11 +3290,11 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
+const NO_INIT_REQUIRED = new Set(['init', 'scaffold', 'init-templates', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
-const NO_KIT_UPDATE_HINT = new Set(['init', 're-init', 'uninstall']);
+const NO_KIT_UPDATE_HINT = new Set(['init', 'scaffold', 'init-templates', 're-init', 'uninstall']);
 
 // Retired: still recognised, so an old script or muscle memory gets an explanation instead of "unknown option".
 // The hidden options and the `bridge` command exist only to say so; they do nothing else.
@@ -3372,13 +3376,13 @@ const AGENT_NAME_OPTION = [
 ];
 
 // `--handover` is the project policy for how a backend build kit finishes a slice with a UI:
-// set, it ends STATE_VIEW / STATE_CHANGE slices at `Handover` (the UI kit builds the rest and sets
+// set, it ends STATE_VIEW / STATE_CHANGE slices at `Waiting` (the UI kit builds the rest and sets
 // `Done`); unset, it ends at `Done`, exactly as before. Persisted as `handover: true` in the project's
 // config.json — the `ui-contract` skill (Step 4) reads it there. Switch it later with
 // `eventmodelers config --handover on|off`.
 const HANDOVER_OPTION = [
   '--handover',
-  'Backend build kit: finish slices that have a UI at status `Handover` (UI build kit takes over, then sets `Done`) instead of `Done`. Saved as `handover: true` in .eventmodelers/config.json; without it slices end at `Done`. Turn it off later with `eventmodelers config --handover off`.',
+  'Backend build kit: finish slices that have a UI at status `Waiting` (UI build kit takes over, then sets `Done`) instead of `Done`. Saved as `handover: true` in .eventmodelers/config.json; without it slices end at `Done`. Turn it off later with `eventmodelers config --handover off`.',
 ];
 
 function identityOverridesFromOpts(opts) {
@@ -3783,6 +3787,7 @@ credentialFlags(program
   .option('--agent [name]', `Pick the agent that does the work by name: ${Object.keys(AGENT_PRESETS).join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
+  .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured. With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
   .option('-f, --force', 'Ask for credentials again before the modeling loop starts, even when a config already has everything required. With a modeling kit in this directory it re-runs the same prompt as `init --modeling`, overwriting the project\'s .eventmodelers/config.json; with the global install it drops the "keep the stored credentials" choice, so a board\'s credentials have to be answered afresh. Applies to build-kit runs too, where it re-asks against the project\'s .eventmodelers/config.json. Cannot be combined with --non-interactive, --print or --local.')
   .option('--non-interactive', 'Never ask anything: take the board and credentials that resolve from flags, EVENTMODELERS_* env vars and the config files, and fail with the reason if they are incomplete instead of interviewing for them. A TTY was previously the only signal — right for CI or a supervisor, wrong for a loop started from a terminal, where stdin is a TTY nobody is watching and the run stops on a question. Only affects the modeling loop (--modeling/--standalone/--worker/--global).')
@@ -3794,8 +3799,8 @@ credentialFlags(program
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--dangerously-skip-permissions', 'Run the modeling agent\'s Claude process with --dangerously-skip-permissions, as before the lockdown: every tool call is approved — any shell command, curl to anywhere, any file the user can read or write, every MCP server the machine configures. Off by default because the agent takes chat messages and snippet clicks from any collaborator on the board; pass it only for a board whose collaborators you trust with your shell. Default Claude runner of --modeling/--standalone/--worker/--global only — not with --agent, --exec or --local-ai, which bring their own permission flags.')
   .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
-  .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Handover` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
-  .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Handover). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
+  .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Waiting` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
+  .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Waiting). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. Without it an agent keeps one id: a project install per project, a --global/--standalone run per board and repo (the directory it is started in) — the same agent on every restart, with its chat, its star on the board and the prompts it holds. If another live process already runs under that id, this one gets a fresh id instead (two agents must not share a heartbeat row). Pass --id when a supervisor already knows the id you want, or for a second agent on purpose; it is used as given, with no such check. Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3803,6 +3808,30 @@ credentialFlags(program
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const cwd = process.cwd();
+    if (opts.all) {
+      const clashing = [['--standalone', opts.standalone], ['--worker', opts.worker], ['--global', opts.global], ['--local', opts.local], ['--id', opts.id !== undefined]]
+        .filter(([, set]) => set).map(([flag]) => flag);
+      if (clashing.length) {
+        console.error(`❌ --all runs build kits and cannot be combined with ${clashing.join(', ')}.`);
+        process.exit(1);
+      }
+      const kitDirNames = [...new Set(Object.values(STACKS).map((st) => st.kitDirName))];
+      const dirs = findBuildKitDirs(cwd, kitDirNames);
+      if (!dirs.length && !opts.modeling) {
+        console.error(`❌ No build kit found in this directory or up to two levels below it (looked for ${kitDirNames.join(', ')}).`);
+        process.exit(1);
+      }
+      // Each kit runs as its own `run` with whatever else was typed; only --all is dropped, and
+      // --modeling too — that one is its own run, below, not something a build kit takes.
+      const forwarded = process.argv.slice(2).filter((a) => a !== '--all' && a !== '--modeling');
+      const cliJs = join(__dirname, 'cli.js');
+      const specs = dirs.map((dir) => ({ name: relative(cwd, dir) || '.', file: process.execPath, args: [cliJs, ...forwarded], cwd: dir }));
+      // --modeling adds the modeling agent next to the build kits: one process, from this directory
+      // (its modeling kit, or the global install when there is none), like a plain `run --modeling`.
+      if (opts.modeling) specs.push({ name: 'modeling', file: process.execPath, args: [cliJs, ...forwarded, '--modeling'], cwd });
+      console.log(`▶ Running ${dirs.length} build kit(s)${opts.modeling ? ' + the modeling agent' : ''}: ${specs.map((sp) => sp.name).join(', ')} (Ctrl+c stops all)\n`);
+      process.exit(await supervise(specs));
+    }
     // Validated up front, before any runner is selected: a cost guard given as garbage
     // should fail on the spot, not once the loop is already up — and a cap passed where
     // nothing will read it is worth saying out loud rather than ignoring silently.
@@ -4161,6 +4190,134 @@ program
   });
 
 program
+  .command('scaffold <target>')
+  .description('Generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
+  .option('--type <name>', `Kind of app to scaffold (${scaffoldTypeNames().join(', ')})`, 'supabase')
+  .option('--no-install', 'Stop after generating the skeleton: no npm install, checks or commit')
+  .option('--no-check', 'Install dependencies but skip the type-check, tests and web build/lint')
+  .option('--templates <dir>', 'Folder of *.tmpl files that replace the built-in skeleton template of the same path (or add files). Default: the target\'s own templates/ folder when it exists, so customisations survive a refresh')
+  .option('--port <name=value>', "Pin one of the type's ports instead of picking a free one, e.g. --port api=3200 (repeatable; the names are listed in the error when one is unknown). A refresh keeps its ports unless pinned here", (v, all) => [...all, v], [])
+  .action(async (target, opts, command) => {
+    const type = SCAFFOLD_TYPES[opts.type];
+    if (!type) {
+      console.error(`❌ Unknown --type "${opts.type}". Available: ${scaffoldTypeNames().join(', ')}`);
+      process.exit(1);
+    }
+    const missing = missingPrerequisites(type);
+    if (missing.length) {
+      console.error(`❌ Missing on this machine:\n${missing.map((m) => `   - ${m}`).join('\n')}`);
+      process.exit(1);
+    }
+
+    const cwd = process.cwd();
+    const globalOpts = command.optsWithGlobals();
+    let cfg = loadEffectiveConfig(cwd, findInstalledKitDir(cwd), globalOpts.config).config;
+    const explicit = Object.fromEntries(Object.entries(credentialOverridesFromOpts(opts)).filter(([, v]) => v));
+    cfg = { ...cfg, ...explicit };
+    const configPath = globalOpts.config ? resolve(cwd, globalOpts.config) : join(cwd, '.eventmodelers', 'config.json');
+    const requiredFields = ['organizationId', 'boardId', 'token'];
+    const promptForCredentials = async () => {
+      cfg = await configureCredentials({ config: cfg, configPath, targetDir: cwd, requiredFields, boardIdOptional: false, overrides: {}, print: globalOpts.print });
+      if (requiredFields.some((f) => !cfg[f])) {
+        console.error('❌ Still missing token/organizationId/boardId — re-run `eventmodelers scaffold` once configured.');
+        process.exit(1);
+      }
+    };
+    if (requiredFields.some((f) => !cfg[f])) await promptForCredentials();
+
+    const readModel = async () => {
+      const baseUrl = cfg.baseUrl || 'https://api.eventmodelers.ai';
+      const headers = { 'x-token': cfg.token, 'x-user-id': 'cli-scaffold', 'content-type': 'application/json' };
+      const call = async (url, what, init) => {
+        const res = await fetch(url, { headers, ...init }).catch((err) => {
+          console.error(`❌ Request failed (${what}): ${err.message}`);
+          process.exit(1);
+        });
+        if (res.status === 401 || res.status === 403) throw new FetchAuthError(res.status, `${what}: ${res.status === 401 ? 'invalid or expired token' : "token's organization does not match this board"}`);
+        if (!res.ok) {
+          console.error(`❌ ${what}: HTTP ${res.status}`);
+          process.exit(1);
+        }
+        return res.json();
+      };
+      const boardBase = `${baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}`;
+      const boards = await call(`${baseUrl}/api/boards`, 'boards').catch((err) => { if (err instanceof FetchAuthError) throw err; return []; });
+      const board = (Array.isArray(boards) ? boards : boards.boards ?? []).find((b) => b.id === cfg.boardId);
+      return buildModel({
+        appTitle: board?.name ?? board?.title,
+        api: {
+          get: (path) => call(`${boardBase}${path}`, path.split('?')[0]),
+          post: (path, body) => call(`${boardBase}${path}`, path, { method: 'POST', body: JSON.stringify(body) }),
+        },
+      });
+    };
+
+    console.log(`▶ Reading the model of board ${cfg.boardId}...`);
+    let model;
+    try {
+      model = await readModel();
+    } catch (err) {
+      if (!(err instanceof FetchAuthError)) throw err;
+      console.error(`❌ ${err.message}`);
+      if (err.status === 404) delete cfg.boardId;
+      else delete cfg.token;
+      await promptForCredentials();
+      model = await readModel();
+    }
+    console.log(`  ${model.timelines.length} timeline(s), ${model.slices.length} slice(s), ${model.screens.length} screen(s), css: ${model.css}`);
+
+    try {
+      const { root, ports } = await runScaffold({
+        typeName: opts.type,
+        target,
+        cfg,
+        model,
+        cliPath: join(__dirname, 'cli.js'),
+        install: opts.install,
+        check: opts.check,
+        templates: opts.templates ? resolve(cwd, opts.templates) : undefined,
+        ports: Object.fromEntries(opts.port.map((kv) => kv.split(/=(.*)/s).slice(0, 2))),
+      });
+      console.log(`\n✅ Skeleton ready in ${root}`);
+      console.log(`   cd ${relative(cwd, root) || '.'} && npm run up        # ${Object.entries(ports).map(([n, v]) => `${n} :${v}`).join(', ')}`);
+      console.log('   npm run user -- <email> <password>   # a user to sign in with (no sign-up screen)');
+      console.log('   npx @eventmodelers/cli run --all   # then build: every kit in the project, in this terminal');
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('init-templates [paths...]')
+  .description('Copy the built-in scaffold templates into ./templates/ (or --dir) so you can edit them: `scaffold` uses a template found there and falls back to the built-in one for everything else. Name paths (a file like web/src/app/Layout.tsx, or a folder like web/src/app) to copy only those — a copied template no longer follows the CLI\'s own updates, so take only what you mean to change. Existing files are kept unless --force.')
+  .option('--type <name>', `Scaffold type whose templates to copy (${scaffoldTypeNames().join(', ')})`, 'supabase')
+  .option('--dir <dir>', 'Where to copy them', 'templates')
+  .option('--list', 'Only list the built-in template paths')
+  .option('-f, --force', 'Overwrite templates already in the folder')
+  .action((paths, opts) => {
+    const type = SCAFFOLD_TYPES[opts.type];
+    if (!type) {
+      console.error(`❌ Unknown --type "${opts.type}". Available: ${scaffoldTypeNames().join(', ')}`);
+      process.exit(1);
+    }
+    if (opts.list) {
+      for (const rel of builtInTemplates(type).keys()) console.log(rel);
+      return;
+    }
+    try {
+      const dest = resolve(process.cwd(), opts.dir);
+      const { copied, kept } = initTemplates(type, dest, { only: paths, force: opts.force });
+      for (const rel of copied) console.log(`  ✓ ${relative(process.cwd(), join(dest, `${rel}.tmpl`))}`);
+      if (kept.length) console.log(`  ${kept.length} already there, kept (use --force to overwrite)`);
+      console.log(`\n✅ ${copied.length} template(s) copied. Edit them, then run \`eventmodelers scaffold <dir>\` — it uses ${relative(process.cwd(), dest) || '.'}/ when that is the target's templates/ folder, or pass --templates.`);
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command('activate-context')
   .description('Choose which fetched context is active — writes .slices/current_context.json, which `run` works through first; once it has no planned slices left, `run` moves on to the next context that does')
   .action(async () => {
@@ -4217,7 +4374,7 @@ const SLICE_STATUSES = [
   { label: '🚫 Blocked', value: 'Blocked' },
   { label: '🧭 Ready', value: 'Ready' },
   { label: '📅 Planned', value: 'Planned' },
-  { label: '🤝 Handover', value: 'Handover' },
+  { label: '🤝 Waiting', value: 'Waiting' },
   { label: 'ℹ️ Informational', value: 'Informational' },
 ];
 
@@ -4394,11 +4551,13 @@ function agentEventMeta(cwd, kitDir, command) {
 
 program
   .command('slice-status <status>')
-  .description("For a build agent: record the outcome of the slice the run loop is building (Done, Handover, Blocked, ...). The loop owns the slice's status on the board and pushes it when the build ends — never edit index.json or call update-slice-status for a loop build.")
+  .description("For a build agent: record the outcome of the slice the run loop is building (Done, Waiting, Blocked, ...). The loop owns the slice's status on the board and pushes it when the build ends — never edit index.json or call update-slice-status for a loop build.")
   .option('--slice <idOrTitle>', 'The slice, when the loop has claimed more than one (default: the one it is building)')
   .action((status, opts, command) => {
     const cwd = process.cwd();
-    const canonical = SLICE_STATUSES.find((s) => s.value.toLowerCase() === status.toLowerCase())?.value;
+    // `Handover` is the old name of `Waiting`; older skills and prompts still say it
+    const wanted = status.toLowerCase() === 'handover' ? 'waiting' : status.toLowerCase();
+    const canonical = SLICE_STATUSES.find((s) => s.value.toLowerCase() === wanted)?.value;
     if (!canonical) {
       console.error(`❌ "${status}" is not a slice status. Valid: ${SLICE_STATUSES.map((s) => s.value).join(', ')}`);
       process.exit(1);
@@ -4462,7 +4621,7 @@ program
   .option('--tag <tag>', 'Only events carrying this tag')
   .option('--last <n>', 'Only the last n events (after the other filters)')
   .option('--json', 'Print the raw events, one JSON object per line')
-  .option('--verbose', 'Print each event\'s payload under its line — for a tool call, the input it was sent (recorded by runs started with --verbose)')
+  .option('--verbose', 'Print each event\'s payload under its line — for a tool call, the input it was sent (recorded by runs started with --verbose). Also shows the baseline events: the kit\'s first look at each slice (a fresh kit records every slice already on the board), which are hidden by default. `--type board-observed` and `--json` show them too.')
   .option('--state', 'Print the state the log folds to (slices, queue, open prompts, learnings) instead of the events')
   .option('--prune', 'Delete the events nothing reads any more — the journal of finished prompts — and stop. Slice state, learnings and open prompts are kept; the same prune a run offers at every 1000 events.')
   .option('--follow', 'Keep running and print events as they are appended')
@@ -4510,6 +4669,8 @@ program
 
     const follow = opts.follow || opts.watch;
     const events = readEvents(kitDir);
+    // The baseline (each slice's first board-observed) is noise unless asked for: --verbose, the raw --json, or the type itself.
+    const hideBaseline = !opts.verbose && !opts.json && !filter.types?.includes('board-observed');
     const titles = sliceTitles(events);
     if (opts.state) {
       if (follow) console.error('ℹ️  --follow/--watch does not apply to --state.');
@@ -4522,7 +4683,7 @@ program
       if (!opts.global && !opts.kit && readEvents(globalLog).length) console.log('The global install has a log of its own: `eventmodelers events --global`.');
       return;
     }
-    print(filterEvents(events, { ...filter, last }, titles), titles);
+    print(filterEvents(events, { ...filter, last, omit: hideBaseline ? baselineIds(events) : undefined }, titles), titles);
     if (!follow) return;
 
     // Follow: what has been printed is remembered by event id, and the log is read again twice a second.
@@ -4531,7 +4692,7 @@ program
       const all = readEvents(kitDir);
       const fresh = all.filter((e) => !seen.has(e.id));
       for (const e of fresh) seen.add(e.id);
-      if (fresh.length) print(filterEvents(fresh, filter, sliceTitles(all)), sliceTitles(all));
+      if (fresh.length) print(filterEvents(fresh, { ...filter, omit: hideBaseline ? baselineIds(all) : undefined }, sliceTitles(all)), sliceTitles(all));
     }, 500);
   });
 

@@ -151,12 +151,12 @@ test('a lost claim of a stale view corrects it: the board\'s real status is reco
   assert.equal(readEvents(kit).filter((e) => e.type === 'board-observed').at(-1).status, 'Done');
 });
 
-test('the pickup status of the kit is what the board must show (Handover for UI kits)', async (t) => {
+test('the pickup status of the kit is what the board must show (Waiting for UI kits)', async (t) => {
   quiet(t);
   const { kit } = project(t);
-  assert.equal(await claim(kit, fakeBoard({ remote: 'Handover' }), { pickupStatus: 'Handover' }), 'won');
+  assert.equal(await claim(kit, fakeBoard({ remote: 'Waiting' }), { pickupStatus: 'Waiting' }), 'won');
   const other = project(t).kit;
-  assert.equal(await claim(other, fakeBoard({ remote: 'Planned' }), { pickupStatus: 'Handover' }), 'lost');
+  assert.equal(await claim(other, fakeBoard({ remote: 'Planned' }), { pickupStatus: 'Waiting' }), 'lost');
 });
 
 test('a board that cannot be read is not claimed against, and an unknown status does not stop a claim', async (t) => {
@@ -205,14 +205,14 @@ test('settle puts an unfinished slice back to Planned, undoes the build and reco
   assert.equal(state(kit).attempts, 1);
 });
 
-test('an unfinished slice goes back to the pickup status of the kit (Handover for UI kits)', async (t) => {
+test('an unfinished slice goes back to the pickup status of the kit (Waiting for UI kits)', async (t) => {
   quiet(t);
   const { kit } = project(t);
   const board = fakeBoard();
   await claim(kit, board);
-  await settle(kit, board, { pickupStatus: 'Handover' });
-  assert.deepEqual(board.writes, ['InProgress', 'Handover']);
-  assert.equal(readEvents(kit).find((e) => e.type === 'attempt-failed').status, 'Handover');
+  await settle(kit, board, { pickupStatus: 'Waiting' });
+  assert.deepEqual(board.writes, ['InProgress', 'Waiting']);
+  assert.equal(readEvents(kit).find((e) => e.type === 'attempt-failed').status, 'Waiting');
 });
 
 test('a build on a tree that already held someone\'s edits is never discarded (14)', async (t) => {
