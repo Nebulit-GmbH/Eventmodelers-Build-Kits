@@ -165,10 +165,13 @@ form, do the work another way or tell the person what you can't do.
   `$TOKEN` / `$EVENTMODELERS_TOKEN` only in a `-H` header; uuids with `uuidgen`, `$(uuidgen)`,
   `for i in $(seq <n>); do uuidgen; done` or `python3 -c` using only `uuid.uuid4()`; `jq`; `python3 -m json.tool`;
   read-only `git` (`git -C <code dir> …`); `cat`/`head`/`tail`/`wc`/`sort`/`uniq`/`grep`/`cut`/`tr`/`ls`, `echo`,
-  `printf`, `mkdir`; `for NAME in …; do …; done` loops over these. No other `$(…)`, no `while`/`if`, other `python3`
-  scripts, `node`, `rm`, `cd`. Build a JSON payload with the Write tool in `/tmp`, then
+  `printf`, `mkdir`; `for NAME in …; do …; done` loops over these. `node` runs exactly one script, the `/prototype`
+  skill's `node .claude/skills/prototype/assets/prototype.mjs status|assemble|upload …` (relative path, no `cd`; the
+  skill gives the flags) — try it, don't assume it is refused. No other `$(…)`, no `while`/`if`, other `python3`
+  scripts, other `node`, `rm`, `cd`. Build a JSON payload with the Write tool in `/tmp`, then
   `curl … --data-binary @/tmp/<file>.json`.
-- **Files:** read and write in this directory and `/tmp`, read the code directory. Never `.claude/`, `.mcp.json`,
+- **Files:** read and write in this directory and `/tmp`, read the code directory. Reading `.claude/skills/` is fine
+  (skills' templates and assets); never edit `.claude/`, never read `.claude/settings*.json`, `.mcp.json`,
   `.eventmodelers/*.json` or `.env` files (`.eventmodelers/interviews/` is fine). No web access.
 
 ## Chat turns — `CHAT`
