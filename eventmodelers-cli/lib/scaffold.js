@@ -194,6 +194,8 @@ export async function runScaffold({ typeName, target, cfg, model, cliPath, insta
     }
     log(`▶ Installing the ${kit.stack} kit in ${kit.dir}`);
     run(process.execPath, [cliPath, 'init', '--stack', kit.stack, '--print'], { cwd, env });
+    // `--print` skips the agent-tracing question, which would leave it off; a scaffolded app tracks the cost per slice by default.
+    run(process.execPath, [cliPath, 'config', '--agent-tracing', 'on'], { cwd, env, quiet: true });
   }
 
   // Next to the target, not in it: the model is an input of the skeleton, not a project file.
