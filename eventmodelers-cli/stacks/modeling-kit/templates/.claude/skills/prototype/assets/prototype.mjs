@@ -97,10 +97,12 @@ async function status() {
     return res.json();
   };
 
-  const ctx = encodeURIComponent(args.context);
+  // --context is a name, or the id of a MODEL_CONTEXT / timeline (a chapter without a name has only that).
+  const contextIsId = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(args.context);
+  const ctx = `${contextIsId ? 'contextId' : 'contextName'}=${encodeURIComponent(args.context)}`;
   const [fields, specs] = await Promise.all([
-    get(`/slicedata?contextName=${ctx}&projection=fields&format=json`),
-    get(`/slicedata?contextName=${ctx}&projection=specs&format=json`),
+    get(`/slicedata?${ctx}&projection=fields&format=json`),
+    get(`/slicedata?${ctx}&projection=specs&format=json`),
   ]);
   const specsById = Object.fromEntries((specs.slices || []).map((s) => [s.id, s]));
 
@@ -127,7 +129,7 @@ async function status() {
   // The baseline whose blocks can be kept: the page the platform stores for this context — what everyone
   // plays, and there in any session or folder (its sanitizer leaves the blocks byte for byte) — else a
   // local one, from an earlier run whose upload failed. Neither: every slice is new.
-  const contextId = args['context-id'] || (await contextIdOf(get, args.context));
+  const contextId = contextIsId ? args.context : await contextIdOf(get, args.context);
   const storedRes = await fetch(`${api}/prototype/${encodeURIComponent(contextId)}`, { headers });
   if (!storedRes.ok && storedRes.status !== 404) fail(`GET /prototype/${contextId} → ${storedRes.status} ${await storedRes.text()}`);
   const stored = storedRes.ok ? await storedRes.text() : null;
@@ -158,7 +160,7 @@ async function status() {
   const removed = existing.filter((b) => !current.has(b.id)).map(({ id, title }) => ({ id, title }));
   const cssFramework = Object.entries(frameworkVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'bulma';
 
-  const report = { context: args.context, contextId, baseline, cssFramework, mixedFrameworks: Object.keys(frameworkVotes).length > 1, slices, removed };
+  const report = { context: fields.contextName || args.context, contextId, baseline, cssFramework, mixedFrameworks: Object.keys(frameworkVotes).length > 1, slices, removed };
   writeFileSync(join(WORK, 'status.json'), JSON.stringify(report, null, 2));
   for (const s of slices) console.log(`${s.state.padEnd(9)} ${s.hash}  ${s.id}  ${s.title}`);
   for (const r of removed) console.log(`removed   ${''.padEnd(16)}  ${r.id}  ${r.title}`);

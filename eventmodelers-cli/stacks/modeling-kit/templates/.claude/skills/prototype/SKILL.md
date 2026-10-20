@@ -35,6 +35,8 @@ From `$ARGUMENTS`: the context (a MODEL_CONTEXT name or a timeline name) and opt
 
 The unit is the **effective context**: a timeline assigned to or connected with a MODEL_CONTEXT belongs to that context; a timeline with neither is its own context. Either name returns the whole effective context — every timeline in it, each slice carrying its `chapter`.
 
+**Pass the id, not the name, whenever you have it** — the turn's `timelineId` (or a MODEL_CONTEXT's id) goes straight into `--context "<id>"`. A chapter may have no name at all; never rename a chapter to make the lookup work, and never ask about it.
+
 No context given, or a name that matches nothing: list the options once —
 
 ```
