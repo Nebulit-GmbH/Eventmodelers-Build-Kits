@@ -107,7 +107,7 @@ function runClaude(prompt, slice = null, extraEnv = {}) {
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text && verbose) console.log(block.text);
             if (block.type === 'tool_use') {
-              recordToolCall({ kitDir, slice, tool: block.name, detail: describeToolUse(block), cfg, meta: eventMeta(cfg) });
+              recordToolCall({ kitDir, slice, tool: block.name, meta: eventMeta(cfg) });
               if (verbose) console.log(`→ ${describeToolUse(block)}`);
               else if (block.name === 'Skill') console.log(`→ Skill: ${block.input?.skill ?? ''}`);
               else console.log(`→ ${block.name}`);
