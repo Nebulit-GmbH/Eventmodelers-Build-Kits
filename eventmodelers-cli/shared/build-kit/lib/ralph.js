@@ -364,7 +364,7 @@ async function fetchFullSlice(cfg, kitDir, sliceId) {
 }
 
 async function handleSliceChanged(payload, cfg, kitDir) {
-  console.log(`[agent] slice:changed — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+  console.log(`[agent] slice:changed — slice="${payload.sliceTitle ?? payload.sliceId}" status="${payload.sliceStatus}"`);
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
   // as slice:changed. Queuing them only buys a turn in which the agent reads its own echo and
   // skips it, and re-reading the slices for them is wasted too: ralphLoop re-reads them right
@@ -372,7 +372,7 @@ async function handleSliceChanged(payload, cfg, kitDir) {
   // is dropped — a person's edit or another agent's, or an event with no attribution at all,
   // is still handled, so a missing field degrades to queuing rather than losing work.
   if (payload?.agentId && cfg.agentId && payload.agentId === cfg.agentId) {
-    console.log(`[agent] Own write — not queued (slice="${payload.sliceTitle}" status="${payload.sliceStatus}")`);
+    console.log(`[agent] Own write — not queued (slice="${payload.sliceTitle ?? payload.sliceId}" status="${payload.sliceStatus}")`);
     return;
   }
   await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
@@ -383,7 +383,7 @@ async function handleSliceChanged(payload, cfg, kitDir) {
   if (statusKey(payload.sliceStatus) !== statusKey(readPickupStatus(kitDir))) {
     try {
       queueTask({ kitDir, payload, meta: eventMeta(cfg) });
-      console.log(`[agent] Task queued — slice="${payload.sliceTitle}" status="${payload.sliceStatus}"`);
+      console.log(`[agent] Task queued — slice="${payload.sliceTitle ?? payload.sliceId}" status="${payload.sliceStatus}"`);
     } catch (err) {
       console.error('[agent] queueTask error:', err);
     }
@@ -824,9 +824,12 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
 
       const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
+      // The iteration opens first, so the claim (→ InProgress) is part of what the board's build log shows.
+      if (planned.id) share.iterationStarted(planned);
       if (planned.id) {
         const claimed = await claimSlice({ kitDir, planned, board, meta, cleanTree: isTreeClean(kitDir), pickupStatus: readPickupStatus(kitDir) });
         if (claimed !== 'won') {
+          await share.iterationClosed(planned, 'skipped');
           console.log(claimed === 'held'
             ? `[ralph] Another run loop holds "${planned.title}" in this kit — waiting.`
             : `[ralph] Could not claim "${planned.title}" — skipping it this iteration.`);
@@ -836,7 +839,6 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
         }
       }
       lastReply = null;
-      if (planned.id) share.iterationStarted(planned);
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {
         sliceId: planned.id,
         sliceTitle: planned.title,
@@ -869,7 +871,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-export { HttpError, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, ensureLearningsGitRules };
+export { HttpError, eventMeta, loadLocalConfig, fetchPlatformConfig, retryTransient, startRealtimeAgent, ensureLearningsGitRules };
 
 // The connect line a runner puts in front of every prompt. --local must mean zero board
 // contact, so it is empty then — handed live credentials, the agent would treat itself as

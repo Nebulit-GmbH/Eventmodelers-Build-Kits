@@ -2,9 +2,10 @@
 // Ralph loop + realtime agent using Claude Code as the executor.
 // Usage: node ralph-claude.js [project_dir]
 
-import { startRalph, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
 import { createSliceTracer, usageFromClaudeResult } from './lib/tracing.js';
 import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
+import { recordToolCall } from './lib/tool-call-events.js';
 import { spawn } from 'child_process';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -106,6 +107,7 @@ function runClaude(prompt, slice = null, extraEnv = {}) {
           for (const block of msg.message?.content ?? []) {
             if (block.type === 'text' && block.text && verbose) console.log(block.text);
             if (block.type === 'tool_use') {
+              recordToolCall({ kitDir, slice, tool: block.name, detail: describeToolUse(block), cfg, meta: eventMeta(cfg) });
               if (verbose) console.log(`→ ${describeToolUse(block)}`);
               else if (block.name === 'Skill') console.log(`→ Skill: ${block.input?.skill ?? ''}`);
               else console.log(`→ ${block.name}`);
