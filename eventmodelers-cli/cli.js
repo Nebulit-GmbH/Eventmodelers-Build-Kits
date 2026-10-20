@@ -3830,6 +3830,7 @@ credentialFlags(program
   .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
   .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Waiting` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Waiting). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
+  .option('--sync', 'Build kit: share this agent\'s event log with the board — events that name a slice are uploaded constantly (POST …/buildlog) for a live dashboard. The platform keeps one iteration per slice, 1000 entries at most. A no-op for --modeling/--standalone, and with --local.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. Without it an agent keeps one id: a project install per project, a --global/--standalone run per board and repo (the directory it is started in) — the same agent on every restart, with its chat, its star on the board and the prompts it holds. If another live process already runs under that id, this one gets a fresh id instead (two agents must not share a heartbeat row). Pass --id when a supervisor already knows the id you want, or for a second agent on purpose; it is used as given, with no such check. Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -3953,6 +3954,7 @@ credentialFlags(program
     // no meaning for a build kit, which is scaffolded per project by definition.
     if (opts.modeling || opts.standalone || opts.worker || opts.global) {
       const picked = opts.modeling ? '--modeling' : opts.standalone ? '--standalone' : opts.worker ? '--worker' : '--global';
+      if (opts.sync) console.log(`ℹ️  --sync shares a build agent's log — it does nothing with ${picked}.`);
       // --local-ai and --exec name what does a turn, not a queue, and the modeling loop has its own
       // runner for each (lib/modeling-local-ai.js, lib/modeling-exec.js).
       const modelingLocalAi = resolveLocalAiTarget(opts);
@@ -4118,7 +4120,7 @@ credentialFlags(program
       // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }

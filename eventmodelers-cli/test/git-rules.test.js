@@ -23,7 +23,7 @@ test('git rules go in .git/info, not in tracked files, so the loop never dirties
   ensureLearningsGitRules(kit);
   ensureLearningsGitRules(kit);
   assert.equal(readFileSync(join(root, '.git', 'info', 'exclude'), 'utf-8'),
-    'node_modules\n.build-kit/events/\n.build-kit/events.log\n');
+    'node_modules\n.build-kit/events/\n.build-kit/events.log\n.build-kit/events.seq\n.build-kit/build-log-sync.json\n');
   assert.equal(readFileSync(join(root, '.git', 'info', 'attributes'), 'utf-8'), '.build-kit/AGENTS.md merge=union\n');
   assert.equal(existsSync(join(root, '.gitignore')), false);
   assert.equal(existsSync(join(root, '.gitattributes')), false);

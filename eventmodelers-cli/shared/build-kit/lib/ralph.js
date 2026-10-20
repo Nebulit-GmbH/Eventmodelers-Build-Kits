@@ -20,6 +20,7 @@ import { readEvents } from './slice-events.js';
 import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './slice-run.js';
 import { isTreeClean } from './slice-git.js';
 import { syncLearnings } from './slice-learnings.js';
+import { createBuildLogShare, kitTypeOf, SYNC_STATE_FILE } from './build-log-share.js';
 import { curateIfDue } from './slice-curation.js';
 import { queueTask, workNextTask } from './slice-tasks.js';
 import { defaultAgentName, withInstanceSuffix } from './agent-name.js';
@@ -739,7 +740,7 @@ function ensureLearningsGitRules(kitDir) {
   const projectDir = dirname(kitDir);
   if (!existsSync(join(projectDir, '.git'))) return;
   const rules = [
-    ['info/exclude', [`${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`]],
+    ['info/exclude', [`${basename(kitDir)}/events/`, `${basename(kitDir)}/events.log`, `${basename(kitDir)}/events.seq`, `${basename(kitDir)}/${SYNC_STATE_FILE}`]],
     ['info/attributes', [`${basename(kitDir)}/AGENTS.md merge=union`]],
   ];
   for (const [name, lines] of rules) {
@@ -769,6 +770,10 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
   const board = credentialed ? createBoard(cfg) : null;
   const meta = eventMeta(cfg);
   ensureLearningsGitRules(kitDir);
+  // Sharing the event log with the board (`run --sync`): needs the board, so never with --local.
+  const share = createBuildLogShare({ kitDir, cfg, meta, agentType: cfg?.agentType ?? 'BUILD', kitType: kitTypeOf(readPickupStatus(kitDir)), sync: process.env.RALPH_SYNC === '1', enabled: credentialed, log: (line) => console.log(`[ralph] ${line}`) });
+  if (process.env.RALPH_SYNC === '1' && !credentialed) console.log('[ralph] --sync needs board credentials — the build log stays local.');
+  share.start();
   let lastIdleCtx;
   // The build agent's final reply on the most recent planned-slice turn — quoted in the Blocked note.
   let lastReply = null;
@@ -831,6 +836,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
         }
       }
       lastReply = null;
+      if (planned.id) share.iterationStarted(planned);
       const built = await runWithRetry(`onPlannedSlice: building slice "${planned.title}"...`, async () => { lastReply = await onPlannedSlice(prompt, {
         sliceId: planned.id,
         sliceTitle: planned.title,
@@ -842,6 +848,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
       }); });
       if (built) console.log(`[ralph] Slice build complete — waiting for next slice`);
       if (planned.id) await settleSlice({ kitDir, planned, board, meta, pickupStatus: readPickupStatus(kitDir), details: { built, lastReply } });
+      if (planned.id) await share.iterationClosed(planned, built ? 'ok' : 'error');
       if (credentialed) await fetchAndPersistSlices(cfg, kitDir).catch(() => {});
       didWork = true;
     }

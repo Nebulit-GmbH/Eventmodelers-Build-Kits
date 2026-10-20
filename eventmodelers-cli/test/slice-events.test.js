@@ -103,7 +103,7 @@ test('two processes appending at the same time lose and tear nothing, whatever t
   const writer = (id) => new Promise((resolve, reject) => {
     // 100 KB payloads: far past what one atomic line append could carry, which is why only the id is indexed.
     const script = `import { appendEvent } from ${JSON.stringify(modulePath)};
-      for (let i = 0; i < 100; i++) appendEvent(${JSON.stringify(kit)}, { type: 'agent-recorded', slice: 'p${id}', status: 'Done', seq: i, lastReply: 'x'.repeat(100_000) });`;
+      for (let i = 0; i < 100; i++) appendEvent(${JSON.stringify(kit)}, { type: 'agent-recorded', slice: 'p${id}', status: 'Done', n: i, lastReply: 'x'.repeat(100_000) });`;
     const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: 'inherit' });
     child.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`writer ${id} exited ${code}`))));
   });
@@ -112,7 +112,7 @@ test('two processes appending at the same time lose and tear nothing, whatever t
   const events = readEvents(kit);
   assert.equal(events.length, 200);
   for (const p of ['p1', 'p2']) {
-    assert.deepEqual(events.filter((e) => e.slice === p).map((e) => e.seq), Array.from({ length: 100 }, (_, i) => i));
+    assert.deepEqual(events.filter((e) => e.slice === p).map((e) => e.n), Array.from({ length: 100 }, (_, i) => i));
   }
   assert.equal(existsSync(join(kit, EVENTS_DIR)), true);
 });

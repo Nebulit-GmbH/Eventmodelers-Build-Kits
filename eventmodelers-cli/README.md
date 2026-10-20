@@ -166,6 +166,7 @@ npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (de
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
+npx @eventmodelers/cli run --sync                   # share this build agent's event log with the board, constantly, for a live dashboard (see agent-build-log.md)
 npx @eventmodelers/cli run --modeling               # modeling-kit: warm Claude process driven by the board's prompt queue
 npx @eventmodelers/cli run --standalone             # same, plus acting on board changes unprompted — and needs no install at all
 npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
