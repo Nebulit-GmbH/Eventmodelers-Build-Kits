@@ -222,3 +222,26 @@ export async function runScaffold({ typeName, target, cfg, model, cliPath, insta
   }
   return { root, ports, modelFile };
 }
+
+// `scaffold re-init`: refreshes every kit the type installed in a skeleton from this CLI's version — each through
+// `re-init --stack <its stack>` in its own directory, so the skeleton and the root CLAUDE.md are left alone.
+// Returns the kits refreshed, as their dirs.
+export function reinitKits({ typeName, target, cliPath, log = console.log }) {
+  const type = SCAFFOLD_TYPES[typeName];
+  const root = resolve(target);
+  if (targetState(root) !== 'skeleton') {
+    throw new Error(`${root} is not a scaffolded skeleton (no skeleton.json) — run this in its folder or pass the folder`);
+  }
+  const refreshed = [];
+  for (const kit of type.kits) {
+    const cwd = join(root, kit.dir);
+    if (!existsSync(join(cwd, '.build-kit'))) {
+      log(`▶ ${kit.stack}: not installed in ${kit.dir}, skipping — \`scaffold ${relative(process.cwd(), root) || '.'}\` installs it`);
+      continue;
+    }
+    log(`▶ Refreshing the ${kit.stack} kit in ${kit.dir}`);
+    run(process.execPath, [cliPath, 're-init', '--stack', kit.stack, '--print'], { cwd });
+    refreshed.push(kit.dir);
+  }
+  return refreshed;
+}

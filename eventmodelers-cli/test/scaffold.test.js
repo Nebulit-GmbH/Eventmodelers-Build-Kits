@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { supervise } from '../lib/supervise.js';
 import { findBuildKitDirs } from '../lib/build-kits.js';
-import { SCAFFOLD_TYPES, builtInTemplates, initTemplates, invocation, missingPrerequisites, probe, pickPorts, runScaffold, targetState } from '../lib/scaffold.js';
+import { SCAFFOLD_TYPES, builtInTemplates, initTemplates, invocation, missingPrerequisites, probe, pickPorts, reinitKits, runScaffold, targetState } from '../lib/scaffold.js';
 import { buildModel, isHomeScreen, routeFrom } from '../lib/scaffold-model.js';
 
 const supabase = SCAFFOLD_TYPES.supabase;
@@ -149,4 +149,34 @@ test('findBuildKitDirs finds kits at the root and up to two levels down, nowhere
   for (const rel of ['.build-kit', 'web/.build-kit', 'app/web/.build-kit', 'a/b/c/.build-kit', 'docs', '.hidden/.build-kit', 'node_modules/x/.build-kit']) mkdirSync(join(dir, rel), { recursive: true });
   assert.deepEqual(findBuildKitDirs(dir, ['.build-kit']), [dir, join(dir, 'app/web'), join(dir, 'web')]);
   assert.deepEqual(findBuildKitDirs(join(dir, 'docs'), ['.build-kit']), []);
+});
+
+test('reinitKits re-inits every installed kit with its own stack, in its own dir, and skips a missing one', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'scaffold-reinit-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const app = join(dir, 'app');
+  mkdirSync(join(app, '.build-kit'), { recursive: true });
+  writeFileSync(join(app, 'skeleton.json'), '{}');
+  const calls = join(dir, 'calls.jsonl');
+  const fakeCli = join(dir, 'fake-cli.mjs');
+  writeFileSync(fakeCli, `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(calls)}, JSON.stringify({ cwd: process.cwd(), args: process.argv.slice(2) }) + '\\n');\n`);
+
+  const logs = [];
+  assert.deepEqual(reinitKits({ typeName: 'supabase', target: app, cliPath: fakeCli, log: (l) => logs.push(l) }), ['.']);
+  assert.match(logs.join('\n'), /supabase-react: not installed in web/);
+
+  mkdirSync(join(app, 'web', '.build-kit'), { recursive: true });
+  assert.deepEqual(reinitKits({ typeName: 'supabase', target: app, cliPath: fakeCli, log: () => {} }), ['.', 'web']);
+  const runs = readFileSync(calls, 'utf8').trim().split('\n').map((l) => JSON.parse(l)).slice(1);
+  const real = (p) => execFileSync('sh', ['-c', `cd "${p}" && pwd -P`]).toString().trim();
+  assert.deepEqual(runs.map((r) => [real(r.cwd), r.args]), [
+    [real(app), ['re-init', '--stack', 'supabase', '--print']],
+    [real(join(app, 'web')), ['re-init', '--stack', 'supabase-react', '--print']],
+  ]);
+});
+
+test('reinitKits refuses a directory that is not a skeleton', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'scaffold-reinit-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  assert.throws(() => reinitKits({ typeName: 'supabase', target: dir, cliPath: 'x', log: () => {} }), /not a scaffolded skeleton/);
 });

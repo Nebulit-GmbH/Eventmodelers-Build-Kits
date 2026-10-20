@@ -20,7 +20,7 @@ import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from
 import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
-import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, builtInTemplates, initTemplates } from './lib/scaffold.js';
+import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
 import { buildModel } from './lib/scaffold-model.js';
@@ -4228,7 +4228,7 @@ program
 
 program
   .command('scaffold <target> [args...]')
-  .description('`scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
+  .description('`scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). `scaffold re-init [dir]` refreshes every kit the app has (root and web/) from this CLI version — `re-init --stack` for each, the skeleton itself untouched. Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
   .option('--type <name>', `Kind of app to scaffold (${scaffoldTypeNames().join(', ')})`, 'supabase')
   .option('--no-install', 'Stop after generating the skeleton: no npm install, checks or commit')
   .option('--no-check', 'Install dependencies but skip the type-check, tests and web build/lint')
@@ -4255,6 +4255,24 @@ program
       try {
         execFileSync(file, fileArgs, { cwd: appDir, stdio: 'inherit' });
       } catch {
+        process.exit(1);
+      }
+      return;
+    }
+    if (target === 're-init') {
+      if (args.length > 1) {
+        console.error('❌ usage: eventmodelers scaffold re-init [dir]');
+        process.exit(1);
+      }
+      if (!SCAFFOLD_TYPES[opts.type]) {
+        console.error(`❌ Unknown --type "${opts.type}". Available: ${scaffoldTypeNames().join(', ')}`);
+        process.exit(1);
+      }
+      try {
+        const refreshed = reinitKits({ typeName: opts.type, target: resolve(process.cwd(), args[0] ?? '.'), cliPath: join(__dirname, 'cli.js') });
+        console.log(`\n✅ ${refreshed.length} kit(s) refreshed to ${CLI_VERSION}${refreshed.length ? `: ${refreshed.join(', ')}` : ''}`);
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
         process.exit(1);
       }
       return;

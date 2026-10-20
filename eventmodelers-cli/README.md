@@ -774,6 +774,7 @@ npx @eventmodelers/cli listen --port 4000            # same, on a different port
 npx @eventmodelers/cli re-init                      # refresh the installed build kit (.build-kit/) + its skills
 npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit (.agent-modeling-kit/) + its skills
 npx @eventmodelers/cli re-init --stack supabase      # override which stack to refresh from (manifest missing/stale, or switching stacks)
+npx @eventmodelers/cli scaffold re-init [dir]        # a scaffolded app: refresh every kit in it (root + web/) — `re-init --stack` for each
 ```
 
 `re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/skills without re-scaffolding a project you've since built on top of.
