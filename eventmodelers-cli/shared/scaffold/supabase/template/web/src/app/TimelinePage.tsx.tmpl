@@ -60,7 +60,7 @@ export function TimelinePage() {
             {timeline.slices.map((s) => (
               <tr key={s.title}>
                 <td>{s.title}</td>
-                <td>{TYPE_LABEL[s.type] ?? s.type}</td>
+                <td>{s.type ? TYPE_LABEL[s.type] ?? s.type : '—'}</td>
                 <td><code>{s.endpoint ?? '—'}</code></td>
                 <td>{s.type === 'STATE_VIEW' && s.endpoint ? <ReadModelStatus slice={s} /> : <span className="has-text-grey">—</span>}</td>
               </tr>
