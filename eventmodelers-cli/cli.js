@@ -46,6 +46,7 @@ import { filterEvents, baselineIds, formatEvent, formatPayload, sliceTitles, sum
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
 import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
+import { INFO_KINDS, infoComment, recordInfo, recordTurnInfos } from './shared/build-kit/lib/slice-info.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -2681,15 +2682,18 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         try {
           turnPromptId = p.id;
           const reply = await runTurn(buildTurn(p));
-          // The agent cannot run `learn` (locked-down Bash), so it states learnings in its reply and they are recorded here.
-          // Best effort: a failed write never takes the prompt queue down.
-          if (keepsRecord) {
-            try {
+          // The agent cannot run `learn` or `info` (locked-down Bash), so it states them in its reply and they are recorded here.
+          // Best effort: a failed write never takes the prompt queue down. Infos are events stamped with their board, so every
+          // run records them — standalone included; learnings are kept only where `keepsRecord` (they feed AGENTS.md).
+          try {
+            if (keepsRecord) {
               const n = recordTurnLearnings({ kitDir, reply, meta: journalMeta });
               if (n) log(`recorded ${n} learning${n === 1 ? '' : 's'} from the turn`);
-            } catch (err) {
-              log(`could not record the turn's learnings: ${err.message}`);
             }
+            const infos = recordTurnInfos({ kitDir, reply, meta: journalMeta });
+            if (infos) log(`recorded ${infos} info event${infos === 1 ? '' : 's'} from the turn`);
+          } catch (err) {
+            log(`could not record the turn's learnings or infos: ${err.message}`);
           }
           journal(() => journalPromptFinished({ kitDir, id: p.id, outcome: 'worked', meta: journalMeta }));
         } catch (err) {
@@ -4734,6 +4738,42 @@ program
       if (process.env.EVENTMODELERS_CURATING === '1') throw new Error('a curation turn only merges and retracts — new learnings are not recorded during it');
       const result = recordLearning({ kitDir, text, topic: opts.topic, tags: opts.tag, scope: opts.scope ?? 'repo', slice: opts.slice, meta });
       console.log(result.duplicate ? `ℹ️  Already recorded (${result.id.slice(0, 8)}) — nothing to add.` : `✅ Recorded (${result.id.slice(0, 8)}) — .build-kit/AGENTS.md is updated.`);
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('info <text>')
+  .description("For a build agent: record something that is not a reusable learning — what you cannot change and why (limitation), a decision you took, a note. It is an event in the log and a comment on the slice. Reusable knowledge about the codebase or model is a `learn`, not an info.")
+  .option('--kind <kind>', `${INFO_KINDS.join(' · ')} (default note)`, 'note')
+  .option('--slice <idOrTitle>', 'The slice it is about (default: the one the run loop has claimed)')
+  .option('--tag <tag>', 'Label the info (repeatable)', (tag, tags) => [...tags, tag], [])
+  .action(async (text, opts, command) => {
+    const cwd = process.cwd();
+    const kitDir = requireBuildKitDir(cwd);
+    const meta = agentEventMeta(cwd, kitDir, command);
+    try {
+      let sliceId;
+      if (opts.slice) sliceId = findSliceDir(kitDir, opts.slice)?.slice.id ?? opts.slice;
+      else {
+        const claimed = Object.entries(fold(readEvents(kitDir)).slices).filter(([, s]) => s.claim);
+        if (claimed.length === 1) sliceId = claimed[0][0];
+      }
+      const info = recordInfo({ kitDir, text, kind: opts.kind, slice: sliceId, tags: opts.tag, meta });
+      console.log(`✅ Recorded ${info.kind} (${info.id.slice(0, 8)}).`);
+      if (!sliceId) return console.log('ℹ️  No slice named or claimed — not posted to the board.');
+      // Best effort: the event is the record, the comment is how the board shows it.
+      const cfg = loadEffectiveConfig(cwd, kitDir, command.optsWithGlobals().config).config;
+      if (['organizationId', 'boardId', 'token'].some((f) => !cfg[f])) return console.log('ℹ️  No board credentials — not posted to the board.');
+      const res = await fetch(`${cfg.baseUrl || DEFAULT_BASE_URL}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/nodes/${sliceId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'cli-info', ...agentHeaders(cfg) },
+        body: JSON.stringify({ text: infoComment(info), type: 'COMMENT', author: 'build-agent' }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      console.log(res.ok ? '✅ Posted as a comment on the slice.' : `⚠️  Board returned HTTP ${res.status} — the info is only in the event log.`);
     } catch (err) {
       console.error(`❌ ${err.message}`);
       process.exit(1);

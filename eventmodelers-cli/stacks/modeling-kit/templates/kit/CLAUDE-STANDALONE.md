@@ -199,7 +199,7 @@ Steps:
    ever get here in a `standalone=on` session, which is ad-hoc: its kit dir is shared across
    every board and nobody reads it afterwards. The board is the only place anything is kept, so
    anything reusable — including what a subagent reported back — goes there, as a comment on the
-   node it concerns.
+   node it concerns. The exception: end the reply with `Info [limitation|decision|note]: <one terse line>` for anything you could not change (and why) or decided — the CLI records it as an event, standalone included.
 8. Reply `<promise>DONE</promise>`, naming what you dispatched and what each agent did, or —
    when step 2 turned up nothing worth doing — change nothing at all and reply
    `<promise>NOOP</promise>`. A NOOP is a perfectly good outcome, and the CLI widens the gap

@@ -4,7 +4,7 @@
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
 // released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated,
-// task-queued, task-done, prompt-received, prompt-finished. Unknown types are ignored, so a
+// info-recorded (read by nothing here — it is the record), task-queued, task-done, prompt-received, prompt-finished. Unknown types are ignored, so a
 // newer loop's log is readable.
 
 const emptySlice = () => ({

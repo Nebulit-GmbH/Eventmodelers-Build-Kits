@@ -51,6 +51,8 @@ function describe(e) {
       return ['', `${plural(e.sources?.length ?? e.learnings?.length ?? 0, 'learning')} → ${oneLine(e.text, 120)}${e.reason ? ` — ${oneLine(e.reason, 80)}` : ''}`];
     case 'learnings-curated':
       return ['', ''];
+    case 'info-recorded':
+      return [e.slice, `[${e.kind ?? 'note'}] ${oneLine(e.text, 160)}`];
     case 'prompt-received':
       return [e.prompt?.id, `"${oneLine(e.prompt?.text, 80)}"${e.prompt?.priority ? ', priority' : ''}, pid ${e.pid}`];
     case 'prompt-action':

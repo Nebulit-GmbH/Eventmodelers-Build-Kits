@@ -19,7 +19,7 @@ session: it belongs to no project, its kit dir is a `~/.eventmodelers/kit` share
 and nobody goes looking in there afterwards. So in a `standalone=on` session the **board is the
 only place anything is kept** — comments, elements, slice statuses, scenarios. Write no file at
 all: no `Learning:` lines in your reply (step 8), no `.agent-modeling-kit/AGENTS.md`, and nothing a skill's
-own instructions suggest writing down either. Anything worth keeping goes on the board, as a
+own instructions suggest writing down either. The one exception is `Info [kind]:` lines (step 8): the CLI records those as events in every session, standalone included. Anything worth keeping goes on the board, as a
 comment on the node it concerns. This overrides every "write it down" instruction elsewhere in this
 file and in any skill.
 
@@ -151,6 +151,7 @@ mention it in the `DONE` comment, and leave it for a self-directed turn (or for 
 6. **Mark the prompt as finished** — invoke `/update-prompt-status` with this turn's `prompt_id`, `newStatus=DONE`, and a `comment` that summarizes what you actually did (e.g. "Added the OrderPlaced event and wired it to the read model"). Do this once, right after the work is done — not per skill call within the turn.
 7. If this turn has a `comment_id` field, invoke `/handle-comment` with `action=resolve`, `nodeId` from the resolved `NODE_ID` (step 3), `commentId` from `comment_id`.
 8. **`standalone=off` only** — if you noticed something reusable this turn (a pattern, a gotcha, useful context about this model), end your reply with one line per learning: `Learning [<topic>]: <one terse line>` (the topic is optional, at most five lines). The CLI records them — never write them into a file yourself, and add nothing that is already in `.agent-modeling-kit/AGENTS.md`. In a `standalone=on` session skip this: that session writes no files (see Mode), so note anything worth keeping as a board comment instead.
+   **In every session, `standalone=on` too:** anything that is *not* a reusable learning — something you could not change and why, a decision you took — goes the same way as `Info [limitation|decision|note]: <one terse line>` (at most five lines). The CLI records each as an event; never leave it only in prose.
 9. Reply `<promise>DONE</promise>` and wait for the next turn.
 
 

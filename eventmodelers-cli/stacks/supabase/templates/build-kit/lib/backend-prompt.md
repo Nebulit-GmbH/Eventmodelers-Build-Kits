@@ -58,6 +58,16 @@ npx @eventmodelers/cli learn "<one terse line>" --topic "<topic>"
 - `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
 - One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
 
+### Recording Info
+
+Something that is **not** a reusable learning — you cannot change something and why, a decision you took, a note for whoever reads the board — is an info, not a learning. Never leave it only in your reply:
+
+```
+npx @eventmodelers/cli info "<one terse line>" --kind limitation|decision|note
+```
+
+It is recorded as an event and posted as a comment on the slice you are building (`--slice <id>` to name another). Reusable knowledge stays a `learn`.
+
 ## Update AGENTS.md Files
 
 Before committing, check if any edited files have learnings worth preserving in nearby AGENTS.md files:
