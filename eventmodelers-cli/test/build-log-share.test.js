@@ -80,6 +80,7 @@ test('the interval syncs while the loop runs; a failed upload is sent again', as
   const kitDir = kit(t);
   const down = await platform(t, { status: 500 });
   const share = createBuildLogShare({ kitDir, cfg: cfgOf(down.baseUrl), meta: {}, sync: true, intervalMs: 20, log: () => {} });
+  share.iterationStarted(planned);
   appendEvent(kitDir, { type: 'info-recorded', text: 'x', slice: 'slice-1' }, {});
   share.start();
   await new Promise((r) => setTimeout(r, 120));
@@ -102,4 +103,17 @@ test('toBuildLogEntry maps slice to sliceId and drops local-only fields', () => 
   const e = toBuildLogEntry({ id: 'e1', at: 'A', type: 't', slice: 's', meta: { agent_id: 'x' }, tags: ['a'], text: 'hi' }, { agentId: AGENT, iteration: 'i', boardId: 'b', organizationId: 'o', kitType: 'ui', seq: 7 });
   assert.deepEqual(e, { text: 'hi', id: 'e1', type: 't', sliceId: 's', agentId: AGENT, iteration: 'i', occurredAt: 'A', boardId: 'b', organizationId: 'o', kitType: 'ui', seq: 7 });
   assert.deepEqual([kitTypeOf('Planned'), kitTypeOf('Waiting'), kitTypeOf(undefined)], ['backend', 'ui', 'backend']);
+});
+
+test('--sync shares a slice\'s events only while an iteration is open: the board-observed around it are not the agent\'s work', async (t) => {
+  const { posts, baseUrl } = await platform(t);
+  const kitDir = kit(t);
+  const share = createBuildLogShare({ kitDir, cfg: cfgOf(baseUrl), meta: {}, kitType: 'ui', sync: true });
+  appendEvent(kitDir, { type: 'board-observed', slice: 'slice-1', status: 'Planned' }, {});
+  share.iterationStarted(planned);
+  appendEvent(kitDir, { type: 'agent-recorded', slice: 'slice-1', status: 'Waiting' }, {});
+  await share.iterationClosed(planned, 'ok');
+  appendEvent(kitDir, { type: 'board-observed', slice: 'slice-1', status: 'Blocked' }, {});
+  await share.flush();
+  assert.deepEqual(posts.flatMap((p) => p.body.events).map((e) => e.type), ['iteration-started', 'agent-recorded', 'iteration-closed']);
 });

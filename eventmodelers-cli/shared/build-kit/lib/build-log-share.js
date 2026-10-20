@@ -5,7 +5,7 @@
 //               log, each carrying the slice, the iteration id, the board, the org and the date — and a
 //               `slice-done` after an iteration that settled the slice as Done. Always on.
 //   sync        with --sync, the events that name a slice are uploaded to POST …/boards/:boardId/buildlog,
-//               numbered (the event's own `seq`, which defines the order) and tagged with the kit type (backend, or ui for a kit that picks up from Waiting) —
+//               numbered (only while the slice has an iteration open — an agent records only when it is active; the event's own `seq`, which defines the order) and tagged with the kit type (backend, or ui for a kit that picks up from Waiting) —
 //               constantly, on a short interval for as long as the loop runs, so a live dashboard follows the
 //               build, and once more at the start and end of each iteration.
 //
@@ -21,6 +21,8 @@ import { statusKey } from './slice-state.js';
 
 export const SYNC_STATE_FILE = 'build-log-sync.json';
 export const SYNC_INTERVAL_MS = 2_000;
+// Always shared, even with no iteration open: they are what opens and closes one.
+const BOUNDARY = new Set(['iteration-started', 'iteration-closed', 'slice-done']);
 const NOOP = { iterationStarted: () => null, iterationClosed: () => {}, flush: async () => {}, start: () => {}, stop: () => {} };
 
 function readState(path) {
@@ -61,8 +63,13 @@ export function createBuildLogShare({ kitDir, cfg, meta, agentType = 'BUILD', ki
     const entries = [];
     for (const e of fresh) {
       if (!e.slice) continue;
+      // An agent records only while it is active: events of a slice with no iteration open are not shared. The kit mirrors
+      // every slice's board status as `board-observed`, whether or not it is working on it — that is not the agent's work.
+      // The boundaries themselves (the iteration's start and end, and slice-done after it) always are.
+      if (!iterations[e.slice] && !BOUNDARY.has(e.type)) continue;
       if (e.type === 'iteration-started') iterations[e.slice] = e.iteration;
       entries.push(toBuildLogEntry(e, { agentId: cfg.agentId, iteration: e.iteration ?? iterations[e.slice], boardId: cfg.boardId, organizationId: cfg.organizationId, kitType, seq: e.seq }));
+      if (e.type === 'iteration-closed') delete iterations[e.slice];
     }
     if (entries.length) {
       const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/buildlog`, {

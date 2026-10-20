@@ -3863,8 +3863,10 @@ credentialFlags(program
         }
         // Asked once, for the kit in this directory (the first one found when there is none), and
         // handed to the others — the modeling agent reads this directory's config.
-        const rootDir = dirs.find((dir) => dirname(dir) === cwd) ?? dirs[0];
-        console.log(`\n🔑 Credentials for ${relative(cwd, rootDir) || '.'}, shared by all`);
+        // With no build kit (--modeling alone), the credentials belong to this directory itself:
+        // a kit dir that need not exist, since only its parent is used.
+        const rootDir = dirs.find((dir) => dirname(dir) === cwd) ?? dirs[0] ?? join(cwd, '.agent-modeling-kit');
+        console.log(`\n🔑 Credentials for ${dirs.length ? relative(cwd, rootDir) || '.' : 'the modeling agent'}, shared by all`);
         const { organizationId, boardId, token, baseUrl } = await forceBuildKitCredentials(rootDir, cwd, opts, globalOpts);
         for (const dir of dirs.filter((d) => d !== rootDir)) {
           await forceBuildKitCredentials(dir, cwd, opts, globalOpts, { organizationId, boardId, token, baseUrl });
@@ -5154,5 +5156,12 @@ program
     }
   });
 
-await program.parseAsync();
+try {
+  await program.parseAsync();
+} catch (err) {
+  // A bug or bad input must end as one readable line, not a Node stack trace.
+  console.error(`❌ ${err?.message ?? err}`);
+  if (process.env.EVENTMODELERS_DEBUG && err?.stack) console.error(err.stack);
+  process.exitCode = 1;
+}
 if (sharedRl) sharedRl.close();
