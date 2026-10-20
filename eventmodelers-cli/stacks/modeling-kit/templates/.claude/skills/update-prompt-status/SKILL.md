@@ -30,7 +30,8 @@ Valid `newStatus` values (case-sensitive):
 | `ADDED` | Default — submitted, not yet claimed. You should never need to set this yourself. |
 | `CLAIMED` | Already set automatically when `/api/org/:orgId/prompts/next` hands you the prompt — you should never need to set this yourself either. |
 | `IN_PROGRESS` | You have started working on this prompt. |
-| `DONE` | You have finished working on this prompt. |
+| `DONE` | You have finished working on this prompt and it is resolved. |
+| `FAILED` | The prompt is not resolved: you could not do it at all (nothing changed on the board), or only part of it, because it was ambiguous, blocked, or the work did not succeed. The board shows the task red and keeps it instead of fading it out like a `DONE` one. Always give a `comment` saying what is unresolved. |
 
 If `newStatus` is not one of these exact values, stop and tell the user the valid options.
 

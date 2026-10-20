@@ -70,7 +70,7 @@ Write tools take their items as an array (`nodeIds[]`, `elements[]`, `connection
 | `get_image_snapshot_description` | `boardId`, `nodeId` | Load the `{elements:[...]}` sketch description from storage | — (reads what §4 sketch endpoints write) |
 | `validate_slice_data` | `sliceData` | Offline validation of a `SliceDataOutput` payload — no board access | — (MCP-only, pure function) |
 | `commit_board_to_git` | `boardId` | Force a git-extension commit/push, bypassing the autoCommit gate | — (MCP-only; git extension) |
-| `update_prompt_status` | `promptId`, `newStatus`, `comment?` | Update a prompt's lifecycle status (`ADDED`/`CLAIMED`/`IN_PROGRESS`/`DONE`), optionally with a progress comment. Not board-scoped — no `boardId` arg; the prompt's board is resolved server-side. | §14 `POST .../prompts/:id/status` |
+| `update_prompt_status` | `promptId`, `newStatus`, `comment?` | Update a prompt's lifecycle status (`ADDED`/`CLAIMED`/`IN_PROGRESS`/`DONE`/`FAILED`), optionally with a progress comment. Not board-scoped — no `boardId` arg; the prompt's board is resolved server-side. | §14 `POST .../prompts/:id/status` |
 
 **Not exposed via MCP at all** — always use REST/curl for these: §7 Config Import, §10 Snapshots, §11–12 Invitations, §13 Utility (`/api/user`, swagger), and the rest of §14 Prompts (submission, claiming, deletion, realtime-token) — only the status-update endpoint has an MCP tool (`update_prompt_status`, used by the `update-prompt-status` skill); everything else in Prompts is an intentionally separate lifecycle the board-content MCP server doesn't otherwise own.
 
@@ -1013,7 +1013,7 @@ OpenAPI specification (JSON)
 
 **File**: `src/slices/change/api-prompts/routes.ts`
 
-Prompts are how a human submits work to a modeling agent from the board UI, and how that agent reports its lifecycle back onto the board. Every prompt row has a `status`: `ADDED` (submitted, default) → `CLAIMED` (an agent has picked it up) → `IN_PROGRESS` (an agent is actively working it) → `DONE` (finished). See the `update-prompt-status` skill for the agent-side half of this lifecycle.
+Prompts are how a human submits work to a modeling agent from the board UI, and how that agent reports its lifecycle back onto the board. Every prompt row has a `status`: `ADDED` (submitted, default) → `CLAIMED` (an agent has picked it up) → `IN_PROGRESS` (an agent is actively working it) → `DONE` (finished) or `FAILED` (not resolved, whether nothing or only part of it could be done — the board keeps the agent task, red, instead of fading it out). See the `update-prompt-status` skill for the agent-side half of this lifecycle.
 
 ### POST `/api/org/:orgId/prompts`
 Submit a prompt for a board timeline. Auth: Supabase JWT (`Authorization: Bearer`).
