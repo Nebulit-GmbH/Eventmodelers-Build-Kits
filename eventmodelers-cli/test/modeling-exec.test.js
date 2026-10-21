@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setOpencodeStandaloneSupport } from '../shared/build-kit/lib/mcp-register.js';
+import { withModel } from '../shared/build-kit/lib/harnesses/index.js';
 import { createModelingExecRunner, harnessOf, registerMcp } from '../lib/modeling-exec.js';
 
 setOpencodeStandaloneSupport(true);
@@ -124,4 +125,71 @@ test('an OpenCode without run --standalone gets the flag dropped, not added', ()
     assert.equal(registerMcp('opencode run --auto', freshDir(), BASE, () => {}).command, 'opencode run --auto');
     assert.equal(registerMcp('opencode run --standalone --auto', freshDir(), BASE, () => {}).command, 'opencode run --auto');
   } finally { setOpencodeStandaloneSupport(true); }
+});
+
+// A stand-in for Cursor's CLI: `create-chat` prints an id, anything else prints its own arguments
+// (and fails when FAKE_CURSOR_FAIL is set), logging start/end so overlapping turns are visible.
+function fakeCursor() {
+  const dir = freshDir();
+  const bin = join(dir, 'cursor-agent');
+  writeFileSync(bin, `#!/bin/sh
+if [ "$1" = "create-chat" ]; then echo chat-42; exit 0; fi
+echo "start" >> "${dir}/log"; sleep 0.2; echo "end" >> "${dir}/log"
+[ -n "$FAKE_CURSOR_FAIL" ] && [ ! -f "${dir}/ok" ] && { touch "${dir}/ok"; exit 1; }
+echo "$@"
+`);
+  chmodSync(bin, 0o755);
+  return { bin, dir };
+}
+
+test('cursor: the binary is recognised as `agent` only when it comes first, or as cursor-agent', () => {
+  assert.equal(harnessOf('agent -p --trust'), 'cursor');
+  assert.equal(harnessOf('/Users/me/.local/bin/cursor-agent -p'), 'cursor');
+  assert.equal(harnessOf('my-agent go'), null);
+  assert.equal(harnessOf('npx some-tool agent'), null);
+});
+
+test('cursor: the server goes into .cursor/mcp.json, the rest of the file kept', () => {
+  const other = freshDir();
+  assert.deepEqual(registerMcp('agent -p', other, BASE, () => {}), { command: 'agent -p', registered: true });
+  const config = readJson(join(other, '.cursor', 'mcp.json'));
+  assert.equal(config.mcpServers.eventmodelers.url, `${BASE}/mcp`);
+  assert.equal(config.mcpServers.eventmodelers.headers['x-token'], '${env:EVENTMODELERS_TOKEN}');
+});
+
+test('cursor: every turn resumes one chat, and the preamble is only skipped once a turn succeeded', async () => {
+  const { bin } = fakeCursor();
+  const r = createModelingExecRunner({ cfg, command: `${bin} -p`, projectDir, log: () => {} });
+  assert.equal(r.keepsSession, false);
+  assert.match(await r.runTurn('first'), /^--resume chat-42 -p first$/);
+  assert.equal(r.keepsSession, true);
+  assert.match(await r.runTurn('second'), /^--resume chat-42 -p second$/);
+});
+
+test('cursor: a failed first turn leaves the session unprimed, so the next turn carries the preamble again', async () => {
+  const { bin } = fakeCursor();
+  process.env.FAKE_CURSOR_FAIL = '1';
+  try {
+    const r = createModelingExecRunner({ cfg, command: `${bin} -p`, projectDir, log: () => {} });
+    await assert.rejects(r.runTurn('first'), /exited 1/);
+    assert.equal(r.keepsSession, false);
+    await r.runTurn('retry');
+    assert.equal(r.keepsSession, true);
+  } finally {
+    delete process.env.FAKE_CURSOR_FAIL;
+  }
+});
+
+test('cursor: overlapping turns run one after the other in the shared chat', async () => {
+  const { bin, dir } = fakeCursor();
+  const r = createModelingExecRunner({ cfg, command: `${bin} -p`, projectDir, log: () => {} });
+  await Promise.all([r.runTurn('a'), r.runTurn('b')]);
+  assert.deepEqual(readFileSync(join(dir, 'log'), 'utf8').trim().split('\n'), ['start', 'end', 'start', 'end']);
+});
+
+test('--model is spelled the way each harness wants it, and goes ahead of hermes\' trailing -q', () => {
+  assert.equal(withModel('opencode run --standalone --auto', 'x/y'), "opencode run --standalone --auto -m 'x/y'");
+  assert.equal(withModel('codex exec --full-auto', 'gpt-5'), "codex exec --full-auto -m 'gpt-5'");
+  assert.equal(withModel('cursor-agent -p --trust', 'auto'), "cursor-agent -p --trust --model 'auto'");
+  assert.equal(withModel('hermes chat --yolo -Q -q', 'm1'), "hermes chat --yolo -Q -m 'm1' -q");
 });

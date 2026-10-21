@@ -162,7 +162,7 @@ npx @eventmodelers/cli run                          # start the agent loop (ralp
 npx @eventmodelers/cli run --all                      # every build kit in the project at once (this directory and up to two levels below, e.g. a scaffolded app's root and web/), prefixed output, Ctrl+c stops all; other flags (--agent, --handover, …) go to each
 npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
-npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini, hermes, cursor — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
@@ -243,6 +243,7 @@ registered for it (`opencode.json`, `.gemini/settings.json`, or `-c` flags for C
 npx @eventmodelers/cli run --standalone --agent opencode   # = --exec "opencode run --standalone --auto"
 npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exec --full-auto"
 npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
+npx @eventmodelers/cli run --modeling --agent cursor       # = --exec "agent -p --output-format text --approve-mcps --force --trust"; creates one Cursor chat and resumes it every turn, so only the first turn reads the kit
 npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
 npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
 npx @eventmodelers/cli run --agent                         # list the agents and the command each runs

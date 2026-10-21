@@ -22,7 +22,7 @@ import { mkdtempSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { turnTimeoutMs, superviseTurn } from '../shared/build-kit/lib/turn.js';
-import { shellQuote, harnessOf, registerMcp } from '../shared/build-kit/lib/mcp-register.js';
+import { shellQuote, harnessOf, harnessFor, registerMcp } from '../shared/build-kit/lib/harnesses/index.js';
 
 export { harnessOf, registerMcp };
 
@@ -31,6 +31,19 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
     throw new Error('no agent command — pass one, e.g. --exec "codex exec --full-auto", or persist it as localAi.exec in .eventmodelers/config.json');
   }
   const { command, registered: mcpRegistered } = registerMcp(rawCommand, projectDir, cfg.baseUrl, log);
+  // A harness with a session of its own (Cursor's chat) keeps what it read across turns: the process
+  // is still one per turn, but its turns share that session — see harnesses/cursor.js. Such a
+  // harness takes its turns one at a time (two turns resuming one session would race on it) and
+  // the kit preamble is only skipped once a turn has completed in it.
+  const session = harnessFor(rawCommand)?.session ?? null;
+  let sessionId = null;
+  let primed = false;
+  let queue = Promise.resolve();
+  function withSession(cmd) {
+    if (!session) return cmd;
+    if (sessionId === null) sessionId = session.start(cmd, { cwd: projectDir, env, log });
+    return sessionId ? session.resume(cmd, sessionId) : cmd;
+  }
   const timeoutMs = turnTimeoutMs(cfg);
   const promptDir = mkdtempSync(join(tmpdir(), 'modeling-exec-'));
   const env = {
@@ -42,6 +55,13 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
   };
 
   function runTurn(text) {
+    if (!session) return runTurnNow(text);
+    const result = queue.then(() => runTurnNow(text));
+    queue = result.catch(() => {});
+    return result;
+  }
+
+  function runTurnNow(text) {
     return new Promise((resolveTurn, rejectTurn) => {
       const promptFile = join(promptDir, 'prompt.md');
       writeFileSync(promptFile, text);
@@ -49,7 +69,7 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
       // stdin ignored: some harnesses append a piped stdin to the prompt, and nobody is there to
       // type into it. stdout is echoed as it comes — the harness owns its output format, there is
       // no cross-harness stream to condense — and kept as the turn's result.
-      const proc = spawn(`${command} ${shellQuote(text)}`, {
+      const proc = spawn(`${withSession(command)} ${shellQuote(text)}`, {
         cwd: projectDir,
         stdio: ['ignore', 'pipe', 'inherit'],
         shell: true,
@@ -65,6 +85,7 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
         const timeout = turn.timeoutError();
         if (timeout) return rejectTurn(timeout);
         if (code !== 0) return rejectTurn(new Error(`exec command exited ${code}`));
+        if (sessionId) primed = true;
         log(`done (${Date.now() - startedAt}ms)`);
         resolveTurn(out.trim());
       });
@@ -74,9 +95,11 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
 
   return {
     runTurn,
-    // Nothing to warm: every turn is its own process.
-    warmUp: async () => {},
+    // Only a harness with a session has anything to warm (the loop sends its warm-up turn through runTurn).
+    hasSession: Boolean(session),
     describe: () => rawCommand,
     mcpRegistered,
+    // True once a turn has succeeded in the shared session — until then every turn still carries the preamble.
+    get keepsSession() { return primed; },
   };
 }
