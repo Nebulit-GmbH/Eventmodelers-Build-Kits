@@ -12,6 +12,7 @@
   "files": [
     "cli.js",
     "lib",
+    "extensions",
     "shared",
     "stacks",
     "README.md",

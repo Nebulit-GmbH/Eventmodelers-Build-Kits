@@ -4107,7 +4107,7 @@ credentialFlags(program
       // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -4209,6 +4209,139 @@ program
         process.exit(1);
       }
     }
+  });
+
+const EXPORT_TYPES = ['eventcatalog'];
+
+program
+  .command('export')
+  .description('Export the event model into another tool\'s format. --type eventcatalog writes an EventCatalog project (domain, flow, events, commands, queries). Reads the board by default; --local reads .slices/ or config.json instead')
+  .requiredOption('--type <type>', `Export target: ${EXPORT_TYPES.join(', ')}`)
+  .option('--context <name>', 'Name or id of the context to export. Omitted (or not found) on the board: pick from the board\'s contexts. Filters --local')
+  .option('--local [path]', 'Read local files instead of the board: ./.slices/, then ./config.json, or the given path')
+  .option('--out <dir>', 'Directory to write into (the catalog root)', '.')
+  .option('--owner <id>', 'Owner (team or user id from the catalog) set on every exported resource; repeat for several', (v, all) => [...all, v], [])
+  .option('--check', 'Compare the model with what the last export wrote and exit 1 if they differ — writes nothing (for CI)')
+  .option('-f, --force', 'Overwrite resources that already exist in the catalog, and re-prompt for credentials when reading the board')
+  .action(async (opts, command) => {
+    if (!EXPORT_TYPES.includes(opts.type)) {
+      console.error(`❌ Unknown export type "${opts.type}". Supported: ${EXPORT_TYPES.join(', ')}`);
+      process.exit(1);
+    }
+    const cwd = process.cwd();
+    const ext = await import('./extensions/eventcatalog/index.js');
+    // Checked first, before any credentials or board access: the export only makes sense inside a catalog.
+    if (!ext.isCatalog(resolve(cwd, opts.out))) {
+      console.error(`❌ ${resolve(cwd, opts.out)} is not an EventCatalog project (no eventcatalog.config.* and no @eventcatalog/core dependency).`);
+      console.error('   Run this inside your catalog, or point --out at it. Create one with: npx @eventcatalog/create-eventcatalog@latest my-catalog --empty');
+      process.exit(1);
+    }
+    let slices;
+    try {
+      if (opts.local) {
+        slices = ext.loadFromLocal({ cwd, local: opts.local, context: opts.context });
+      } else {
+        const kitDir = findInstalledKitDir(cwd);
+        const globalOpts = command.optsWithGlobals();
+        const explicitConfig = globalOpts.config;
+        let cfg = loadEffectiveConfig(cwd, kitDir, explicitConfig).config;
+        const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
+        const requiredFields = ['organizationId', 'boardId', 'token'];
+        const promptForCredentials = async (force = false) => {
+          cfg = await configureCredentials({ config: cfg, configPath, targetDir: cwd, requiredFields, boardIdOptional: false, overrides: {}, print: globalOpts.print, force });
+          if (requiredFields.some((f) => !cfg[f])) {
+            console.error('❌ Still missing token/organizationId/boardId — re-run `eventmodelers export` once configured.');
+            process.exit(1);
+          }
+        };
+        // --force re-asks for credentials, like `init --force` / `init-config --force`.
+        if (opts.force || requiredFields.some((f) => !cfg[f])) await promptForCredentials(opts.force);
+        // A 401/403 re-asks for the token, like `fetch`; any other failure goes to the caller.
+        const withAuthRetry = async (fn) => {
+          try {
+            return await fn();
+          } catch (err) {
+            if (err.status !== 401 && err.status !== 403 && err.status !== 404) throw err;
+            console.error(`❌ ${err.message}`);
+            if (err.status === 404) delete cfg.boardId;
+            else delete cfg.token;
+            await promptForCredentials();
+            return fn();
+          }
+        };
+        const pickContext = async (question) => {
+          const contexts = await withAuthRetry(() => ext.listContexts({ cfg }));
+          if (!contexts.length) throw new Error(`Board ${cfg.boardId} has no contexts with slices.`);
+          return selectPrompt(question, contexts.map((c) => ({ label: `${c.name} (${c.slices} slice${c.slices === 1 ? '' : 's'})`, value: c.name })));
+        };
+        let context = opts.context || (await pickContext('Which context do you want to export?'));
+        try {
+          console.log(`▶ Reading context "${context}" from the board...`);
+          slices = await withAuthRetry(() => ext.loadFromBoard({ cfg, context }));
+        } catch (err) {
+          if (!(err instanceof ext.ContextNotFoundError)) throw err;
+          console.error(`❌ ${err.message}`);
+          context = await pickContext(`No context named "${context}" — pick one of the contexts on this board:`);
+          console.log(`▶ Reading context "${context}" from the board...`);
+          slices = await withAuthRetry(() => ext.loadFromBoard({ cfg, context }));
+        }
+        opts.context = context;
+      }
+    } catch (err) {
+      console.error(`❌ ${err.message}`);
+      process.exit(1);
+    }
+    const outDir = resolve(cwd, opts.out);
+    if (opts.check) {
+      const result = ext.check({ slices, outDir, context: opts.context });
+      if (!result) {
+        console.log('ℹ️  No slices found — nothing to check.');
+        return;
+      }
+      if (result.new.length) console.log(`new (${result.new.length}):\n${result.new.map((l) => `   ${l}`).join('\n')}`);
+      if (result.changed.length) {
+        console.log(`changed (${result.changed.length}):`);
+        for (const { label, changes, renamedFrom } of result.changed) console.log(`   ${label}${renamedFrom ? ` (renamed from ${renamedFrom})` : ''}\n${changes.map((c) => `      ${c}`).join('\n')}`);
+      }
+      if (result.removed.length) console.log(`removed from the model (${result.removed.length}):\n${result.removed.map((l) => `   ${l}`).join('\n')}`);
+      if (result.inSync) {
+        console.log(`✅ "${result.context}" is in sync with the catalog (${result.unchanged.length} resources).`);
+        return;
+      }
+      console.log(`❌ "${result.context}" is out of sync. Run \`eventmodelers export --type eventcatalog --context "${result.context}"\` (add --force to update resources already in the catalog).`);
+      process.exit(1);
+    }
+    // The SDK comes from the catalog, never from this CLI. Missing → offer to install it there.
+    let sdk = await ext.loadSdk(outDir);
+    if (!sdk) {
+      console.log(`@eventcatalog/sdk is not installed in ${outDir}.`);
+      const install = await selectPrompt('Install @eventcatalog/sdk into this catalog now (npm install)?', [
+        { label: 'Yes, run `npm install @eventcatalog/sdk` there', value: true },
+        { label: 'No, cancel the export', value: false },
+      ]);
+      if (!install) {
+        console.error('❌ The export needs @eventcatalog/sdk in the catalog. Install it (npm install @eventcatalog/sdk) and re-run.');
+        process.exit(1);
+      }
+      try {
+        ext.installSdk(outDir);
+        sdk = await ext.loadSdk(outDir);
+      } catch (err) {
+        console.error(`❌ Could not install @eventcatalog/sdk: ${err.message}`);
+        process.exit(1);
+      }
+      if (!sdk) {
+        console.error('❌ @eventcatalog/sdk still cannot be resolved from the catalog after installing.');
+        process.exit(1);
+      }
+    }
+    const { written, skipped, model } = await ext.run({ slices, outDir, context: opts.context, force: opts.force, owners: opts.owner, sdk });
+    if (!model) {
+      console.log('ℹ️  No slices found — nothing exported.');
+      return;
+    }
+    console.log(`✅ Exported "${model.domain.name}" to ${outDir}: ${written.length} files written${skipped.length ? `, ${skipped.length} skipped (already in the catalog; use --force to overwrite)` : ''}.`);
+    for (const f of skipped) console.log(`   skipped ${f}`);
   });
 
 program
