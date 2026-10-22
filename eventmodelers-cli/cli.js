@@ -3305,7 +3305,7 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'scaffold', 'init-templates', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
+const NO_INIT_REQUIRED = new Set(['init', 'scaffold', 'init-templates', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'export', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
@@ -3816,6 +3816,7 @@ credentialFlags(program
   .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
   .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Waiting` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Waiting). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
+  .option('--feature <name>', 'Build kit: only pick up slices that belong to this feature (the free-text names set per slice on the board, matched case-insensitively), for this run only. Other slices wait for a run without it or with their own feature. Nothing is written to disk.')
   .option('--sync', 'Build kit: share this agent\'s event log with the board — events that name a slice are uploaded constantly (POST …/buildlog) for a live dashboard. The platform keeps one iteration per slice, 1000 entries at most. A no-op for --modeling/--standalone, and with --local.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. Without it an agent keeps one id: a project install per project, a --global/--standalone run per board and repo (the directory it is started in) — the same agent on every restart, with its chat, its star on the board and the prompts it holds. If another live process already runs under that id, this one gets a fresh id instead (two agents must not share a heartbeat row). Pass --id when a supervisor already knows the id you want, or for a second agent on purpose; it is used as given, with no such check. Per-run only: nothing is written to disk.')

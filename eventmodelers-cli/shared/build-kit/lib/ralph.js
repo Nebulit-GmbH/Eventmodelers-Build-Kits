@@ -320,9 +320,9 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
       mkdirSync(sliceDir, { recursive: true });
       const sliceJsonPath = join(sliceDir, 'slice.json');
       const existingSlice = existsSync(sliceJsonPath) ? JSON.parse(readFileSync(sliceJsonPath, 'utf-8')) : {};
-      // The summary omits ticketNumber and assignee when the slice has none, so a cleared one must be cleared
+      // The summary omits ticketNumber, assignee and features when the slice has none, so a cleared one must be cleared
       // here too — otherwise the old one survives the merge and lands on the next build.
-      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, status: statusOf(state, slice), ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null }, null, 2), 'utf-8');
+      writeFileSync(sliceJsonPath, JSON.stringify({ ...existingSlice, ...slice, status: statusOf(state, slice), ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null, features: slice.features ?? null }, null, 2), 'utf-8');
     }
   }
 
@@ -508,6 +508,25 @@ export function readPickupStatus(kitDir) {
   return 'Planned';
 }
 
+// `run --feature <name>` (RALPH_FEATURE): only slices that belong to this feature are picked up.
+// Matched like the board does — trimmed, case-insensitive. Empty means no filter.
+export function readFeatureFilter() {
+  return (process.env.RALPH_FEATURE || '').trim().toLowerCase();
+}
+
+// Whether a slice is in the feature — its `features` as of the last fetch, from its slice.json. A slice
+// whose slice.json is missing or has no features is not in any feature, so a filter skips it.
+export function sliceInFeature(kitDir, ctx, folder, feature) {
+  if (!feature) return true;
+  if (!folder) return false;
+  try {
+    const { features } = JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8'));
+    return Array.isArray(features) && features.some((f) => typeof f === 'string' && f.trim().toLowerCase() === feature);
+  } catch {
+    return false;
+  }
+}
+
 function readCurrentContext(kitDir) {
   const ctxPath = join(kitDir, '.slices', 'current_context.json');
   if (!existsSync(ctxPath)) return null;
@@ -531,7 +550,7 @@ function readSliceMeta(kitDir, ctx, folder) {
 // before the next one starts. When the current context has no planned work, the first other
 // context that does becomes the current one (current_context.json is rewritten), so a slice
 // set to Planned in any context is eventually built. Ids in `skipIds` are passed over.
-function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
+export function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
   const slicesDir = join(kitDir, '.slices');
   const currentCtx = readCurrentContext(kitDir);
   let others = [];
@@ -539,13 +558,14 @@ function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
     others = readdirSync(slicesDir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   } catch {}
   const pickup = statusKey(readPickupStatus(kitDir));
+  const feature = readFeatureFilter();
   const candidates = [...(currentCtx ? [currentCtx] : []), ...others.filter((c) => c !== currentCtx)];
   for (const ctx of candidates) {
     const indexPath = join(slicesDir, ctx, 'index.json');
     if (!existsSync(indexPath)) continue;
     try {
       const { slices } = JSON.parse(readFileSync(indexPath, 'utf-8'));
-      const planned = slices && slices.find((s) => statusKey(s.status) === pickup && !skipIds.has(s.id));
+      const planned = slices && slices.find((s) => statusKey(s.status) === pickup && !skipIds.has(s.id) && sliceInFeature(kitDir, ctx, s.folder, feature));
       if (!planned) continue;
       if (ctx !== currentCtx) {
         writeFileSync(join(slicesDir, 'current_context.json'), JSON.stringify({ name: ctx }, null, 2), 'utf-8');
@@ -561,13 +581,14 @@ function getFirstPlannedSlice(kitDir, skipIds = new Set()) {
 function listPlannedIds(kitDir) {
   const slicesDir = join(kitDir, '.slices');
   const pickup = statusKey(readPickupStatus(kitDir));
+  const feature = readFeatureFilter();
   const ids = new Set();
   try {
     for (const d of readdirSync(slicesDir, { withFileTypes: true })) {
       if (!d.isDirectory()) continue;
       try {
         const { slices } = JSON.parse(readFileSync(join(slicesDir, d.name, 'index.json'), 'utf-8'));
-        for (const s of slices ?? []) if (statusKey(s.status) === pickup) ids.add(s.id);
+        for (const s of slices ?? []) if (statusKey(s.status) === pickup && sliceInFeature(kitDir, d.name, s.folder, feature)) ids.add(s.id);
       } catch {}
     }
   } catch {}
@@ -770,6 +791,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
   const board = credentialed ? createBoard(cfg) : null;
   const meta = eventMeta(cfg);
   ensureLearningsGitRules(kitDir);
+  if (readFeatureFilter()) console.log(`[ralph] --feature "${process.env.RALPH_FEATURE.trim()}" — only slices of that feature are picked up.`);
   // Sharing the event log with the board (`run --sync`): needs the board, so never with --local.
   const share = createBuildLogShare({ kitDir, cfg, meta, agentType: cfg?.agentType ?? 'BUILD', kitType: kitTypeOf(readPickupStatus(kitDir)), sync: process.env.RALPH_SYNC === '1', enabled: credentialed, log: (line) => console.log(`[ralph] ${line}`) });
   if (process.env.RALPH_SYNC === '1' && !credentialed) console.log('[ralph] --sync needs board credentials — the build log stays local.');

@@ -831,6 +831,29 @@ Build structured slice data from board state.
 
 ---
 
+### Slice features (`features`)
+
+A slice can belong to one or more **features** — free-text names such as `Seat reservation` that group slices across chapters (the people on the board see them in the Features list in the toolbar, where picking one fades every column that isn't part of it). They live on the slice's SLICE_BORDER as `meta.features`, an array of strings.
+
+- **Read**: the slice data of a slice carries `features` (omitted when it has none), next to `ticketNumber` and `assignee`.
+- **Use**: treat `features` as context — slices sharing a feature belong together, so when a build touches shared concepts, look at the sibling slices of the same feature before inventing a new name or shape. It never changes what a slice must do, and an empty list is normal.
+- **Set** (only when the user asks you to group slices): a `node:changed` event on the SLICE_BORDER, same shape as the status update. Send the **whole** list — it replaces the old one — and reuse an existing feature's exact spelling instead of adding a near-duplicate (`Booking` vs `booking`; the board treats them as one, but keep them tidy):
+
+```bash
+curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
+  -H "Content-Type: application/json" \
+  -H "x-token: <TOKEN>" \
+  -d '[{
+    "id": "<new-random-uuid>",
+    "eventType": "node:changed",
+    "nodeId": "<SLICE_NODE_ID>",
+    "changedAttributes": ["features"],
+    "meta": { "type": "SLICE_BORDER", "features": ["Seat reservation"] }
+  }]'
+```
+
+---
+
 ### GET `/api/org/:orgId/boards/:boardId/slicedata/slices`
 List all slices on a board.
 

@@ -695,6 +695,7 @@ Flow: `Ready → Planned → InProgress → Waiting → InProgress → Done`. Pr
 - **The platform must know the `Ready` / `Waiting` statuses.**
 - A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Waiting" }`; absent means `Planned`.
 - `run --status-trigger <status>` overrides that pickup status for a single run (e.g. `--status-trigger Ready`); nothing is saved.
+- `run --feature <name>` picks up only the slices that belong to that feature (the names set per slice on the board, matched case-insensitively); without it every slice in the pickup status is built. Slices without a feature wait for a run without the flag. Nothing is saved.
 
 The contract itself is the shared `ui-contract` skill's job (see above); it also owns the rule for which status a slice ends at.
 
