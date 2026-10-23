@@ -101,14 +101,9 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
 
 Response: `{ "hashes": { "<eventId>": "<hash>" } }`
 
-### Claiming a slice (compare-and-set)
+### If the API rejects the update because the slice is already in `newStatus`
 
-The API does **not** reject a write into the status a slice is already in — re-sending the current status is a silent no-op, so two agents that both read `Planned` and both write `InProgress` would both "succeed" and both build the slice. To claim, pass the status you expect the slice to be in. The write then applies only if the slice still has it:
-
-- MCP: add `"expectedStatus": "<status you read, e.g. Planned>"` to `update_slice_status` (if the tool does not offer it yet, use the fallback).
-- Fallback: add `"expectedSliceStatus": "<status you read>"` to the `node:changed` event, next to `changedAttributes`.
-
-If it fails with `409` / `SLICE_STATUS_CONFLICT`, another agent changed or claimed the slice first. This is **not** a broken call: report `ALREADY_IN_STATUS` (see Step 4), do not retry, and pick a different slice.
+The API refuses to move a slice into a status it is already in — this is a deliberate concurrency guard so two agents racing to claim the same slice can't both succeed. If Step 3 fails with an error indicating the slice is already at `<newStatus>` (e.g. a `409`, or an error body mentioning "already"), this is **not a failure to surface as broken** — it means another agent already claimed or moved the slice first. Report this as a distinct `ALREADY_IN_STATUS` outcome (see Step 4) rather than a generic error, and do not retry the same update. Callers trying to claim a `Planned` slice for building should treat this as a signal to pick a different slice, not to stop.
 
 ---
 

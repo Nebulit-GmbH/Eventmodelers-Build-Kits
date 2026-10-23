@@ -53,16 +53,16 @@ export function recordAgentStatus({ kitDir, status, sliceId, meta }) {
 }
 
 // Claims a slice before it is built. The log is the local arbiter (the first claim wins); the board is
-// the cross-agent one — the claim is a compare-and-set (expectedSliceStatus = the pickup status), so the board
-// refuses it unless the slice is still in the pickup status. Returns 'won', 'held'
+// the cross-agent one — it rejects a move into the status a slice is already in, and a claim first checks the slice is
+// still in the pickup status. Returns 'won', 'held'
 // (another live process owns it in this kit) or 'lost' (the board refused; nothing was built).
 export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid = process.pid, pickupStatus = 'Planned' }) {
   const open = fold(readEvents(kitDir)).slices[planned.id]?.claim;
   if (open && open.pid !== pid && isProcessAlive(open.pid)) return 'held';
-  // Look at the board before claiming. The compare-and-set below decides a race; this read only catches a stale view early, so an
+  // Look at the board before claiming. Its same-status guard only turns away an InProgress over an InProgress, so an
   // agent working from a stale view (Planned, while another has already built and finished it) would otherwise move
   // a Done slice back to InProgress and build it twice. What the board really shows is recorded, which also puts the
-  // loop's stale local view right. (Two claims in the same instant are decided by the compare-and-set.)
+  // loop's stale local view right. (Two claims in the same instant are still decided by that same-status guard.)
   if (board) {
     let current;
     try {
@@ -87,7 +87,7 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
   if (state.slices[planned.id].claim?.pid !== pid) return 'held';
   if (board) {
     try {
-      await board.setStatus(planned.id, 'InProgress', pickupStatus);
+      await board.setStatus(planned.id, 'InProgress');
     } catch (err) {
       console.error(`[ralph] Could not claim "${planned.title}" on the board:`, err.message);
       recordEvent(kitDir, { type: 'released', slice: planned.id, reason: 'lost' }, meta);
