@@ -82,6 +82,7 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
     // What the board says about the slice at build time, when it says anything: both can change between builds.
     ...(planned.ticketNumber ? { ticketNumber: planned.ticketNumber } : {}),
     ...(planned.assignee ? { assignee: planned.assignee } : {}),
+    ...(planned.feature ? { feature: planned.feature } : {}),
   }, meta);
   if (state.slices[planned.id].claim?.pid !== pid) return 'held';
   if (board) {

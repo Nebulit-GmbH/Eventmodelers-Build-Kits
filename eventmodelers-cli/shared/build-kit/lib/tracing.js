@@ -140,13 +140,13 @@ export function createSliceTracer({ baseUrl, token, organizationId, boardId: def
   }
 
   return {
-    /** One build turn: `{sliceId, sliceTitle, context, ticketNumber, boardId, attempt, status}` plus its usage.
-     *  ticketNumber is the slice's ticket at build time — it can change, so it travels with each turn. */
-    record({ sliceId, sliceTitle = null, context = null, ticketNumber = null, boardId = defaultBoardId ?? null, attempt = null, status = 'ok' }, usage) {
+    /** One build turn: `{sliceId, sliceTitle, context, ticketNumber, feature, boardId, attempt, status}` plus its usage.
+     *  ticketNumber and feature are the slice's at build time — they can change, so they travel with each turn. */
+    record({ sliceId, sliceTitle = null, context = null, ticketNumber = null, feature = null, boardId = defaultBoardId ?? null, attempt = null, status = 'ok' }, usage) {
       if (!sliceId || !usage) return;
       const trace = {
         id: newId(), occurredAt: new Date().toISOString(),
-        boardId, sliceId, sliceTitle, context, ticketNumber, agentId, sessionId: agentId, attempt, status, ...usage,
+        boardId, sliceId, sliceTitle, context, ticketNumber, feature, agentId, sessionId: agentId, attempt, status, ...usage,
       };
       write(trace);
       post(trace).catch(() => {});

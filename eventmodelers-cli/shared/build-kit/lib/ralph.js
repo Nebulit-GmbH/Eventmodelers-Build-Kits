@@ -4,7 +4,7 @@
 // startRalph({ kitDir, projectDir, onTask, onPlannedSlice })
 //   onTask(prompt) — called once per queued slice change (the oldest first; see lib/slice-tasks.js)
 //   onPlannedSlice(prompt, slice) — called when .slices/ has a "Planned" entry (omit to skip);
-//     `slice` ({sliceId, sliceTitle, context, ticketNumber, assignee, boardId, attempt}) lets a runner record what building it cost.
+//     `slice` ({sliceId, sliceTitle, context, ticketNumber, assignee, feature, boardId, attempt}) lets a runner record what building it cost.
 //     May resolve with the agent's final reply — quoted in the note if the slice ends up auto-blocked.
 
 import { readFileSync, mkdirSync, writeFileSync, existsSync, readdirSync } from 'fs';
@@ -533,14 +533,19 @@ function readCurrentContext(kitDir) {
   try { return JSON.parse(readFileSync(ctxPath, 'utf-8')).name || null; } catch { return null; }
 }
 
-// The slice's ticket and assignee as of the last fetch, from its slice.json — a build carries the ones the slice is
-// built under, since both can change between builds. Either is null when the slice has none.
+// A slice can be in several features, but a build (and every change and cost it makes) is filed under one: the first.
+function firstFeature(features) {
+  return Array.isArray(features) ? features.find((f) => typeof f === 'string' && f.trim())?.trim() ?? null : null;
+}
+
+// The slice's ticket, assignee and feature as of the last fetch, from its slice.json — a build carries the ones the slice is
+// built under, since all can change between builds. Each is null when the slice has none.
 function readSliceMeta(kitDir, ctx, folder) {
-  const none = { ticketNumber: null, assignee: null };
+  const none = { ticketNumber: null, assignee: null, feature: null };
   if (!folder) return none;
   try {
     const slice = JSON.parse(readFileSync(join(kitDir, '.slices', ctx, folder, 'slice.json'), 'utf-8'));
-    return { ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null };
+    return { ticketNumber: slice.ticketNumber ?? null, assignee: slice.assignee ?? null, feature: firstFeature(slice.features) };
   } catch {
     return none;
   }
@@ -867,6 +872,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
         context: planned.ctx,
         ticketNumber: planned.ticketNumber,
         assignee: planned.assignee,
+        feature: planned.feature,
         boardId: cfg.boardId ?? null,
         attempt: attempts + 1,
       }); });
