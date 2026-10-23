@@ -1,6 +1,7 @@
 ---
 name: domain-story
-description: Retell the model as Domain Storytelling — one pictographic story per chapter: actors (people, groups, systems), the work objects they pass around and numbered activities ("1 Customer places Order to Shop"). You draw it yourself as an SVG (stick figures, document icons, numbered arrows) and post it as an `svg` snippet whose figures and arrows are clickable links to the board. Read-only — changes nothing on the board, unless the person then asks to place the picture on it (Step 6).
+description: >-
+  Retell the model as Domain Storytelling — one pictographic story per chapter: actors (people, groups, systems), the work objects they pass around and numbered activities ("1 Customer places Order to Shop"). You draw it yourself as an SVG (stick figures, document icons, numbered arrows) and post it as an `svg` snippet whose figures and arrows are clickable links to the board. Read-only — changes nothing on the board, unless the person then asks to place the picture on it (Step 6).
 ---
 
 # Domain story — who does what with which work object, per chapter

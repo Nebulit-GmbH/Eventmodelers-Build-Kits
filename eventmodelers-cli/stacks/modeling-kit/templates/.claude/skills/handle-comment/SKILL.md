@@ -1,6 +1,7 @@
 ---
 name: handle-comment
-description: Place, resolve, or delete a comment on an eventmodelers board node. Action is determined by the first argument: place (default), resolve, or delete.
+description: >-
+  Place, resolve, or delete a comment on an eventmodelers board node. Action is determined by the first argument: place (default), resolve, or delete.
 ---
 
 # Handle Comment

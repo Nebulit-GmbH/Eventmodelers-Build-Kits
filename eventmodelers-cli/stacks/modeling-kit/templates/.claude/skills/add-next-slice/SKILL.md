@@ -1,6 +1,7 @@
 ---
 name: add-next-slice
-description: Decide on and create a genuinely new slice from scratch when there's no existing COMMAND/READMODEL/AUTOMATION left to slice — the model doesn't yet suggest an obvious next capability, or every existing element already has a Done slice. Use when eventmodeling-slicing-event-models finds nothing left to make explicit. Do not use for: making an already-modelled element's slice explicit (use eventmodeling-slicing-event-models — that skill only slices existing elements, it never invents new ones).
+description: >-
+  Decide on and create a genuinely new slice from scratch when there's no existing COMMAND/READMODEL/AUTOMATION left to slice — the model doesn't yet suggest an obvious next capability, or every existing element already has a Done slice. Use when eventmodeling-slicing-event-models finds nothing left to make explicit. Do not use for: making an already-modelled element's slice explicit (use eventmodeling-slicing-event-models — that skill only slices existing elements, it never invents new ones).
 ---
 
 # Add Next Slice
