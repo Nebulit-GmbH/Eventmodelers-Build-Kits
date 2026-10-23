@@ -4330,7 +4330,7 @@ program
   .option('--out <dir>', 'Directory to write into (the catalog root)', '.')
   .option('--owner <id>', 'Owner (team or user id from the catalog) set on every exported resource; repeat for several', (v, all) => [...all, v], [])
   .option('--check', 'Compare the model with what the last export wrote and exit 1 if they differ — writes nothing (for CI)')
-  .option('-i, --interactive', 'List every element (events, commands, queries, flows, domain) as a checkable list — new/changed ones pre-checked — and export only the ones you tick. Ticked resources that already exist are overwritten')
+  .option('-i, --interactive', 'List the new/changed elements (events, commands, queries, flows, domain) as a pre-checked list — in-sync ones are not shown — and export only the ones you leave ticked. Ticked resources that already exist are overwritten')
   .option('--flows', 'Also export the flows (one per chapter, linked from the domain). Without it only the domain, events, commands and queries are exported')
   .option('-f, --force', 'Overwrite resources that already exist in the catalog, and re-prompt for credentials when reading the board')
   .action(async (opts, command) => {
@@ -4537,13 +4537,19 @@ program
           console.log(`ℹ️  No slices found in "${name}" — nothing exported.`);
           continue;
         }
-        const tag = { new: 'new', changed: 'changed', unchanged: 'in sync' };
+        // Only what differs from the catalog is worth a choice; in-sync elements are left alone.
+        const pending = plan.items.filter((i) => i.status !== 'unchanged');
+        if (!pending.length) {
+          console.log(`✅ "${plan.context}" is in sync with the catalog — nothing to export.`);
+          continue;
+        }
+        const tag = { new: 'new', changed: 'changed' };
         only = await checkboxPrompt(
           `"${plan.context}": which elements do you want to export?`,
-          plan.items.map(({ label, status, changes }) => ({
+          pending.map(({ label, status, changes }) => ({
             label: `${label}  [${tag[status]}]${changes?.length ? ` ${changes[0]}${changes.length > 1 ? ` (+${changes.length - 1})` : ''}` : ''}`,
             value: label,
-            checked: status !== 'unchanged',
+            checked: true,
           })),
         );
         if (!only.length) {

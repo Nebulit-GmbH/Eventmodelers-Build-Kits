@@ -12,7 +12,7 @@ Reads the slices of an event model and writes EventCatalog resources into `--out
 - `--all` exports every context (board or local), one after the other. `--local` reads the `.slices/<context>/<slice>/slice.json` files `listen`/`fetch` write; with several contexts and no `--context`/`--all` it asks which.
 - `--owner <id>` (repeatable) sets `owners` on every resource; the id must be a team or user in the catalog, or the linter flags it.
 - `--check` compares the model with the last export (new / changed / removed) and writes nothing; exit 1 when out of sync.
-- `--interactive` lists every resource as a checkable list (space toggles, `a` all/none, enter confirms), tagged `new`, `changed` or `in sync`; new and changed ones are pre-checked. Only the ticked ones are written, and ticked resources that already exist are overwritten (like `--force`, for those only).
+- `--interactive` lists the resources that differ from the catalog as a checkable list (space toggles, `a` all/none, enter confirms), tagged `new` or `changed` and all pre-checked; in-sync ones are not shown, and a context with nothing pending prints "in sync" and exports nothing. Only the ticked ones are written, and ticked resources that already exist are overwritten (like `--force`, for those only).
 - Flows are only exported with `--flows`; without it they (and the domain's reference to them) are left out. `--check` and `--interactive` honour it too.
 - Resources already in the catalog (same id and version) are skipped. `--force` overwrites them, and — reading the board — asks for credentials again.
 

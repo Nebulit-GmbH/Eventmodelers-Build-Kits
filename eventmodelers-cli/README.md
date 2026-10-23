@@ -176,6 +176,8 @@ npx @eventmodelers/cli config --handover on|off      # persist that choice for t
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
+npx @eventmodelers/cli export --type eventcatalog   # write the model into an EventCatalog project (run inside the catalog, or --out <dir>) — see `export` below
+npx @eventmodelers/cli export --type json --all     # pull every context into <kit-dir>/.slices/ — the pull-based `listen`, same as `fetch`
 npx @eventmodelers/cli stacks                       # list available stacks
 npx @eventmodelers/cli status                       # check what's installed
 npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
@@ -796,6 +798,21 @@ npx @eventmodelers/cli listen --port 4000            # same, on a different port
 ```
 
 `listen` is a dispatcher for `<kit-dir>/code-export.mjs` — a local HTTP server (port 3001 by default) that the eventmodelers board UI posts slice/screen data to, which then gets written under `<kit-dir>/.slices/`. Unlike `fetch`, it does receive screen images, since the board UI pushes them directly.
+
+### `export` — the model in another tool's format
+
+```bash
+npx @eventmodelers/cli export --type eventcatalog                     # pick a context from the board, write into the current catalog
+npx @eventmodelers/cli export --type eventcatalog --all --flows --out ../catalog --owner platform-team
+npx @eventmodelers/cli export --type eventcatalog --context Checkout --check   # CI: exit 1 if the catalog is out of sync, writes nothing
+npx @eventmodelers/cli export --type eventcatalog -i                  # tick which new/changed resources to write
+npx @eventmodelers/cli export --type eventcatalog --local             # read ./.slices/ (or ./config.json) instead of the board
+npx @eventmodelers/cli export --type json --context Checkout          # = fetch: .slices/<context>/<slice>/slice.json from the board
+```
+
+`--type eventcatalog` writes an [EventCatalog](https://www.eventcatalog.dev) project with the `@eventcatalog/sdk`: a domain per context, events, commands and queries (read models) with a `schema.json`, and — with `--flows` — one flow per chapter. Resources already in the catalog (same id and version) are skipped unless `--force`. The SDK is resolved from the catalog's `node_modules`; if it's missing the CLI asks before running `npm install @eventcatalog/sdk` there. `--out` must be an EventCatalog project. Full option list and the model → catalog mapping: [`extensions/eventcatalog/README.md`](extensions/eventcatalog/README.md).
+
+`--type json` takes only `--context`/`--all`/`--force` (not `--local`, `--check` or `--interactive`). Like `fetch` and `listen`, it needs no installed kit dir.
 
 ### Re-init — refresh scripts/skills without touching your app
 
