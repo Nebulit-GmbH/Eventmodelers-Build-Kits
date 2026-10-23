@@ -710,7 +710,10 @@ export function resolveHandover(cfg) {
 export function createBoard(cfg) {
   const base = `${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}`;
   return {
-    async setStatus(sliceId, status) {
+    // `expected` makes the write a compare-and-set: the board applies it only if the slice still has that
+    // status (409 SLICE_STATUS_CONFLICT otherwise). A claim passes the pickup status, so of several agents
+    // racing for one slice exactly one wins — the board no longer rejects a same-status write by itself.
+    async setStatus(sliceId, status, expected = null) {
       let attempts = 0;
       await retryTransient(`set "${status}" on slice ${sliceId}`, async () => {
         attempts++;
@@ -725,6 +728,7 @@ export function createBoard(cfg) {
               boardId: cfg.boardId,
               timestamp: Date.now(),
               changedAttributes: ['sliceStatus'],
+              ...(expected ? { expectedSliceStatus: expected } : {}),
               meta: { type: 'SLICE_BORDER', sliceStatus: status },
             }]),
           });
