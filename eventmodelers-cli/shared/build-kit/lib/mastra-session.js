@@ -57,7 +57,7 @@ export function usageFromMastra(usage, { durationMs, model } = {}) {
  *   checkCommand   (command) -> {ok, reason}: refuses a shell command before it runs (lib/bash-guard.js)
  *   log
  */
-export async function createMastraSession({ model, instructions, mcpUrl, token, agentId, cwd, workspace = false, skillsDirs = [], env = {}, checkCommand, log = () => {} }) {
+export async function createMastraAgent({ model, instructions, mcpUrl, token, agentId, cwd, workspace = false, skillsDirs = [], env = {}, checkCommand }) {
   if (!model) throw new Error('no model — pass --model <provider/model>, e.g. anthropic/claude-sonnet-5-5');
   const { Agent, MCPClient, Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } = await loadMastra();
 
@@ -101,6 +101,14 @@ export async function createMastraSession({ model, instructions, mcpUrl, token, 
     tools: await mcp.listTools(),
     ...(ws ? { workspace: ws } : {}),
   });
+
+  return { agent, mcp, sandboxEnv };
+}
+
+/** A warm session around that agent: the same options, plus `log`. */
+export async function createMastraSession(options) {
+  const { model, env = {}, log = () => {} } = options;
+  const { agent, mcp, sandboxEnv } = await createMastraAgent(options);
 
   let history = [];
   let running = null;

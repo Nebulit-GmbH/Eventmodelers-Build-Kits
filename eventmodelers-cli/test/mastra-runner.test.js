@@ -35,3 +35,9 @@ test('run --agent mastra lists itself and rejects --exec alongside it', () => {
   assert.match(execFileSync('node', [cli, 'run', '--agent'], { encoding: 'utf8' }), /mastra\s+a warm Mastra agent/);
   assert.throws(() => execFileSync('node', [cli, 'run', '--agent', 'mastra', '--exec', 'x'], { encoding: 'utf8', stdio: 'pipe' }), /mutually exclusive/);
 });
+
+test('studio refuses to start without a provider/model or with a bad port', () => {
+  const run = (args) => { try { execFileSync('node', [cli, 'studio', ...args], { encoding: 'utf8', stdio: 'pipe' }); return ''; } catch (err) { return err.stderr; } };
+  assert.match(run(['--model', 'sonnet']), /No model/);
+  assert.match(run(['--model', 'anthropic/x', '--port', '99999']), /not a port number|No board token/);
+});

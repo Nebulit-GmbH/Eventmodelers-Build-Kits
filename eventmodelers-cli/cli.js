@@ -15,7 +15,7 @@ import {
   readFileSync,
   appendFileSync,
 } from 'fs';
-import { execSync, execFileSync, spawn } from 'child_process';
+import { execSync, execFileSync, spawn, spawnSync } from 'child_process';
 import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from 'readline';
 import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
@@ -3327,7 +3327,7 @@ program
 // dir: a modeling run falls back to the global install (see ensureGlobalKit) rather than
 // requiring one here, and the build-kit branch reports a better-targeted error of its own
 // than this generic gate can.
-const NO_INIT_REQUIRED = new Set(['init', 'scaffold', 'init-templates', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'export', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'events', 'replay', 'bridge']);
+const NO_INIT_REQUIRED = new Set(['init', 'scaffold', 'init-templates', 'init-config', 'stacks', 'status', 'config', 'uninstall', 'fetch', 'export', 'activate-context', 'set-slice-status', 'release-notes', 'run', 'listen', 'studio', 'events', 'replay', 'bridge']);
 
 // Commands that install or refresh the kit themselves — a "your kit is outdated" hint in
 // front of them would only be noise.
@@ -4133,6 +4133,49 @@ credentialFlags(program
     } catch (err) {
       process.exit(err.status || 1);
     }
+  });
+
+program
+  .command('studio')
+  .description('Open Mastra Studio (localhost:4111) on the modeling agent that `run --agent mastra` uses — chat with it, watch its tool calls and traces. It is the same agent (model, board tools, skills, shell guard), so what works in Studio works on the board. A local dev tool: it holds this project\'s board token, so keep it on localhost. Needs @mastra/core, @mastra/mcp and zod installed next to the CLI (npm install --save-dev @eventmodelers/cli @mastra/core @mastra/mcp zod, then run it with npx eventmodelers); `mastra` itself is fetched on demand.')
+  .option('--model <id>', 'The model, as <provider>/<model> (e.g. anthropic/claude-sonnet-5-5); default mastra.model from .eventmodelers/config.json. The provider\'s key is read from its usual env var.')
+  .option('--port <port>', 'Port for Studio (default 4111)')
+  .action((opts, command) => {
+    const cwd = process.cwd();
+    const globalOpts = command.optsWithGlobals();
+    const { config } = loadEffectiveConfig(cwd, findInstalledKitDir(cwd), globalOpts.config);
+    const model = String(opts.model ?? config.mastra?.model ?? '').trim();
+    if (!model.includes('/')) {
+      console.error('❌ No model — pass --model <provider>/<model>, e.g. anthropic/claude-sonnet-5-5, or set mastra.model in .eventmodelers/config.json.');
+      process.exit(1);
+    }
+    if (!config.token) {
+      console.error('❌ No board token — run `eventmodelers install` (or `eventmodelers init-config`) first, or pass --config.');
+      process.exit(1);
+    }
+    const port = opts.port === undefined ? null : Number(opts.port);
+    if (port !== null && !(Number.isInteger(port) && port > 0 && port < 65536)) {
+      console.error(`❌ --port "${opts.port}" is not a port number.`);
+      process.exit(1);
+    }
+    const entryDir = fileURLToPath(new URL('./lib/studio', import.meta.url));
+    console.log(`▶ Starting Mastra Studio on ${model} — http://localhost:${port ?? 4111}\n`);
+    const res = spawnSync('npx', ['--yes', 'mastra', 'dev', '--dir', entryDir, '--root', cwd], {
+      cwd,
+      stdio: 'inherit',
+      env: {
+        ...process.env,
+        EVENTMODELERS_BASE_URL: config.baseUrl || DEFAULT_BASE_URL,
+        EVENTMODELERS_TOKEN: config.token,
+        ...(config.agentId ? { EVENTMODELERS_AGENT_ID: config.agentId } : {}),
+        ...(config.organizationId ? { EVENTMODELERS_ORG_ID: config.organizationId } : {}),
+        ...(config.boardId ? { EVENTMODELERS_BOARD_ID: config.boardId } : {}),
+        EVENTMODELERS_STUDIO_MODEL: model,
+        EVENTMODELERS_STUDIO_CWD: cwd,
+        ...(port !== null ? { EVENTMODELERS_STUDIO_PORT: String(port) } : {}),
+      },
+    });
+    process.exit(res.status ?? 1);
   });
 
 program

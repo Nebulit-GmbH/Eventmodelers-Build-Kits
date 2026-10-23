@@ -12,7 +12,7 @@
 
 import { tmpdir } from 'os';
 import { turnTimeoutMs } from '../shared/build-kit/lib/turn.js';
-import { createMastraSession } from '../shared/build-kit/lib/mastra-session.js';
+import { createMastraSession, createMastraAgent } from '../shared/build-kit/lib/mastra-session.js';
 import { checkBashCommand } from './bash-guard.js';
 
 const INSTRUCTIONS =
@@ -21,12 +21,14 @@ const INSTRUCTIONS =
   'follow for every turn. The kit\'s skills are available through the skill tools. The eventmodelers MCP server is ' +
   'connected and authenticated: use its tools directly. You have no subagents, so do all the work yourself.';
 
-export async function createModelingMastraRunner({ cfg, model, projectDir, codeDir = null, log, onToolUse }) {
+// What the modeling agent is built from — shared by the loop's warm session and by Studio (lib/studio/index.ts), so
+// the agent you try in Studio is the one that works the board.
+function modelingAgentOptions({ cfg, model, projectDir, codeDir }) {
   if (!model || !model.includes('/')) {
     throw new Error('no model — pass --model <provider/model>, e.g. anthropic/claude-sonnet-5-5 (or set mastra.model in .eventmodelers/config.json)');
   }
   const policy = { baseUrl: cfg.baseUrl, cwd: projectDir, roots: [projectDir, tmpdir(), ...(codeDir ? [codeDir] : [])] };
-  const session = await createMastraSession({
+  return {
     model,
     instructions: INSTRUCTIONS,
     mcpUrl: `${cfg.baseUrl}/mcp`,
@@ -48,8 +50,16 @@ export async function createModelingMastraRunner({ cfg, model, projectDir, codeD
       ...(codeDir ? { EVENTMODELERS_CODE_DIR: codeDir } : {}),
     },
     checkCommand: (command) => checkBashCommand(command, policy),
-    log,
-  });
+  };
+}
+
+/** The bare agent, for Mastra Studio — no session around it. */
+export function createModelingMastraAgent(options) {
+  return createMastraAgent(modelingAgentOptions(options));
+}
+
+export async function createModelingMastraRunner({ cfg, model, projectDir, codeDir = null, log, onToolUse }) {
+  const session = await createMastraSession({ ...modelingAgentOptions({ cfg, model, projectDir, codeDir }), log });
 
   const timeoutMs = turnTimeoutMs(cfg);
   let primed = false; // a turn has succeeded: the session has read the kit, so later turns skip the preamble
