@@ -94,7 +94,8 @@ function resolveLocalAiTarget(opts) {
 // once here, so nobody has to remember its headless flags. The two loops want different output
 // from the same harness: the modeling loop reads a turn's answer from plain-text stdout, while a
 // build kit wants the JSON mode, the only one that reports the usage agent tracing records.
-// claude has no command — it is the default runner, named so it can be picked explicitly.
+// claude has no command — it is the default runner, named so it can be picked explicitly. Neither has mastra:
+// it runs in-process, one warm session, so the cockpit gets the same tool-call and cost events a Claude run gives it.
 // --exec stays the fallback for any harness or flag set not listed here.
 // The commands live with their harness, in shared/build-kit/lib/harnesses/<name>.js.
 
@@ -102,7 +103,8 @@ function printAgentPresets() {
   console.log('Supported agents for run --agent <name>:\n');
   for (const name of AGENT_NAMES) {
     const modeling = presetCommand(name, 'modeling');
-    console.log(`  ${name.padEnd(9)}${modeling ? `modeling: ${modeling}\n  ${''.padEnd(9)}build:    ${presetCommand(name, 'build')}` : 'the default runner (warm Claude process / ralph-claude.js)'}`);
+    const own = name === 'mastra' ? 'a warm Mastra agent in this process (lib/modeling-mastra.js / ralph-mastra.js) — needs --model <provider/model>' : 'the default runner (warm Claude process / ralph-claude.js)';
+    console.log(`  ${name.padEnd(9)}${modeling ? `modeling: ${modeling}\n  ${''.padEnd(9)}build:    ${presetCommand(name, 'build')}` : own}`);
   }
   console.log('\nAny other harness: run --exec "<command>".');
   console.log(`A local or self-hosted model: run --local-ai [${LOCAL_AI_TARGETS.join('|')}].`);
@@ -130,6 +132,11 @@ function resolveAgentPreset(opts, loop) {
   if (resolveLocalAiTarget(opts) !== null) {
     console.error('❌ --agent is mutually exclusive with --local-ai — pick one runner.');
     process.exit(1);
+  }
+  // Mastra is a runner of its own, not a command: a warm in-process agent session (see lib/modeling-mastra.js).
+  if (name === 'mastra') {
+    opts.mastra = true;
+    return null;
   }
   return presetCommand(name, loop);
 }
@@ -1124,7 +1131,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // Make scripts executable
-    for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
+    for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
@@ -1372,7 +1379,7 @@ async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
   if (existsSync(manifestPath)) {
     writeFileSync(manifestPath, JSON.stringify({ ...readJsonSafe(manifestPath), version: CLI_VERSION }, null, 2));
   }
-  for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js']) {
+  for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js']) {
     const p = join(kitDir, script);
     if (existsSync(p)) {
       try { execSync(`chmod +x "${p}"`); } catch {}
@@ -2006,7 +2013,7 @@ async function offerPrune(kitDir, { interactive }) {
   }
 }
 
-async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, model = null, skipPermissions = false, browser = false } = {}) {
+async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, mastra = false, model = null, skipPermissions = false, browser = false } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -2106,6 +2113,21 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       execRunner = createModelingExecRunner({ cfg, command: exec === true ? cfg.localAi?.exec : exec, projectDir, log });
     } catch (err) {
       console.error(`❌ --exec: ${err.message}`);
+      process.exit(1);
+    }
+  }
+  // --agent mastra: a warm Mastra agent in this process (lib/modeling-mastra.js). It has the exec runner's shape — it
+  // takes a turn's text, works the board over MCP and answers — so it takes that runner's place everywhere below.
+  // What it changes is that the session stays up: the header goes in once and the standalone warm-up turn pays off.
+  if (mastra) {
+    const { createModelingMastraRunner } = await import('./lib/modeling-mastra.js');
+    try {
+      execRunner = await createModelingMastraRunner({
+        cfg, model: model ?? cfg.mastra?.model, projectDir, codeDir, log,
+        onToolUse: (name, input) => { const id = `mastra-${++localCallSeq}`; noteToolStart(id, name, input); return (outcome) => noteToolEnd(id, outcome); },
+      });
+    } catch (err) {
+      console.error(`❌ --agent mastra: ${err.message}`);
       process.exit(1);
     }
   }
@@ -2427,7 +2449,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   if (!otherRunner) spawnProcess();
   log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId} — eventmodelers-cli v${CLI_VERSION}`);
   if (localRunner) log(`runner: local model — ${localRunner.describe()} (board tools over MCP; no skills, no subagents)`);
-  if (execRunner) log(`runner: ${execRunner.describe()} — one process per turn (skills from the kit; no subagents)`);
+  if (execRunner) log(`runner: ${execRunner.describe()} — ${mastra ? 'one warm session' : 'one process per turn'} (skills from the kit; no subagents)`);
   log(
     standalone
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (${localRunner ? 'work is done inline — a local model has no subagents' : execRunner ? 'work is done inline — an exec agent has no subagents' : `max ${maxAgents} subagent(s) per self-directed turn`})`
@@ -3799,8 +3821,8 @@ credentialFlags(program
   .description('Start the agent loop from the installed kit dir — build-kit stacks: ralph-claude.js (default); modeling-kit: --modeling, or --standalone, which needs no install at all')
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
   .addOption(new Option('--bash').hideHelp())
-  .option('--agent [name]', `Pick the agent that does the work by name: ${AGENT_NAMES.join(', ')}. claude is the default runner; any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
-  .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
+  .option('--agent [name]', `Pick the agent that does the work by name: ${AGENT_NAMES.join(', ')}. claude is the default runner; mastra is a warm in-process Mastra agent (needs --model <provider/model>); any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
+  .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), `<provider>/<model>` for --agent mastra (e.g. anthropic/claude-sonnet-5-5), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured (except with --force, which asks once per kit up front, here, before the runs start). With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
@@ -3955,11 +3977,11 @@ credentialFlags(program
         console.error(`❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.`);
         process.exit(1);
       }
-      if (opts.browser && (opts.exec || modelingLocalAi !== null || opts.dangerouslySkipPermissions)) {
+      if (opts.browser && (opts.exec || opts.mastra || modelingLocalAi !== null || opts.dangerouslySkipPermissions)) {
         console.error('❌ --browser only applies to the locked-down default Claude runner — --agent/--exec and --dangerously-skip-permissions use the MCP servers the machine configures, and --local-ai has no tools.');
         process.exit(1);
       }
-      if (opts.dangerouslySkipPermissions && (opts.exec || modelingLocalAi !== null)) {
+      if (opts.dangerouslySkipPermissions && (opts.exec || opts.mastra || modelingLocalAi !== null)) {
         console.error('❌ --dangerously-skip-permissions only applies to the default Claude runner — --agent/--exec bring their own permission flags (put them in the command), and --local-ai has no shell or file tools to approve.');
         process.exit(1);
       }
@@ -4032,10 +4054,10 @@ credentialFlags(program
       // [modeling] log lines instead of before them.
       await offerPrune(kitDir, { interactive: !globalOpts.print && !opts.nonInteractive && !!process.stdin.isTTY });
       const shown = relative(cwd, kitDir);
-      const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : 'warm Claude process';
+      const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : opts.mastra ? 'warm Mastra agent' : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, mastra: !!opts.mastra, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -4067,7 +4089,7 @@ credentialFlags(program
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
     // runner file to invoke. Users (and the agent itself, via AGENT.md) may customize these
     // files freely; `run` always executes whatever is currently on disk.
-    const runner = opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : 'ralph-claude.js';
+    const runner = opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : opts.mastra ? 'ralph-mastra.js' : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);

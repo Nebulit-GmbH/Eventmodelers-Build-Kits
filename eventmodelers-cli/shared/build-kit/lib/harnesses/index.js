@@ -19,8 +19,9 @@ export { opencodeSupportsStandalone, setOpencodeStandaloneSupport } from './open
 
 const HARNESSES = [opencode, codex, gemini, hermes, cursor];
 
-// Every name `--agent` takes, claude (the default runner, no command) first.
-export const AGENT_NAMES = ['claude', ...HARNESSES.map((h) => h.name)];
+// Every name `--agent` takes, claude (the default runner, no command) first. mastra has no command either: it runs
+// in-process as a runner of its own (ralph-mastra.js, lib/modeling-mastra.js), so it is named here, not in HARNESSES.
+export const AGENT_NAMES = ['claude', 'mastra', ...HARNESSES.map((h) => h.name)];
 
 export function harnessByName(name) {
   return HARNESSES.find((h) => h.name === name) ?? null;

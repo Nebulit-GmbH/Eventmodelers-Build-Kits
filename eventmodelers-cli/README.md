@@ -162,7 +162,7 @@ npx @eventmodelers/cli run                          # start the agent loop (ralp
 npx @eventmodelers/cli run --all                      # every build kit in the project at once (this directory and up to two levels below, e.g. a scaffolded app's root and web/), prefixed output, Ctrl+c stops all; other flags (--agent, --handover, …) go to each
 npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
-npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), opencode, codex, gemini, hermes, cursor — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
@@ -248,6 +248,25 @@ npx @eventmodelers/cli run --modeling --agent claude       # the default, spelle
 npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
 npx @eventmodelers/cli run --agent                         # list the agents and the command each runs
 ```
+
+**Mastra.** `--agent mastra` is not a command but a runner of its own: one warm [Mastra](https://mastra.ai) agent
+in the CLI process, with its MCP connection to the platform and its conversation kept up between turns, the way the
+warm Claude process is. Because the loop around it is the same, the agent cockpit shows the same things for it as for a
+Claude run — its pulse and attribution, slice status, and the build log with its tool-call rows and each slice turn's
+token usage (no price: Mastra reports tokens only). The model is `provider/model`, and the provider's key comes from its
+usual env var:
+
+```bash
+npm install @mastra/core @mastra/mcp zod                      # once — peer dependencies, only needed for this agent
+export ANTHROPIC_API_KEY=...
+npx @eventmodelers/cli run --modeling --agent mastra --model anthropic/claude-sonnet-5-5
+npx @eventmodelers/cli run --agent mastra --model anthropic/claude-sonnet-5-5    # a build kit (or mastra.model in .eventmodelers/config.json)
+```
+
+The kit's skills are loaded through Mastra's skill tools (from `.claude/skills`), and there are no subagents, so
+self-directed work is done inline. The modeling agent's shell goes through the same command allowlist as the default
+Claude runner. A build kit starts every planned slice with a fresh conversation (the process stays warm); the modeling
+agent keeps one conversation for the life of the loop. `--browser` and `--dangerously-skip-permissions` do not apply.
 
 `--agent` is only a shortcut: to run a harness it does not know, or the same one with other
 flags, pass the command yourself with `--exec "<command>"`. Keep the harness in its plain-text
