@@ -54,6 +54,12 @@ function fakeBoard({ remote = 'Planned', rejectWrites = false, failReads = false
       board.writes.push(status);
       board.remote = status;
     },
+    // The board's atomic claim: only a slice still in `fromStatus` moves to InProgress.
+    async claim(id, fromStatus) {
+      if (rejectWrites || board.remote !== fromStatus) throw Object.assign(new Error('HTTP 409: SLICE_ALREADY_CLAIMED'), { status: 409 });
+      board.writes.push('InProgress');
+      board.remote = 'InProgress';
+    },
     async readStatus() {
       if (failReads) throw new Error('board unreachable');
       return board.remote;
