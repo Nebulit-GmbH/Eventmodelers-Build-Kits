@@ -1,7 +1,7 @@
 # EventCatalog export
 
 ```
-eventmodelers export --type eventcatalog [--context <name>] [--local [path]] [--out <dir>] [--owner <id>]... [-f, --force]
+eventmodelers export --type eventcatalog [--context <name> | --all] [--local [path]] [--out <dir>] [--owner <id>]... [-f, --force]
 ```
 
 Reads the slices of an event model and writes EventCatalog resources into `--out` (default: cwd), using the
@@ -9,6 +9,7 @@ Reads the slices of an event model and writes EventCatalog resources into `--out
 
 - Source: the board by default (no `--context` → pick from the board's contexts). `--local` reads `./.slices/`, then `./config.json`, or the path you give.
 - The SDK is resolved from the target catalog's `node_modules` — it is not a dependency of this CLI. If the catalog lacks it, the CLI asks before running `npm install @eventcatalog/sdk` there.
+- `--all` exports every context (board or local), one after the other. `--local` reads the `.slices/<context>/<slice>/slice.json` files `listen`/`fetch` write; with several contexts and no `--context`/`--all` it asks which.
 - `--owner <id>` (repeatable) sets `owners` on every resource; the id must be a team or user in the catalog, or the linter flags it.
 - Resources already in the catalog (same id and version) are skipped. `--force` overwrites them, and — reading the board — asks for credentials again.
 

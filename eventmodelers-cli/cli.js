@@ -4252,7 +4252,8 @@ program
   .description('Export the event model into another tool\'s format. --type eventcatalog writes an EventCatalog project (domain, flow, events, commands, queries). Reads the board by default; --local reads .slices/ or config.json instead')
   .requiredOption('--type <type>', `Export target: ${EXPORT_TYPES.join(', ')}`)
   .option('--context <name>', 'Name or id of the context to export. Omitted (or not found) on the board: pick from the board\'s contexts. Filters --local')
-  .option('--local [path]', 'Read local files instead of the board: ./.slices/, then ./config.json, or the given path')
+  .option('--all', 'Export every context, one after the other (not with --context)')
+  .option('--local [path]', 'Read local files instead of the board — what `listen`/`fetch` wrote: ./.slices/, then ./config.json, or the given path')
   .option('--out <dir>', 'Directory to write into (the catalog root)', '.')
   .option('--owner <id>', 'Owner (team or user id from the catalog) set on every exported resource; repeat for several', (v, all) => [...all, v], [])
   .option('--check', 'Compare the model with what the last export wrote and exit 1 if they differ — writes nothing (for CI)')
@@ -4270,10 +4271,22 @@ program
       console.error('   Run this inside your catalog, or point --out at it. Create one with: npx @eventcatalog/create-eventcatalog@latest my-catalog --empty');
       process.exit(1);
     }
-    let slices;
+    // `loadSlices(name)` reads one context; `contextNames` is what to export, one after the other.
+    let loadSlices;
+    let contextNames;
     try {
+      if (opts.all && opts.context) throw new Error('--all and --context are mutually exclusive.');
       if (opts.local) {
-        slices = ext.loadFromLocal({ cwd, local: opts.local, context: opts.context });
+        // Reads what `listen`/`fetch` wrote into .slices/<context>/<slice>/slice.json (or a config.json / given path).
+        const localSlices = ext.loadFromLocal({ cwd, local: opts.local });
+        const contexts = ext.listLocalContexts(localSlices);
+        if (!contexts.length) throw new Error('No local slices found.');
+        const bySlice = (name) => localSlices.filter((sl) => (sl.context || 'default').toLowerCase() === name.toLowerCase());
+        loadSlices = async (name) => bySlice(name);
+        if (opts.all) contextNames = contexts.map((c) => c.name);
+        else if (opts.context) contextNames = [opts.context];
+        else if (contexts.length === 1) contextNames = [contexts[0].name];
+        else contextNames = [await selectPrompt('Which context do you want to export?', contexts.map((c) => ({ label: `${c.name} (${c.slices} slice${c.slices === 1 ? '' : 's'})`, value: c.name })))];
       } else {
         const kitDir = findInstalledKitDir(cwd);
         const globalOpts = command.optsWithGlobals();
@@ -4308,18 +4321,24 @@ program
           if (!contexts.length) throw new Error(`Board ${cfg.boardId} has no contexts with slices.`);
           return selectPrompt(question, contexts.map((c) => ({ label: `${c.name} (${c.slices} slice${c.slices === 1 ? '' : 's'})`, value: c.name })));
         };
-        let context = opts.context || (await pickContext('Which context do you want to export?'));
-        try {
-          console.log(`▶ Reading context "${context}" from the board...`);
-          slices = await withAuthRetry(() => ext.loadFromBoard({ cfg, context }));
-        } catch (err) {
-          if (!(err instanceof ext.ContextNotFoundError)) throw err;
-          console.error(`❌ ${err.message}`);
-          context = await pickContext(`No context named "${context}" — pick one of the contexts on this board:`);
-          console.log(`▶ Reading context "${context}" from the board...`);
-          slices = await withAuthRetry(() => ext.loadFromBoard({ cfg, context }));
+        loadSlices = async (name) => {
+          console.log(`▶ Reading context "${name}" from the board...`);
+          return withAuthRetry(() => ext.loadFromBoard({ cfg, context: name }));
+        };
+        if (opts.all) {
+          contextNames = (await withAuthRetry(() => ext.listContexts({ cfg }))).map((c) => c.name);
+          if (!contextNames.length) throw new Error(`Board ${cfg.boardId} has no contexts with slices.`);
+        } else {
+          let context = opts.context || (await pickContext('Which context do you want to export?'));
+          try {
+            await loadSlices(context);
+          } catch (err) {
+            if (!(err instanceof ext.ContextNotFoundError)) throw err;
+            console.error(`❌ ${err.message}`);
+            context = await pickContext(`No context named "${context}" — pick one of the contexts on this board:`);
+          }
+          contextNames = [context];
         }
-        opts.context = context;
       }
     } catch (err) {
       console.error(`❌ ${err.message}`);
@@ -4327,10 +4346,13 @@ program
     }
     const outDir = resolve(cwd, opts.out);
     if (opts.check) {
-      const result = ext.check({ slices, outDir, context: opts.context });
+      let outOfSync = false;
+      for (const name of contextNames) {
+      const slices = await loadSlices(name);
+      const result = ext.check({ slices, outDir, context: name });
       if (!result) {
-        console.log('ℹ️  No slices found — nothing to check.');
-        return;
+        console.log(`ℹ️  No slices found in "${name}" — nothing to check.`);
+        continue;
       }
       if (result.new.length) console.log(`new (${result.new.length}):\n${result.new.map((l) => `   ${l}`).join('\n')}`);
       if (result.changed.length) {
@@ -4340,10 +4362,13 @@ program
       if (result.removed.length) console.log(`removed from the model (${result.removed.length}):\n${result.removed.map((l) => `   ${l}`).join('\n')}`);
       if (result.inSync) {
         console.log(`✅ "${result.context}" is in sync with the catalog (${result.unchanged.length} resources).`);
-        return;
+        continue;
       }
       console.log(`❌ "${result.context}" is out of sync. Run \`eventmodelers export --type eventcatalog --context "${result.context}"\` (add --force to update resources already in the catalog).`);
-      process.exit(1);
+      outOfSync = true;
+      }
+      if (outOfSync) process.exit(1);
+      return;
     }
     // The SDK comes from the catalog, never from this CLI. Missing → offer to install it there.
     let sdk = await ext.loadSdk(outDir);
@@ -4369,13 +4394,17 @@ program
         process.exit(1);
       }
     }
-    const { written, skipped, model } = await ext.run({ slices, outDir, context: opts.context, force: opts.force, owners: opts.owner, sdk });
-    if (!model) {
-      console.log('ℹ️  No slices found — nothing exported.');
-      return;
+    // One context after the other.
+    for (const name of contextNames) {
+      const slices = await loadSlices(name);
+      const { written, skipped, model } = await ext.run({ slices, outDir, context: name, force: opts.force, owners: opts.owner, sdk });
+      if (!model) {
+        console.log(`ℹ️  No slices found in "${name}" — nothing exported.`);
+        continue;
+      }
+      console.log(`✅ Exported "${model.domain.name}" to ${outDir}: ${written.length} files written${skipped.length ? `, ${skipped.length} skipped (already in the catalog; use --force to overwrite)` : ''}.`);
+      for (const f of skipped) console.log(`   skipped ${f}`);
     }
-    console.log(`✅ Exported "${model.domain.name}" to ${outDir}: ${written.length} files written${skipped.length ? `, ${skipped.length} skipped (already in the catalog; use --force to overwrite)` : ''}.`);
-    for (const f of skipped) console.log(`   skipped ${f}`);
   });
 
 program

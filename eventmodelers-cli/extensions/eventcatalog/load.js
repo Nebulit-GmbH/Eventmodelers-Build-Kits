@@ -1,7 +1,7 @@
 // Where the slices come from: the board (default) or local files (--local).
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { join, resolve } from 'path';
+import { join, relative, resolve, sep } from 'path';
 import { FetchAuthError } from '../../lib/fetch.js';
 
 export class ContextNotFoundError extends Error {}
@@ -56,6 +56,16 @@ export function loadFromLocal({ cwd, local, context }) {
   return wanted ? slices.filter((s) => (s.context ?? '').toLowerCase() === wanted) : slices;
 }
 
+// The contexts present in already-loaded local slices, in first-seen order.
+export function listLocalContexts(slices) {
+  const counts = new Map();
+  for (const s of slices) {
+    const name = s.context || 'default';
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([name, count]) => ({ name, slices: count }));
+}
+
 function fromFile(path) {
   const data = readJson(path);
   return Array.isArray(data.slices) ? data.slices : [data];
@@ -68,7 +78,12 @@ function fromFolder(dir) {
     for (const entry of readdirSync(d, { withFileTypes: true })) {
       const p = join(d, entry.name);
       if (entry.isDirectory() && depth < 3) walk(p, depth + 1);
-      else if (entry.name === 'slice.json') slices.push(readJson(p));
+      else if (entry.name === 'slice.json') {
+        const slice = readJson(p);
+        // `listen`/`fetch` write .slices/<context>/<slice>/slice.json; the folder names the context if the slice does not.
+        if (!slice.context && depth >= 1) slice.context = relative(dir, d).split(sep)[0];
+        slices.push(slice);
+      }
     }
   };
   walk(dir, 0);

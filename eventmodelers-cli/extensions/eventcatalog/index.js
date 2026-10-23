@@ -7,7 +7,7 @@ import { toResources } from './render.js';
 import { writeResources } from './write.js';
 import { diffAgainst, readManifest, snapshotsOf, updateManifest } from './manifest.js';
 
-export { loadFromBoard, loadFromLocal, listContexts, ContextNotFoundError } from './load.js';
+export { loadFromBoard, loadFromLocal, listContexts, listLocalContexts, ContextNotFoundError } from './load.js';
 export { loadSdk, installSdk, isCatalog } from './write.js';
 
 // `export --check`: compares the model with what the last export recorded. Writes nothing, needs no SDK.
