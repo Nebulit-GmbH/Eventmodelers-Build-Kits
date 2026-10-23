@@ -43,14 +43,16 @@ const KINDS = [
 ];
 
 // Existing resources (same id and version) are left alone — they may have been edited. `force` overwrites them.
+// `only` (labels) restricts the write to those resources — the rest is neither written nor reported as skipped.
 // The schema file is attached after the resource (its `schemaPath` is already in the frontmatter).
-export async function writeResources(utils, resources, { force = false } = {}) {
+export async function writeResources(utils, resources, { force = false, only } = {}) {
   const written = [];
   const skipped = [];
   for (const [key, Name, singular, folder] of KINDS) {
     const items = key === 'domain' ? [resources.domain] : resources[key];
     for (const { resource, schema } of items) {
       const label = `${folder}/${resource.id}`;
+      if (only && !only.includes(label)) continue;
       if (await utils[`${singular}HasVersion`](resource.id, resource.version)) {
         if (!force) { skipped.push(label); continue; }
       }

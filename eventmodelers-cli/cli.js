@@ -704,6 +704,79 @@ async function selectPrompt(question, choices, defaultIndex = 0) {
   });
 }
 
+// Arrow-key multi-select: space toggles, `a` toggles all, enter confirms. Long lists scroll in a window.
+// Falls back to a comma-separated numbered prompt on non-TTY stdin. Returns the values of the checked choices.
+async function checkboxPrompt(question, choices) {
+  if (!process.stdin.isTTY) {
+    console.log(`\n${question}`);
+    choices.forEach((c, i) => console.log(`  ${i + 1}) [${c.checked ? 'x' : ' '}] ${c.label}`));
+    const answer = (await prompt('  Select (comma-separated numbers, "all", "none"; empty keeps the [x] ones): ')).trim().toLowerCase();
+    if (!answer) return choices.filter((c) => c.checked).map((c) => c.value);
+    if (answer === 'all') return choices.map((c) => c.value);
+    if (answer === 'none') return [];
+    const picked = new Set(answer.split(',').map((n) => parseInt(n, 10) - 1));
+    return choices.filter((_, i) => picked.has(i)).map((c) => c.value);
+  }
+
+  return new Promise((resolve) => {
+    const checked = choices.map((c) => Boolean(c.checked));
+    const pageSize = Math.max(5, Math.min(choices.length, (process.stdout.rows || 24) - 6));
+    let index = 0;
+    let top = 0;
+    const stdin = process.stdin;
+    const render = () => {
+      if (index < top) top = index;
+      if (index >= top + pageSize) top = index - pageSize + 1;
+      const rows = choices.slice(top, top + pageSize).map((c, j) => {
+        const i = top + j;
+        return `${i === index ? '❯' : ' '} ${checked[i] ? '◉' : '○'} ${c.label}`;
+      });
+      rows.push(`  (${checked.filter(Boolean).length}/${choices.length} selected — space toggles, a all/none, enter confirms)`);
+      return rows;
+    };
+
+    console.log(`\n${question}`);
+    let lines = render();
+    lines.forEach((l) => console.log(l));
+
+    emitKeypressEvents(stdin);
+    stdin.setRawMode(true);
+
+    const cleanup = () => {
+      stdin.removeListener('keypress', onKeypress);
+      stdin.setRawMode(false);
+      stdin.pause();
+    };
+
+    const onKeypress = (str, key) => {
+      if (key.ctrl && key.name === 'c') {
+        cleanup();
+        process.exit(1);
+      }
+      if (key.name === 'up' || key.name === 'k') index = (index - 1 + choices.length) % choices.length;
+      else if (key.name === 'down' || key.name === 'j') index = (index + 1) % choices.length;
+      else if (key.name === 'space') checked[index] = !checked[index];
+      else if (key.name === 'a') {
+        const all = checked.every(Boolean);
+        checked.fill(!all);
+      } else if (key.name === 'return') {
+        cleanup();
+        resolve(choices.filter((_, i) => checked[i]).map((c) => c.value));
+        return;
+      } else {
+        return;
+      }
+      moveCursor(process.stdout, 0, -lines.length);
+      clearScreenDown(process.stdout);
+      lines = render();
+      lines.forEach((l) => console.log(l));
+    };
+
+    stdin.on('keypress', onKeypress);
+    stdin.resume();
+  });
+}
+
 function findConfigInParents(startDir) {
   let dir = startDir;
   while (true) {
@@ -4257,6 +4330,8 @@ program
   .option('--out <dir>', 'Directory to write into (the catalog root)', '.')
   .option('--owner <id>', 'Owner (team or user id from the catalog) set on every exported resource; repeat for several', (v, all) => [...all, v], [])
   .option('--check', 'Compare the model with what the last export wrote and exit 1 if they differ — writes nothing (for CI)')
+  .option('-i, --interactive', 'List every element (events, commands, queries, flows, domain) as a checkable list — new/changed ones pre-checked — and export only the ones you tick. Ticked resources that already exist are overwritten')
+  .option('--flows', 'Also export the flows (one per chapter, linked from the domain). Without it only the domain, events, commands and queries are exported')
   .option('-f, --force', 'Overwrite resources that already exist in the catalog, and re-prompt for credentials when reading the board')
   .action(async (opts, command) => {
     if (!EXPORT_TYPES.includes(opts.type)) {
@@ -4265,6 +4340,10 @@ program
     }
     const cwd = process.cwd();
     const ext = await import('./extensions/eventcatalog/index.js');
+    if (opts.interactive && (opts.type !== 'eventcatalog' || opts.check)) {
+      console.error('❌ --interactive only applies to --type eventcatalog, and not together with --check.');
+      process.exit(1);
+    }
     if (opts.type === 'json') {
       // The pull-based `listen`: same .slices/<context>/<slice>/slice.json output, via runFetch.
       if (opts.local || opts.check) {
@@ -4403,7 +4482,7 @@ program
       let outOfSync = false;
       for (const name of contextNames) {
       const slices = await loadSlices(name);
-      const result = ext.check({ slices, outDir, context: name });
+      const result = ext.check({ slices, outDir, context: name, flows: Boolean(opts.flows) });
       if (!result) {
         console.log(`ℹ️  No slices found in "${name}" — nothing to check.`);
         continue;
@@ -4451,7 +4530,28 @@ program
     // One context after the other.
     for (const name of contextNames) {
       const slices = await loadSlices(name);
-      const { written, skipped, model } = await ext.run({ slices, outDir, context: name, force: opts.force, owners: opts.owner, sdk });
+      let only;
+      if (opts.interactive) {
+        const plan = ext.plan({ slices, outDir, context: name, flows: Boolean(opts.flows) });
+        if (!plan) {
+          console.log(`ℹ️  No slices found in "${name}" — nothing exported.`);
+          continue;
+        }
+        const tag = { new: 'new', changed: 'changed', unchanged: 'in sync' };
+        only = await checkboxPrompt(
+          `"${plan.context}": which elements do you want to export?`,
+          plan.items.map(({ label, status, changes }) => ({
+            label: `${label}  [${tag[status]}]${changes?.length ? ` ${changes[0]}${changes.length > 1 ? ` (+${changes.length - 1})` : ''}` : ''}`,
+            value: label,
+            checked: status !== 'unchanged',
+          })),
+        );
+        if (!only.length) {
+          console.log(`ℹ️  Nothing selected for "${plan.context}" — nothing exported.`);
+          continue;
+        }
+      }
+      const { written, skipped, model } = await ext.run({ slices, outDir, context: name, force: opts.force || Boolean(only), owners: opts.owner, sdk, only, flows: Boolean(opts.flows) });
       if (!model) {
         console.log(`ℹ️  No slices found in "${name}" — nothing exported.`);
         continue;

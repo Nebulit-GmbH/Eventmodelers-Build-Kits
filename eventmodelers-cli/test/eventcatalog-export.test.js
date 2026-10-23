@@ -218,11 +218,11 @@ test('describeChange reports structural changes only', () => {
 test('--check recognises a rename by the board element id', async (t) => {
   const out = mkdtempSync(join(tmpdir(), 'ec-rename-'));
   t.after(() => rmSync(out, { recursive: true, force: true }));
-  await run({ slices, outDir: out, sdk: fakeSdk().factory });
+  await run({ slices, outDir: out, sdk: fakeSdk().factory, flows: true });
   const renamed = structuredClone(slices);
   renamed[0].events[0].title = 'Order Was Placed'; // same element id e1 …
   renamed[1].events[0].title = 'Order Was Placed'; // … and its copy e2 in the other slice
-  const diff = check({ slices: renamed, outDir: out });
+  const diff = check({ slices: renamed, outDir: out, flows: true });
   assert.deepEqual(diff.new, []);
   assert.deepEqual(diff.removed, []);
   const ev = diff.changed.find((c) => c.label === 'events/OrderWasPlaced');
@@ -236,5 +236,15 @@ test('--check recognises a rename by the board element id', async (t) => {
   // a genuinely new element with an unrelated id is still new
   const added = structuredClone(slices);
   added[0].events.push(el('e9', 'Order Shipped', []));
-  assert.deepEqual(check({ slices: added, outDir: out }).new, ['events/OrderShipped']);
+  assert.deepEqual(check({ slices: added, outDir: out, flows: true }).new, ['events/OrderShipped']);
+});
+
+test('flows are left out unless asked for', async (t) => {
+  const out = mkdtempSync(join(tmpdir(), 'ec-noflows-'));
+  t.after(() => rmSync(out, { recursive: true, force: true }));
+  const { written } = await run({ slices, outDir: out, sdk: fakeSdk().factory });
+  assert.ok(!written.some((l) => l.startsWith('flows/')));
+  assert.ok(written.some((l) => l.startsWith('events/')));
+  const withFlows = await run({ slices, outDir: out, sdk: fakeSdk().factory, flows: true, force: true });
+  assert.ok(withFlows.written.some((l) => l.startsWith('flows/')));
 });
