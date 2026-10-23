@@ -101,9 +101,17 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
 
 Response: `{ "hashes": { "<eventId>": "<hash>" } }`
 
-### If the API rejects the update because the slice is already in `newStatus`
+### Claiming a slice to build it — use `claim_slice`, not this skill
 
-The API refuses to move a slice into a status it is already in — this is a deliberate concurrency guard so two agents racing to claim the same slice can't both succeed. If Step 3 fails with an error indicating the slice is already at `<newStatus>` (e.g. a `409`, or an error body mentioning "already"), this is **not a failure to surface as broken** — it means another agent already claimed or moved the slice first. Report this as a distinct `ALREADY_IN_STATUS` outcome (see Step 4) rather than a generic error, and do not retry the same update. Callers trying to claim a `Planned` slice for building should treat this as a signal to pick a different slice, not to stop.
+Setting `InProgress` here is **not** a claim. The API treats a write of the status a slice already has as a silent no-op, so two agents that both read `Planned` and both write `InProgress` both "succeed" and both build the slice. To start work on a slice, claim it:
+
+```
+mcp__eventmodelers__claim_slice { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>" }          # fromStatus defaults to Planned
+```
+
+Fallback (no MCP): `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/slices/<SLICE_NODE_ID>/claim` with body `{"fromStatus": "Planned"}` and the same headers as above.
+
+If it fails with `409` / `SLICE_ALREADY_CLAIMED`, another agent got there first. This is **not** a broken call: report `ALREADY_IN_STATUS` (see Step 4), do not build the slice, do not retry, and move on to another slice.
 
 ---
 

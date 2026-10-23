@@ -2,7 +2,7 @@
 // release claims a dead process left behind. Every step appends events and re-projects status for the
 // build agent; `decide*` (slice-state.js) says what to do, this executes it.
 //
-// `board` is injected: { setStatus(sliceId, status), readStatus(sliceId) → status | null }. null means
+// `board` is injected: { setStatus(sliceId, status), claim(sliceId, fromStatus), readStatus(sliceId) → status | null }. null means
 // no board (--local): nothing is pushed or read, the log alone decides.
 
 import { appendEvent, readEvents } from './slice-events.js';
@@ -87,7 +87,7 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
   if (state.slices[planned.id].claim?.pid !== pid) return 'held';
   if (board) {
     try {
-      await board.setStatus(planned.id, 'InProgress');
+      await board.claim(planned.id, pickupStatus);
     } catch (err) {
       console.error(`[ralph] Could not claim "${planned.title}" on the board:`, err.message);
       recordEvent(kitDir, { type: 'released', slice: planned.id, reason: 'lost' }, meta);

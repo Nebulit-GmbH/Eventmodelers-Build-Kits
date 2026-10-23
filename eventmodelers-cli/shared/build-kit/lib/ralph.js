@@ -737,6 +737,17 @@ export function createBoard(cfg) {
         }
       });
     },
+    // Claims a slice for this agent: the board moves it from `fromStatus` to InProgress atomically, and of
+    // several agents claiming at once exactly one is let through — the rest get a 409 (SLICE_ALREADY_CLAIMED),
+    // which surfaces as an HttpError so the caller moves on to another slice. A plain setStatus('InProgress')
+    // is not a claim: the board treats a write of the status a slice already has as a no-op.
+    async claim(sliceId, fromStatus) {
+      await retryTransient(`claim slice ${sliceId}`, () => fetchJSON(`${base}/slices/${encodeURIComponent(sliceId)}/claim`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-token': cfg.token, 'x-user-id': 'ralph-loop', ...agentHeaders(cfg) },
+        body: JSON.stringify({ fromStatus }),
+      }));
+    },
     async readStatus(sliceId) {
       const { slices } = await retryTransient(`read slices of board ${cfg.boardId}`, () => fetchJSON(`${base}/slicedata/slices`, {
         headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },

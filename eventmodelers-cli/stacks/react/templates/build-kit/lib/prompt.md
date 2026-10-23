@@ -42,7 +42,7 @@ Inspect the `sliceStatus` in the payload:
 
 This is the build trigger. Setting `InProgress` and building are one atomic step:
 
-1. Immediately call `/update-slice-status` to set the slice to `InProgress` on the board.
+1. Immediately claim the slice with the `claim_slice` MCP tool (`sliceId` = the payload's slice; pass `fromStatus` if this kit picks up from something other than `Planned`), or `POST .../slices/<sliceId>/claim` without MCP — see the `update-slice-status` skill. Do not set `InProgress` with `/update-slice-status`: that is not a claim, and two agents would both build the slice.
 
    **Claim conflict**: if this call reports the slice is already in `InProgress` (or any status other than `Waiting`), another agent already claimed it first — this is expected, not an error. Say so in your reply, drop this task without building, and continue the loop (the next task will naturally cover the next slice). Do not retry.
 
