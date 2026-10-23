@@ -276,16 +276,6 @@ self-directed work is done inline. The modeling agent's shell goes through the s
 Claude runner. A build kit starts every planned slice with a fresh conversation (the process stays warm); the modeling
 agent keeps one conversation for the life of the loop. `--browser` and `--dangerously-skip-permissions` do not apply.
 
-**Mastra Studio.** `eventmodelers studio` opens [Mastra Studio](https://mastra.ai/docs/studio/overview) on the same modeling
-agent (model, board tools, skills, shell guard), so you can chat with it, watch its tool calls and look at traces on
-`localhost:4111` before pointing it at a board. The packages go in the project (`npm install @mastra/core @mastra/mcp zod`);
-`mastra` itself is fetched on demand, and it writes a `.mastra/` folder into the project — add it to `.gitignore`.
-It holds your board token, so keep it on localhost; Mastra's own traces stay in memory and are not the cockpit's.
-
-```bash
-npx @eventmodelers/cli studio --model anthropic/claude-sonnet-5-5 [--port 4111]
-```
-
 `--agent` is only a shortcut: to run a harness it does not know, or the same one with other
 flags, pass the command yourself with `--exec "<command>"`. Keep the harness in its plain-text
 output mode — its stdout is the turn's answer. For OpenCode the loop adds `--standalone` if you

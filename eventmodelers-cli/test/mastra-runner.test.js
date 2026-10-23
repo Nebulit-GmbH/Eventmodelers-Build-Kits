@@ -36,12 +36,6 @@ test('run --agent mastra lists itself and rejects --exec alongside it', () => {
   assert.throws(() => execFileSync('node', [cli, 'run', '--agent', 'mastra', '--exec', 'x'], { encoding: 'utf8', stdio: 'pipe' }), /mutually exclusive/);
 });
 
-test('studio refuses to start without a provider/model or with a bad port', () => {
-  const run = (args) => { try { execFileSync('node', [cli, 'studio', ...args], { encoding: 'utf8', stdio: 'pipe' }); return ''; } catch (err) { return err.stderr; } };
-  assert.match(run(['--model', 'sonnet']), /No model/);
-  assert.match(run(['--model', 'anthropic/x', '--port', '99999']), /not a port number|No board token/);
-});
-
 test('a base URL turns the model into an OpenAI-compatible custom one; the key never comes from anywhere but the env', () => {
   assert.equal(mastraModelConfig('groq/openai/gpt-oss-120b', {}), 'groq/openai/gpt-oss-120b');
   assert.deepEqual(mastraModelConfig('openai/gpt-oss-120b', { baseUrl: 'https://x.test/v1/', apiKey: 'k' }), { id: 'custom/openai/gpt-oss-120b', url: 'https://x.test/v1', apiKey: 'k' });

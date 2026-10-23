@@ -12,7 +12,7 @@
 
 import { tmpdir } from 'os';
 import { turnTimeoutMs } from '../shared/build-kit/lib/turn.js';
-import { createMastraSession, createMastraAgent, mastraModelConfig } from '../shared/build-kit/lib/mastra-session.js';
+import { createMastraSession, mastraModelConfig } from '../shared/build-kit/lib/mastra-session.js';
 import { checkBashCommand } from './bash-guard.js';
 
 const INSTRUCTIONS =
@@ -21,8 +21,7 @@ const INSTRUCTIONS =
   'follow for every turn. The kit\'s skills are available through the skill tools. The eventmodelers MCP server is ' +
   'connected and authenticated: use its tools directly. You have no subagents, so do all the work yourself.';
 
-// What the modeling agent is built from — shared by the loop's warm session and by Studio (lib/studio/index.ts), so
-// the agent you try in Studio is the one that works the board.
+// What the modeling agent is built from.
 function modelingAgentOptions({ cfg, model, projectDir, codeDir }) {
   const baseUrl = process.env.MASTRA_BASE_URL || cfg.mastra?.baseUrl;
   mastraModelConfig(model, { baseUrl }); // throws a message that says what to pass
@@ -51,11 +50,6 @@ function modelingAgentOptions({ cfg, model, projectDir, codeDir }) {
     },
     checkCommand: (command) => checkBashCommand(command, policy),
   };
-}
-
-/** The bare agent, for Mastra Studio — no session around it. */
-export function createModelingMastraAgent(options) {
-  return createMastraAgent(modelingAgentOptions(options));
 }
 
 export async function createModelingMastraRunner({ cfg, model, projectDir, codeDir = null, log, onToolUse }) {
