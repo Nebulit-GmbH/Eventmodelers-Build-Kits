@@ -46,6 +46,16 @@ async function loadMastra() {
   }
 }
 
+/** What `model` means to Mastra. Normally `provider/model` from its built-in list. With a base URL (MASTRA_BASE_URL, or
+ *  mastra.baseUrl in the config) it is any OpenAI-compatible endpoint, and `model` is that endpoint's own model name,
+ *  slashes and all. The key comes from MASTRA_API_KEY only — a secret has no business in a config file. */
+export function mastraModelConfig(model, { baseUrl = process.env.MASTRA_BASE_URL, apiKey = process.env.MASTRA_API_KEY } = {}) {
+  if (!model) throw new Error('no model — pass --model <provider/model>, e.g. anthropic/claude-sonnet-5-5 (or --model <name> with MASTRA_BASE_URL for an OpenAI-compatible endpoint)');
+  if (baseUrl) return { id: `custom/${model}`, url: String(baseUrl).replace(/\/+$/, ''), ...(apiKey ? { apiKey } : {}) };
+  if (!model.includes('/')) throw new Error(`no model — "${model}" is not <provider>/<model>, e.g. anthropic/claude-sonnet-5-5 (or set MASTRA_BASE_URL to use an OpenAI-compatible endpoint)`);
+  return model;
+}
+
 /** Mastra's usage, in the shape lib/tracing.js records. Cost stays null: Mastra reports tokens, not a price. */
 export function usageFromMastra(usage, { durationMs, model } = {}) {
   if (!usage) return null;
@@ -62,6 +72,7 @@ export function usageFromMastra(usage, { durationMs, model } = {}) {
 /**
  * options:
  *   model          'provider/model', e.g. 'anthropic/claude-sonnet-5-5' — the provider's key comes from its usual env var
+ *   baseUrl        an OpenAI-compatible endpoint, then `model` is its own model name (see mastraModelConfig)
  *   instructions   the agent's system prompt
  *   mcpUrl         the platform's /mcp endpoint; the token and agent id travel as the headers every other harness sends
  *   token, agentId
@@ -72,8 +83,8 @@ export function usageFromMastra(usage, { durationMs, model } = {}) {
  *   checkCommand   (command) -> {ok, reason}: refuses a shell command before it runs (lib/bash-guard.js)
  *   log
  */
-export async function createMastraAgent({ model, instructions, mcpUrl, token, agentId, cwd, workspace = false, skillsDirs = [], env = {}, checkCommand }) {
-  if (!model) throw new Error('no model — pass --model <provider/model>, e.g. anthropic/claude-sonnet-5-5');
+export async function createMastraAgent({ model, baseUrl, instructions, mcpUrl, token, agentId, cwd, workspace = false, skillsDirs = [], env = {}, checkCommand }) {
+  const resolvedModel = mastraModelConfig(model, baseUrl ? { baseUrl } : undefined);
   const { Agent, MCPClient, Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } = await loadMastra();
 
   const mcp = new MCPClient({
@@ -112,7 +123,7 @@ export async function createMastraAgent({ model, instructions, mcpUrl, token, ag
     id: 'eventmodelers',
     name: 'eventmodelers',
     instructions,
-    model,
+    model: resolvedModel,
     tools: await mcp.listTools(),
     ...(ws ? { workspace: ws } : {}),
   });

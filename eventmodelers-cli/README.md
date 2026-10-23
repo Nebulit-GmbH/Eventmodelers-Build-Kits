@@ -263,6 +263,14 @@ npx @eventmodelers/cli run --modeling --agent mastra --model anthropic/claude-so
 npx @eventmodelers/cli run --agent mastra --model anthropic/claude-sonnet-5-5    # a build kit (or mastra.model in .eventmodelers/config.json)
 ```
 
+Any OpenAI-compatible endpoint works too — pass `--endpoint` and the endpoint's own model name; the key is read from
+`MASTRA_API_KEY` (not from a file):
+
+```bash
+export MASTRA_API_KEY=...
+eventmodelers run --modeling --agent mastra --endpoint https://api.franconia.ai/v1 --model <model name>
+```
+
 The kit's skills are loaded through Mastra's skill tools (from `.claude/skills`), and there are no subagents, so
 self-directed work is done inline. The modeling agent's shell goes through the same command allowlist as the default
 Claude runner. A build kit starts every planned slice with a fresh conversation (the process stays warm); the modeling

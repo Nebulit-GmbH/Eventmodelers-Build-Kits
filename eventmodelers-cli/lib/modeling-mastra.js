@@ -12,7 +12,7 @@
 
 import { tmpdir } from 'os';
 import { turnTimeoutMs } from '../shared/build-kit/lib/turn.js';
-import { createMastraSession, createMastraAgent } from '../shared/build-kit/lib/mastra-session.js';
+import { createMastraSession, createMastraAgent, mastraModelConfig } from '../shared/build-kit/lib/mastra-session.js';
 import { checkBashCommand } from './bash-guard.js';
 
 const INSTRUCTIONS =
@@ -24,12 +24,12 @@ const INSTRUCTIONS =
 // What the modeling agent is built from — shared by the loop's warm session and by Studio (lib/studio/index.ts), so
 // the agent you try in Studio is the one that works the board.
 function modelingAgentOptions({ cfg, model, projectDir, codeDir }) {
-  if (!model || !model.includes('/')) {
-    throw new Error('no model — pass --model <provider/model>, e.g. anthropic/claude-sonnet-5-5 (or set mastra.model in .eventmodelers/config.json)');
-  }
+  const baseUrl = process.env.MASTRA_BASE_URL || cfg.mastra?.baseUrl;
+  mastraModelConfig(model, { baseUrl }); // throws a message that says what to pass
   const policy = { baseUrl: cfg.baseUrl, cwd: projectDir, roots: [projectDir, tmpdir(), ...(codeDir ? [codeDir] : [])] };
   return {
     model,
+    baseUrl,
     instructions: INSTRUCTIONS,
     mcpUrl: `${cfg.baseUrl}/mcp`,
     token: cfg.token,

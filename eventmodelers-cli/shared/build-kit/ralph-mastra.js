@@ -16,7 +16,7 @@ import { startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHe
 import { createSliceTracer } from './lib/tracing.js';
 import { turnTimeoutMs } from './lib/turn.js';
 import { recordToolCall } from './lib/tool-call-events.js';
-import { createMastraSession } from './lib/mastra-session.js';
+import { createMastraSession, mastraModelConfig } from './lib/mastra-session.js';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -28,10 +28,13 @@ const localOnly = process.env.RALPH_LOCAL === '1';
 Object.assign(cfg, resolveAgentIdentity(kitDir, 'BUILD', cfg));
 
 const model = process.env.RALPH_MODEL || cfg.mastra?.model;
-if (!model || !model.includes('/')) {
-  console.error('[ralph-mastra] No model configured — it is `provider/model`, e.g. anthropic/claude-sonnet-5-5.');
+const baseUrl = process.env.MASTRA_BASE_URL || cfg.mastra?.baseUrl;
+try {
+  mastraModelConfig(model, { baseUrl });
+} catch (err) {
+  console.error(`[ralph-mastra] ${err.message}`);
   console.error('  Set one for this run: eventmodelers run --agent mastra --model anthropic/claude-sonnet-5-5');
-  console.error('  Or persist a default as mastra.model in .eventmodelers/config.json');
+  console.error('  Or persist a default as mastra.model (and mastra.baseUrl for an OpenAI-compatible endpoint) in .eventmodelers/config.json');
   process.exit(1);
 }
 if (localOnly) {
@@ -65,6 +68,7 @@ const INSTRUCTIONS =
 console.log(`[ralph-mastra] model: ${model}`);
 const session = await createMastraSession({
   model,
+  baseUrl,
   instructions: INSTRUCTIONS,
   mcpUrl: `${cfg.baseUrl}/mcp`,
   token: cfg.token,

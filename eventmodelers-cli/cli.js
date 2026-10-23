@@ -3822,6 +3822,7 @@ credentialFlags(program
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
   .addOption(new Option('--bash').hideHelp())
   .option('--agent [name]', `Pick the agent that does the work by name: ${AGENT_NAMES.join(', ')}. claude is the default runner; mastra is a warm in-process Mastra agent (needs --model <provider/model>); any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
+  .option('--endpoint <url>', 'With --agent mastra: an OpenAI-compatible endpoint to use instead of a built-in provider (e.g. https://api.franconia.ai/v1). --model is then the endpoint\'s own model name, and the key is read from $MASTRA_API_KEY (never from a file). Also settable as mastra.baseUrl in .eventmodelers/config.json.')
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), `<provider>/<model>` for --agent mastra (e.g. anthropic/claude-sonnet-5-5), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured (except with --force, which asks once per kit up front, here, before the runs start). With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
@@ -3899,6 +3900,17 @@ credentialFlags(program
     // --agent is --exec with the command filled in for the loop this run picks.
     const agentExec = resolveAgentPreset(opts, (opts.modeling || opts.standalone || opts.worker || opts.global) ? 'modeling' : 'build');
     if (agentExec) opts.exec = agentExec;
+    if (opts.endpoint !== undefined) {
+      if (!opts.mastra) {
+        console.error('❌ --endpoint only applies to --agent mastra — the other agents take their endpoint from their own configuration (or --local-ai for a local server).');
+        process.exit(1);
+      }
+      try { new URL(String(opts.endpoint)); } catch {
+        console.error(`❌ --endpoint "${opts.endpoint}" is not a URL — e.g. https://api.franconia.ai/v1.`);
+        process.exit(1);
+      }
+      process.env.MASTRA_BASE_URL = String(opts.endpoint).trim();
+    }
     // --model: one flag, spelled the way each runner takes it. A hand-written --exec command is
     // the one place it can't go — where the model flag goes in an unknown command is the author's.
     const model = opts.model === undefined ? null : String(opts.model).trim();
@@ -4139,14 +4151,16 @@ program
   .command('studio')
   .description('Open Mastra Studio (localhost:4111) on the modeling agent that `run --agent mastra` uses — chat with it, watch its tool calls and traces. It is the same agent (model, board tools, skills, shell guard), so what works in Studio works on the board. A local dev tool: it holds this project\'s board token, so keep it on localhost. Needs @mastra/core, @mastra/mcp and zod installed next to the CLI (npm install --save-dev @eventmodelers/cli @mastra/core @mastra/mcp zod, then run it with npx eventmodelers); `mastra` itself is fetched on demand.')
   .option('--model <id>', 'The model, as <provider>/<model> (e.g. anthropic/claude-sonnet-5-5); default mastra.model from .eventmodelers/config.json. The provider\'s key is read from its usual env var.')
+  .option('--endpoint <url>', 'An OpenAI-compatible endpoint instead of a built-in provider (see run --endpoint); the key comes from $MASTRA_API_KEY.')
   .option('--port <port>', 'Port for Studio (default 4111)')
   .action((opts, command) => {
     const cwd = process.cwd();
     const globalOpts = command.optsWithGlobals();
     const { config } = loadEffectiveConfig(cwd, findInstalledKitDir(cwd), globalOpts.config);
     const model = String(opts.model ?? config.mastra?.model ?? '').trim();
-    if (!model.includes('/')) {
-      console.error('❌ No model — pass --model <provider>/<model>, e.g. anthropic/claude-sonnet-5-5, or set mastra.model in .eventmodelers/config.json.');
+    const studioBaseUrl = opts.endpoint ? String(opts.endpoint).trim() : process.env.MASTRA_BASE_URL || config.mastra?.baseUrl;
+    if (!model || (!model.includes('/') && !studioBaseUrl)) {
+      console.error('❌ No model — pass --model <provider>/<model>, e.g. anthropic/claude-sonnet-5-5, or set mastra.model in .eventmodelers/config.json (with MASTRA_BASE_URL or mastra.baseUrl, --model is the endpoint\'s own model name).');
       process.exit(1);
     }
     if (!config.token) {
@@ -4170,6 +4184,7 @@ program
         ...(config.agentId ? { EVENTMODELERS_AGENT_ID: config.agentId } : {}),
         ...(config.organizationId ? { EVENTMODELERS_ORG_ID: config.organizationId } : {}),
         ...(config.boardId ? { EVENTMODELERS_BOARD_ID: config.boardId } : {}),
+        ...(studioBaseUrl ? { MASTRA_BASE_URL: studioBaseUrl } : {}),
         EVENTMODELERS_STUDIO_MODEL: model,
         EVENTMODELERS_STUDIO_CWD: cwd,
         ...(port !== null ? { EVENTMODELERS_STUDIO_PORT: String(port) } : {}),
