@@ -4245,11 +4245,11 @@ program
     }
   });
 
-const EXPORT_TYPES = ['eventcatalog'];
+const EXPORT_TYPES = ['eventcatalog', 'json'];
 
 program
   .command('export')
-  .description('Export the event model into another tool\'s format. --type eventcatalog writes an EventCatalog project (domain, flow, events, commands, queries). Reads the board by default; --local reads .slices/ or config.json instead')
+  .description('Export the event model into another tool\'s format. --type eventcatalog writes an EventCatalog project (domain, flow, events, commands, queries); --type json writes .slices/ exactly as `listen` does, but pulled from the board (same as `fetch`). Reads the board by default; --local reads .slices/ or config.json instead')
   .requiredOption('--type <type>', `Export target: ${EXPORT_TYPES.join(', ')}`)
   .option('--context <name>', 'Name or id of the context to export. Omitted (or not found) on the board: pick from the board\'s contexts. Filters --local')
   .option('--all', 'Export every context, one after the other (not with --context)')
@@ -4265,6 +4265,60 @@ program
     }
     const cwd = process.cwd();
     const ext = await import('./extensions/eventcatalog/index.js');
+    if (opts.type === 'json') {
+      // The pull-based `listen`: same .slices/<context>/<slice>/slice.json output, via runFetch.
+      if (opts.local || opts.check) {
+        console.error('❌ --type json reads the board and writes .slices/ — --local and --check do not apply.');
+        process.exit(1);
+      }
+      if (opts.all && opts.context) {
+        console.error('❌ --all and --context are mutually exclusive.');
+        process.exit(1);
+      }
+      const kitDir = findInstalledKitDir(cwd);
+      const slicesKitDir = kitDir?.endsWith(MODELING_KIT.kitDirName) ? null : kitDir;
+      const globalOpts = command.optsWithGlobals();
+      const explicitConfig = globalOpts.config;
+      let cfg = loadEffectiveConfig(cwd, kitDir, explicitConfig).config;
+      const configPath = explicitConfig ? resolve(cwd, explicitConfig) : join(cwd, '.eventmodelers', 'config.json');
+      const requiredFields = ['organizationId', 'boardId', 'token'];
+      const promptForCredentials = async (force = false) => {
+        cfg = await configureCredentials({ config: cfg, configPath, targetDir: cwd, requiredFields, boardIdOptional: false, overrides: {}, print: globalOpts.print, force });
+        if (requiredFields.some((f) => !cfg[f])) {
+          console.error('❌ Still missing token/organizationId/boardId — re-run `eventmodelers export` once configured.');
+          process.exit(1);
+        }
+      };
+      if (opts.force || requiredFields.some((f) => !cfg[f])) await promptForCredentials(opts.force);
+      const withAuthRetry = async (fn) => {
+        try {
+          return await fn();
+        } catch (err) {
+          if (!(err instanceof FetchAuthError) && err.status !== 404) throw err;
+          console.error(`❌ ${err.message}`);
+          if (err.status === 404) delete cfg.boardId;
+          else delete cfg.token;
+          await promptForCredentials();
+          return fn();
+        }
+      };
+      try {
+        const contexts = await withAuthRetry(() => ext.listContexts({ cfg }));
+        if (!contexts.length) throw new Error(`Board ${cfg.boardId} has no contexts with slices.`);
+        let names;
+        if (opts.all) names = contexts.map((c) => c.name);
+        else if (opts.context) names = [opts.context];
+        else if (contexts.length === 1) names = [contexts[0].name];
+        else names = [await selectPrompt('Which context do you want to export?', contexts.map((c) => ({ label: `${c.name} (${c.slices} slice${c.slices === 1 ? '' : 's'})`, value: c.name })))];
+        for (const name of names) {
+          await withAuthRetry(() => runFetch({ cwd, kitDir: slicesKitDir, cfg, opts: { context: name, format: 'json' } }));
+        }
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+      return;
+    }
     // Checked first, before any credentials or board access: the export only makes sense inside a catalog.
     if (!ext.isCatalog(resolve(cwd, opts.out))) {
       console.error(`❌ ${resolve(cwd, opts.out)} is not an EventCatalog project (no eventcatalog.config.* and no @eventcatalog/core dependency).`);
