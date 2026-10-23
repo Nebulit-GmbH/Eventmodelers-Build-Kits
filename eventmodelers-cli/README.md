@@ -257,7 +257,7 @@ token usage (no price: Mastra reports tokens only). The model is `provider/model
 usual env var:
 
 ```bash
-npm install @mastra/core @mastra/mcp zod                      # once — peer dependencies, only needed for this agent
+npm install @mastra/core @mastra/mcp zod                      # once, in the directory you run from — only needed for this agent
 export ANTHROPIC_API_KEY=...
 npx @eventmodelers/cli run --modeling --agent mastra --model anthropic/claude-sonnet-5-5
 npx @eventmodelers/cli run --agent mastra --model anthropic/claude-sonnet-5-5    # a build kit (or mastra.model in .eventmodelers/config.json)

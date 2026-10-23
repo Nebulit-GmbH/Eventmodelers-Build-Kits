@@ -14,20 +14,35 @@
 
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { createRequire } from 'module';
+import { pathToFileURL } from 'url';
 
 const n = (v) => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+
+// The packages are looked for next to this file first, then in the directory the agent was started from — a global
+// or npx install of the CLI has no node_modules of its own, so the project's is where they have to be.
+async function importPackage(spec) {
+  try {
+    return await import(spec);
+  } catch (err) {
+    if (err?.code !== 'ERR_MODULE_NOT_FOUND') throw err;
+    let resolved;
+    try { resolved = createRequire(join(process.cwd(), 'noop.js')).resolve(spec); } catch { throw err; }
+    return import(pathToFileURL(resolved).href);
+  }
+}
 
 async function loadMastra() {
   try {
     const [{ Agent }, { MCPClient }, workspace] = await Promise.all([
-      import('@mastra/core/agent'),
-      import('@mastra/mcp'),
-      import('@mastra/core/workspace'),
+      importPackage('@mastra/core/agent'),
+      importPackage('@mastra/mcp'),
+      importPackage('@mastra/core/workspace'),
     ]);
     return { Agent, MCPClient, ...workspace };
   } catch (err) {
     if (err?.code !== 'ERR_MODULE_NOT_FOUND') throw err;
-    throw new Error(`the Mastra runner needs its packages — run: npm install @mastra/core @mastra/mcp zod (${err.message.split('\n')[0]})`);
+    throw new Error(`the Mastra runner needs its packages — run, in the directory you start it from: npm install @mastra/core @mastra/mcp zod (${err.message.split('\n')[0]})`);
   }
 }
 
