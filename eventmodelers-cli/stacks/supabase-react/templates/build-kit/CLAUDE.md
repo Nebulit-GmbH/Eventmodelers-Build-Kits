@@ -116,6 +116,7 @@ is there, mocked, ready to be pointed at the real API once one exists.
 When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`.
+   **If `slice.json` is missing, or has no `commands`, `events`, `readmodels`, `screens` or `processors` (only id/title/status/sliceType/contextName), it is a summary stub, not an empty slice — never conclude "nothing to build" from it.** Run `/load-slice` with the slice's `sliceId` to pull the full definition from the board and re-read `slice.json`. Only a slice that is still empty after that full fetch is genuinely empty.
 2. Determine the slice type from `sliceType`:
    - **`STATE_CHANGE`** → invoke `/build-state-change`
    - **`STATE_VIEW`** → invoke `/build-state-view`

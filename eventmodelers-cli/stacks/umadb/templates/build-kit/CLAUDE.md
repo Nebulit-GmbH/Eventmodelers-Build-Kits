@@ -53,6 +53,7 @@ When working from a queued task, invoke the `update-slice-status` skill with `In
 When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<context>/<slicename>/slice.json`.
+   **If `slice.json` is missing, or has no `commands`, `events`, `readmodels`, `screens` or `processors` (only id/title/status/sliceType/contextName), it is a summary stub, not an empty slice — never conclude "nothing to build" from it.** Run `/load-slice` with the slice's `sliceId` to pull the full definition from the board and re-read `slice.json`. Only a slice that is still empty after that full fetch is genuinely empty.
 2. Determine the slice type:
    - **Translation** — `sliceType === "TRANSLATION"` → read `description` and `notes` from slice.json for hints; default to `/build-automation` if nothing else is specified
    - **Automation** — `processors` array is non-empty → invoke `/build-automation`
