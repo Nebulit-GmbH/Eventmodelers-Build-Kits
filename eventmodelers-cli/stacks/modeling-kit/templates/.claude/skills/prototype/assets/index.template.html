@@ -15,7 +15,7 @@
   <style>
     /* Prototype chrome only — screens keep their own framework styling. Prefixed so nothing leaks. */
     body { margin: 0; background: #f3f4f6; }
-    .em-shell { display: grid; grid-template-columns: 1fr 380px; min-height: 100vh; font: 14px/1.4 system-ui, sans-serif; }
+    .em-shell { display: grid; grid-template-columns: minmax(0, 1fr) 440px; min-height: 100vh; font: 14px/1.4 system-ui, sans-serif; }
     .em-main { min-width: 0; display: flex; flex-direction: column; }
     .em-bar { background: #111827; color: #e5e7eb; padding: 10px 16px 0; position: sticky; top: 0; z-index: 10; }
     .em-bar h1 { font-size: 15px; margin: 0 0 8px; color: #fff; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -35,6 +35,11 @@
     .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: #e5e7eb; }
     .em-ev b { color: #fdba74; }
     .em-ev pre { margin: 4px 0 0; padding: 0; background: transparent; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; } /* background set explicitly: a screen framework (Bulma) styles bare <pre> light, which left this text unreadable */
+    .em-slider { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; color: #9ca3af; } .em-slider .em-slider-text { min-width: 120px; text-align: right; }
+    /* `.em-panel input` (below) makes every panel input a full-width text box: the slider and the checkbox undo that, with a selector that beats it. */
+    .em-panel .em-slider input[type=range] { flex: 1; width: auto; margin: 0; padding: 0; border: 0; background: transparent; }
+        .em-check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; color: #9ca3af; cursor: pointer; } .em-panel .em-check input[type=checkbox] { flex: none; width: 14px; height: 14px; margin: 0; padding: 0; }
+    .em-hl { outline: 3px solid #f97316 !important; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.25) !important; }
     .em-ev.em-cmd { border-left-color: #3b82f6; } .em-ev.em-cmd b { color: #93c5fd; }
     .em-ev.em-fail { border-left-color: #ef4444; } .em-ev.em-pass { border-left-color: #22c55e; }
     .em-ev.em-out { border-left-color: #14b8a6; }
@@ -46,7 +51,8 @@
     .em-toast.em-error { background: #b91c1c; }
     .em-banner { padding: 10px 16px; font: 14px system-ui; color: #fff; background: #b91c1c; }
     .em-banner pre { margin: 6px 0 0; white-space: pre-wrap; font-size: 12px; }
-    @media (max-width: 1100px) { .em-shell { grid-template-columns: 1fr; } .em-panel { position: static; max-height: none; } }
+    /* Narrow (the small snippet in the chat): the page gets all the room — the event panel is for the wider views. */
+    @media (max-width: 720px) { .em-shell { grid-template-columns: 1fr; } .em-panel { display: none; } }
   </style>
 </head>
 <body data-em-context="{{CONTEXT}}">
@@ -64,6 +70,7 @@ const { useState, useContext, createContext, useSyncExternalStore, Component } =
 const Domain = EMRuntime.domain;
 Domain.context = document.body.dataset.emContext;
 let rt = null; // created once every slice has registered
+let navigateTo = null; // the App's tab switch, for the board's player (see the message contract in emMount)
 const Proto = createContext(null);
 
 // Bumped on every change (events, clock, automation runs, time travel).
@@ -183,6 +190,47 @@ function carries(e, value) {
   );
 }
 
+// What the person did (clicks, changed fields), as the board's player recorded it: the player's recorder announces each one as an
+// `em-interaction` DOM event ({ at, type, tag, text, path, screen, slice, value? }). Without the player there are none.
+let interactions = [];
+const interactionListeners = new Set();
+function useInteractions() {
+  useSyncExternalStore((fn) => { interactionListeners.add(fn); return () => interactionListeners.delete(fn); }, () => interactions);
+  return interactions;
+}
+
+/** Events and interactions by time; an interaction goes before the events at the same moment — it caused them. */
+function mergeTimeline(events, list) {
+  return [
+    ...list.map((i, n) => ({ kind: 'interaction', at: i.at, rank: 0, n, i })),
+    ...events.map((e, n) => ({ kind: 'event', at: Date.parse(e.metadata.at) || 0, rank: 1, n, e })),
+  ]
+    .sort((a, b) => a.at - b.at || a.rank - b.rank || a.n - b.n)
+    .map((x, idx) => Object.assign(x, { idx }));
+}
+const eventsIn = (timeline, k) => timeline.slice(0, k).filter((x) => x.kind === 'event').length;
+const interactionLabel = (i) =>
+  (i.type === 'change' ? 'Changed' : i.type === 'submit' ? 'Submitted' : 'Clicked') + ' ' + (i.text ? '“' + i.text.slice(0, 40) + '”' : '<' + i.tag + '>') +
+  (i.type === 'change' && i.value !== undefined ? ' to “' + i.value + '”' : '');
+
+// Replaying an interaction: show its screen and outline the element it was about (found again by the path the recorder stored: `tag#id.class > …`
+// from <body>, first match; none is fine). With null, only clears.
+let highlighted = null;
+function focusInteraction(i) {
+  if (highlighted) { highlighted.classList.remove('em-hl'); highlighted = null; }
+  if (!i) return;
+  if (i.screen && navigateTo) navigateTo(i.screen);
+  setTimeout(() => { // after the screen switch has rendered
+    try {
+      const el = document.querySelector('body > ' + i.path);
+      if (!el) return;
+      highlighted = el;
+      el.classList.add('em-hl');
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } catch (e) { /* a path that is no selector any more: nothing to show */ }
+  }, 250);
+}
+
 /**
  * The log, browsable: filter by event type, search, follow one value (click it) through every event
  * carrying it, open an event for its details, and view the screens as of any event.
@@ -192,6 +240,9 @@ function EventBrowser({ events }) {
   const [search, setSearch] = useState('');
   const [follow, setFollow] = useState(null);
   const [open, setOpen] = useState(null);
+  const recorded = useInteractions();
+  const [withIx, setWithIx] = useState(false); // include the recorded interactions in the log and the slider
+  const [step, setStep] = useState(null);
   const counts = events.reduce((m, e) => ((m[e.type] = (m[e.type] || 0) + 1), m), {});
   const toggle = (t) => setTypes(types.includes(t) ? types.filter((x) => x !== t) : [...types, t]);
   const needle = search.trim().toLowerCase();
@@ -202,14 +253,49 @@ function EventBrowser({ events }) {
       (!needle || (e.type + ' ' + JSON.stringify(e.data) + ' ' + JSON.stringify(e.metadata)).toLowerCase().includes(needle)),
   );
   const cursor = rt.cursor;
+  const timeline = withIx ? mergeTimeline(events, recorded) : null;
+  // Interactions show unless the log is narrowed to event types or one followed value (those are about events); the search covers their text.
+  const showIx = withIx && !types.length && !follow;
+  const rows = showIx
+    ? timeline.filter((x) => (x.kind === 'event' ? shown.includes(x.e) : !needle || interactionLabel(x.i).toLowerCase().includes(needle)))
+    : (withIx ? timeline.filter((x) => x.kind === 'event' && shown.includes(x.e)) : shown.map((e) => ({ kind: 'event', e })));
+  // The slider moves over events (or, with interactions, over both); its value is the number of items shown.
+  const total = withIx ? timeline.length : events.length;
+  const eventsNow = cursor == null ? events.length : cursor;
+  let value = eventsNow;
+  if (withIx) {
+    value = step != null && eventsIn(timeline, step) === eventsNow ? step : 0;
+    if (value !== step) for (let k = timeline.length; k >= 0; k--) if (eventsIn(timeline, k) === eventsNow) { value = k; break; }
+  }
+  const moveTo = (v) => {
+    if (withIx) setStep(v);
+    rt.viewAsOf(withIx ? eventsIn(timeline, v) : v);
+    const at = withIx && v > 0 ? timeline[v - 1] : null;
+    focusInteraction(at && at.kind === 'interaction' ? at.i : null);
+  };
+  const sliderLabel = !withIx
+    ? (cursor == null ? 'now' : cursor === 0 ? 'before the first event' : '#' + cursor + ' ' + (events[cursor - 1] || {}).type)
+    : value >= timeline.length ? 'now' : value === 0 ? 'before the first step' : (timeline[value - 1].kind === 'event' ? '#' + eventsIn(timeline, value) + ' ' + timeline[value - 1].e.type : interactionLabel(timeline[value - 1].i));
 
   return (
     <>
       {cursor != null && (
         <div className="em-ev em-cmd">
           <b>Viewing as of event #{cursor}</b> — screens show the state then; nothing can be recorded.{' '}
-          <button className="em-btn" onClick={() => rt.viewAsOf(null)}>Back to now</button>
+          <button className="em-btn" onClick={() => { rt.viewAsOf(null); focusInteraction(null); }}>Back to now</button>
         </div>
+      )}
+      {total > 0 && (
+        <div className="em-slider" title="Move through the log: the screens show the state as of that step">
+          <input type="range" min={0} max={total} value={value} onChange={(e) => moveTo(Number(e.target.value))} />
+          <span className="em-slider-text">{sliderLabel}</span>
+        </div>
+      )}
+      {recorded.length > 0 && (
+        <label className="em-check" title="Add what the user did — clicks, changed fields — to the log and the slider">
+          <input type="checkbox" checked={withIx} onChange={(e) => { setWithIx(e.target.checked); setStep(null); focusInteraction(null); }} />
+          <span>include interactions ({recorded.length})</span>
+        </label>
       )}
       <input placeholder="Search events, data, commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -223,8 +309,19 @@ function EventBrowser({ events }) {
           <button className="em-btn" onClick={() => setFollow(null)}>×</button>
         </div>
       )}
-      <h2>{shown.length === events.length ? `${events.length} events` : `${shown.length} of ${events.length} events`}</h2>
-      {[...shown].reverse().map((e) => {
+      <h2>{shown.length === events.length ? `${events.length} events` : `${shown.length} of ${events.length} events`}{withIx ? ` · ${recorded.length} interactions` : ''}</h2>
+      {[...rows].reverse().map((row) => {
+        if (row.kind === 'interaction') {
+          return (
+            <div key={'i' + row.idx} className="em-ev em-cmd" style={Object.assign({ cursor: 'pointer' }, row.idx >= value ? { opacity: 0.4 } : null)}
+                 title="Show the screen at this step and outline the element" onClick={() => moveTo(row.idx + 1)}>
+              <b>{interactionLabel(row.i)}</b>
+              <span style={{ float: 'right', color: '#9ca3af' }}>{new Date(row.i.at).toLocaleTimeString()}</span>
+              {row.i.screen && <div style={{ color: '#9ca3af' }}>{row.i.screen}{row.i.slice ? ' · ' + row.i.slice : ''}</div>}
+            </div>
+          );
+        }
+        const e = row.e;
         const isOpen = open === e.id;
         const future = cursor != null && e.position > cursor;
         return (
@@ -305,10 +402,26 @@ function SimulateForm({ spec }) {
 function Panel() {
   const events = useLog();
   const [tab, setTab] = useState('events');
-  const [specResults, setSpecResults] = useState(() => EMRuntime.runSpecs(Domain));
+  const [specResults] = useState(() => EMRuntime.runSpecs(Domain));
   const [pasting, setPasting] = useState(false);
+  const { toast } = useContext(Proto);
+  const [armed, setArmed] = useState(null); // the scenario whose ▶ asked for a second click, because it would replace a log with events in it
+
+  /** Make the prototype show a scenario's starting state: the event log becomes its `given` events. */
+  const playGiven = (spec, i) => {
+    if (rt.events.length > 0 && armed !== i) {
+      setArmed(i);
+      toast('This replaces the current event log (Copy log keeps it) — click ▶ again to go on');
+      return;
+    }
+    setArmed(null);
+    const at = new Date().toISOString();
+    const given = spec.given || [];
+    rt.importLog(given.map((e) => ({ id: EMRuntime.uuid(), type: e.type, data: e.data || {}, metadata: { at, scenario: spec.title } })));
+    toast(given.length ? `Played ${given.length} given event${given.length === 1 ? '' : 's'} — the screens show that state` : 'This scenario starts from nothing — the event log is empty');
+  };
   return (
-    <aside className="em-panel">
+    <aside className="em-panel" data-em-chrome="">
       <div className="em-tabs">
         {['events', 'simulate', 'specs', 'clock'].map((t) => (
           <button key={t} className={tab === t ? 'em-active' : ''} onClick={() => setTab(t)}>{t}</button>
@@ -322,7 +435,6 @@ function Panel() {
           <button className="em-btn" onClick={() => navigator.clipboard.writeText(JSON.stringify(rt.events, null, 2))}>Copy log</button>{' '}
           <button className="em-btn" onClick={() => setPasting(true)}>Paste log</button>
           {pasting && <PasteLog onDone={() => setPasting(false)} />}
-          {!rt.persistent && <p style={{ color: '#fbbf24' }}>This browser blocks storage here — the log lives until the page closes. Copy it to keep it.</p>}
           <EventBrowser events={events} />
         </>
       )}
@@ -338,11 +450,14 @@ function Panel() {
       {tab === 'specs' && (
         <>
           <h2>Scenarios from the board</h2>
-          <button className="em-btn" onClick={() => setSpecResults(EMRuntime.runSpecs(Domain))}>Run all</button>
           {specResults.map((r, i) => (
-            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')}>
-              <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
-              {!r.pass && <pre>{r.detail}</pre>}
+            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+                {!r.pass && <pre>{r.detail}</pre>}
+              </div>
+              <button className={'em-btn' + (armed === i ? ' em-on' : '')} style={{ flex: 'none' }} onClick={() => playGiven(r.spec, i)}
+                      title="Play the given events: the screens show this scenario's starting state">▶</button>
             </div>
           ))}
         </>
@@ -376,6 +491,9 @@ function App() {
     toast.t = setTimeout(() => setToastMsg(null), 2800);
   };
   const go = (title, params) => setCurrent({ title, params: params || {} });
+  navigateTo = go;
+  // The screen shown, for the board's feedback recorder (a declarative marker, read from outside the page).
+  React.useEffect(() => { document.body.dataset.emScreen = current.title; });
   const actors = [...new Set(tabs.flatMap((t) => [...t.actors]))];
   const visible = tabs.filter((t) => !actor || t.actors.has(actor));
   const tab = tabs.find((t) => t.title === current.title);
@@ -412,7 +530,7 @@ function App() {
               <AutomationsTab />
             ) : tab ? (
               tab.parts.map((p) => (
-                <div key={p.slice} className="em-part">
+                <div key={p.slice} className="em-part" data-em-slice={p.slice}>
                   {tab.parts.length > 1 && <div className="em-part-label">{p.slice}</div>}
                   <PartBoundary key={JSON.stringify(current.params)} slice={p.slice}>
                     <p.part params={current.params} />
@@ -431,10 +549,39 @@ function App() {
   );
 }
 
+/**
+ * The message contract with the board's player (feedback + replay). Only the embedding page may talk to it; everything else is ignored.
+ *   player → page  { source: 'proto-host', type: 'events-request', id }   → { source: 'proto-kit', type: 'events', id, events, cursor }
+ *                  { source: 'proto-host', type: 'load', events }          replace the log (a replay starts from a recorded one)
+ *                  { source: 'proto-host', type: 'view', position }        show the state as of event #position (null = now)
+ *                  { source: 'proto-host', type: 'screen', title }         switch to that screen's tab
+ *   page → player  { source: 'proto-kit', type: 'ready' }                  once mounted
+ * Interactions arrive the other way round, in the page itself: the player's recorder dispatches an `em-interaction` DOM event for each (see useInteractions).
+ * [data-em-chrome] marks the kit's own tooling (the side panel): the player's recorder ignores what happens inside it.
+ * The screen and the slice are read from the DOM: <body data-em-screen> and the nearest [data-em-slice].
+ */
 globalThis.emMount = () => {
   rt = EMRuntime.createRuntime(Domain);
   rt.subscribe(() => version++);
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (e.source !== window.parent || !d || d.source !== 'proto-host') return;
+    if (d.type === 'events-request') window.parent.postMessage({ source: 'proto-kit', type: 'events', id: d.id, events: rt.events, cursor: rt.cursor }, '*');
+    else if (d.type === 'load') rt.importLog(Array.isArray(d.events) ? d.events : []);
+    else if (d.type === 'view') rt.viewAsOf(typeof d.position === 'number' ? d.position : null);
+    else if (d.type === 'screen' && navigateTo) navigateTo(String(d.title));
+  });
+  // Deferred a tick: the recorder announces a click before the page has handled it, and a synchronous re-render in the middle of
+  // the event would reset a controlled checkbox before React reads it.
+  document.addEventListener('em-interaction', (e) => {
+    const item = e.detail;
+    setTimeout(() => {
+      interactions = [...interactions, item].slice(-200);
+      interactionListeners.forEach((fn) => fn());
+    }, 0);
+  });
   ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  window.parent.postMessage({ source: 'proto-kit', type: 'ready' }, '*');
 };
 </script>
 
