@@ -1304,6 +1304,9 @@ async function installStack(stackKey, stackCfg, options = {}) {
       JSON.stringify({ stack: stackKey, version: CLI_VERSION, global: !!options.global, skills: installedSkills, claudeExtras, mcpRegistered: false }, null, 2),
     );
 
+    // The kit's runtime event log would otherwise show up as untracked files (init and re-init both land here).
+    ensureLearningsGitRules(kitDir);
+
     // The global install scaffolds itself and then immediately starts the agent — printing
     // "Done! Start your agent:" and an init-mcp hint there would be telling the user to do
     // what this very command is already doing.
@@ -1458,6 +1461,7 @@ async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
       try { execSync(`chmod +x "${p}"`); } catch {}
     }
   }
+  ensureLearningsGitRules(kitDir);
   console.log('📦 Installing kit dependencies...');
   try {
     execSync('npm install', { cwd: kitDir, stdio: ['ignore', 'inherit', 'inherit'] });
@@ -2142,7 +2146,8 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // board and account, so what one board taught the agent would end up in another's AGENTS.md. The prompt journal has no
   // such problem — every entry is stamped with its board (`events --board`) — so every run keeps it, standalone included.
   const keepsRecord = !standalone && !overrides;
-  if (keepsRecord) ensureLearningsGitRules(kitDir);
+  // The prompt journal is written by every run, standalone included, so the ignore rules are too.
+  ensureLearningsGitRules(kitDir);
   if (!cfg.boardId) {
     console.error('❌ --modeling needs a boardId — a modeling agent always runs for exactly one board. Run `/connect board=<uuid>` once, or add boardId to .eventmodelers/config.json.');
     process.exit(1);
