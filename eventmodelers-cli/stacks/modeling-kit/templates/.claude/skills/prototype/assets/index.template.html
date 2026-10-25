@@ -30,6 +30,12 @@
     .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 14px/1.4 system-ui, sans-serif; }
     .em-panel h2, .em-auto h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
     /* The panel's tabs are real tabs: a strip with a rule under it, the open tab joined to the content below (same colour, no rule under it) with an orange top edge. */
+    .em-panel.em-collapsed { padding: 8px 4px; overflow: hidden; }
+    .em-toggle { background: #1f2937; color: #e5e7eb; border: 0; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font: 14px system-ui; flex: none; }
+    .em-toggle:hover { background: #374151; }
+    .em-tabs .em-toggle { width: 28px; height: 28px; padding: 0; margin-bottom: 0; border-radius: 6px; color: #e5e7eb; }
+    .em-collapsed .em-toggle { display: block; margin: 0 auto 8px; }
+    .em-collapsed .em-vlabel { writing-mode: vertical-rl; color: #9ca3af; font: 12px system-ui; letter-spacing: .06em; text-transform: uppercase; text-align: center; cursor: pointer; width: 100%; }
     .em-tabs { display: flex; gap: 2px; border-bottom: 1px solid #374151; margin: 0 -12px 4px; padding: 0 12px; }
     .em-tabs button { background: #1f2937; color: #9ca3af; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 7px 12px; margin-bottom: -1px; cursor: pointer; font: 13px system-ui; }
     .em-tabs button:hover { color: #e5e7eb; }
@@ -411,7 +417,7 @@ function SpecView({ spec }) {
   );
 }
 
-function Panel({ slices }) {
+function Panel({ slices, open: panelOpen, onToggle }) {
   const events = useLog();
   const [tab, setTab] = useState('events');
   const [specResults] = useState(() => EMRuntime.runSpecs(Domain));
@@ -435,9 +441,18 @@ function Panel({ slices }) {
   };
   // Only the scenarios of the slices shown on the current screen (`slices` is null on the Automations tab: everything).
   const shownSpecs = specResults.map((r, i) => [r, i]).filter(([r]) => allSpecs || !slices || slices.includes(r.spec.slice));
+  if (!panelOpen) {
+    return (
+      <aside className="em-panel em-collapsed" data-em-chrome="">
+        <button className="em-toggle" onClick={onToggle} title="Show the events, simulate, specs and clock panel" aria-label="Show panel">‹</button>
+        <div className="em-vlabel" onClick={onToggle}>events · simulate · specs · clock</div>
+      </aside>
+    );
+  }
   return (
     <aside className="em-panel" data-em-chrome="">
       <div className="em-tabs">
+        <button className="em-toggle" onClick={onToggle} title="Hide the panel" aria-label="Hide panel" style={{ alignSelf: 'center', marginRight: 6 }}>›</button>
         {['events', 'simulate', 'specs', 'clock'].map((t) => (
           <button key={t} className={tab === t ? 'em-active' : ''} onClick={() => setTab(t)}>{t}</button>
         ))}
@@ -510,6 +525,7 @@ function App() {
   const tabs = screenTabs();
   const [current, setCurrent] = useState(() => ({ title: (tabs[0] || {}).title || AUTOMATIONS, params: {} }));
   const [actor, setActor] = useState('');
+  const [panelOpen, setPanelOpen] = useState(false); // the side panel starts contracted
   const [toastMsg, setToastMsg] = useState(null);
   const toast = (text, error) => {
     setToastMsg({ text, error });
@@ -527,7 +543,7 @@ function App() {
 
   return (
     <Proto.Provider value={{ go, params: current.params, toast, actor: actor || null }}>
-      <div className="em-shell">
+      <div className="em-shell" style={{ gridTemplateColumns: `minmax(0, 1fr) ${panelOpen ? 440 : 44}px` }}>
         <div className="em-main">
           <header className="em-bar">
             <h1>
@@ -568,7 +584,7 @@ function App() {
             )}
           </main>
         </div>
-        <Panel slices={tab ? tab.parts.map((p) => p.slice) : null} />
+        <Panel slices={tab ? tab.parts.map((p) => p.slice) : null} open={panelOpen} onToggle={() => setPanelOpen((o) => !o)} />
       </div>
       {toastMsg && <div className={'em-toast' + (toastMsg.error ? ' em-error' : '')}>{toastMsg.text}</div>}
     </Proto.Provider>
