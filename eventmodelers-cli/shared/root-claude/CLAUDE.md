@@ -12,7 +12,8 @@ together:
 Neither is guaranteed to exist — this file is installed once, up front, before either kit
 is known to be present.
 
-`.agent-modeling-kit/CLAUDE-STANDALONE.md` is deliberately *not* in that list: it holds the
-rules for the self-directed turns a `run --standalone` session gets, and the agent in such a
-session reads it itself when the first one arrives. Leave it alone otherwise — it licenses
-work nobody asked for, which is right for those turns and wrong everywhere else.
+`.agent-modeling-kit/CLAUDE-PROMPTS.md`, `CLAUDE-CHAT.md`, `CLAUDE-STANDALONE.md` and `references/` are
+deliberately *not* in that list: each kind of turn a modeling session gets (a prompt, a chat message, a
+self-directed board change) has its steps in its own file, which the agent reads itself when the first turn of
+that kind arrives. `CLAUDE-STANDALONE.md` in particular licenses work nobody asked for, which is right for
+self-directed turns and wrong everywhere else — leave it alone otherwise.

@@ -93,8 +93,18 @@ export function createModelingExecRunner({ cfg, command: rawCommand, projectDir,
     });
   }
 
+  // `--reset-session`: only a harness whose chat outlives its process (Cursor) has a conversation to drop; every other
+  // exec turn is a fresh process already. Queued like the turns, so none loses its session halfway.
+  function resetSession() {
+    if (!session) return Promise.resolve();
+    const result = queue.then(() => { sessionId = null; primed = false; log('session reset — the next turn starts a fresh chat'); });
+    queue = result.catch(() => {});
+    return result;
+  }
+
   return {
     runTurn,
+    resetSession,
     // Only a harness with a session has anything to warm (the loop sends its warm-up turn through runTurn).
     hasSession: Boolean(session),
     describe: () => rawCommand,

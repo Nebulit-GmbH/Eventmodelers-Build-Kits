@@ -11,7 +11,7 @@ written. `mode=propose` (`--modeling`): the judgement below applies, the doing d
 below belongs to turns nobody asked for, and a prompt turn that has this file in its context is
 exactly how it starts doing more than it was asked.
 
-Everything else — the connect/resolve rules, the Skill Selection table — stays in `.agent-modeling-kit/CLAUDE.md` and still applies.
+Everything else — the rules for every turn, the Skill Selection table — stays in `.agent-modeling-kit/CLAUDE.md` (and the `references/` it names) and still applies.
 
 These turns come in two shapes, and both are self-directed — nobody asked you for anything:
 

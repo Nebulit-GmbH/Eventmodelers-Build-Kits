@@ -94,6 +94,13 @@ export async function createModelingMastraRunner({ cfg, model, projectDir, codeD
       queue = result.catch(() => {});
       return result;
     },
+    // `--reset-session`: the next turn starts a fresh conversation in the same agent (its MCP connection stays up).
+    // Queued behind the turns already waiting, and `primed` goes with it so that turn carries the kit preamble again.
+    resetSession() {
+      const result = queue.then(() => { session.reset(); primed = false; log('session reset — the next turn starts a fresh conversation'); });
+      queue = result.catch(() => {});
+      return result;
+    },
     hasSession: true,
     describe: () => `Mastra (${model})`,
     mcpRegistered: true,

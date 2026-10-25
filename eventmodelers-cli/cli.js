@@ -25,6 +25,7 @@ import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
 import { buildModel } from './lib/scaffold-model.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
+import { ACP_AGENTS, resolveAcpAgent } from './lib/modeling-acp.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
 import { latestPublishedVersion, updateHints } from './lib/update-check.js';
 import { guardSnippetReply } from './lib/snippet-guard.js';
@@ -114,13 +115,19 @@ function printAgentPresets() {
 // Resolves --agent into the --exec command it stands for, or null for the default Claude runner.
 // Bare --agent lists the presets and stops.
 function resolveAgentPreset(opts, loop) {
-  if (opts.agent === undefined) return null;
+  if (opts.agent === undefined) {
+    if (opts.acp && !opts.acpCmd) {
+      console.error(`❌ --acp needs --agent <${Object.keys(ACP_AGENTS).join('|')}>, or use --acp-cmd "<command>" for any other ACP agent.`);
+      process.exit(1);
+    }
+    return null;
+  }
   if (opts.agent === true) {
     printAgentPresets();
     process.exit(0);
   }
   const name = String(opts.agent).toLowerCase();
-  if (!AGENT_NAMES.includes(name)) {
+  if (!AGENT_NAMES.includes(name) && !(opts.acp && ACP_AGENTS[name])) {
     console.error(`❌ Unknown --agent "${opts.agent}" — one of: ${AGENT_NAMES.join(', ')}.`);
     console.error('   Any other harness works via --exec "<command>".');
     console.error(`   A local or self-hosted model works via --local-ai [${LOCAL_AI_TARGETS.join('|')}].`);
@@ -136,7 +143,21 @@ function resolveAgentPreset(opts, loop) {
   }
   // Mastra is a runner of its own, not a command: a warm in-process agent session (see lib/modeling-mastra.js).
   if (name === 'mastra') {
+    if (opts.acp) {
+      console.error('❌ --acp does not apply to --agent mastra — Mastra runs in-process and speaks no protocol.');
+      process.exit(1);
+    }
     opts.mastra = true;
+    return null;
+  }
+  // --acp: the same harness, driven over the Agent Client Protocol as one warm session (lib/modeling-acp.js)
+  // rather than as one exec process per turn.
+  if (opts.acp) {
+    if (!ACP_AGENTS[name]) {
+      console.error(`❌ --acp has no ACP agent for --agent ${name} — one of: ${Object.keys(ACP_AGENTS).join(', ')}, or --acp-cmd "<command>".`);
+      process.exit(1);
+    }
+    opts.acpAgent = name;
     return null;
   }
   return presetCommand(name, loop);
@@ -1205,7 +1226,7 @@ async function installStack(stackKey, stackCfg, options = {}) {
     }
 
     // Make scripts executable
-    for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js']) {
+    for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js', 'ralph-acp.js']) {
       const p = join(kitDir, script);
       if (existsSync(p)) {
         try { execSync(`chmod +x "${p}"`); } catch {}
@@ -1456,7 +1477,7 @@ async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
   if (existsSync(manifestPath)) {
     writeFileSync(manifestPath, JSON.stringify({ ...readJsonSafe(manifestPath), version: CLI_VERSION }, null, 2));
   }
-  for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js']) {
+  for (const script of ['ralph-claude.js', 'ralph-local-ai.js', 'ralph-exec.js', 'ralph-mastra.js', 'ralph-acp.js']) {
     const p = join(kitDir, script);
     if (existsSync(p)) {
       try { execSync(`chmod +x "${p}"`); } catch {}
@@ -2051,10 +2072,10 @@ async function ensureGlobalKit(baseUrl) {
 // no re-discovery of a prompt this process already has in memory. Only pure,
 // read-only config resolution (`loadLocalConfig`/`fetchPlatformConfig`) is reused
 // from the kit's lib/config.js, to avoid duplicating the config-file-walk logic.
-// See `.agent-modeling-kit/CLAUDE.md` for the per-turn instructions this mode's
-// modeling session follows — and `.agent-modeling-kit/CLAUDE-STANDALONE.md` for the
-// self-directed turns below, kept in their own file precisely so a non-standalone
-// session (and a prompt turn in a standalone one) never loads them.
+// See `.agent-modeling-kit/CLAUDE.md` for the core instructions this mode's modeling
+// session follows. Each kind of turn has its steps in a file of its own — CLAUDE-PROMPTS.md,
+// CLAUDE-CHAT.md and, for the self-directed turns below, CLAUDE-STANDALONE.md — read the first
+// time that kind arrives, so a session never loads the kinds it does not get.
 //
 // `standalone` adds a second, self-directed lane on top of that: the loop also
 // listens on the board's own change channel (`board:<id>` — the same one the web
@@ -2091,7 +2112,7 @@ async function offerPrune(kitDir, { interactive }) {
   }
 }
 
-async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, mastra = false, model = null, skipPermissions = false, browser = false } = {}) {
+async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, mastra = false, acp = null, resetSession = false, model = null, skipPermissions = false, browser = false } = {}) {
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -2210,6 +2231,15 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       process.exit(1);
     }
   }
+  // --agent <name> --acp / --acp-cmd: one warm agent process speaking the Agent Client Protocol (lib/modeling-acp.js).
+  // Same slot and same shape as mastra's runner: the session stays up, so the header goes in once.
+  if (acp) {
+    const { createModelingAcpRunner } = await import('./lib/modeling-acp.js');
+    execRunner = createModelingAcpRunner({
+      cfg, agent: acp, projectDir, log, verbose,
+      onToolUse: (name, input) => { const id = `acp-${++localCallSeq}`; noteToolStart(id, name, input); return (outcome) => noteToolEnd(id, outcome); },
+    });
+  }
   // The runner that is not the warm `claude` process, if any — for the few places that only care
   // whether one is.
   const otherRunner = localRunner ?? execRunner;
@@ -2220,8 +2250,13 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     'as a QUESTION-type comment (via /handle-comment with action=place and type=QUESTION) on the most ' +
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt. ' +
     'The one exception is a CHAT turn: there a person is waiting in the chat, so you ask back with post_chat_message ' +
-    '(see "Chat turns" in .agent-modeling-kit/CLAUDE.md), and never by pausing the session. ' +
+    '(see .agent-modeling-kit/CLAUDE-CHAT.md), and never by pausing the session. ' +
     'A chat message is at most 1000 characters.\n\n';
+
+  // CLAUDE.md is the core; each kind of turn has its steps in a file of its own that the agent reads the first time that
+  // kind arrives (CLAUDE-STANDALONE.md works the same way). The pointer rides on every such turn, so it needs no state
+  // to survive a respawn or an exec runner's fresh process — and says where the rules are in a kit from before the split.
+  const turnSteps = (file) => `Steps for this turn: .agent-modeling-kit/${file} — read it now if you have not this session (an older kit keeps them in CLAUDE.md).`;
 
   // An exec turn is a fresh process on every turn, so the kit's connect step would run — and
   // re-verify the same credentials — once per message. It has nothing left to do: registerMcp
@@ -2255,7 +2290,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     // the header its first turn would.
     if (!firstTurn && !(execRunner && !execRunner.keepsSession)) return body;
     firstTurn = false;
-    return `MODE=modeling token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}${execRunner?.mcpRegistered ? EXEC_CONNECTED : ''}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns.\n\n${body}`;
+    return `MODE=modeling token=$EVENTMODELERS_TOKEN org=${cfg.organizationId} baseUrl=${cfg.baseUrl} standalone=${standalone ? 'on' : 'off'}${standalone ? ` max_agents=${maxAgents}` : ''} subagent_model=${subagentModel}\n\n${QUESTIONING_RULE}${execRunner?.mcpRegistered ? EXEC_CONNECTED : ''}Read .agent-modeling-kit/CLAUDE.md now and follow it for every prompt in this session — it's a one-time read; don't re-read it on later turns. It names the file with the steps for each kind of turn (prompt, chat, board change); read each the first time that kind arrives.\n\n${body}`;
   }
 
   function buildTurn(p) {
@@ -2271,14 +2306,14 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       p.origin_message_id ? `origin_message_id=${p.origin_message_id}` : null,
     ].filter(Boolean).join(' ');
     // What the user had selected and on screen when they submitted (selectedCell,
-    // selectedNodes, timelineId, focusArea). CLAUDE.md's step 3 resolves CELL_ID/NODE_ID/
+    // selectedNodes, timelineId, focusArea). references/resolving-target.md resolves CELL_ID/NODE_ID/
     // TIMELINE_ID from it in preference to the flat fields above, and it is what "this" or
     // "here" in the prompt refers to. Sent as JSON on its own line because it is structured,
     // unlike the flat k=v fields.
     const context = p.context && typeof p.context === 'object' && Object.keys(p.context).length
       ? `\ncontext=${JSON.stringify(p.context)}`
       : '';
-    return withSessionHeader(`${fields}${context}\n\n${p.prompt}`);
+    return withSessionHeader(`${fields}${context}\n${turnSteps('CLAUDE-PROMPTS.md')}\n\n${p.prompt}`);
   }
 
   // Locked down, not --dangerously-skip-permissions: this agent takes chat messages and snippet clicks from any
@@ -2428,17 +2463,19 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   }
 
   function spawnProcess() {
-    proc = spawn('claude', claudeArgs, { cwd: projectDir, env: claudeEnv, stdio: ['pipe', 'pipe', 'inherit'] });
+    const child = spawn('claude', claudeArgs, { cwd: projectDir, env: claudeEnv, stdio: ['pipe', 'pipe', 'inherit'] });
+    proc = child;
     stdoutBuffer = '';
     warmUp = null; // a fresh process has connected to nothing and read nothing
     chatCursor.clear(); // …and has read no chat session either
-    proc.stdout.on('data', (chunk) => {
+    child.stdout.on('data', (chunk) => {
       stdoutBuffer += chunk.toString();
       const lines = stdoutBuffer.split('\n');
       stdoutBuffer = lines.pop();
       for (const l of lines) handleLine(l);
     });
-    proc.on('exit', (code) => {
+    child.on('exit', (code) => {
+      if (child.resetByCli) return; // --reset-session already detached it; whatever runs now is not this process
       log(`process exited (${code}) — will respawn on next task`);
       lastTurnEndedAt = Date.now();
       proc = null;
@@ -2452,6 +2489,24 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       }
     });
     log('modeling session started');
+  }
+
+  // --reset-session on the default runner: the next turn gets a fresh `claude` — a new conversation — instead of the
+  // one that has carried every turn so far. The old process is detached at once, not when its exit arrives: a turn
+  // that starts in between must find no process and spawn its own, and the old one's output and exit must not touch it.
+  function resetClaudeSession() {
+    if (!proc || pending) return; // nothing running, or a turn still in flight — never cut one off
+    const old = proc;
+    old.resetByCli = true;
+    old.stdout.removeAllListeners('data');
+    proc = null;
+    stdoutBuffer = '';
+    firstTurn = true; // a respawned process is a fresh session — needs MODE=modeling again
+    warmUp = null; // …and a fresh warm-up before its first real turn
+    warmingUp = false;
+    chatCursor.clear();
+    old.kill();
+    log('session reset — the next turn starts a fresh conversation');
   }
 
   function sendTurn(text) {
@@ -2539,7 +2594,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   if (!otherRunner) spawnProcess();
   log(`agent: ${cfg.agentName ? `${cfg.agentName} (${cfg.agentId})` : cfg.agentId} — eventmodelers-cli v${CLI_VERSION}`);
   if (localRunner) log(`runner: local model — ${localRunner.describe()} (board tools over MCP; no skills, no subagents)`);
-  if (execRunner) log(`runner: ${execRunner.describe()} — ${mastra ? 'one warm session' : 'one process per turn'} (skills from the kit; no subagents)`);
+  if (execRunner) log(`runner: ${execRunner.describe()} — ${mastra || acp ? 'one warm session' : 'one process per turn'} (skills from the kit; no subagents)`);
   log(
     standalone
       ? `standalone: ON — reacting to direct prompts AND to board changes on its own initiative (${localRunner ? 'work is done inline — a local model has no subagents' : execRunner ? 'work is done inline — an exec agent has no subagents' : `max ${maxAgents} subagent(s) per self-directed turn`})`
@@ -2664,7 +2719,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       after ? `after_message_id=${after}` : 'first_read=true',
       m.nodeId ? `node_id=${m.nodeId}` : null,
       m.commentId ? `comment_id=${m.commentId}` : null,
-      // The file(s) the person attached — read with get_chat_attachment (see "Chat turns").
+      // The file(s) the person attached — read with get_chat_attachment (see CLAUDE-CHAT.md).
       Array.isArray(m.attachments) && m.attachments.length ? `attachments=${JSON.stringify(m.attachments)}` : null,
       cachedFiles.length ? `attachment_files=${JSON.stringify(cachedFiles)}` : null,
     ].filter(Boolean).join(' ');
@@ -2674,7 +2729,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     const context = guarded.context && typeof guarded.context === 'object' && Object.keys(guarded.context).length
       ? `\ncontext=${JSON.stringify(guarded.context)}`
       : '';
-    return withSessionHeader(`${fields}${context}\n\n${m.text}${guarded.block ? `\n\n${guarded.block}` : ''}`);
+    return withSessionHeader(`${fields}${context}\n${turnSteps('CLAUDE-CHAT.md')}\n\n${m.text}${guarded.block ? `\n\n${guarded.block}` : ''}`);
   }
 
   // The backend rejects a chat message over this many characters (CHAT_TEXT_TOO_LONG).
@@ -2801,6 +2856,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         } finally {
           for (const call of calls.drain()) journalCall(call); // never ended: the turn died mid-call, so no duration
           turnPromptId = null;
+          // --reset-session: a prompt is self-contained work, so the next turn starts a fresh conversation rather than
+          // carrying this one's reads and renders along.
+          if (resetSession) { if (otherRunner) otherRunner.resetSession?.(); else resetClaudeSession(); }
         }
       }
     } finally {
@@ -3926,6 +3984,9 @@ credentialFlags(program
   .option('--local-ai [target]', `Drive the loop with a local (or self-hosted) model instead of the default Claude runner: a build kit runs it via ralph-local-ai.js, and --modeling/--standalone via lib/modeling-local-ai.js (board tools over MCP, but no skills and no subagent fan-out — those are Claude Code features). Optional target preset picks the URL and wire dialect: ${LOCAL_AI_TARGETS.join(', ')} — bare --local-ai means ollama. Anything OpenAI-compatible (vLLM, LM Studio, llama.cpp, TGI) works by pointing LOCAL_AI_URL at it; see LOCAL_AI_* in the docs. Board work only: --local-ai never builds a Planned slice (no file, shell or git tools). To build code with a local model, use --exec with a coding harness pointed at it, e.g. "codex exec --oss --full-auto". Claude remains the default when this flag is absent.`)
   .addOption(new Option('--bash').hideHelp())
   .option('--agent [name]', `Pick the agent that does the work by name: ${AGENT_NAMES.join(', ')}. claude is the default runner; mastra is a warm in-process Mastra agent (needs --model <provider/model>); any other is a shortcut for --exec with that harness's headless command filled in — plain-text output for --modeling/--standalone/--worker, JSON output (for agent tracing) for a build kit. Bare --agent lists the agents and the exact command each runs, then stops. Mutually exclusive with --exec and --local-ai.`)
+  .option('--acp', 'With --agent claude|opencode|gemini|codex|cursor|github: drive that agent over the Agent Client Protocol (ACP) as one warm session instead of one exec process per turn. For a build kit it runs ralph-acp.js (a fresh conversation per slice, in one warm process); for --modeling/--standalone/--worker/--global it is the low-latency modeling runner (lib/modeling-acp.js). The eventmodelers MCP server is handed to the agent in the session, so no MCP config file is written. Permission requests are auto-approved (like --dangerously-skip-permissions), so only use it on a board whose collaborators you trust with your shell. No subagents: self-directed work is done inline.')
+  .option('--reset-session', 'Modeling loop only: start a fresh agent conversation after every prompt turn, instead of carrying one conversation for the whole run. Works with the default Claude runner (a new `claude` process), --acp, --agent mastra and Cursor\'s chat; a local model and the other --exec agents start every turn fresh anyway. Bounds how far the context grows and keeps each prompt independent of the last; the cost is that the next turn re-reads the kit and the board it needs, and loses what the warm session remembered (which screen was just rendered, which chapter it already read). Off by default. A build kit already starts a fresh conversation per slice.')
+  .option('--acp-cmd <command>', 'Drive any ACP agent that is not covered by --agent, e.g. --acp-cmd "my-agent --acp". Implies --acp; the command must speak ACP over stdio and support HTTP MCP servers.')
   .option('--endpoint <url>', 'With --agent mastra: an OpenAI-compatible endpoint to use instead of a built-in provider (e.g. https://api.franconia.ai/v1). --model is then the endpoint\'s own model name, and the key is read from $MASTRA_API_KEY (never from a file). Also settable as mastra.baseUrl in .eventmodelers/config.json.')
   .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), `<provider>/<model>` for --agent mastra (e.g. anthropic/claude-sonnet-5-5), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
@@ -4004,6 +4065,28 @@ credentialFlags(program
     // --agent is --exec with the command filled in for the loop this run picks.
     const agentExec = resolveAgentPreset(opts, (opts.modeling || opts.standalone || opts.worker || opts.global) ? 'modeling' : 'build');
     if (agentExec) opts.exec = agentExec;
+    // ACP: a runner of its own (lib/modeling-acp.js), picked by --agent <name> --acp or --acp-cmd.
+    let acpAgent = null;
+    if (opts.acp || opts.acpCmd) {
+      if (opts.exec || opts.mastra || resolveLocalAiTarget(opts) !== null) {
+        console.error('❌ --acp/--acp-cmd are mutually exclusive with --exec, --local-ai and --agent mastra — pick one runner.');
+        process.exit(1);
+      }
+      if (opts.model !== undefined) {
+        console.error('❌ --model does not apply to --acp/--acp-cmd — the ACP agent picks its model from its own configuration.');
+        process.exit(1);
+      }
+      try {
+        acpAgent = resolveAcpAgent({ name: opts.acpAgent ?? null, cmd: opts.acpCmd ?? null });
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+    }
+    if (opts.resetSession && !(opts.modeling || opts.standalone || opts.worker || opts.global)) {
+      console.error('❌ --reset-session is for the modeling loop — a build kit already starts a fresh conversation for every slice.');
+      process.exit(1);
+    }
     if (opts.endpoint !== undefined) {
       if (!opts.mastra) {
         console.error('❌ --endpoint only applies to --agent mastra — the other agents take their endpoint from their own configuration (or --local-ai for a local server).');
@@ -4093,11 +4176,11 @@ credentialFlags(program
         console.error(`❌ --force asks for credentials again, which --non-interactive/--print rule out — pick one.`);
         process.exit(1);
       }
-      if (opts.browser && (opts.exec || opts.mastra || modelingLocalAi !== null || opts.dangerouslySkipPermissions)) {
+      if (opts.browser && (opts.exec || opts.mastra || acpAgent || modelingLocalAi !== null || opts.dangerouslySkipPermissions)) {
         console.error('❌ --browser only applies to the locked-down default Claude runner — --agent/--exec and --dangerously-skip-permissions use the MCP servers the machine configures, and --local-ai has no tools.');
         process.exit(1);
       }
-      if (opts.dangerouslySkipPermissions && (opts.exec || opts.mastra || modelingLocalAi !== null)) {
+      if (opts.dangerouslySkipPermissions && (opts.exec || opts.mastra || acpAgent || modelingLocalAi !== null)) {
         console.error('❌ --dangerously-skip-permissions only applies to the default Claude runner — --agent/--exec bring their own permission flags (put them in the command), and --local-ai has no shell or file tools to approve.');
         process.exit(1);
       }
@@ -4170,10 +4253,10 @@ credentialFlags(program
       // [modeling] log lines instead of before them.
       await offerPrune(kitDir, { interactive: !globalOpts.print && !opts.nonInteractive && !!process.stdin.isTTY });
       const shown = relative(cwd, kitDir);
-      const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : opts.mastra ? 'warm Mastra agent' : 'warm Claude process';
+      const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : opts.mastra ? 'warm Mastra agent' : acpAgent ? `warm ${acpAgent.label} over ACP` : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, mastra: !!opts.mastra, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, mastra: !!opts.mastra, acp: acpAgent, resetSession: !!opts.resetSession, model: !opts.exec && modelingLocalAi === null && !acpAgent ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -4205,7 +4288,7 @@ credentialFlags(program
     // is just a thin dispatcher so users don't have to remember the kit-dir name or which
     // runner file to invoke. Users (and the agent itself, via AGENT.md) may customize these
     // files freely; `run` always executes whatever is currently on disk.
-    const runner = opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : opts.mastra ? 'ralph-mastra.js' : 'ralph-claude.js';
+    const runner = opts.exec ? 'ralph-exec.js' : localAiTarget !== null ? 'ralph-local-ai.js' : opts.mastra ? 'ralph-mastra.js' : acpAgent ? 'ralph-acp.js' : 'ralph-claude.js';
     const runnerPath = join(kitDir, runner);
     if (!existsSync(runnerPath)) {
       console.error(`❌ ${relative(cwd, runnerPath)} not found.`);
@@ -4245,7 +4328,7 @@ credentialFlags(program
       // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}), ...(acpAgent ? { RALPH_ACP_AGENT: opts.acpAgent ?? '', RALPH_ACP_CMD: opts.acpCmd ?? '' } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }

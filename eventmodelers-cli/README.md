@@ -412,6 +412,14 @@ which the agent reads only once a self-directed turn actually arrives: a `--mode
 without `--standalone` never loads it, and neither does a prompt turn inside a standalone
 session — a turn someone asked for does what was asked and nothing more.
 
+The same split applies to the other kinds of turn. `.agent-modeling-kit/CLAUDE.md` is the small core every session
+reads once; prompts have their steps in `CLAUDE-PROMPTS.md` and chat messages in `CLAUDE-CHAT.md`, each read the first
+time that kind of turn arrives. Detail that only some turns need lives in `.agent-modeling-kit/references/` (chat
+snippets, how each kind of chat message is handled, how a turn's target is resolved, the session warm-up, board reads,
+permissions). Each prompt and chat turn names its file, so a session that only ever gets chat never loads the prompt
+steps, and the other way round. A kit installed before this split keeps everything in `CLAUDE.md`; re-run `init` to
+refresh it.
+
 `--max-agents <n>` caps that fan-out, so an unattended turn's cost stays bounded — default 5:
 
 ```bash
@@ -505,6 +513,62 @@ Wanting the *full* Claude modeling agent (skills, subagents and all) on local we
 different thing, and `anthropicBaseUrl` below is that path — but note that it needs a server
 speaking Anthropic's own `/v1/messages`, which Ollama does not serve. Pointing it straight at
 `localhost:11434` gets you a 404; a translating proxy has to sit in between.
+
+### Modeling with other agents over ACP
+
+`run --modeling` talks to the board; `--agent` picks which AI does the work. For OpenCode, Gemini CLI, Codex and Cursor the
+default is one process per turn (`--exec`); `claude` and `github` are only available over ACP. Add `--acp` to drive the agent over the
+[Agent Client Protocol](https://agentclientprotocol.com) instead: one warm process and one session for the life of
+the loop, like the default Claude runner.
+
+```bash
+npx @eventmodelers/cli run --modeling --agent opencode --acp     # or claude, gemini, codex, cursor, github
+npx @eventmodelers/cli run --worker   --agent gemini   --acp     # prompts only, no chat
+npx @eventmodelers/cli run --modeling --acp-cmd "my-agent --acp" # any other ACP agent
+```
+
+| `--agent` | Started as |
+|---|---|
+| `opencode` | `opencode acp` |
+| `gemini` | `gemini --acp` |
+| `claude` | `npx -y @agentclientprotocol/claude-agent-acp` (adapter over the Claude Agent SDK) |
+| `codex` | `npx -y @zed-industries/codex-acp` (the codex-acp adapter) |
+| `cursor` | `cursor-agent acp` |
+| `github` | `npx -y @github/copilot --acp` (GitHub Copilot CLI) |
+
+- The eventmodelers MCP server, with its token and agent-id headers, is handed to the agent in the ACP session, so no
+  MCP config file is written for the host. The agent must support HTTP MCP servers; the run stops otherwise.
+- Permission requests are auto-approved (the equivalent of `--dangerously-skip-permissions`). Use it only on a board
+  whose collaborators you trust with your shell.
+- No subagents: self-directed work is done inline. `run` installs nothing into the agent's own folders, so for the
+  agent to see the Event Modeling skills, run `init-agents --hosts <host>` first (`opencode`, `gemini`, `codex`,
+  `cursor`, `copilot` for `--agent github`). Claude reads the kit's `.claude/skills` natively.
+- `--acp` works for both loops. With `--modeling`/`--standalone`/`--worker`/`--global` it answers prompts and chat; in a
+  build kit (`run --agent cursor --acp`) it builds Planned slices through `ralph-acp.js`: one warm agent process, a
+  fresh conversation per slice, tool calls in the build log, and token usage in the slice cost when the agent reports
+  it (no price: ACP reports tokens only). The curation turn runs in a short-lived process of its own.
+- `--acp` is mutually exclusive with `--exec`, `--local-ai` and `--agent mastra`.
+  `--model` does not apply: the agent picks its model from its own configuration.
+
+### Starting each prompt fresh — `--reset-session`
+
+A modeling agent keeps one conversation for the whole run, so it remembers what it read and rendered a minute ago —
+that is why a follow-up like "the third screen as well" lands — but the conversation also grows with every turn.
+`--reset-session` trades that memory for a bounded context: after every **prompt** turn the next turn starts a fresh
+conversation, so each prompt is independent of the last.
+
+```bash
+npx @eventmodelers/cli run --modeling --reset-session                       # default Claude: a new `claude` process
+npx @eventmodelers/cli run --modeling --agent opencode --acp --reset-session
+npx @eventmodelers/cli run --modeling --agent mastra --model … --reset-session
+```
+
+- Off by default. The cost: the next turn re-reads the kit files and the board it needs, and loses what the warm session
+  remembered (which screen was just rendered, which chapter it already read). Chat turns are not reset, and a reset never
+  cuts a turn off — it happens when the prompt turn has finished.
+- Works with the default Claude runner, `--acp`, `--agent mastra` and Cursor's chat. A local model and the other
+  `--exec` agents start every turn fresh anyway, so there is nothing to reset.
+- Modeling loop only. A build kit already starts a fresh conversation for every slice.
 
 ### Asking for credentials again
 

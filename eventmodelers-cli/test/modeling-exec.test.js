@@ -193,3 +193,10 @@ test('--model is spelled the way each harness wants it, and goes ahead of hermes
   assert.equal(withModel('cursor-agent -p --trust', 'auto'), "cursor-agent -p --trust --model 'auto'");
   assert.equal(withModel('hermes chat --yolo -Q -q', 'm1'), "hermes chat --yolo -Q -m 'm1' -q");
 });
+
+test('resetSession() is a no-op for a harness whose every turn is a fresh process', async () => {
+  const r = runner('printf "%s"');
+  await r.runTurn('one');
+  await r.resetSession(); // nothing to drop, and nothing to break
+  assert.equal(await r.runTurn('two'), 'two');
+});
