@@ -29,9 +29,13 @@
     .em-part-label { font: 600 11px system-ui; color: #6b7280; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
     .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 14px/1.4 system-ui, sans-serif; }
     .em-panel h2, .em-auto h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
-    .em-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-    .em-tabs button, .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
-    .em-tabs button.em-active, .em-btn.em-on { background: #f97316; color: #111827; }
+    /* The panel's tabs are real tabs: a strip with a rule under it, the open tab joined to the content below (same colour, no rule under it) with an orange top edge. */
+    .em-tabs { display: flex; gap: 2px; border-bottom: 1px solid #374151; margin: 0 -12px 4px; padding: 0 12px; }
+    .em-tabs button { background: #1f2937; color: #9ca3af; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 7px 12px; margin-bottom: -1px; cursor: pointer; font: 13px system-ui; }
+    .em-tabs button:hover { color: #e5e7eb; }
+    .em-tabs button.em-active { background: #111827; color: #fff; font-weight: 600; border-color: #374151; border-top: 2px solid #f97316; padding-top: 6px; }
+    .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
+    .em-btn.em-on { background: #f97316; color: #111827; }
     .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: #e5e7eb; }
     .em-ev b { color: #fdba74; }
     .em-ev pre { margin: 4px 0 0; padding: 0; background: transparent; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; } /* background set explicitly: a screen framework (Bulma) styles bare <pre> light, which left this text unreadable */
@@ -281,28 +285,11 @@ function EventBrowser({ events }) {
     <>
       {cursor != null && (
         <div className="em-ev em-cmd">
-          <b>Viewing as of event #{cursor}</b> — screens show the state then; nothing can be recorded.{' '}
-          <button className="em-btn" onClick={() => { rt.viewAsOf(null); focusInteraction(null); }}>Back to now</button>
+          <b>Viewing as of event #{cursor}</b> — screens show the state then; nothing can be recorded.
+          <br />
+          <button className="em-btn" style={{ marginTop: 6 }} onClick={() => { rt.viewAsOf(null); focusInteraction(null); }}>Back to now</button>
         </div>
       )}
-      {total > 0 && (
-        <div className="em-slider" title="Move through the log: the screens show the state as of that step">
-          <input type="range" min={0} max={total} value={value} onChange={(e) => moveTo(Number(e.target.value))} />
-          <span className="em-slider-text">{sliderLabel}</span>
-        </div>
-      )}
-      {recorded.length > 0 && (
-        <label className="em-check" title="Add what the user did — clicks, changed fields — to the log and the slider">
-          <input type="checkbox" checked={withIx} onChange={(e) => { setWithIx(e.target.checked); setStep(null); focusInteraction(null); }} />
-          <span>include interactions ({recorded.length})</span>
-        </label>
-      )}
-      <input placeholder="Search events, data, commands…" value={search} onChange={(e) => setSearch(e.target.value)} />
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {Object.entries(counts).map(([t, n]) => (
-          <button key={t} className={'em-btn' + (types.includes(t) ? ' em-on' : '')} onClick={() => toggle(t)}>{t} · {n}</button>
-        ))}
-      </div>
       {follow && (
         <div className="em-ev em-out">
           Following <b>{follow.field} = {String(follow.value)}</b>{' '}
@@ -362,28 +349,6 @@ function EventBrowser({ events }) {
   );
 }
 
-/** Replace the log with one copied earlier (from this prototype or another browser). */
-function PasteLog({ onDone }) {
-  const [text, setText] = useState('');
-  const [error, setError] = useState(null);
-  const apply = () => {
-    try {
-      rt.importLog(JSON.parse(text));
-      onDone();
-    } catch (err) {
-      setError('That is not an event log: ' + err.message);
-    }
-  };
-  return (
-    <div className="em-ev em-cmd">
-      <textarea rows={6} placeholder='Paste a log copied with "Copy log"' value={text} onChange={(e) => setText(e.target.value)} />
-      {error && <pre>{error}</pre>}
-      <button className="em-btn" onClick={apply}>Replace log</button>{' '}
-      <button className="em-btn" onClick={onDone}>Cancel</button>
-    </div>
-  );
-}
-
 function SimulateForm({ spec }) {
   const [data, setData] = useState(() => Object.fromEntries((spec.fields || []).map((f) => [f.name, f.example ?? ''])));
   return (
@@ -399,11 +364,59 @@ function SimulateForm({ spec }) {
   );
 }
 
-function Panel() {
+/** A scenario drawn like the board's spec hover: GIVEN / WHEN headings and the outcome headed SHOWS (a read model) or RESULT (events, commands), a solid chip per event (orange), command or the read model read (blue — WHEN is always blue), the result read model green, an expected error as a dark red box. Names only; the data is in the scenario on the board. */
+const SPEC_COLOR = { event: '#f59e0b', command: '#3b82f6', readmodel: '#22c55e', rejected: '#f87171' };
+const show = (v) => (v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v));
+const words = (name) => String(name || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2');
+
+function SpecChip({ kind, title }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <span style={{ display: 'inline-block', background: SPEC_COLOR[kind], color: '#fff', fontWeight: 700, fontSize: 14, padding: '4px 12px', borderRadius: 6, wordBreak: 'break-word' }}>{words(title)}</span>
+    </div>
+  );
+}
+
+function SpecView({ spec }) {
+  const ev = (e, i) => <SpecChip key={i} kind="event" title={e.type} />;
+  const given = (spec.given || []).map(ev);
+  let when = null, then = null, thenKind = 'event';
+  if (spec.kind === 'command') {
+    when = <SpecChip kind="command" title={(spec.when || {}).type} />;
+    if (spec.error !== undefined) thenKind = 'rejected';
+    then = spec.error !== undefined ? null : (spec.then || []).map(ev);
+  } else if (spec.kind === 'readmodel') {
+    when = <SpecChip kind="command" title={spec.readModel} />;
+    const rows = Array.isArray(spec.expect) ? spec.expect.length : null;
+    then = <SpecChip kind="readmodel" title={rows === 0 ? 'Empty' : rows === 1 ? '1 row' : rows ? rows + ' rows' : 'Data'} />;
+    thenKind = 'readmodel';
+  } else if (spec.kind === 'automation') {
+    when = <SpecChip kind="command" title={spec.automation + ' runs'} />;
+    then = (spec.expectCommands || []).map((c, i) => <SpecChip key={i} kind="command" title={c.type} />);
+    thenKind = 'command';
+  }
+  const head = (label, color) => <div style={{ margin: '10px 0 6px', fontSize: 13, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color }}>{label}</div>;
+  const body = (items) => <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>{items}</div>;
+  return (
+    <div style={{ marginTop: 4 }}>
+      {given.length > 0 && <>{head('Given', SPEC_COLOR.event)}{body(given)}</>}
+      {head('When', SPEC_COLOR.command)}{body(when)}
+      {spec.kind === 'command' && spec.error !== undefined ? (
+        <div style={{ marginTop: 10, background: '#2f1213', borderRadius: 6, padding: '8px 12px' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: SPEC_COLOR.rejected }}>Error expected</div>
+          <div style={{ fontSize: 13, color: '#fca5a5', marginTop: 2 }}>{spec.error || 'rejected'}</div>
+        </div>
+      ) : (<>{head(spec.kind === 'readmodel' ? 'Shows' : 'Result', SPEC_COLOR[thenKind])}{body(then)}</>)}
+    </div>
+  );
+}
+
+function Panel({ slices }) {
   const events = useLog();
   const [tab, setTab] = useState('events');
   const [specResults] = useState(() => EMRuntime.runSpecs(Domain));
-  const [pasting, setPasting] = useState(false);
+  const [open, setOpen] = useState({}); // scenarios shown as text, by index
+  const [allSpecs, setAllSpecs] = useState(false); // scenarios are narrowed to the slices on the current screen unless this is on
   const { toast } = useContext(Proto);
   const [armed, setArmed] = useState(null); // the scenario whose ▶ asked for a second click, because it would replace a log with events in it
 
@@ -411,7 +424,7 @@ function Panel() {
   const playGiven = (spec, i) => {
     if (rt.events.length > 0 && armed !== i) {
       setArmed(i);
-      toast('This replaces the current event log (Copy log keeps it) — click ▶ again to go on');
+      toast('This replaces the current event log — click ▶ again to go on');
       return;
     }
     setArmed(null);
@@ -420,6 +433,8 @@ function Panel() {
     rt.importLog(given.map((e) => ({ id: EMRuntime.uuid(), type: e.type, data: e.data || {}, metadata: { at, scenario: spec.title } })));
     toast(given.length ? `Played ${given.length} given event${given.length === 1 ? '' : 's'} — the screens show that state` : 'This scenario starts from nothing — the event log is empty');
   };
+  // Only the scenarios of the slices shown on the current screen (`slices` is null on the Automations tab: everything).
+  const shownSpecs = specResults.map((r, i) => [r, i]).filter(([r]) => allSpecs || !slices || slices.includes(r.spec.slice));
   return (
     <aside className="em-panel" data-em-chrome="">
       <div className="em-tabs">
@@ -431,10 +446,7 @@ function Panel() {
       {tab === 'events' && (
         <>
           <h2>Event log</h2>
-          <button className="em-btn" onClick={() => rt.reset()}>Reset</button>{' '}
-          <button className="em-btn" onClick={() => navigator.clipboard.writeText(JSON.stringify(rt.events, null, 2))}>Copy log</button>{' '}
-          <button className="em-btn" onClick={() => setPasting(true)}>Paste log</button>
-          {pasting && <PasteLog onDone={() => setPasting(false)} />}
+          <button className="em-btn" onClick={() => rt.reset()}>Reset</button>
           <EventBrowser events={events} />
         </>
       )}
@@ -450,14 +462,28 @@ function Panel() {
       {tab === 'specs' && (
         <>
           <h2>Scenarios from the board</h2>
-          {specResults.map((r, i) => (
+          {slices && (
+            <p style={{ color: '#9ca3af' }}>
+              {allSpecs ? 'All screens' : 'This screen'}: {shownSpecs.length} of {specResults.length}{' '}
+              <button className="em-btn" onClick={() => setAllSpecs(!allSpecs)}>{allSpecs ? 'This screen only' : 'Show all'}</button>
+            </p>
+          )}
+          {shownSpecs.map(([r, i]) => (
             <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+                <div style={{ cursor: 'pointer' }} onClick={() => setOpen({ ...open, [i]: !open[i] })} title="Show or hide the scenario as text">
+                  <span style={{ display: 'inline-block', width: 12 }}>{open[i] ? '▾' : '▸'}</span>
+                  <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+                </div>
+                {open[i] && <SpecView spec={r.spec} />}
                 {!r.pass && <pre>{r.detail}</pre>}
               </div>
               <button className={'em-btn' + (armed === i ? ' em-on' : '')} style={{ flex: 'none' }} onClick={() => playGiven(r.spec, i)}
                       title="Play the given events: the screens show this scenario's starting state">▶</button>
+              {r.spec.sliceId && (
+                <button className="em-btn" style={{ flex: 'none' }} onClick={() => EMRuntime.zoomToSlice(r.spec.sliceId)}
+                        title="Show this scenario's slice on the board"><span aria-hidden>◎</span></button>
+              )}
             </div>
           ))}
         </>
@@ -505,7 +531,7 @@ function App() {
         <div className="em-main">
           <header className="em-bar">
             <h1>
-              {Domain.context}
+              {/^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(Domain.context) ? '' : Domain.context /* a context without a name is never shown as its id */}
               {actors.length > 1 && (
                 <select value={actor} onChange={(e) => setActor(e.target.value)} title="Acting as">
                   <option value="">every role</option>
@@ -542,7 +568,7 @@ function App() {
             )}
           </main>
         </div>
-        <Panel />
+        <Panel slices={tab ? tab.parts.map((p) => p.slice) : null} />
       </div>
       {toastMsg && <div className={'em-toast' + (toastMsg.error ? ' em-error' : '')}>{toastMsg.text}</div>}
     </Proto.Provider>

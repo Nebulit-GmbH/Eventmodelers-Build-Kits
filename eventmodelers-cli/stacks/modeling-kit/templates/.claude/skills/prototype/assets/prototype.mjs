@@ -160,7 +160,16 @@ async function status() {
   const removed = existing.filter((b) => !current.has(b.id)).map(({ id, title }) => ({ id, title }));
   const cssFramework = Object.entries(frameworkVotes).sort((a, b) => b[1] - a[1])[0]?.[0] || 'bulma';
 
-  const report = { context: fields.contextName || args.context, contextId, baseline, cssFramework, mixedFrameworks: Object.keys(frameworkVotes).length > 1, slices, removed };
+  // Asked for by id (a chapter whose context has no name), the page still shows the chapter's own name — never the id.
+  let contextName = fields.contextName || '';
+  if (!contextName && contextIsId) {
+    const res = await fetch(`${api}/nodes/query`, { method: 'POST', headers, body: JSON.stringify({ ids: [contextId] }) });
+    const node = res.ok ? (await res.json())[0] : null;
+    contextName = (node && (node.title || (node.data && node.data.title))) || '';
+  }
+  if (!contextName && !contextIsId) contextName = args.context;
+
+  const report = { context: contextName, contextId, baseline, cssFramework, mixedFrameworks: Object.keys(frameworkVotes).length > 1, slices, removed };
   writeFileSync(join(WORK, 'status.json'), JSON.stringify(report, null, 2));
   for (const s of slices) console.log(`${s.state.padEnd(9)} ${s.hash}  ${s.id}  ${s.title}`);
   for (const r of removed) console.log(`removed   ${''.padEnd(16)}  ${r.id}  ${r.title}`);

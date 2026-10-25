@@ -421,14 +421,18 @@ globalThis.EMRuntime = (function () {
     for (const x of slice.externalEvents || []) {
       if (!domain.externalEvents.some((e) => e.type === x.type)) domain.externalEvents.push(x);
     }
-    for (const spec of slice.specs || []) domain.specs.push(Object.assign({ slice: slice.title }, spec));
+    for (const spec of slice.specs || []) domain.specs.push(Object.assign({ slice: slice.title, sliceId: slice.id }, spec));
     for (const [title, def] of Object.entries(slice.screens || {})) {
       domain.screens.push({ title, actor: def.actor, order: slice.order ?? 0, slice: slice.title, part: def.part });
     }
     domain.slices.push({ id: slice.id, title: slice.title, order: slice.order ?? 0 });
   }
 
-  const api = { DomainError, reject, createRuntime, project, runSpecs, matches, uuid, defineSlice, domain };
+  /** Asks the board's player (the page around this iframe) to zoom to a slice: a message, nothing the page itself can do. */
+  function zoomToSlice(nodeId) {
+    try { window.parent.postMessage({ source: 'proto-kit', type: 'zoom', nodeId }, '*'); } catch (e) { /* not embedded */ }
+  }
+  const api = { zoomToSlice, DomainError, reject, createRuntime, project, runSpecs, matches, uuid, defineSlice, domain };
 
   return api;
 })();
