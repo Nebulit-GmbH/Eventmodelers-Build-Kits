@@ -47,6 +47,7 @@ import { stableGlobalAgentId } from './lib/global-agent-id.js';
 import { AGENT_NAMES, presetCommand, withModel } from './shared/build-kit/lib/harnesses/index.js';
 import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
 import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
+import { cancelLiveTurns } from './shared/build-kit/lib/turn.js';
 import { INFO_KINDS, infoComment, recordInfo, recordTurnInfos } from './shared/build-kit/lib/slice-info.js';
 import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
@@ -2517,11 +2518,22 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   // The one thing that knew a `claude` process was behind a turn. Both lanes — the prompt
   // queue (drain) and the self-directed one (dispatchStandaloneTurn) — go through here.
+  // Turns in flight, what the heartbeat's `status` says: modeling while there is one, idle otherwise. A change is
+  // reported at once (`reportStatus`, set once the heartbeat exists) instead of waiting for the next 15s ping.
+  let turnsInFlight = 0;
+  let reportStatus = () => {};
   async function runTurn(text) {
-    if (otherRunner) return otherRunner.runTurn(text);
-    if (!proc) spawnProcess();
-    await warmUpSession();
-    return sendTurn(text);
+    turnsInFlight++;
+    reportStatus();
+    try {
+      if (otherRunner) return await otherRunner.runTurn(text);
+      if (!proc) spawnProcess();
+      await warmUpSession();
+      return await sendTurn(text);
+    } finally {
+      turnsInFlight--;
+      reportStatus();
+    }
   }
 
   if (!otherRunner) spawnProcess();
@@ -3316,9 +3328,19 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // gone for good, not just unhandled: Supabase's broadcast API rejects a non-object payload with
   // 422, so it never actually arrived here.
   const exitIfAddressed = (payload) => {
+    // {type: 'cancel', id, instruction: 'cancel-run'}: stop what the agent is doing now and stay connected.
+    // The long-lived claude process is ended (its exit handler fails the turn in flight and the next task
+    // respawns it); a harness run through modeling-exec is a live turn and is stopped the same way.
+    if (payload?.type === 'cancel' && payload?.id === cfg.agentId) {
+      log('received cancel — stopping the current run');
+      cancelLiveTurns();
+      if (proc) proc.kill('SIGTERM');
+      return;
+    }
     if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
     log(`received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
-    process.exit(0);
+    // Say so on the board first (the kill route has marked it already; this covers a kill sent some other way).
+    Promise.race([ping('shutting_down'), new Promise((r) => setTimeout(r, 2000))]).finally(() => process.exit(0));
   };
 
   // Each channel is rejoined after a failure with exponential backoff and a fresh token
@@ -3362,7 +3384,10 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     refreshRealtimeToken('scheduled').catch(() => {});
   }, 10 * 60 * 1000);
 
-  const ping = async () => {
+  // `status`: 'shutting_down' is the last ping before an exit the board asked for; every other ping says what the agent is
+  // doing right now — modeling while a turn runs (a prompt, a chat reply, a board change), idle otherwise.
+  const ping = async (status) => {
+    const agentStatus = status === 'shutting_down' ? status : turnsInFlight > 0 ? 'modeling' : 'idle';
     try {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
@@ -3370,7 +3395,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         // chat_enabled tells the board this agent answers chat messages (the panel only offers chat
         // with one that does); a --worker reports false, and older CLIs send nothing, which the
         // backend reads as false too.
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, chat_enabled: chat, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, chat_enabled: chat, status: agentStatus, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) log(`ping failed: ${res.status} ${await res.text().catch(() => '')}`);
@@ -3380,6 +3405,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   };
   await ping();
   setInterval(ping, 15_000);
+  reportStatus = () => { ping(); };
 }
 
 const program = new Command();

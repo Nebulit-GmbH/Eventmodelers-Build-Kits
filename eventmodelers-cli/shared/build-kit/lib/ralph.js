@@ -26,6 +26,7 @@ import { queueTask, workNextTask } from './slice-tasks.js';
 import { defaultAgentName, withInstanceSuffix } from './agent-name.js';
 import { acquireAgentId } from './agent-lock.js';
 import { redactConsole } from './redact.js';
+import { cancelLiveTurns } from './turn.js';
 
 // Backoff for calls to the platform that failed for a reason on its side (startup).
 const PLATFORM_BACKOFF = { baseMs: 2_000, capMs: 5 * 60_000 };
@@ -437,9 +438,16 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
     // That string form is gone for good, not just unhandled: Supabase's broadcast API rejects
     // a non-object payload with 422, so it never actually arrived here.
     message: (payload) => {
+      // {type: 'cancel', id, instruction: 'cancel-run'}: stop the running turn, stay connected.
+      if (payload?.type === 'cancel' && payload?.id === cfg.agentId) {
+        console.log(`[agent] ${ts()} Received cancel — stopping the current run`);
+        cancelLiveTurns();
+        return;
+      }
       if (payload?.type !== 'kill' || payload?.id !== cfg.agentId) return;
       console.log(`[agent] ${ts()} Received kill (instruction: ${payload.instruction ?? 'exit'}) — shutting down`);
-      process.exit(0);
+      // Say so on the board first (the kill route has marked it already; this covers a kill sent some other way).
+      Promise.race([ping('shutting_down'), new Promise((r) => setTimeout(r, 2000))]).finally(() => process.exit(0));
     },
     'slice:changed': (payload) => handleSliceChanged(payload, cfg, kitDir),
   }, {
@@ -461,12 +469,15 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
   }, 10 * 60 * 1000);
 
   let lastPingFailed = false;
-  const ping = async () => {
+  // `status`: 'shutting_down' is the last ping before an exit the board asked for; every other ping says what the agent is
+  // doing right now — building (modeling, for a MODELING agent) while a turn runs, idle otherwise.
+  const ping = async (status) => {
+    const agentStatus = status === 'shutting_down' ? status : turnsInFlight > 0 ? (agentType === 'MODELING' ? 'modeling' : 'building') : 'idle';
     try {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: agentType, agent_id: cfg.agentId, status: agentStatus, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
@@ -486,6 +497,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
   };
   await ping();
   setInterval(ping, 15_000);
+  reportStatus = () => { ping(); };
 }
 
 // ── Ralph loop ────────────────────────────────────────────────────────────────
@@ -675,11 +687,23 @@ export async function blockStuckSlice(kitDir, cfg, credentialed, planned, attemp
 // the stuck-slice guard ever seeing it, so it goes back to ralphLoop, which recounts the slice.
 // Any other failure is retried in place, with backoff (30s → 10min) so a harness that keeps
 // failing fast (API outage, rate limit, broken install) isn't relaunched in a tight loop.
+// Turns in flight, what the heartbeat's `status` says: building (modeling, for a MODELING agent) while there is one, idle
+// otherwise. A change is reported at once (`reportStatus`, set once the heartbeat exists) instead of at the next 15s ping.
+let turnsInFlight = 0;
+let reportStatus = () => {};
+
 async function runWithRetry(label, fn) {
   for (let attempt = 1; ; attempt++) {
     try {
       console.log(`[ralph] ${label}`);
-      await fn();
+      turnsInFlight++;
+      reportStatus();
+      try {
+        await fn();
+      } finally {
+        turnsInFlight--;
+        reportStatus();
+      }
       return true;
     } catch (err) {
       if (err?.timedOut) {

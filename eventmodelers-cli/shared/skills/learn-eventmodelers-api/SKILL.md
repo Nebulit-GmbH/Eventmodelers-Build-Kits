@@ -1149,9 +1149,11 @@ Exchange an `x-token` for a short-lived Supabase-compatible JWT, used to subscri
 ### POST `/api/agent-alive`
 Record a heartbeat ping for a running modeling/build agent. Auth: Supabase JWT (`Authorization: Bearer`) — exchange the `x-token` for one first via `GET /api/org/:orgId/prompts/realtime-token` above; a raw `x-token` alone is not accepted here.
 
-**Body**: `{ token: string, board_id?: string, agent_type: 'MODELING' | 'BUILD', agent_id: string, agent_name?: string }`
+**Body**: `{ token: string, board_id?: string, agent_type: 'MODELING' | 'BUILD', agent_id: string, agent_name?: string, status?: 'idle' | 'modeling' | 'building' | 'shutting_down' }`
 **Response**: `200` — `{ ok: true }`
 **Errors**: `400` `agent_id`/`agent_type` missing · `404` token not found
+
+`status` is what the agent is doing right now, rewritten on every ping: `idle` while it waits, `modeling` while it changes the model (a prompt, a chat reply), `building` while it builds a slice, `shutting_down` on its last ping before it exits. Missing or anything else reads as `idle`. The CLI pings every 15s and sends one at once when a turn starts or ends.
 
 `agent_id` is the client's own stable id (the heartbeat is keyed on `token` + `agent_id` + `agent_type`); `agent_name` is an optional display name for it, so the board can show which agent is live instead of a bare uuid. Both are overridable per run via `eventmodelers run --id/--name`.
 
@@ -1162,7 +1164,7 @@ The same `agent_id` belongs in the `x-agent-id` header of every board call this 
 ### GET `/api/org/:orgId/boards/:boardId/agent-alive`
 Check whether an agent has pinged for a board within the last 45s. Auth: Supabase JWT (`Authorization: Bearer`) — same as the heartbeat above; a raw `x-token` alone is not accepted here either.
 
-**Response**: `200` — `{ alive: boolean, agentTypes: string[], agents: { agentId: string, agentType: string, agentName: string | null }[] }` — one `agents` entry per live agent process, `agentTypes` the de-duplicated set of their types
+**Response**: `200` — `{ alive: boolean, agentTypes: string[], agents: { agentId: string, agentType: string, agentName: string | null, status: 'idle' | 'modeling' | 'building' | 'shutting_down' }[] }` — one `agents` entry per live agent process, `agentTypes` the de-duplicated set of their types
 
 ---
 

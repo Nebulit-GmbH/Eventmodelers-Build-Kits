@@ -26,6 +26,16 @@ class TurnTimeoutError extends Error {
   }
 }
 
+// What a turn cancelled from the board (the chat's Cancel, the cockpit) rejects with. `timedOut` is set too so
+// runWithRetry doesn't re-run the turn in place: a cancelled turn goes back to the loop like a timed-out one.
+class TurnCancelledError extends Error {
+  constructor(label) {
+    super(`${label} cancelled`);
+    this.cancelled = true;
+    this.timedOut = true;
+  }
+}
+
 // `shell: true` means proc is only the /bin/sh wrapping the real command, so its children are
 // signalled first — killing just the shell would orphan the harness and leave it running. (A
 // separate process group would be cleaner, but a background group reading the terminal gets
@@ -70,6 +80,18 @@ function exitOnSignal(sig) {
 
 for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => exitOnSignal(sig));
 
+// Stops every live turn at once and leaves the process running — the board's "cancel the current run"
+// ({type: 'cancel', id: <agentId>}). Returns how many turns it stopped; each one rejects with a
+// TurnCancelledError once its process has closed.
+export function cancelLiveTurns() {
+  for (const t of liveTurns) {
+    t.cancelled = true;
+    t.log(`Cancelled from the board — stopping ${t.label}`);
+    stop(t);
+  }
+  return liveTurns.size;
+}
+
 // Returns timeoutError(): the error to reject with once the turn has closed, or null when it
 // didn't hit the cap.
 export function superviseTurn(proc, { timeoutMs, label, log, viaShell = false }) {
@@ -89,5 +111,5 @@ export function superviseTurn(proc, { timeoutMs, label, log, viaShell = false })
     liveTurns.delete(turn);
     if (exitCode !== null && liveTurns.size === 0) process.exit(exitCode);
   });
-  return { timeoutError: () => (timedOut ? new TurnTimeoutError(label, timeoutMs) : null) };
+  return { timeoutError: () => (timedOut ? new TurnTimeoutError(label, timeoutMs) : turn.cancelled ? new TurnCancelledError(label) : null) };
 }
