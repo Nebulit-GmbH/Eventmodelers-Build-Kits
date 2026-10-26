@@ -17,6 +17,7 @@ import { addChange } from './changes.js';
 import { listTools } from './mcp.js';
 import { runChanges, submitApplied } from './pipeline.js';
 import { hasLocalChanges, runSync } from './sync.js';
+import { buildWalkthrough, walkthroughText } from './walkthrough.js';
 import { DIR, editedScreens, hasScreenBaseline, loadScreens, loadSlices, paths, readJson, snapshotBaseline, snapshotScreens, writeJson, writeScreens } from './state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -530,6 +531,13 @@ export function registerPrototype(program, deps) {
       for (const s of r.slices) console.log(`${s.state.padEnd(9)} ${s.hash}  ${s.id}  ${s.title}`);
       for (const s of r.removed) console.log(`removed   ${''.padEnd(16)}  ${s.id}  ${s.title}`);
       console.log(`\n${r.slices.filter((s) => s.state !== 'unchanged').length} of ${r.slices.length} slices to build — see ${join(DIR, 'work', 'status.json')}`);
+    });
+
+  proto.command('walkthrough').description('Everything that is only local, slice by slice — one walkthrough of what differs from the board (also the player\'s "Walk me through it" button, at /walkthrough). Changes nothing')
+    .option('--json', 'Print it as JSON')
+    .action((opts) => {
+      const w = buildWalkthrough(process.cwd());
+      console.log(opts.json ? JSON.stringify(w, null, 2) : walkthroughText(w));
     });
 
   proto.command('assemble').description('Build .prototype/index.html from the slice blocks').action(() => {

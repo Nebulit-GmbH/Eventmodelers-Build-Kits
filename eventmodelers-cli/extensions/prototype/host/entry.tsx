@@ -242,6 +242,10 @@ const LocalPlayer: React.FC = () => {
                     <a className="button is-small" href={studio} target="_blank" rel="noopener noreferrer" style={{ margin: 0, height: 24, padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--text-primary)', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 6, fontSize: 12 }}
                         title="Open this board in EM Studio on eventmodelers.ai"><i className="fa-solid fa-arrow-up-right-from-square" />Jump to Board</a>
                 )}
+                {load?.kind === 'found' && (
+                    <a className="button is-small" href="/walkthrough" target="_blank" rel="noopener noreferrer" style={{ margin: 0, height: 24, padding: '0 10px', display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--text-primary)', background: 'var(--bg-elevated)', border: '1px solid var(--border-default)', borderRadius: 6, fontSize: 12 }}
+                        title="Everything that is only local, slice by slice"><i className="fa-solid fa-route" />Walk me through it</a>
+                )}
                 <button className="button is-small" style={{ margin: 0, height: 24, width: 28, padding: 0 }} onClick={copyLink} title="Copy the link to this prototype" aria-label="Copy link"><i className="fa-solid fa-link" /></button>
                 <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     {load?.kind === 'found' && <FeedbackStatus />}

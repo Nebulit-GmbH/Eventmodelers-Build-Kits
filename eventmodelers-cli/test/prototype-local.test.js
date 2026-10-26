@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assemble, plan, status } from '../extensions/prototype/local-build.js';
+import { buildWalkthrough, walkthroughHtml } from '../extensions/prototype/walkthrough.js';
 import { diffSlice, hasLocalChanges as hasLocalChangesOf, pending, runSync } from '../extensions/prototype/sync.js';
 import { claim, control, detail, markProcessed, markTranslated, record, stateOf } from '../extensions/prototype/control.js';
 import { addChange, listChanges } from '../extensions/prototype/changes.js';
@@ -490,4 +491,21 @@ test('a failing fetch inside the running player rejects instead of ending the pr
   const cfg = { baseUrl: `http://127.0.0.1:${server.address().port}`, organizationId: 'o', boardId: 'b', token: 't' };
   await assert.rejects(() => refetchSafely(cwd, { cfg, reprompt: async () => cfg }, 'Gone'), /fetch failed/);
   assert.equal(process.exit, realExit, 'process.exit is put back');
+});
+
+test('walkthrough: one step per slice that differs from the board', (t) => {
+  const { cwd, p } = project(t);
+  assert.equal(buildWalkthrough(cwd).steps.length, 0);
+  const [{ file, slice }] = loadSlices(p);
+  const e = slice.events[0];
+  e.fields = [...(e.fields || []), { name: 'walkthroughField', type: 'String' }];
+  e.title = `${e.title} Renamed`;
+  writeFileSync(file, JSON.stringify(slice));
+  const w = buildWalkthrough(cwd);
+  assert.equal(w.steps.length, 1);
+  assert.equal(w.steps[0].status, 'changed');
+  assert.ok(w.steps[0].changes.some((c) => c.includes('add field walkthroughField')));
+  assert.ok(w.steps[0].notSynced.some((c) => c.includes('renames')));
+  assert.match(walkthroughHtml({ ...w, studio: 'https://x/?board=1' }), /Open the board/);
+  rmSync(cwd, { recursive: true, force: true });
 });

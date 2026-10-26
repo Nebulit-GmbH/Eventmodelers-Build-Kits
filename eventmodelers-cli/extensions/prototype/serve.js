@@ -5,6 +5,7 @@ import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { control, detail, progressOf, record, stateOf } from './control.js';
 import { paths, readJson } from './state.js';
+import { buildWalkthrough, walkthroughHtml } from './walkthrough.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST = join(HERE, 'host.html');
@@ -44,6 +45,12 @@ export async function serve({ cwd, port = 4173, studio = null }) {
     if (path.startsWith('/api/control/') && req.method === 'GET') { const d = detail(cwd, path.slice('/api/control/'.length)); return d ? json(res, 200, d) : json(res, 404, { error: 'no such request' }); }
     if (path === '/api/control' && req.method === 'POST') {
       return readBody(req).then((b) => { const { type, data } = JSON.parse(b || '{}'); return json(res, 200, record(cwd, type, data)); }).catch((err) => json(res, 400, { error: err.message }));
+    }
+    // Everything that is only local, slice by slice — built fresh on every request from the model files; changes nothing.
+    if (path === '/api/walkthrough') return json(res, 200, buildWalkthrough(cwd));
+    if (path === '/walkthrough') {
+      res.writeHead(200, { 'content-type': TYPES['.html'], 'cache-control': 'no-store' });
+      return res.end(walkthroughHtml({ ...buildWalkthrough(cwd), studio }));
     }
     if (path === '/' || path === '/index.html') {
       res.writeHead(200, { 'content-type': TYPES['.html'], 'cache-control': 'no-store' });

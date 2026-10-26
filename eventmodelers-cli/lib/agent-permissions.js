@@ -13,7 +13,7 @@
 // - Files: reading and editing in the kit directory (the working directory) and the temp directories; reading the
 //   code directory (--add-dir). Never the files holding the token (.eventmodelers/*.json — the rest of .eventmodelers/,
 //   e.g. the interview trail in .eventmodelers/interviews/, stays usable), never .claude/ or .mcp.json (an agent rewriting
-//   its own permissions or hooks would outlive the turn), never .env files. No WebFetch / WebSearch.
+//   its own permissions or hooks would outlive the turn), never .env files. WebFetch and WebSearch are allowed (read-only, so the agent can read a site it is asked to model).
 
 import { realpathSync } from 'fs';
 
@@ -32,14 +32,13 @@ export function modelingPermissions({ baseUrl, projectDir, codeDir, tmpDir, hook
   const allowed = [
     'mcp__eventmodelers',
     ...(browser ? ['mcp__playwright'] : []),
-    'Skill', 'Agent', 'Task', 'TodoWrite', 'ToolSearch',
+    'Skill', 'Agent', 'Task', 'TodoWrite', 'ToolSearch', 'WebFetch', 'WebSearch',
     // Edit rules cover every file-editing tool (Write included) — Claude ignores Write(path) rules.
     'Edit(./**)',
     ...tempDirs.flatMap((dir) => [`Read(${abs(dir)}/**)`, `Edit(${abs(dir)}/**)`]),
   ];
   const secretReads = ['./.claude/settings.local.json', './.claude/settings.json', './.eventmodelers/*.json', './**/.eventmodelers/*.json', './**/.env', './**/.env.*'];
   const disallowed = [
-    'WebFetch', 'WebSearch',
     ...secretReads.map((p) => `Read(${p})`),
     ...(codeDir ? [`Read(${abs(codeDir)}/**/.env)`, `Read(${abs(codeDir)}/**/.env.*)`] : []),
     'Edit(./.claude/**)', 'Edit(./.mcp.json)', 'Edit(./.eventmodelers/*.json)', 'Edit(./**/.eventmodelers/*.json)',

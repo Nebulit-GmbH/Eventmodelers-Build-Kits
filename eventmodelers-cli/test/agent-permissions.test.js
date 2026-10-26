@@ -27,9 +27,9 @@ test('no Bash allow rule — every command goes through the guard hook', () => {
   assert.deepEqual(hooks, [{ matcher: 'Bash', hooks: [{ type: 'command', command: '"node" "/x/bash-guard-hook.js"' }] }]);
 });
 
-test('secrets and self-configuration are off limits; no web', () => {
+test('secrets and self-configuration are off limits', () => {
   const denied = arg('--disallowedTools').split(',');
-  for (const rule of ['WebFetch', 'WebSearch', 'Read(./.claude/settings.local.json)', 'Read(./**/.eventmodelers/*.json)', 'Edit(./.claude/**)', 'Edit(./.mcp.json)', 'Read(//work/code/**/.env)']) {
+  for (const rule of ['Read(./.claude/settings.local.json)', 'Read(./**/.eventmodelers/*.json)', 'Edit(./.claude/**)', 'Edit(./.mcp.json)', 'Read(//work/code/**/.env)']) {
     assert.ok(denied.includes(rule), rule);
   }
 });
