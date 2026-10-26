@@ -25,7 +25,14 @@
     .em-tabbar button.em-active { background: #f3f4f6; color: #111827; font-weight: 600; }
     .em-tabbar .em-count { background: #f97316; color: #111827; border-radius: 9px; padding: 0 6px; margin-left: 6px; font-size: 11px; }
     .em-stage { padding: 24px; }
-    .em-part { margin-bottom: 24px; }
+    .em-part { margin-bottom: 24px; position: relative; }
+    /* Slice outlines: a thin border round each slice's part, a small badge top left with the slice name (and the aim, when the page sits in the board's player). */
+    .em-outline .em-part { border: 1px solid #93c5fd; border-radius: 6px; padding: 18px 10px 10px; margin-top: 16px; }
+    .em-badge { position: absolute; top: -10px; left: 8px; display: flex; align-items: center; gap: 4px; max-width: calc(100% - 24px); background: #2563eb; color: #fff; font: 600 11px/18px system-ui; padding: 0 8px; border-radius: 9px; }
+    .em-badge span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .em-badge button { background: none; border: 0; color: #fff; cursor: pointer; padding: 0 0 0 2px; font: 14px/18px system-ui; }
+    .em-badge button:hover { color: #bfdbfe; }
+    .em-outline-toggle { display: inline-flex; gap: 5px; align-items: center; font: 12px system-ui; color: #9ca3af; cursor: pointer; }
     .em-part-label { font: 600 11px system-ui; color: #6b7280; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
     .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 14px/1.4 system-ui, sans-serif; }
     .em-panel h2, .em-auto h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
@@ -526,6 +533,10 @@ function App() {
   const [current, setCurrent] = useState(() => ({ title: (tabs[0] || {}).title || AUTOMATIONS, params: {} }));
   const [actor, setActor] = useState('');
   const [panelOpen, setPanelOpen] = useState(false); // the side panel starts contracted
+  // Slice outlines on or off — remembered when the page may keep it (the board's player sandboxes the page without storage).
+  const [outline, setOutline] = useState(() => { try { return localStorage.getItem('em-outline') !== '0'; } catch (e) { return true; } });
+  const toggleOutline = (on) => { setOutline(on); try { localStorage.setItem('em-outline', on ? '1' : '0'); } catch (e) { /* no storage */ } };
+  const embedded = window.parent !== window; // only inside the board's player can a slice be zoomed to
   const [toastMsg, setToastMsg] = useState(null);
   const toast = (text, error) => {
     setToastMsg({ text, error });
@@ -554,6 +565,9 @@ function App() {
                   {actors.map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
               )}
+              <label className="em-outline-toggle" title="Outline each slice with a badge showing its name">
+                <input type="checkbox" checked={outline} onChange={(e) => toggleOutline(e.target.checked)} /> slices
+              </label>
               {rt.cursor != null && <span style={{ color: '#93c5fd', fontSize: 12 }}>viewing as of event #{rt.cursor}</span>}
             </h1>
             <nav className="em-tabbar">
@@ -567,13 +581,18 @@ function App() {
               )}
             </nav>
           </header>
-          <main className="em-stage">
+          <main className={'em-stage' + (outline ? ' em-outline' : '')}>
             {current.title === AUTOMATIONS ? (
               <AutomationsTab />
             ) : tab ? (
               tab.parts.map((p) => (
                 <div key={p.slice} className="em-part" data-em-slice={p.slice}>
-                  {tab.parts.length > 1 && <div className="em-part-label">{p.slice}</div>}
+                  {outline ? (
+                    <div className="em-badge">
+                      <span title={p.slice}>{p.slice}</span>
+                      {embedded && p.sliceId && <button onClick={() => EMRuntime.zoomToSlice(p.sliceId)} title="Show this slice on the board" aria-label={'Show ' + p.slice + ' on the board'}>◎</button>}
+                    </div>
+                  ) : tab.parts.length > 1 && <div className="em-part-label">{p.slice}</div>}
                   <PartBoundary key={JSON.stringify(current.params)} slice={p.slice}>
                     <p.part params={current.params} />
                   </PartBoundary>

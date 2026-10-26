@@ -423,7 +423,7 @@ globalThis.EMRuntime = (function () {
     }
     for (const spec of slice.specs || []) domain.specs.push(Object.assign({ slice: slice.title, sliceId: slice.id }, spec));
     for (const [title, def] of Object.entries(slice.screens || {})) {
-      domain.screens.push({ title, actor: def.actor, order: slice.order ?? 0, slice: slice.title, part: def.part });
+      domain.screens.push({ title, actor: def.actor, order: slice.order ?? 0, slice: slice.title, sliceId: slice.id, part: def.part });
     }
     domain.slices.push({ id: slice.id, title: slice.title, order: slice.order ?? 0 });
   }

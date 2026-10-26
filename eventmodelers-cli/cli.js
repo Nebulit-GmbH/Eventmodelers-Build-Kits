@@ -20,6 +20,7 @@ import { createInterface, emitKeypressEvents, moveCursor, clearScreenDown } from
 import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
+import { registerPrototype, initPrototype } from './extensions/prototype/index.js';
 import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
@@ -3535,8 +3536,12 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
   if (hints.length) console.error(`${hints.join('\n')}\n`);
 });
 
+// A prototype folder (`init --prototype`) has no kit: `re-init` there refreshes the prototype's skills and rules instead.
+const isPrototypeFolder = (dir) => existsSync(join(dir, '.prototype', 'state.json'));
+
 program.hook('preAction', (_thisCommand, actionCommand) => {
   if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
+  if (actionCommand.name() === 're-init' && isPrototypeFolder(process.cwd())) return;
   if (findInstalledKitDir(process.cwd())) return;
 
   console.error(`❌ No eventmodelers kit installed in this directory (checked: ${KIT_DIR_NAMES.join(', ')}).`);
@@ -3604,11 +3609,15 @@ credentialFlags(program
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
+  .option('--prototype', 'Install the local prototype skills (local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback, connect) and ask for the board credentials — then run `claude` and /local-prototype. See extensions/prototype/README.md')
+  .option('--empty', 'With --prototype: create an empty prototype — one "Hello World" slice with its page — instead of fetching a model from the board. No credentials and no board needed; connect one later. An existing local model is left alone.')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
   .option(...AGENT_NAME_OPTION)
   .option(...HANDOVER_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
+    if (opts.empty && !opts.prototype) { console.error('❌ --empty goes with --prototype: `eventmodelers init --prototype --empty`.'); process.exit(1); }
+    if (opts.prototype) return initPrototype({ loadEffectiveConfig, findInstalledKitDir, configureCredentials, prompt, registerMcp: (dir, cfg) => { ensureMcpRegistered(dir, cfg.baseUrl || DEFAULT_BASE_URL); ensureEnvToken(dir, cfg.token); ensureMcpEnabled(dir); } }, { config: globalOpts.config, print: globalOpts.print, force: opts.force, empty: opts.empty });
 
     if (opts.modeling || opts.buildKit) {
       const modeCount = [opts.modeling, opts.buildKit].filter(Boolean).length;
@@ -3690,7 +3699,7 @@ const REINITIABLE_STACKS = { ...STACKS, [MODELING_KIT.key]: MODELING_KIT, [BLANK
 
 credentialFlags(program
   .command('re-init')
-  .description("Refresh an installed kit from the current CLI version. For a build kit: re-copies this CLI's shared runtime (ralph.js, ralph-claude.js, tracing, adapters) into .build-kit and re-runs the config (credentials unless complete, agent tracing) — the stack's own files and skills are left alone, so this works for --git stacks too. --stack <name> instead refreshes everything from that built-in stack; --modeling refreshes .agent-modeling-kit. Never touches the project root scaffold or the root CLAUDE.md router.")
+  .description("Refresh an installed kit from the current CLI version. In a prototype folder (`init --prototype`): re-installs the local-* skills, the CLAUDE.md rules and the page libraries, leaving the model alone. For a build kit: re-copies this CLI's shared runtime (ralph.js, ralph-claude.js, tracing, adapters) into .build-kit and re-runs the config (credentials unless complete, agent tracing) — the stack's own files and skills are left alone, so this works for --git stacks too. --stack <name> instead refreshes everything from that built-in stack; --modeling refreshes .agent-modeling-kit. Never touches the project root scaffold or the root CLAUDE.md router.")
   .option('--modeling', 'Refresh the modeling kit (.agent-modeling-kit) instead of a build kit')
   .option('--stack <name>', `Also refresh the stack's own files and skills from this built-in stack (${Object.keys(REINITIABLE_STACKS).join(', ')}) — or switch a .build-kit install to a different stack. Without it, only the shared runtime and the config are refreshed`)
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit) and wire it up via `git config core.hooksPath .githooks` — same as `init --hooks`, for turning it on after the fact without a full re-scaffold. Off by default.')
@@ -3714,6 +3723,11 @@ credentialFlags(program
 
     const kitDirName = opts.modeling ? MODELING_KIT.kitDirName : STACKS.node.kitDirName;
     const kitDir = join(targetDir, kitDirName);
+
+    // A prototype folder: refresh its skills, CLAUDE.md rules and page libraries; the model and .prototype/ stay as they are.
+    if (!opts.modeling && !opts.stack && !opts.hooks && !opts.global && !existsSync(kitDir) && isPrototypeFolder(targetDir)) {
+      return initPrototype({ loadEffectiveConfig, findInstalledKitDir, configureCredentials, prompt, registerMcp: (dir, cfg) => { ensureMcpRegistered(dir, cfg.baseUrl || DEFAULT_BASE_URL); ensureEnvToken(dir, cfg.token); ensureMcpEnabled(dir); } }, { config: globalOpts.config, print: globalOpts.print, force: opts.force, refresh: true });
+    }
 
     if (!existsSync(kitDir)) {
       console.error(`❌ No ${kitDirName}/ found in ${targetDir} — run \`init${opts.modeling ? ' --modeling' : ''}\` first.`);
@@ -4005,7 +4019,9 @@ credentialFlags(program
   .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Waiting` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Waiting). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
   .option('--feature <name>', 'Build kit: only pick up slices that belong to this feature (the free-text names set per slice on the board, matched case-insensitively), for this run only. Other slices wait for a run without it or with their own feature. Nothing is written to disk.')
-  .option('--sync', 'Build kit: share this agent\'s event log with the board — events that name a slice are uploaded constantly (POST …/buildlog) for a live dashboard. The platform keeps one iteration per slice, 1000 entries at most. A no-op for --modeling/--standalone, and with --local.')
+  .option('--prototype', 'Run the local prototype of this folder (set up with `init --prototype`): serves the page in the board\'s player and runs the agent loop — each iteration it reads what Sync, Rebuild and a saved feedback recorded in the control log (.prototype/events/) and works through the requests nobody processed yet: Sync and Rebuild right away (the CLI for a sync, Claude Code for a rebuild), feedback only with --sync, which applies it automatically and writes every model change back to the board, retrying until it lands. Without --sync, feedback waits for /local-prototype-control. The agent runs in a warm Agent Client Protocol session (claude by default; --agent <name> or --acp-cmd pick another), not one process per request. `prototype [--sync]` is the player alone.')
+  .option('--port <port>', 'With --prototype: the port to serve on (the next free one is used when it is taken)', (v) => parseInt(v, 10), 4173)
+  .option('--sync', 'With --prototype: apply feedback automatically and write model changes back to the board (retried every 30s). Build kit: share this agent\'s event log with the board — events that name a slice are uploaded constantly (POST …/buildlog) for a live dashboard. The platform keeps one iteration per slice, 1000 entries at most. A no-op for --modeling/--standalone, and with --local.')
   .option('--verbose', 'Log every tool call\'s full input (commands, skill args, file paths) and assistant reasoning text. Default is condensed, high-level per-step logging only.')
   .option('--id <id>', 'Pin the agent id this run identifies itself with on the platform. Without it an agent keeps one id: a project install per project, a --global/--standalone run per board and repo (the directory it is started in) — the same agent on every restart, with its chat, its star on the board and the prompts it holds. If another live process already runs under that id, this one gets a fresh id instead (two agents must not share a heartbeat row). Pass --id when a supervisor already knows the id you want, or for a second agent on purpose; it is used as given, with no such check. Per-run only: nothing is written to disk.')
   .option('--name <name>', 'A human-readable name for this agent, sent with every heartbeat so the board shows which agent is live rather than a bare uuid (e.g. "ci-builder", "martins-laptop"). Per-run only, like --id: the persistent name is `agentName` in config.json (set via `init --name` / `init-config --name`), and this overrides it for one run without writing anything.')
@@ -4013,6 +4029,7 @@ credentialFlags(program
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     const cwd = process.cwd();
+    if (opts.prototype) return prototypeApi.runPrototype({ port: opts.port, sync: opts.sync, loop: true, acpAgent: { name: typeof opts.agent === 'string' ? opts.agent : undefined, cmd: opts.acpCmd } }, command);
     if (opts.all) {
       const clashing = [['--standalone', opts.standalone], ['--worker', opts.worker], ['--global', opts.global], ['--local', opts.local], ['--id', opts.id !== undefined]]
         .filter(([, set]) => set).map(([flag]) => flag);
@@ -4431,6 +4448,8 @@ program
       }
     }
   });
+
+const prototypeApi = registerPrototype(program, { loadEffectiveConfig, findInstalledKitDir, configureCredentials, noInitRequired: NO_INIT_REQUIRED });
 
 const EXPORT_TYPES = ['eventcatalog', 'json'];
 
@@ -5260,7 +5279,7 @@ program
 program
   .command('events')
   .description("Decode a kit's event log in the terminal: one line per event (claims, settles, learnings, tasks, prompts …) with the slice's title and the agent that wrote it. Filter it, print the raw events, or print the state the log folds to.")
-  .option('--kit <dir>', "Read this kit directory's log (default: the build kit of the current project, else its modeling kit)")
+  .option('--kit <dir>', "Read this kit directory's log (default: the build kit of the current project, else its modeling kit; in a prototype folder, its control log in .prototype/)")
   .option('--global', 'Read the log of the global install (~/.eventmodelers/kit) — what runs started without a project install wrote')
   .option('--board <id>', "Only events stamped with this board (an id prefix) — the global install's log mixes every board")
   .option('--type <types>', 'Only these event types, comma-separated (e.g. claimed,settled)')
@@ -5280,7 +5299,10 @@ program
       process.exit(1);
     }
     const globalLog = join(GLOBAL_KIT_DIR, MODELING_KIT.kitDirName);
-    const kitDir = opts.global ? globalLog : opts.kit ? resolve(cwd, opts.kit) : requireBuildKitDir(cwd);
+    // A prototype folder has no kit, but its control log (what the player's saved-feedback / Sync / Rebuild recorded) is the same store.
+    const prototypeLog = join(cwd, '.prototype');
+    const inPrototype = !opts.global && !opts.kit && !findInstalledKitDir(cwd) && existsSync(join(prototypeLog, 'events.log'));
+    const kitDir = opts.global ? globalLog : opts.kit ? resolve(cwd, opts.kit) : inPrototype ? prototypeLog : requireBuildKitDir(cwd);
     if (opts.prune) {
       try {
         const { removed, kept } = pruneLog(kitDir);
