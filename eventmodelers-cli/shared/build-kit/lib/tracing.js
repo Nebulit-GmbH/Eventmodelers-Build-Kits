@@ -51,12 +51,24 @@ export function usageFromLocalAi(raw, durationMs) {
  *   - OpenCode `opencode run --format json`: `step_finish` per model step, with tokens and cost
  *   - Gemini CLI `--output-format stream-json`: the final `result` with `stats`;
  *     `--output-format json`: one object whose `stats.models` holds tokens per model
- *  Only OpenCode reports a cost — the others leave costUsd null rather than guessing a price. */
+ *   - Pi `pi --mode json`: `turn_end` carries the assistant message with its `usage` (cost included)
+ *  Only OpenCode and Pi report a cost — the others leave costUsd null rather than guessing a price. */
 export function usageFromHarnessEvent(msg) {
   if (msg?.type === 'turn.completed' && msg.usage) {
     const u = msg.usage;
     const cached = n(u.cached_input_tokens);
     return { inputTokens: Math.max(0, n(u.input_tokens) - cached), outputTokens: n(u.output_tokens), cacheReadTokens: cached };
+  }
+  if (msg?.type === 'turn_end' && msg.message?.role === 'assistant' && msg.message.usage) {
+    const u = msg.message.usage;
+    return {
+      inputTokens: n(u.input),
+      outputTokens: n(u.output),
+      cacheReadTokens: n(u.cacheRead),
+      cacheWriteTokens: n(u.cacheWrite),
+      costUsd: Number.isFinite(u.cost?.total) ? u.cost.total : null,
+      model: typeof msg.message.model === 'string' ? msg.message.model : null,
+    };
   }
   if (msg?.type === 'step_finish' && msg.part?.tokens) {
     const t = msg.part.tokens;

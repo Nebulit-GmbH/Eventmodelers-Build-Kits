@@ -13,9 +13,9 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends git curl jq uuid-runtime ca-certificates xz-utils libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 
-# All agent CLIs; AGENT (claude, opencode, codex, gemini or hermes) picks the one that runs.
+# All agent CLIs; AGENT (claude, opencode, codex, gemini, hermes or pi) picks the one that runs.
 # Runs as USER node (below): the agent never needs root, and Claude Code refuses some permission modes as root.
-RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli && claude --version && codex --version && gemini --version
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli @earendil-works/pi-coding-agent && claude --version && codex --version && gemini --version && pi --version
 # OpenCode 2.x from its v2 installer, not npm or the v1 installer: `run --standalone` (which the CLI's
 # opencode preset passes) doesn't exist in the 1.x line that both of those still ship.
 RUN curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path \

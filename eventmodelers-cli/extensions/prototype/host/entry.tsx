@@ -174,6 +174,29 @@ const FeedbackStatus: React.FC = () => {
     )
 }
 
+/** What this run does by itself: whether an agent is connected (answers Sync, Rebuild, feedback) and whether changes go to the board on their own (--sync). */
+const RunStatus: React.FC = () => {
+    const [st, setSt] = useState<{ sync: boolean; agent: boolean; busy: boolean } | null>(null)
+    useEffect(() => {
+        const read = () => fetch('/api/status', { cache: 'no-store' }).then(r => r.json()).then(setSt).catch(() => setSt(null))
+        void read()
+        const t = setInterval(read, 3000)
+        return () => clearInterval(t)
+    }, [])
+    if (!st) return null
+    const pill = (on: boolean, icon: string, text: string, title: string) => (
+        <span title={title} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', background: on ? '#16a34a' : '#64748b', color: '#fff' }}>
+            <i className={icon} />{text}
+        </span>
+    )
+    return (<>
+        {pill(st.agent, st.busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-robot', st.agent ? (st.busy ? 'Agent working' : 'Agent connected') : 'No agent',
+            st.agent ? 'An agent is connected: it answers Sync, Rebuild and saved feedback' : 'No agent is connected — start with `eventmodelers run --prototype` so feedback, Sync and Rebuild are answered')}
+        {pill(st.sync, 'fa-solid fa-cloud-arrow-up', st.sync ? 'Auto-sync on' : 'Auto-sync off',
+            st.sync ? 'Changes are written to the board automatically (--sync)' : 'Changes stay local until Sync — start with --sync to write them to the board automatically')}
+    </>)
+}
+
 /** When the server behind the page stops (the run was ended, it crashed) the page would just go blank: say so, and reload once it is back. */
 const ServerWatch: React.FC = () => {
     const [down, setDown] = useState(false)
@@ -248,6 +271,7 @@ const LocalPlayer: React.FC = () => {
                 )}
                 <button className="button is-small" style={{ margin: 0, height: 24, width: 28, padding: 0 }} onClick={copyLink} title="Copy the link to this prototype" aria-label="Copy link"><i className="fa-solid fa-link" /></button>
                 <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <RunStatus />
                     {load?.kind === 'found' && <FeedbackStatus />}
                     {load?.kind === 'found' && <RebuildButton feedback={feedback} />}
                     {load?.kind === 'found' && <FetchButton />}

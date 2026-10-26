@@ -372,7 +372,8 @@ export function registerPrototype(program, deps) {
     process.on('unhandledRejection', keepAlive);
     process.on('uncaughtException', keepAlive);
     const stale = () => plan(cwd).slices.filter((s) => s.state !== 'unchanged');
-    const server = await serve({ cwd, port: opts.port, studio: studioUrl(deps, cwd, command) });
+    let agent = null; // the agent loop (run --prototype)
+    const server = await serve({ cwd, port: opts.port, studio: studioUrl(deps, cwd, command), runtime: () => ({ sync: !!opts.sync, agent: !!agent, busy: !!(agent && agent.busy()) }) });
     console.log(`\n✅ Prototype: ${server.url}`);
     console.log('   Change it with prompts in Claude Code (`claude` in this folder, or /local-prototype): local-prototype-model changes the model, local-prototype-build reflects it here.');
     if (stale().length) console.log(`   ${stale().length} slice${stale().length === 1 ? '' : 's'} not built into the page yet.`);
@@ -380,7 +381,6 @@ export function registerPrototype(program, deps) {
     console.log(connection ? `   Board: ${connection.boardId} on ${connection.api.replace(/^https?:\/\//, '')}${connection.context ? ` — ${connection.contextType || 'context'} "${connection.context}"${connection.contextId ? ` (${connection.contextId})` : ''}` : ''}` : '   Board: none connected (a local-only prototype — `connect` adds one).');
 
     let cred = null;
-    let agent = null; // the agent loop (run --prototype)
     let syncing = false, again = false;
     const syncNow = async () => {
       // While the agent loop executes changes, the board gets them one by one in order — the watcher's sync would send the same edits unordered.

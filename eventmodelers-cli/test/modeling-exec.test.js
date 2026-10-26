@@ -91,6 +91,27 @@ test('gemini: the server goes into .gemini/settings.json', () => {
   assert.equal(entry.headers['x-token'], '$EVENTMODELERS_TOKEN');
 });
 
+test('pi: the server goes into .pi/mcp.json, exposed directly, and the command is told to trust the project', () => {
+  const dir = freshDir();
+  const { command, registered } = registerMcp('pi -p', dir, BASE, () => {});
+  const entry = readJson(join(dir, '.pi', 'mcp.json')).mcpServers.eventmodelers;
+  assert.equal(entry.url, `${BASE}/mcp`);
+  assert.equal(entry.headers['x-token'], '${EVENTMODELERS_TOKEN}');
+  assert.equal(entry.exposure, 'direct');
+  assert.equal(command, 'pi --approve -p');
+  assert.equal(registered, true);
+  assert.equal(registerMcp('pi --approve -p', dir, BASE, () => {}).command, 'pi --approve -p'); // the preset is left alone
+  assert.equal(harnessOf('npx pi -p'), 'pi');
+  assert.equal(withModel('pi --approve -p', 'anthropic/claude-sonnet-5-5'), "pi --approve -p --model 'anthropic/claude-sonnet-5-5'");
+});
+
+test('pi: usage and cost come from the assistant message on turn_end', async () => {
+  const { usageFromHarnessEvent } = await import('../shared/build-kit/lib/tracing.js');
+  const u = usageFromHarnessEvent({ type: 'turn_end', toolResults: [], message: { role: 'assistant', model: 'claude-sonnet-5-5', usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 1, cost: { total: 0.01 } } } });
+  assert.deepEqual(u, { inputTokens: 100, outputTokens: 20, cacheReadTokens: 5, cacheWriteTokens: 1, costUsd: 0.01, model: 'claude-sonnet-5-5' });
+  assert.equal(usageFromHarnessEvent({ type: 'turn_end', message: { role: 'user' } }), null);
+});
+
 test('codex: the server rides on -c flags, and no file is written', () => {
   const dir = freshDir();
   const { command, registered } = registerMcp('codex exec --full-auto', dir, BASE, () => {});

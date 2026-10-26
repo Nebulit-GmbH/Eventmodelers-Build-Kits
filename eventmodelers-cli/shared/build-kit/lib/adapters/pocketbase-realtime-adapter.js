@@ -24,6 +24,14 @@ function resolvePocketBaseUrl({ pocketbaseUrl, baseUrl }) {
   return new URL(pocketbaseUrl, baseUrl).href.replace(/\/+$/, '');
 }
 
+// The SDK's ClientResponseError says "Something went wrong." whenever the server sent no message
+// (blocked/buffered SSE, proxy, TLS, DNS) — the real reason is in status/cause, so surface that.
+function describeError(err) {
+  const cause = err.originalError ?? err.cause;
+  const detail = [err.status ? `HTTP ${err.status}` : null, cause?.code, cause?.message].filter(Boolean).join(' ');
+  return detail && !err.message.includes(detail) ? `${err.message} (${detail})` : err.message;
+}
+
 // deps.PocketBase is injectable for tests; by default it is the pocketbase SDK's client.
 export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = {}) {
   const { EventSource } = await import('eventsource');
@@ -53,7 +61,7 @@ export async function createPocketBaseRealtimeAdapter(cfg, initialToken, deps = 
         // Drop the listener the failed call left behind before trying again.
         await pb.collection(REALTIME_EVENTS_COLLECTION).unsubscribe('*').catch(() => {});
         if (attempt >= RECONNECT_INTERVALS_MS.length) throw err;
-        topics.forEach((t) => t.onStatus?.(`RECONNECTING (attempt ${attempt + 1}/${RECONNECT_INTERVALS_MS.length}): ${err.message}`));
+        topics.forEach((t) => t.onStatus?.(`RECONNECTING (attempt ${attempt + 1}/${RECONNECT_INTERVALS_MS.length}): ${describeError(err)}`));
         await new Promise((resolve) => setTimeout(resolve, RECONNECT_INTERVALS_MS[attempt]));
       }
     }

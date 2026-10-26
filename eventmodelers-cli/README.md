@@ -162,7 +162,7 @@ npx @eventmodelers/cli run                          # start the agent loop (ralp
 npx @eventmodelers/cli run --all                      # every build kit in the project at once (this directory and up to two levels below, e.g. a scaffolded app's root and web/), prefixed output, Ctrl+c stops all; other flags (--agent, --handover, …) go to each
 npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
-npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor, pi — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
@@ -239,12 +239,13 @@ npx @eventmodelers/cli run --standalone             # …and to board changes, o
 
 **Another coding agent.** `--agent` hands each prompt and chat message to another harness
 instead of the warm Claude process — one process per turn, with the eventmodelers MCP server
-registered for it (`opencode.json`, `.gemini/settings.json`, or `-c` flags for Codex):
+registered for it (`opencode.json`, `.gemini/settings.json`, `.pi/mcp.json`, or `-c` flags for Codex):
 
 ```bash
 npx @eventmodelers/cli run --standalone --agent opencode   # = --exec "opencode run --standalone --auto"
 npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exec --full-auto"
 npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
+npx @eventmodelers/cli run --modeling --agent pi           # = --exec "pi --approve -p"; needs Pi 1.x (`npm i -g @earendil-works/pi-coding-agent`) — the old @mariozechner package has no MCP. --approve trusts the project so Pi reads .pi/mcp.json and the skills in .agents/skills (`init-agents --hosts pi`)
 npx @eventmodelers/cli run --modeling --agent cursor       # = --exec "agent -p --output-format text --approve-mcps --force --trust"; creates one Cursor chat and resumes it every turn, so only the first turn reads the kit
 npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
 npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
@@ -287,8 +288,8 @@ server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELE
 Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
 `.claude/skills`. There are no subagents: self-directed work is done inline.
 
-**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode, Codex, Gemini CLI and Hermes all installed;
-`AGENT` (`claude` by default, or `opencode`, `codex`, `gemini`, `hermes`) picks which one runs. Build from this directory and pass the board's
+**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode, Codex, Gemini CLI, Hermes and Pi all installed;
+`AGENT` (`claude` by default, or `opencode`, `codex`, `gemini`, `hermes`, `pi`) picks which one runs. Build from this directory and pass the board's
 credentials as env vars:
 
 ```bash
@@ -302,7 +303,7 @@ Claude authenticates with `ANTHROPIC_API_KEY`, or with your subscription via `CL
 once). The container is the sandbox, so the image sets `EVENTMODELERS_CODEX_NO_SANDBOX=1`, which makes the `codex` preset run
 `--dangerously-bypass-approvals-and-sandbox` instead of `--full-auto`.
 
-Keys: `OPENAI_API_KEY` (codex), `GEMINI_API_KEY` (gemini), and for Hermes a provider key such as `OPENROUTER_API_KEY`. Hermes reads MCP
+Keys: `OPENAI_API_KEY` (codex), a provider key Pi reads itself (e.g. `ANTHROPIC_API_KEY`; run it as `-e AGENT=pi --model <provider/model>`), `GEMINI_API_KEY` (gemini), and for Hermes a provider key such as `OPENROUTER_API_KEY`. Hermes reads MCP
 servers only from `~/.hermes/config.yaml`, so the images ship the eventmodelers server there (env references, no secret); outside
 Docker the CLI logs the snippet to add. Run `hermes` in a container as `-e AGENT=hermes --model <provider/model>`.
 
@@ -315,6 +316,7 @@ pass `--model <id>` as usual.
 | `gemini` | Gemini API | `GOOGLE_GEMINI_BASE_URL`, `GEMINI_API_KEY` |
 | `codex` | OpenAI | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
 | `hermes` | OpenAI-compatible | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
+| `pi` | per provider | a custom provider in `~/.pi/agent/models.json` (see Pi's `docs/models.md`), then `--model <provider>/<model>` |
 | `opencode` | OpenAI-compatible | a provider block in `OPENCODE_CONFIG_CONTENT` (JSON), then `--model <provider>/<model>` |
 
 Claude and Gemini need a gateway (e.g. LiteLLM) in front of a non-native server, since they only speak their own protocol.

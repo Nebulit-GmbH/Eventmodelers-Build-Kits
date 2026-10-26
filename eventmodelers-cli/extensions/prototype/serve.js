@@ -15,7 +15,7 @@ const readBody = (req) => new Promise((ok, fail) => { let b = ''; req.on('data',
 
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html; charset=utf-8' };
 
-export async function serve({ cwd, port = 4173, studio = null }) {
+export async function serve({ cwd, port = 4173, studio = null, runtime = () => ({ sync: false, agent: false, busy: false }) }) {
   const p = paths(cwd);
   const clients = new Set();
   const server = createServer((req, res) => {
@@ -37,6 +37,8 @@ export async function serve({ cwd, port = 4173, studio = null }) {
     }
     // The player's own needs: the context's name, the page (it goes into the player's iframe), what Submit / Sync / Rebuild record.
     if (path === '/api/context') return json(res, 200, { name: (readJson(join(p.work, 'status.json'), {}) || {}).context || '', studio });
+    // Whether this run writes changes to the board by itself (--sync) and whether an agent loop is answering the player's requests.
+    if (path === '/api/status') return json(res, 200, runtime());
     // The control channel (see control.js): the player records what the user pressed; the agent's answers show up as state.
     if (path === '/api/control' && req.method === 'GET') {
       const c = control(cwd);
