@@ -2,7 +2,7 @@
 
 This folder holds a local, clickable prototype of one event model context. **The prototype is a reflection of the model, never the other way round.** The model is JSON on disk and the only source of truth; the page is derived from it and can be thrown away and rebuilt at any time. Every change a person asks for is made in the JSON first and only then reflected in the prototype — a change that exists only in the page is lost on the next rebuild and never reaches the board.
 
-`/local-prototype` starts it (local files when they exist, otherwise it fetches a context from the board). Every change request is handled with two skills, always in this order:
+`/local-prototype` builds it (local files when they exist, otherwise it fetches a context from the board); running it is the CLI's `{{CLI}} run --prototype`. Every change request is handled with two skills, always in this order:
 
 1. `local-prototype-model` — turn the prompt into edits of the model JSON (`.slices/`) and the local screens (`.prototype/screens/`).
 2. `local-prototype-build` — reflect those edits in the prototype page.

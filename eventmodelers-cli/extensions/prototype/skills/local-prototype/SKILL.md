@@ -1,11 +1,11 @@
 ---
 name: local-prototype
-description: Start the local prototype of an event model context — uses the model files already on disk (.slices/, .prototype/) or fetches a context from the board first, builds the page from them and serves it in the browser. Entry point of the local prototype; after it, every change request goes through local-prototype-model then local-prototype-build. Use for "start the prototype", "open the prototype of X", "fetch X and build the prototype".
+description: Build the local prototype of an event model context — uses the model files already on disk (.slices/, .prototype/) or fetches a context from the board first, and builds the page from them. It does not run it — running is the CLI's `run --prototype`. Entry point of the local prototype; after it, every change request goes through local-prototype-model then local-prototype-build. Use for "build the prototype", "prepare the prototype of X", "fetch X and build the prototype".
 ---
 
-# Prototype — start it
+# Prototype — build it
 
-The prototype is a reflection of the model: the model JSON in `.slices/` (plus the screens in `.prototype/screens/`) is the truth, the page is built from it. This skill gets you from nothing — or from files already on disk — to a running page.
+The prototype is a reflection of the model: the model JSON in `.slices/` (plus the screens in `.prototype/screens/`) is the truth, the page is built from it. This skill gets you from nothing — or from files already on disk — to a built page.
 
 ## Steps
 
@@ -22,11 +22,7 @@ The prototype is a reflection of the model: the model JSON in `.slices/` (plus t
    ```
    It writes the model to `.slices/<context>/<slice>/slice.json`, the screens to `.prototype/screens/<node id>/`, and a baseline copy that `sync` later diffs against.
 3. **Build what is missing.** Run `{{CLI}} prototype status`. If any slice is `new` or `changed`, invoke the `local-prototype-build` skill.
-4. **Serve it** in the background so the page keeps running while you work:
-   ```bash
-   {{CLI}} prototype
-   ```
-   (`run_in_background`.) Read its first lines for the URL and tell the person. Changes reach the board only when they ask for `{{CLI}} prototype sync`.
-5. **Say how to continue:** describe a change in plain words — it goes into the model first (`local-prototype-model`), then into the page (`local-prototype-build`), and the browser reloads by itself.
+4. **Do not run it.** This skill only builds. Tell the person to start the page themselves with `{{CLI}} run --prototype` (or `{{CLI}} prototype` for the player alone). Changes reach the board only when they ask for `{{CLI}} prototype sync`.
+5. **Say how to continue:** describe a change in plain words — it goes into the model first (`local-prototype-model`), then into the page (`local-prototype-build`), and a running page reloads by itself.
 
-Never edit the model or the page from this skill; it only starts things.
+Never edit the model or the page from this skill; it only prepares things.

@@ -5,7 +5,7 @@ A local, clickable prototype of one context, built from the board's model, chang
 ```bash
 eventmodelers init --prototype                      # installs the skills, asks for the board credentials (like init --modeling)
 claude                                              # then, in Claude Code: /local-prototype   — you run this yourself
-eventmodelers prototype                            # serve and watch (the /local-prototype skill starts it for you)
+eventmodelers prototype                            # serve and watch (/local-prototype only builds; run this, or `eventmodelers run --prototype`, yourself)
 eventmodelers prototype fetch --context "Orders"    # fetch one context (the skill does this when there is no local model)
 eventmodelers prototype sync [--dry-run] [--yes]    # write pending changes back to the board, on request
 eventmodelers prototype remove [--discard]          # delete .prototype/, the skills and the CLAUDE.md block (never .slices/)
