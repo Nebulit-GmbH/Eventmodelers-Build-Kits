@@ -1,10 +1,10 @@
-# AxonTestFixture Patterns (Verified against Axon Framework 5.1.1)
+# AxonTestFixture Patterns (Verified against Axon Framework 5.4.0)
 
 Everything on this page was compiled and run with `mvn test` against
-`io.axoniq.framework:axoniq-framework-bom:5.1.1` (which pulls in
-`org.axonframework:axon-framework-bom:5.1.1`). It supersedes any conflicting claim elsewhere in this
+`io.axoniq.framework:axoniq-framework-bom:5.4.0` (which pulls in
+`org.axonframework:axon-framework-bom:5.4.0`). It supersedes any conflicting claim elsewhere in this
 skill about `@SpringBootTest` / `AxonTestFixture.configSlice(...)` — that method does not exist in
-5.1.1. Ground-truth worked example: `RegisterCustomer` slice in this repo
+5.4.0. Ground-truth worked example: `RegisterCustomer` slice in this repo
 s(`src/main/java/.../foo/register/`, test in `src/test/java/.../foo/register/RegisterCustomerDecisionModelTest.java`).
 Slice folders sit directly under their context — `slices/{context}/{slicename}/`, no `write`/`read`/
 `automation` layer in between.
@@ -89,7 +89,7 @@ class RegisterCustomerDecisionModelTest {
 resolved jar before trusting either name in a new project — don't assume the older name still compiles.
 
 `AxonTestFixture.Customization::disableAxonServer` (seen in older AF4-adjacent examples) does **not**
-exist as a method in 5.1.1's `AxonTestFixture.Customization` record — the plain `AxonTestFixture.with(configurer)`
+exist as a method in 5.x's `AxonTestFixture.Customization` record — the plain `AxonTestFixture.with(configurer)`
 overload (no customization argument) already runs fully in-memory with no Axon Server connection. Only
 reach for the `UnaryOperator<Customization>` overload (`.asIntegrationTest()`, `.registerFieldFilter(...)`,
 `.registerIgnoredField(...)`) when you actually need one of those specific behaviors.
@@ -133,7 +133,7 @@ private static EventCriteria resolveCriteria(String email, MessageTypeResolver m
 
 Rules (verified from `AnnotationBasedEventCriteriaResolver`, package `org.axonframework.eventsourcing.annotation`):
 - Must be `static`, must return `EventCriteria` (package `org.axonframework.messaging.eventstreaming`, **not**
-  `org.axonframework.eventsourcing.eventstore` — that package does not contain `EventCriteria`/`Tag` in 5.1.1).
+  `org.axonframework.eventsourcing.eventstore` — that package does not contain `EventCriteria`/`Tag` in 5.4.0).
 - First parameter is always the entity's `@InjectEntity`/`@TargetEntityId` identifier type (here `String`).
 - Any additional parameters are resolved as components from the `Configuration` — `MessageTypeResolver` is
   a valid injectable component and is the type-safe way to restrict the criteria to specific event classes:

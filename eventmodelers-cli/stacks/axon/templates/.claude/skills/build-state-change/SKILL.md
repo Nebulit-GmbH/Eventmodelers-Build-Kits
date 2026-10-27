@@ -4,7 +4,7 @@ authors:
   - Mateusz Nowak
   - Martin Dilger
 description: >
-  Implement Event Sourcing write slices using Axon Framework 5.1.1 in this project's one established
+  Implement Event Sourcing write slices using Axon Framework 5.4.0 in this project's one established
   pattern: Command record → mutable decision-model entity (@EventSourced + @EventCriteriaBuilder) →
   @Component CommandHandler that checks entity state inline → AxonTestFixture unit test (no Spring
   context). Use when implementing a new write slice / command handler from a slice.json event model in
@@ -19,7 +19,11 @@ sits alongside slice folders). Every step below is grounded in the `RegisterCust
 (`src/main/java/.../foo/register/`, test in
 `src/test/java/.../foo/register/RegisterCustomerDecisionModelTest.java`) and, for the compound-identifier
 case in Step 1, the `SubscribeToCourse` slice (`src/main/java/.../foo/subscribetocourse/`) — both
-verified, compiled and passing under `mvn test` against `io.axoniq.framework:axoniq-framework-bom:5.1.1`.
+verified, compiled and passing under `mvn test` against `io.axoniq.framework:axoniq-framework-bom:5.4.0`.
+
+For anything this skill does not spell out (annotation attributes, handler parameters, processors, interceptors, entity
+hierarchies, test matchers), read the matching guide in the `axoniq-app-dev` skill (Axoniq's own reference) — see its
+routing table. Where it and this skill disagree, this skill wins (it is verified against 5.4.0; see Step 3).
 
 ## Step 0: Read the slice definition
 
@@ -94,10 +98,22 @@ The entity's generic id type becomes `{SliceName}Id` everywhere it's referenced 
 instead of `String`. `@TargetEntityId` scans both fields and methods on the payload
 (`AnnotationBasedEntityIdResolver.findMembers`), so a method works exactly like a field for this purpose.
 
-## Step 2: Event — only if it doesn't already exist
+## Step 2: Event — create it, or reconcile the existing one
 
 Check `src/main/java/.../{context}/events/` first; add to the existing sealed/marker interface rather
 than creating a duplicate.
+
+**If the event already exists, it is not done — reconcile it against slice.json.** A slice that comes back as
+`Planned` usually means the model changed, and an event's tags are part of the model: diff the existing record field by
+field against `events[].fields[]` — names, types, order **and the `tag` flag of every field**:
+
+- field has `tag: true` (or is the command's `idAttribute`) but no `@EventTag` → add `@EventTag(key = EventTags.{TAG_CONSTANT})`
+  and the constant
+- field carries `@EventTag` but `tag` is no longer true → remove the annotation (leave the constant if another slice uses it)
+- then grep every `@EventCriteriaBuilder`/`Tag.of(...)` that loads this event: a tag added or removed here changes which
+  events those decision models and projections find, so each one must be checked, not just this slice's
+
+Never skip this because the event "already exists" — an unchanged field list with a changed tag set is still a change.
 
 ```java
 package {basePackage}.slices.{context}.events;
@@ -140,7 +156,7 @@ import {basePackage}.slices.{context}.events.{EventName};
 import {basePackage}.slices.{context}.events.EventTags;
 import org.axonframework.eventsourcing.annotation.EventCriteriaBuilder;
 import org.axonframework.eventsourcing.annotation.EventSourcingHandler;
-import org.axonframework.eventsourcing.annotation.reflection.EntityCreator;
+import org.axonframework.eventsourcing.annotation.reflection.ForcedEntityCreator;
 import org.axonframework.extension.spring.stereotype.EventSourced;
 import org.axonframework.messaging.core.MessageTypeResolver;
 import org.axonframework.messaging.eventstreaming.EventCriteria;
@@ -151,7 +167,7 @@ class {SliceName}DecisionModel {
 
     public boolean <ruleFlag>;
 
-    @EntityCreator
+    @ForcedEntityCreator
     private {SliceName}DecisionModel() {
     }
 
@@ -167,6 +183,13 @@ class {SliceName}DecisionModel {
     }
 }
 ```
+
+**Always write the no-arg constructor with `@ForcedEntityCreator`, never plain `@EntityCreator`.** Since 5.4 a
+plain no-arg `@EntityCreator` no longer guarantees the entity exists when no event was found: `@InjectEntity` on the
+very first command for an id then throws `EntityNotFoundException: No entity found for identifier [...]` — the
+"given no prior activity" scenario fails. `@ForcedEntityCreator` (same package, meta-annotated with `@EntityCreator`)
+always creates the entity. It does not exist before 5.4, and Axoniq's `axoniq-app-dev` guides still show plain
+`@EntityCreator` for the no-arg case — don't copy that from them.
 
 **Always write `@EventCriteriaBuilder`. Never rely on bare `@EventSourced(tagKey = "...")`.** A tag-key
 mismatch produces no compiler error and no runtime exception — the entity just silently never loads any
@@ -188,7 +211,7 @@ to the type Axon actually matches on; there is no annotation-free shortcut. Neve
 `"Namespace.Name"` string either, and never pass `{EventName}.class.getName()` — both drift silently
 out of sync with the event's `@Event` annotation with no compiler check.
 
-`EventCriteria`/`Tag` live in `org.axonframework.messaging.eventstreaming` in 5.1.1 — not
+`EventCriteria`/`Tag` live in `org.axonframework.messaging.eventstreaming` in 5.x — not
 `org.axonframework.eventsourcing.eventstore` (that package has no such classes in this version).
 
 **If Step 1 used a compound `{SliceName}Id`** (two or more `idAttribute: true` fields), the first
@@ -400,7 +423,7 @@ auto-discovers in production also work standalone, with zero `ApplicationContext
 `@SpringBootTest`.
 
 Fluent API cheat sheet and known gotchas (wrong `EventCriteria`/`Tag` package, a builder method that
-was renamed between AF5 patch versions, `Customization.disableAxonServer()` not existing in 5.1.1):
+was renamed between AF5 patch versions, `Customization.disableAxonServer()` not existing in 5.x):
 see [references/axon-test-fixture-patterns.md](references/axon-test-fixture-patterns.md).
 
 ## Step 7b: Storyline-Derived Tests (Optional)
@@ -447,6 +470,7 @@ Before considering the slice done:
 
 - [ ] Every field in slice.json's `commands[]` is in the Command record — no invented fields, none missing
 - [ ] Every field in slice.json's `events[]` is in the Event record — no invented fields, none missing
+- [ ] Every `tag: true` / `idAttribute` event field carries `@EventTag` — and no field carries one without it; an event that already existed was reconciled, not skipped
 - [ ] Every `specifications[]` scenario has a corresponding test method
 - [ ] If `storylines[]` is present: every COMMAND beat for this slice's command has a storyline test — or was deliberately skipped as untraceable
 - [ ] No business rule exists in the handler that isn't traceable to slice.json's `description`/`comments`

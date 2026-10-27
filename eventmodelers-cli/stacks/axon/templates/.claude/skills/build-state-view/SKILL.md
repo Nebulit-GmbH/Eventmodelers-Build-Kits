@@ -15,6 +15,8 @@ description: >
 
 # Axon Framework 5 — Read Slice (Java)
 
+> **Axoniq reference:** for projection handlers, replay/reset, sequencing, dead letter queue, query handling and subscription queries, read the matching guide from the `axoniq-app-dev` skill (`events/handling-projections.md`, `queries/query-handling.md` and `events/processors.md`) before guessing at an API. This skill is verified against Axon Framework 5.4.0 and wins where the two disagree.
+
 ## Step 0: Discover Target Project Conventions
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).

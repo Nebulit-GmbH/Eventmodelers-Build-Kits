@@ -10,12 +10,13 @@ description: >
   Workflows; (2) user asks to "convert automation to workflow", "implement as workflow",
   or "use Axon Workflow for this slice"; (3) a slice has multi-step logic, needs to wait for
   external input/approval, requires compensation/rollback, or spans significant time.
-  NOTE: AF5 Workflows are in Preview — APIs may change; not intended for production use yet.
+  Built on Axoniq Workflows (`axoniq-workflow-dsl`, Axoniq Framework 5.4.0).
 ---
 
 # Build Automation Workflow (Java / Axon Framework 5)
 
-> **Preview feature** — AF5 Workflow APIs may change without notice and are not yet for production.
+> Workflows are an Axoniq Framework module (`io.axoniq.framework:axoniq-workflow-dsl`), not part of open-source AF5. A tested, runnable
+> example lives in [assets/java/](assets/java/); the API is summarised in [references/workflow-api.md](references/workflow-api.md).
 
 New workflow slices live under
 `src/main/java/.../slices/{context}/automation/{slicename}/` — see Step 0 below for how to resolve the
@@ -23,13 +24,15 @@ New workflow slices live under
 
 ---
 
+> **Axoniq reference:** for processors, command dispatching and exception/timeout handling around the workflow, read the matching guide from the `axoniq-app-dev` skill (`events/processors.md`, `commands/dispatching.md` and `foundations/exception-handling.md`) before guessing at an API. This skill is verified against Axon Framework 5.4.0 and wins where the two disagree.
+
 ## Step 0: Discover Project Conventions
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
 
 Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workflows. Look for:
 
-- A `WorkflowModule` bean in any `@Configuration` class
+- A `WorkflowModule` bean in any `@Configuration` class (not needed under Spring — the starter discovers `@Workflow` beans)
 - Classes annotated with `@Workflow`
 - Existing `*Workflow.java` files under any slice package
 
@@ -37,17 +40,25 @@ Read `.build-kit/CLAUDE.md` and check whether the project already uses AF5 Workf
 `{basePackage}.slices.{context}.automation.{slicename}`. Resolve `{basePackage}` as documented in
 `.build-kit/CLAUDE.md`'s Structure section.
 
-- The `WorkflowModule` dependency in `pom.xml`:
+- The workflow dependencies in `pom.xml`. They are **not** managed by the BOM, so version them with the framework property
+  (`axoniq-workflows` does not exist):
 
 ```xml
 <dependency>
     <groupId>io.axoniq.framework</groupId>
-    <artifactId>axoniq-workflows</artifactId>
-    <!-- version managed by the BOM -->
+    <artifactId>axoniq-workflow-dsl</artifactId>
+    <version>${axoniq-framework.version}</version>
 </dependency>
+<dependency>
+    <groupId>io.axoniq.framework</groupId>
+    <artifactId>axoniq-workflow-test</artifactId>
+    <version>${axoniq-framework.version}</version>
+    <scope>test</scope>
+</dependency>
+<!-- plus org.assertj:assertj-core (test) if not already present -->
 ```
 
-If the module is missing from the pom, add it before implementing any workflow.
+If they are missing from the pom, add them before implementing any workflow.
 
 ---
 
@@ -62,12 +73,26 @@ For each automation slice, apply this decision table:
 |---|---|
 | Single trigger event → single command, no waiting | **Plain automation** (`build-automation`) |
 | Multi-step: trigger → command → wait for event → another command | **Workflow** |
+| **Same processor name appears in 2+ slices of the same context/timeline** | **Workflow** — one instance (see below) |
 | Process must wait for human approval or external confirmation | **Workflow** |
 | Compensation/rollback: if step N fails, undo steps 1..N-1 | **Workflow** |
 | Steps involve a timer / scheduled delay | **Workflow** |
 | Fan-out: one trigger dispatches to many entities then waits for all | **Workflow** |
 | Parent-child: one process spawns another and waits for its completion | **Workflow** (sub-workflow) |
 | Scatter-gather: send to many, process replies as they arrive | **Workflow** |
+
+**Same-name processors = one workflow instance.** A processor's name is its `title` in slice.json. Before classifying, group
+the processors of *all* slice.json files in the context by `title` (case-insensitive). When two or more slices carry a processor
+with the same name, they are not separate automations but separate functionalities (steps) of the **same process instance** — build
+them as **one** workflow, never one workflow (or one `@EventHandler`) per slice:
+
+- one `{Name}Workflow` class; each same-named processor contributes its trigger (a start or a `waitForEvent`) and its command step(s)
+- all of them share one `idProperty` — find the id field the slices' events/commands have in common; if none exists, that is a
+  modeling gap: pick the closest and note the assumption in a code comment
+- order the steps by the slices' left-to-right position on the timeline; the earliest trigger becomes `startOnEventClass`
+- every slice in the group is built by this skill together; mark each as done individually afterwards
+- a lone processor with a generic default name (e.g. `automation`) is **not** a signal — names must be meaningful; if several
+  unrelated processors all carry the default name, don't group them, and treat the signal as absent
 
 For each slice, output a classification:
 
@@ -91,296 +116,76 @@ event records).
 
 ## Step 3: Implement the Workflow
 
-### 3a — Annotated workflow class (default)
-
-The simplest way to define a workflow using `@Workflow`:
+Start from [assets/java/OrderWorkflow.java](assets/java/OrderWorkflow.java) (+ `Steps.java`) — it is compiled and tested on 5.4.0 — and
+adapt it to the slice. Read [references/workflow-patterns.md](references/workflow-patterns.md) for the rules that decide the shape
+(identity, wait ordering, replay determinism, timers/retries, compensation). Everything — events, commands, fields, timeouts,
+compensation — comes from slice.json; do not invent steps.
 
 ```java
 // File: {slicename}/{SliceName}Workflow.java
 package {basePackage}.slices.{context}.automation.{slicename};
 
-import org.axonframework.workflow.annotation.Workflow;
-import org.axonframework.workflow.SimpleWorkflowContext;
+import io.axoniq.framework.workflow.annotation.Workflow;
+import io.axoniq.framework.workflow.dsl.simple.SimpleWorkflowContext;
+import org.axonframework.messaging.commandhandling.gateway.CommandGateway;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.stereotype.Component;
 
-@Workflow(
-    idProperty       = "{triggerEventIdField}",    // field name on the trigger event that becomes the workflow ID
-    startOnEventClass = {TriggerEvent}.class,       // event that starts a new workflow instance
-    workflowNamespace = "{basePackage}.slices.{context}"
-)
-public class {SliceName}Workflow {
-
-    /**
-     * The main workflow method. Runs as a durable, resumable coroutine.
-     * ctx.awaitExecute() blocks until the step completes or fails.
-     * ctx.waitForEvent() suspends until an external event arrives.
-     */
-    public void execute(SimpleWorkflowContext ctx) {
-        var orderId = (String) ctx.workflowPayload().get("{triggerEventIdField}");
-
-        // Step 1: dispatch the first command and wait for it to complete
-        ctx.awaitExecute("step1-{commandName}",
-            payload("{field}", ctx.workflowPayload().get("{field}")).getValues(),
-            {ServiceInterface}::{methodName});
-
-        // Step 2: wait for a confirmation event before continuing
-        var confirmation = ctx.waitForEvent("step2-await{EventName}",
-            {ConfirmationEvent}.class,
-            Duration.ofMinutes(30));
-
-        if (confirmation.timeout()) {
-            ctx.fail(new RuntimeException("No {ConfirmationEvent} received within 30 minutes"));
-            return;
-        }
-
-        confirmation.await();   // blocks until event arrives (already arrived since !timeout())
-
-        // Step 3: dispatch a second command based on the confirmation
-        ctx.awaitExecute("step3-{secondCommandName}",
-            payload("{field}", confirmation.result()).getValues(),
-            {ServiceInterface}::{secondMethodName});
-    }
-}
-```
-
-### 3b — Key context API
-
-| Method | What it does |
-|---|---|
-| `ctx.awaitExecute(stepName, payload, handler)` | Dispatches a command/action and **blocks** until completion |
-| `ctx.execute(stepName, payload, handler, timeout, options)` | Dispatches **without blocking** — returns `WorkflowStepResult` immediately |
-| `ctx.waitForEvent(stepName, EventClass.class, timeout)` | **Suspends** the workflow until the event arrives or the timeout fires |
-| `ctx.awaitEvent(stepName, EventClass.class, timeout)` | Same as `waitForEvent` but also matches using an association predicate |
-| `ctx.sleep(stepName, duration)` | Durably suspends for a duration (survives restarts) |
-| `ctx.allMatch(predicate, steps...)` | Fan-in barrier: waits until all steps satisfy the predicate |
-| `ctx.anyMatch(predicate, steps...)` | Scatter-gather: waits until any step satisfies the predicate |
-| `ctx.setPayload(stepName, newPayload)` | Persists state to the durable workflow payload |
-| `ctx.workflowId()` | The workflow instance ID (derived from the trigger event) |
-| `ctx.workflowPayload()` | Current durable payload as `Map<String, Object>` |
-| `ctx.fail(exception)` | Terminates the workflow with FAILED status |
-| `ctx.cancel()` | Terminates the workflow with CANCELLED status |
-
-The `handler` argument in `awaitExecute`/`execute` is a `BiFunction<ProcessingContext, Map<String, Object>, Map<String, Object>>` —
-typically a Spring bean method reference: `MyService::doWork`.
-
-### 3c — Service handler beans
-
-Workflow step handlers are Spring beans registered in the `ProcessingContext`. For each step,
-create a Spring service bean:
-
-```java
-// File: {slicename}/{SliceName}WorkflowServices.java
 @Component
 @ConditionalOnProperty(prefix = "slices.{context}.automation", name = "{slicename}.enabled")
-public class {SliceName}WorkflowServices {
+public class {SliceName}Workflow {
 
-    private final CommandGateway commandGateway;
+    private final CommandGateway commands;
 
-    public {SliceName}WorkflowServices(CommandGateway commandGateway) {
-        this.commandGateway = commandGateway;
+    public {SliceName}Workflow(CommandGateway commands) {
+        this.commands = commands;
     }
 
-    /** Step 1: reserve/validate. Returns result map for next steps. */
-    public Map<String, Object> step1(ProcessingContext ctx, Map<String, Object> payload) {
-        var command = new {SliceName}Command(
-            (String) payload.get("{field}")
-            // map other fields
-        );
-        commandGateway.sendAndWait(command);
-        return Map.of();    // return data the next step needs, or empty map
-    }
-
-    /** Step 2: compensate step 1 on failure. */
-    public Map<String, Object> compensateStep1(ProcessingContext ctx, Map<String, Object> payload) {
-        var command = new Compensate{SliceName}Command((String) payload.get("{field}"));
-        commandGateway.sendAndWait(command);
-        return Map.of();
+    @Workflow(workflowName = "{SliceName}", workflowNamespace = "{reverse.dns.namespace}",
+              idProperty = "{triggerEventIdField}", startOnEventClass = {TriggerEvent}.class)
+    public void execute(SimpleWorkflowContext context) {
+        var id = (String) context.workflowPayload().get("{triggerEventIdField}");
+        // same-named processors from other slices: one wait/step block each, in timeline order
+        // 1. register every event wait BEFORE the command that can cause it
+        // 2. send commands inside durable steps (Steps.send / sendAndWait)
+        // 3. await the waits; branch on timeout / failure; compensate; publish the terminal event
     }
 }
 ```
 
-### 3d — Register the workflow module
-
-Add the `WorkflowModule` to the Spring configuration. **Create once per bounded context**
-(not once per slice).
-
-```java
-// File: {context}/WorkflowConfiguration.java
-@Configuration
-@ConditionalOnProperty(prefix = "slices.{context}", name = "workflows.enabled")
-public class {Context}WorkflowConfiguration {
-
-    @Bean
-    public EntityModule<?, ?> {context}WorkflowModule() {
-        return WorkflowModule
-            .usingContext(SimpleWorkflowContext.class)
-            .workflowContextFactory(c -> new SimpleWorkflowContextFactory())
-            .workflowExecutionFactory(c ->
-                new DSLAdoptingExecutionFactory<>(SimpleWorkflowContext.class))
-            .definitions(d -> d
-                // autodetected: reads @Workflow annotations from registered beans
-                .autodetected(c -> new {SliceName}Workflow(), SimpleWorkflowContext.class)
-                // add more workflows in the same chain:
-                // .autodetected(c -> new {OtherSlice}Workflow(), SimpleWorkflowContext.class)
-            );
-    }
-}
-```
+- The workflow class is a plain Spring `@Component` gated by the slice feature flag; **no hand-written `WorkflowModule` bean** under
+  Spring Boot — `axoniq-spring-boot-starter` discovers `@Workflow` methods. Confirm the workflow actually starts (see Step 6) rather
+  than assuming.
+- Commands go through the `CommandGateway` to the existing `build-state-change` command handlers; never mutate state in the workflow.
+- Which command contract to use (`Steps.send` dispatch-only vs `sendAndWait` result-aware) is decided by the slice: if an error from the
+  command must change the process, it is result-aware.
+- Return from `execute` to complete; `context.fail(e)` only for an unresolved technical failure. A compensated business rejection
+  still completes, after publishing its terminal event.
 
 ---
 
 ## Step 4: Common Patterns
 
-### Compensating transaction (saga)
-
-```java
-public void execute(SimpleWorkflowContext ctx) {
-    var id = (String) ctx.workflowPayload().get("id");
-
-    // Step 1
-    ctx.awaitExecute("reserveStock",
-        payload("id", id).getValues(),
-        services::reserveStock);
-
-    // Step 2 — compensate step 1 on failure
-    try {
-        ctx.awaitExecute("chargePayment",
-            payload("id", id, "amount", ctx.workflowPayload().get("amount")).getValues(),
-            services::charge);
-    } catch (StepFailedException e) {
-        ctx.awaitExecute("releaseStock",
-            payload("id", id).getValues(),
-            services::releaseStock);
-        ctx.fail(new RuntimeException("Payment failed: " + e.getMessage()));
-        return;
-    }
-
-    // Step 3 — compensate steps 2 and 1 on failure
-    try {
-        ctx.awaitExecute("shipOrder",
-            payload("id", id).getValues(),
-            services::shipOrder);
-    } catch (StepFailedException e) {
-        ctx.awaitExecute("refundPayment",
-            payload("id", id).getValues(),
-            services::refundPayment);
-        ctx.awaitExecute("releaseStock",
-            payload("id", id).getValues(),
-            services::releaseStock);
-        ctx.fail(new RuntimeException("Shipping failed: " + e.getMessage()));
-    }
-}
-```
-
-### Human-in-the-loop (approval with escalation)
-
-```java
-public void execute(SimpleWorkflowContext ctx) {
-    // Request approval
-    ctx.awaitExecute("requestApproval",
-        payload("approver", "team-lead", "requestId", ctx.workflowId()).getValues(),
-        services::sendApprovalRequest);
-
-    // Wait up to 3 days for a response
-    var decision = ctx.waitForEvent("awaitApproval",
-        ApprovalDecisionEvent.class,
-        Duration.ofDays(3));
-
-    if (decision.timeout()) {
-        // Escalate to department head
-        ctx.awaitExecute("escalate",
-            payload("approver", "department-head", "requestId", ctx.workflowId()).getValues(),
-            services::escalate);
-
-        decision = ctx.waitForEvent("awaitEscalatedApproval",
-            ApprovalDecisionEvent.class,
-            Duration.ofDays(1));
-
-        if (decision.timeout()) {
-            ctx.fail(new RuntimeException("No approval received after escalation"));
-            return;
-        }
-    }
-
-    decision.await();
-    // decision.result() contains the ApprovalDecisionEvent payload
-}
-```
-
-### Fan-out / Fan-in
-
-```java
-public void execute(SimpleWorkflowContext ctx) {
-    var items = (List<Map<String, Object>>) ctx.workflowPayload().get("lineItems");
-
-    // Fan-out: launch reservations concurrently
-    var reservations = items.stream()
-        .map(item -> ctx.execute(
-            "reserve-" + item.get("sku"),
-            payload("sku", item.get("sku"), "qty", item.get("quantity")).getValues(),
-            services::reserveStock,
-            Duration.ofSeconds(30),
-            defaults()))
-        .toArray(WorkflowStepResult[]::new);
-
-    // Fan-in: wait for all
-    var guard = ctx.allMatch(WorkflowStepResult::isCompleted, reservations);
-
-    if (!guard.success()) {
-        for (var step : guard.unmatched()) {
-            if (!step.isCompleted()) step.cancel("Partial failure");
-        }
-        ctx.fail(new RuntimeException("Not all items could be reserved"));
-    }
-}
-```
-
-### Lifecycle listeners
-
-```java
-@Workflow(idProperty = "id", startOnEventClass = OrderPlaced.class,
-          workflowNamespace = "{basePackage}.slices.{context}")
-public class {SliceName}Workflow {
-
-    public void execute(SimpleWorkflowContext ctx) { /* ... */ }
-
-    @OnSuccess
-    public void onSuccess(SimpleWorkflowContext ctx) {
-        log.info("Workflow {} completed for id={}", ctx.workflowId(),
-                 ctx.workflowPayload().get("id"));
-    }
-
-    @OnFailure
-    public void onFailure(SimpleWorkflowContext ctx) {
-        log.error("Workflow {} failed for id={}", ctx.workflowId(),
-                  ctx.workflowPayload().get("id"));
-    }
-
-    @OnTimeout
-    public void onTimeout(SimpleWorkflowContext ctx) {
-        log.warn("Workflow {} timed out", ctx.workflowId());
-    }
-}
-```
+All of these are covered, with the exact API, in [references/workflow-patterns.md](references/workflow-patterns.md): human
+approval/timeout/escalation (wait with timeout, staged waits), compensation (catch `StepTimedOutException` before
+`StepFailedException`), fan-out/fan-in (`execute` + join on `WorkflowStepResult::isCompleted`), delays
+(`awaitSleep`), retries (`maxRetries(n)` = n retries after the first attempt).
 
 ---
 
 ## Step 5: Feature Flag Configuration
 
-Follow the same pattern as other slices:
-
 `src/main/resources/application.properties`:
 ```properties
 slices.{context}.automation.{slicename}.enabled=true
-slices.{context}.workflows.enabled=true
 ```
 
 `src/test/resources/application.properties`:
 ```properties
 slices.{context}.automation.{slicename}.enabled=false
-slices.{context}.workflows.enabled=false
 ```
 
-`META-INF/additional-spring-configuration-metadata.json` — add entries for the new properties.
+`META-INF/additional-spring-configuration-metadata.json` — add the property.
 
 See [references/feature-flag-patterns.md](references/feature-flag-patterns.md) for the full pattern.
 
@@ -388,93 +193,13 @@ See [references/feature-flag-patterns.md](references/feature-flag-patterns.md) f
 
 ## Step 6: Tests
 
-### Unit tests — test `execute()` logic with mock services
+`WorkflowTestFixture` (no Spring context), exactly as in [assets/java/OrderWorkflowTest.java](assets/java/OrderWorkflowTest.java) and
+[assets/java/RecordingCommandGateway.java](assets/java/RecordingCommandGateway.java). Rules and the list of branches to cover:
+[references/workflow-testing.md](references/workflow-testing.md). The fixture does not run command steps by itself — release each one
+explicitly with `.execute("<stepName>")`, and wait for a wait to be registered before advancing time.
 
-For simple workflows, stub the service methods and verify step sequencing:
-
-```java
-class {SliceName}WorkflowTest {
-
-    private {SliceName}Workflow workflow;
-    private {SliceName}WorkflowServices services;
-    private SimpleWorkflowContext ctx;
-
-    @BeforeEach
-    void setUp() {
-        services = mock({SliceName}WorkflowServices.class);
-        workflow  = new {SliceName}Workflow(services);
-        ctx       = mock(SimpleWorkflowContext.class);
-        // stub workflowId() and workflowPayload() as needed
-        when(ctx.workflowId()).thenReturn("wf-1");
-        when(ctx.workflowPayload()).thenReturn(Map.of("id", "entity-1"));
-    }
-
-    @Test
-    @DisplayName("given trigger event, workflow executes all steps in order")
-    void happyPath() {
-        // stub ctx.awaitExecute to return normally
-        doNothing().when(ctx).awaitExecute(anyString(), anyMap(), any());
-        var mockEvent = mock(WorkflowStepResult.class);
-        when(ctx.waitForEvent(anyString(), any(), any())).thenReturn(mockEvent);
-        when(mockEvent.timeout()).thenReturn(false);
-
-        workflow.execute(ctx);
-
-        // verify steps were called in order
-        var inOrder = inOrder(ctx);
-        inOrder.verify(ctx).awaitExecute(eq("step1-{commandName}"), anyMap(), any());
-        inOrder.verify(ctx).waitForEvent(eq("step2-await{EventName}"), any(), any());
-        inOrder.verify(ctx).awaitExecute(eq("step3-{secondCommandName}"), anyMap(), any());
-    }
-
-    @Test
-    @DisplayName("given step2 times out, workflow fails")
-    void timeoutFails() {
-        doNothing().when(ctx).awaitExecute(anyString(), anyMap(), any());
-        var timedOut = mock(WorkflowStepResult.class);
-        when(ctx.waitForEvent(anyString(), any(), any())).thenReturn(timedOut);
-        when(timedOut.timeout()).thenReturn(true);
-
-        workflow.execute(ctx);
-
-        verify(ctx).fail(any(RuntimeException.class));
-    }
-
-    @Test
-    @DisplayName("given step2 payment fails, step1 stock is released")
-    void compensatesOnPaymentFailure() {
-        doNothing().when(ctx).awaitExecute(eq("reserveStock"), anyMap(), any());
-        doThrow(new StepFailedException("insufficient funds"))
-            .when(ctx).awaitExecute(eq("chargePayment"), anyMap(), any());
-
-        workflow.execute(ctx);
-
-        var inOrder = inOrder(ctx);
-        inOrder.verify(ctx).awaitExecute(eq("chargePayment"), anyMap(), any());
-        inOrder.verify(ctx).awaitExecute(eq("releaseStock"), anyMap(), any());
-        inOrder.verify(ctx).fail(any());
-    }
-}
-```
-
-### Integration tests — `AbstractDeclarativeTestBase`
-
-For full integration tests, use AF5's `AbstractDeclarativeTestBase` (requires the workflow module
-on the test classpath):
-
-```java
-@SpringBootTest
-@TestPropertySource(properties = {
-    "slices.{context}.workflows.enabled=true",
-    "slices.{context}.automation.{slicename}.enabled=true"
-})
-class {SliceName}WorkflowIntegrationTest extends AbstractDeclarativeTestBase {
-
-    // AbstractDeclarativeTestBase provides fixture methods for
-    // publishing events and asserting workflow state/steps.
-    // Refer to the Axon Framework test documentation for the full API.
-}
-```
+The fixture does not prove Spring wiring or durability: after the build, start the app and confirm the workflow starts on its trigger
+event. If you could not, say so in the report.
 
 ---
 
@@ -482,20 +207,20 @@ class {SliceName}WorkflowIntegrationTest extends AbstractDeclarativeTestBase {
 
 ```
 src/main/java/.../slices/{context}/automation/{slicename}/
-├── {SliceName}Workflow.java              ← @Workflow class (execute method + lifecycle listeners)
-└── {SliceName}WorkflowServices.java      ← @Component step handlers (Spring beans)
-
-src/main/java/.../slices/{context}/
-└── WorkflowConfiguration.java            ← WorkflowModule bean (one per context, create if missing)
+├── {SliceName}Workflow.java        ← @Component with the @Workflow method
+└── Steps.java                      ← only if the slice needs the dispatch helpers (copy used methods from assets/java/Steps.java)
 
 src/test/java/.../slices/{context}/automation/{slicename}/
-└── {SliceName}WorkflowTest.java          ← unit tests with mocked context + services
+├── {SliceName}WorkflowTest.java    ← WorkflowTestFixture tests
+└── RecordingCommandGateway.java    ← test helper (from assets/java/)
 ```
 
 ---
 
 ## References
 
-- [Axon Workflow API](references/axon-workflow-api.md) — Annotations, context API, configuration, patterns
+- [Workflow API](references/workflow-api.md) — dependencies, packages, annotation, context calls (verified on 5.4.0)
+- [Workflow patterns](references/workflow-patterns.md) — rules for waits, determinism, timers, retries, compensation (Axoniq)
+- [Workflow testing](references/workflow-testing.md) — fixture usage and branches to cover (Axoniq)
 - [Feature Flag Patterns](references/feature-flag-patterns.md) — `@ConditionalOnProperty` and alternatives
-- [Axon Workflow documentation](https://docs.axoniq.io/axon-framework-reference/development/workflows/) — Official reference (Preview)
+- [Axoniq workflow documentation](https://docs.axoniq.io/axon-framework-reference/development/workflows/)

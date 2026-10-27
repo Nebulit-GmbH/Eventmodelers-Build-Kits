@@ -26,6 +26,8 @@ There are two kinds:
 - **With read model**: Needs a private read model to look up data required for command construction
   (e.g., iterate over all entities matching a category)
 
+> **Axoniq reference:** for event handler automations, processors/sequencing, `CommandDispatcher`/`CommandGateway` and retries, read the matching guide from the `axoniq-app-dev` skill (`events/handling-projections.md`, `events/processors.md` and `commands/dispatching.md`) before guessing at an API. This skill is verified against Axon Framework 5.4.0 and wins where the two disagree.
+
 ## Step 0: Discover Target Project Conventions
 
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a `description` field. Use these as implementation hints. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get IDs first via GET on same path).
