@@ -137,6 +137,19 @@ Use skills in Claude Code with `/skill-name`:
 
 Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, `/update-slice-status`, and `/request-feedback` have no stack-specific content and install into every stack from `shared/skills/` instead.
 
+## `init --vibe-coding`: keep the model in step with hand-written code
+
+You change the code (by hand or with Claude Code); the event model on the board follows. Changes are detected as drift and translated onto the board, so the model keeps describing what the code does. No build kit needed, and it works one module at a time in a large code base.
+
+```bash
+npx @eventmodelers/cli init --vibe-coding   # in a git repo: .vibe/, the vibe skills, a CLAUDE.md block
+claude
+> /analyze-code-base                        # you run it — an interview; pick ONE module (chapter) to start
+> /start-vibe-session                       # at the start of every session
+```
+
+Only analysed modules are governed. Before the agent changes code it runs `vibe check`: a file is `governed` (analysed, unchanged), `drifted` (changed and never translated — it asks whether to translate first), `uncovered` (no analysed chapter — it asks: analyse first / continue without the model this time / never ask for this folder) or `free` (not modeled). After a change in a governed module, `vibe-translate` writes the diff onto the board and moves the baseline. The analysis log is `.vibe/baseline/<chapter>.json`; the board's `Legacy Sources` note is rendered from it. Nothing is written into your source code. Details: [`extensions/vibe/README.md`](extensions/vibe/README.md).
+
 ## `scaffold`: a runnable app from your board
 
 `scaffold <dir>` reads the board and generates an app skeleton around the build kits, so slice building starts from an app that already runs. `--type` picks what gets installed and generated:

@@ -23,6 +23,10 @@ Then invoke `connect` (if not already connected). Prefer `mcp__eventmodelers__*`
 
 ## Step 0b — Was this analysed before? Only read what changed
 
+> **Vibe coding.** If the code root or a parent holds a `.vibe/` directory (`init --vibe-coding`), the analysis log is a **file**, not the board note: `.vibe/baseline/<chapter>.json`, one per chapter. It — not the `Legacy Sources` note — is where Step 0b reads the baseline from, and where every pass below writes. Without `.vibe/` everything in this skill works as written, the board note being the log.
+> - **Read**: `npx @eventmodelers/cli vibe baseline show --drift` prints every chapter's last row, folders, and the files that are not what that row says (committed since, or edited and not synced). A chapter with no drift is up to date; for one with drift re-analyse only those files. No file for a chapter = never analysed here — analyse it fully, whatever the board's note says.
+> - **Write**: see *The analysis log* — the file first, the note rendered from it.
+
 Read the board's chapters and look for their `Legacy Sources — <Chapter>` notes (column 0 of each chapter, see *The analysis log*). Every chapter keeps its own history, so check each one separately: take the commit of the **last row** of its *Analysis history*. If the code root is a git repository (`git rev-parse --is-inside-work-tree`):
 
 ```bash
@@ -169,6 +173,10 @@ Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`,
 **References must be precise and resolvable.** Paths are relative to the analysed code root, with a line number where one exists: `src/main/java/org/acme/visit/VisitController.java:57`, plus the class and method (`VisitController#processNewVisitForm`), table, endpoint (`POST /owners/{id}/pets/{petId}/visits/new`), test (`VisitControllerTests#testProcessNewVisitFormSuccess`) or template (`templates/pets/createOrUpdateVisitForm.html`). Use folders and packages for anything bigger than one class. Never "the visit code". A line number is valid for the commit of the *Analysis history* row that wrote it; when a later pass re-reads a changed file, it updates the references into that file.
 
 ### The analysis log — column 0 of every chapter
+
+> **With `.vibe/` present, the file drives the note — never the reverse.** At the end of each pass, record it first:
+> `npx @eventmodelers/cli vibe baseline write --chapter "<Chapter>" --pass "<1 — flow>" --scope "<folders/files>" --result "<what came of it>" --json '{"depth":1,"folders":{"api":[{"path":"src/visit/","key":"VisitController"}],"persistence":[…],"tests":[…],"ui":[…]},"notModeled":["src/config/"],"decisions":[{"decision":"…","why":"…","source":"`VisitController.java:57`","confirmedBy":"code"}],"runningUi":"…"}'`
+> (only the fields that changed; the CLI appends the history row with the commit and the changed files' hashes itself — you do not compute them). Then render the note from the file and put the result into the `Legacy Sources — <Chapter>` node's `meta.description`: `npx @eventmodelers/cli vibe baseline render --chapter "<Chapter>"`. Never edit the note's tables by hand and never parse them back. The decision rows in the **column notes** stay on the board as described below — they are for readers, not for the gate. A chapter at Pass 0 is written with `depth: 0` and no folders; the first detailed pass sets `depth` ≥ 1 and the folders, which is what makes its code governed.
 
 Column 0 of every chapter holds **only** the chapter note, titled `Legacy Sources — <Chapter Name>`, in the **Decisions** lane — no slice, no element, no screen, in any lane. It records when the chapter was analysed, against which commit, how deep, where the flow lives in the code, and the decisions that affect the whole chapter (where it starts and ends, its order relative to other chapters, what was left out). The next run starts from it (*Step 0b*).
 

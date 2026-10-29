@@ -21,6 +21,7 @@ import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { registerPrototype, initPrototype } from './extensions/prototype/index.js';
+import { registerVibe, initVibe } from './extensions/vibe/index.js';
 import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
@@ -3544,8 +3545,11 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
 // A prototype folder (`init --prototype`) has no kit: `re-init` there refreshes the prototype's skills and rules instead.
 const isPrototypeFolder = (dir) => existsSync(join(dir, '.prototype', 'state.json'));
 
+// `vibe …` runs from anywhere under the project's one .vibe/ — often a nested module with no kit of its own (it finds .vibe/ itself).
+const underVibe = (command) => { for (let c = command; c; c = c.parent) if (c.name() === 'vibe') return true; return false; };
+
 program.hook('preAction', (_thisCommand, actionCommand) => {
-  if (NO_INIT_REQUIRED.has(actionCommand.name())) return;
+  if (NO_INIT_REQUIRED.has(actionCommand.name()) || underVibe(actionCommand)) return;
   if (actionCommand.name() === 're-init' && isPrototypeFolder(process.cwd())) return;
   if (findInstalledKitDir(process.cwd())) return;
 
@@ -3616,12 +3620,14 @@ credentialFlags(program
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
   .option('--prototype', 'Install the local prototype skills (local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback, connect) and ask for the board credentials — then run `claude` and /local-prototype. See extensions/prototype/README.md')
   .option('--empty', 'With --prototype: create an empty prototype — one "Hello World" slice with its page — instead of fetching a model from the board. No credentials and no board needed; connect one later. An existing local model is left alone.')
+  .option('--vibe-coding', 'Set up vibe coding: you change the code (by hand or with Claude Code), and drift detection translates the changes into the event model on the board. No build kit needed. Installs .vibe/, the vibe skills and the modeling skills they use; run `claude`, then /analyze-code-base for the module to start with and /start-vibe-session at the start of a session. See extensions/vibe/README.md')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
   .option(...AGENT_NAME_OPTION)
   .option(...HANDOVER_OPTION))
   .action(async (opts, command) => {
     const globalOpts = command.optsWithGlobals();
     if (opts.empty && !opts.prototype) { console.error('❌ --empty goes with --prototype: `eventmodelers init --prototype --empty`.'); process.exit(1); }
+    if (opts.vibeCoding) return initVibe();
     if (opts.prototype) return initPrototype({ loadEffectiveConfig, findInstalledKitDir, configureCredentials, prompt, registerMcp: (dir, cfg) => { ensureMcpRegistered(dir, cfg.baseUrl || DEFAULT_BASE_URL); ensureEnvToken(dir, cfg.token); ensureMcpEnabled(dir); } }, { config: globalOpts.config, print: globalOpts.print, force: opts.force, empty: opts.empty });
 
     if (opts.modeling || opts.buildKit) {
@@ -4455,6 +4461,7 @@ program
   });
 
 const prototypeApi = registerPrototype(program, { loadEffectiveConfig, findInstalledKitDir, configureCredentials, noInitRequired: NO_INIT_REQUIRED });
+registerVibe(program);
 
 const EXPORT_TYPES = ['eventcatalog', 'json'];
 
