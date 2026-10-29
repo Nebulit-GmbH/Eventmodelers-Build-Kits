@@ -13,6 +13,12 @@ const HOST_DIST = join(HERE, 'host', 'dist'); // the board app's player, built b
 const json = (res, status, body) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(body)); };
 const readBody = (req) => new Promise((ok, fail) => { let b = ''; req.on('data', (c) => { b += c; if (b.length > 5e6) req.destroy(); }); req.on('end', () => ok(b)); req.on('error', fail); });
 
+// The server is for the browser on this machine only: it answers to a loopback Host (against DNS rebinding) and, for a POST, to a
+// loopback Origin or none at all (against any other web page the user has open — a non-browser client sends no Origin).
+const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
+const loopbackHost = (host, port) => LOOPBACK.some((h) => host === `${h}:${port}`);
+const loopbackOrigin = (origin, port) => LOOPBACK.some((h) => origin === `http://${h}:${port}`);
+
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html; charset=utf-8' };
 
 export async function serve({ cwd, port = 4173, studio = null, runtime = () => ({ sync: false, agent: false, busy: false }) }) {
@@ -27,6 +33,8 @@ export async function serve({ cwd, port = 4173, studio = null, runtime = () => (
     }
   });
   const handle = (req, res) => {
+    const refused = !loopbackHost(req.headers.host, port) || (req.method !== 'GET' && req.method !== 'HEAD' && req.headers.origin && !loopbackOrigin(req.headers.origin, port));
+    if (refused) return json(res, 403, { error: 'Forbidden: the prototype server only answers to localhost' });
     const path = decodeURIComponent((req.url || '/').split('?')[0]);
     if (path === '/__reload') {
       res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
@@ -78,7 +86,7 @@ export async function serve({ cwd, port = 4173, studio = null, runtime = () => (
   };
   for (let attempt = 0; ; attempt++) {
     try {
-      await new Promise((ok, fail) => server.once('error', fail).listen(port + attempt, ok));
+      await new Promise((ok, fail) => server.once('error', fail).listen(port + attempt, '127.0.0.1', ok));
       port += attempt;
       break;
     } catch (err) {
