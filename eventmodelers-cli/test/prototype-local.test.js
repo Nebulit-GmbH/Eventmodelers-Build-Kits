@@ -10,6 +10,7 @@ import { diffSlice, hasLocalChanges as hasLocalChangesOf, pending, runSync } fro
 import { claim, control, detail, markProcessed, markTranslated, record, stateOf } from '../extensions/prototype/control.js';
 import { addChange, listChanges } from '../extensions/prototype/changes.js';
 import { runChanges, submitApplied } from '../extensions/prototype/pipeline.js';
+import { playLink, share } from '../extensions/prototype/share.js';
 import { createEmptyPrototype } from '../extensions/prototype/empty.js';
 import { BOARD_WRITE_TOOLS, denyBoardWrites, refetchSafely } from '../extensions/prototype/index.js';
 import { screensToDesign, syncScreens } from '../extensions/prototype/screens-sync.js';
@@ -508,4 +509,52 @@ test('walkthrough: one step per slice that differs from the board', (t) => {
   assert.ok(w.steps[0].notSynced.some((c) => c.includes('renames')));
   assert.match(walkthroughHtml({ ...w, studio: 'https://x/?board=1' }), /Open the board/);
   rmSync(cwd, { recursive: true, force: true });
+});
+
+// A project with a page assembled from a block per slice, as after the build.
+function builtProject(t) {
+  const { cwd, p } = project(t);
+  for (const s of status(cwd).slices) {
+    writeFileSync(join(p.blocks, `${s.id}.html`), `<script type="text/plain" data-em-slice="${s.id}" data-em-title="${s.title}" data-em-hash="${s.hash}">\nEMRuntime.defineSlice({});\n</script>\n`);
+  }
+  assemble(cwd);
+  return { cwd, p };
+}
+const SHARE_CFG = { baseUrl: 'https://api.test', organizationId: 'org1', boardId: 'board1', token: 'tok' };
+
+test('share posts the assembled page to the context\'s prototype endpoint, the way the platform skill\'s upload does', async (t) => {
+  const { cwd, p } = builtProject(t);
+  const calls = [];
+  const fetchImpl = async (url, init) => { calls.push({ url, init }); return { ok: true, status: 201, text: async () => JSON.stringify({ contextName: 'Understanding Eventsourcing', bytes: 10, gzippedBytes: 5, removed: [] }) }; };
+  const r = await share(cwd, SHARE_CFG, { fetchImpl, contexts: async () => [{ id: 'ctx-1', title: 'Understanding Eventsourcing', type: 'CHAPTER' }] });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://api.test/api/org/org1/boards/board1/prototype/ctx-1');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.headers['content-type'], 'text/html; charset=utf-8');
+  assert.deepEqual(calls[0].init.body, readFileSync(p.page));
+  assert.deepEqual(r.warnings, []);
+  assert.equal(playLink('https://app.test', SHARE_CFG, r.contextId, r.context), 'https://app.test/play?org=org1&board=board1&chapter=ctx-1&title=Understanding+Eventsourcing');
+});
+
+test('share refuses a missing page and a page behind the model, and warns about edits that are not on the board', async (t) => {
+  const { cwd, p } = project(t);
+  const never = async () => { throw new Error('must not upload'); };
+  await assert.rejects(share(cwd, SHARE_CFG, { fetchImpl: never }), /no page yet/);
+  for (const s of status(cwd).slices) writeFileSync(join(p.blocks, `${s.id}.html`), `<script type="text/plain" data-em-slice="${s.id}" data-em-title="${s.title}" data-em-hash="${s.hash}">\n</script>\n`);
+  assemble(cwd);
+  writeJson(p.state, { context: 'Understanding Eventsourcing', contextId: 'ctx-1' });
+  editSlice(p, 'Change Price', (s) => { s.description = 'edited'; });
+  await assert.rejects(share(cwd, SHARE_CFG, { fetchImpl: never }), /behind the model — 1 slice.*Change Price/);
+});
+
+test('share warns when the model has edits the board does not, and reports a refusal', async (t) => {
+  const { cwd, p } = builtProject(t);
+  writeJson(p.state, { context: 'Understanding Eventsourcing', contextId: 'ctx-1' });
+  const refuse = async () => ({ ok: false, status: 403, text: async () => 'no license' });
+  await assert.rejects(share(cwd, SHARE_CFG, { fetchImpl: refuse }), /refused the upload \(HTTP 403\): no license/);
+  const ok = async () => ({ ok: true, status: 201, text: async () => JSON.stringify({ contextName: 'x', bytes: 1, gzippedBytes: 1, removed: [] }) });
+  assert.deepEqual((await share(cwd, SHARE_CFG, { fetchImpl: ok })).warnings, []);
+  // Without a baseline every slice counts as not yet on the board.
+  rmSync(p.baseline, { recursive: true, force: true });
+  assert.match((await share(cwd, SHARE_CFG, { fetchImpl: ok })).warnings[0], /not synced/);
 });

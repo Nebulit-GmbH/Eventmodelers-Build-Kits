@@ -17,6 +17,7 @@ import { addChange } from './changes.js';
 import { listTools } from './mcp.js';
 import { runChanges, submitApplied } from './pipeline.js';
 import { hasLocalChanges, runSync } from './sync.js';
+import { playLink, share } from './share.js';
 import { buildWalkthrough, walkthroughText } from './walkthrough.js';
 import { DIR, editedScreens, hasScreenBaseline, loadScreens, loadSlices, paths, readJson, snapshotBaseline, snapshotScreens, writeJson, writeScreens } from './state.js';
 
@@ -336,7 +337,7 @@ async function fetchScreens(cwd, cfg, ids) {
 }
 
 export function registerPrototype(program, deps) {
-  for (const name of ['prototype', 'contexts', 'fetch', 'sync', 'assemble', 'remove', 'events', 'claim', 'processed', 'changes', 'add', 'translated', 'run', 'submit', 'board', 'tools']) deps.noInitRequired.add(name); // `status` already is
+  for (const name of ['prototype', 'contexts', 'fetch', 'sync', 'assemble', 'remove', 'events', 'claim', 'processed', 'changes', 'add', 'translated', 'run', 'submit', 'board', 'tools', 'share']) deps.noInitRequired.add(name); // `status` already is
 
   // The board in EM Studio, for the player's "Jump to Board" link: the board of this folder's config (none: no link — an empty prototype has no board).
   const studioUrl = (deps, cwd, command) => {
@@ -443,7 +444,7 @@ export function registerPrototype(program, deps) {
 
   const proto = program
     .command('prototype')
-    .description('Serve and watch the local prototype in this folder (set up with `init --prototype`, fetched by the /local-prototype skill). Subcommands: contexts, fetch, sync, status, assemble, events, remove')
+    .description('Serve and watch the local prototype in this folder (set up with `init --prototype`, fetched by the /local-prototype skill). Subcommands: contexts, fetch, sync, share, status, assemble, events, remove')
     .option('--port <port>', 'Port to serve on (the next free one is used when it is taken)', (v) => parseInt(v, 10), 4173)
     .option('--sync', 'Write model changes back to the board automatically, a moment after the files settle (retried every 30s until they land)')
     .action(runPrototype);
@@ -525,6 +526,23 @@ export function registerPrototype(program, deps) {
         if (todo.length && !opts.yes && !(await askYesNo(`\nExecute ${todo.length} change${todo.length === 1 ? '' : 's'} against the board?`, false))) return;
         if (todo.length) await runChanges(cwd, cfg, { toBoard: true, log: console.log }); // one ordered pass: pending ones executed, applied ones sent
         await runSync({ cwd, cfg, yes: opts.yes || todo.length > 0 });
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+  proto.command('share').description('Store the page on the platform, for the context it was fetched from — what the board\'s ▶ button plays, the same as the platform prototype skill\'s upload. Prints the link; the platform sanitizes the page')
+    .action(async (_, command) => {
+      const cwd = process.cwd();
+      if (!existsSync(paths(cwd).state)) { console.error('❌ No prototype in this folder.'); process.exit(1); }
+      try {
+        const { cfg } = await credentials(command);
+        const r = await share(cwd, cfg, { contexts: listContexts });
+        for (const w of r.warnings) console.log(`⚠ ${w}`);
+        console.log(`✅ Stored "${r.stored.contextName}" (${r.stored.bytes} bytes, ${r.stored.gzippedBytes} gzipped)`);
+        if (r.stored.removed.length) console.log(`   The platform removed ${r.stored.removed.length} thing(s) from the page:\n     ${r.stored.removed.join('\n     ')}`);
+        console.log(`   Play it: ${playLink(APP, cfg, r.contextId, r.context)}  (needs a login with access to the board)`);
       } catch (err) {
         console.error(`❌ ${err.message}`);
         process.exit(1);

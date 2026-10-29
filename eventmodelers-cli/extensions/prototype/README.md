@@ -8,6 +8,7 @@ claude                                              # then, in Claude Code: /loc
 eventmodelers prototype                            # serve and watch (/local-prototype only builds; run this, or `eventmodelers run --prototype`, yourself)
 eventmodelers prototype fetch --context "Orders"    # fetch one context (the skill does this when there is no local model)
 eventmodelers prototype sync [--dry-run] [--yes]    # write pending changes back to the board, on request
+eventmodelers prototype share                         # store the page on the platform for its context — what the board's ▶ button plays, same as the platform prototype skill's upload
 eventmodelers prototype remove [--discard]          # delete .prototype/, the skills and the CLAUDE.md block (never .slices/)
 ```
 
