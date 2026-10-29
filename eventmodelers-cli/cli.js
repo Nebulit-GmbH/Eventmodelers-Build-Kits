@@ -1070,6 +1070,11 @@ async function installStack(stackKey, stackCfg, options = {}) {
     const sharedSkills = join(__dirname, 'shared', 'skills');
     const isModelingKit = stackKey === MODELING_KIT.key;
 
+    if (isPrototypeFolder(targetDir)) {
+      console.error(`❌ ${targetDir} is a prototype folder (\`init --prototype\`). A prototype lives in a folder of its own — install the kit in another directory.`);
+      process.exit(1);
+    }
+
     if (!existsSync(templatesSource)) {
       console.error('❌ Templates directory not found at:', templatesSource);
       process.exit(1);

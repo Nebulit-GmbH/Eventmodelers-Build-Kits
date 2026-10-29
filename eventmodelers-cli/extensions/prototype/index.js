@@ -4,7 +4,7 @@
 // `eventmodelers prototype remove` cleans a project first. Project state lives in .prototype/.
 import { createInterface } from 'node:readline/promises';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FetchAuthError, runFetch } from '../../lib/fetch.js';
 import { SKILL_SRC, VENDOR_FILES, assemble, plan, status } from './local-build.js';
@@ -217,6 +217,12 @@ async function pickContext(contexts) {
 /** `init --prototype`, like `init --modeling`: install the skills, ask for the board credentials. Claude is started by the user. */
 export async function initPrototype(deps, { cwd = process.cwd(), config, print, force, empty = false, refresh = false } = {}) {
   sharedPrompt = deps.prompt || null;
+  // A prototype gets a folder of its own: it writes its rules into this folder's CLAUDE.md, which a build or modeling kit would share.
+  const kitDir = !refresh && deps.findInstalledKitDir(cwd);
+  if (kitDir) {
+    console.error(`❌ This folder already has a kit (${basename(kitDir)}/). A prototype needs a folder of its own — run \`eventmodelers init --prototype\` in an empty directory.`);
+    process.exit(1);
+  }
   if (refresh && !force) {
     // `re-init` in a prototype folder: the skills, the CLAUDE.md block and the page libraries from this CLI version — no questions, the model and
     // .prototype/ untouched, credentials as they are (a folder without a board stays without one; --force asks for them again).
