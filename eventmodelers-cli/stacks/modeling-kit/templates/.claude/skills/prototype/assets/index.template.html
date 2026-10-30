@@ -632,6 +632,20 @@ globalThis.emMount = () => {
     else if (d.type === 'view') rt.viewAsOf(typeof d.position === 'number' ? d.position : null);
     else if (d.type === 'screen' && navigateTo) navigateTo(String(d.title));
   });
+  // A question is about to be shown (the player's feedback layer announces it with this DOM event): put the prototype in the state the question
+  // asks about — the event log becomes the `given` events of the model's scenario it names (setup.spec: its title or id) or of the inline ones
+  // (setup.given), as ▶ in the specs panel does — and show its screen.
+  document.addEventListener('em-question', (e) => {
+    const q = EMRuntime.questions().find((x) => x.id === e.detail?.id);
+    if (!q) return;
+    if (q.setup) {
+      const spec = q.setup.spec ? (Domain.specs || []).find((x) => x.id === q.setup.spec || x.title === q.setup.spec) : null;
+      const given = spec ? spec.given || [] : Array.isArray(q.setup.given) ? q.setup.given.filter((x) => x && x.type) : [];
+      const at = new Date().toISOString();
+      rt.importLog(given.map((x) => ({ id: EMRuntime.uuid(), type: x.type, data: x.data || {}, metadata: { at, scenario: spec ? spec.title : q.id } })));
+    }
+    if (q.screen && navigateTo && q.screen !== document.body.dataset.emScreen) navigateTo(q.screen);
+  });
   // Deferred a tick: the recorder announces a click before the page has handled it, and a synchronous re-render in the middle of
   // the event would reset a controlled checkbox before React reads it.
   document.addEventListener('em-interaction', (e) => {

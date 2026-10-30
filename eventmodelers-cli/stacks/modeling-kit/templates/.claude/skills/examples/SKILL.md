@@ -11,6 +11,8 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 You are adding or improving example data on an eventmodelers element. You find the element, read all linked elements for context, then generate realistic and consistent example values for every field that is missing one or has a weak example.
 
+> **Fast path:** when the request names the elements and just asks to fix/add examples on them, read only those nodes (`get_nodes { nodeIds, projection: "fields" }`), write all values in one `submit_node_events`, verify once. Don't walk whole chains, load `eventmodeling-core-rules`, or re-run `connect` when already connected. Use linked elements (Step 3) only for the values needed to stay consistent.
+
 ---
 
 ## Step 1 — Parse arguments

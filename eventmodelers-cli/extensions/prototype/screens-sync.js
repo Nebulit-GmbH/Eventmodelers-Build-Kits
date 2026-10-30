@@ -1,7 +1,7 @@
 // Screens go to the board too: an HTML screen's pages are the `meta.pages` of its node, written like a node's fields — one node:changed event.
 // A screen edited here (state.js: editedScreens) is sent unless the board changed its pages since the fetch; never forced.
 import { randomUUID } from 'node:crypto';
-import { editedScreens, loadScreens, loadSlices, baselinePagesHash, pagesHashOf, paths, snapshotScreen } from './state.js';
+import { editedScreens, loadScreens, baselinePagesHash, pagesHashOf, paths, snapshotScreen } from './state.js';
 
 const apiOf = (cfg) => `${(cfg.baseUrl || 'https://api.eventmodelers.ai').replace(/\/$/, '')}/api/org/${cfg.organizationId}/boards/${cfg.boardId}`;
 const headersOf = (cfg) => ({ 'x-token': cfg.token, 'x-user-id': 'prototype-sync', 'content-type': 'application/json', ...(cfg.agentId ? { 'x-agent-id': cfg.agentId } : {}) });
@@ -52,26 +52,6 @@ export async function syncScreens(cwd, cfg, { log = () => {}, fetchImpl = fetch 
     try { r = await submitScreenPages(cwd, cfg, op, fetchImpl); } catch (err) { r = { status: 'failed', note: err.message }; }
     log(`  ${r.status === 'submitted' || r.status === 'already' ? 'synced   ' : r.status === 'conflict' ? 'conflict ' : 'skipped  '} HTML_SCREEN "${op.title}": pages — ${r.status}${r.note ? ` (${r.note})` : ''}`);
     out.push({ nodeId: op.nodeId, title: op.title, ...r });
-  }
-  return out;
-}
-
-/**
- * The HTML screens that exist on the board but have no design yet — "Untitled screen — design pending": a slice that was created by a tool call
- * (create_slice) brings its screen node without pages. Returns [{ sliceTitle, sliceType, screenId, title, fields, connectedTo }] for whoever designs them.
- */
-export function screensToDesign(cwd) {
-  const p = paths(cwd);
-  const screens = loadScreens(p);
-  const out = [];
-  for (const { slice } of loadSlices(p)) {
-    for (const node of slice.screens || []) {
-      const id = node.linkedId || node.id;
-      const rec = screens[id];
-      if (!rec || (rec.type || node.type) !== 'HTML_SCREEN') continue;
-      const blank = !Array.isArray(rec.pages) || !rec.pages.length || rec.pages.every((pg) => !String(typeof pg === 'string' ? pg : pg.html || '').trim());
-      if (blank) out.push({ sliceTitle: slice.title, sliceType: slice.sliceType, screenId: id, title: node.title || rec.title || '', fields: (node.fields || []).map((f) => f.name), connectedTo: (node.dependencies || []).map((d) => `${d.type === 'OUTBOUND' ? '→' : '←'} ${d.title} (${d.elementType})`) });
-    }
   }
   return out;
 }

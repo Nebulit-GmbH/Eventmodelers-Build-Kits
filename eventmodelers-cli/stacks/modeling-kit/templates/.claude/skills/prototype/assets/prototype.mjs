@@ -175,6 +175,7 @@ async function status() {
   for (const r of removed) console.log(`removed   ${''.padEnd(16)}  ${r.id}  ${r.title}`);
   const todo = slices.filter((s) => s.state !== 'unchanged').length;
   console.log(`\n${todo} of ${slices.length} slices to build, ${removed.length} removed (${{ platform: 'compared with the stored prototype', local: 'compared with the local page', none: 'no prototype yet' }[baseline]}) — see ${join(WORK, 'status.json')}`);
+  console.log(`Even with 0 slices to build, this run still writes ${join(WORK, 'questions.json')} (SKILL.md Step 5b) and uploads — "nothing changed" does not skip the questions.`);
 }
 
 const CSS = {
@@ -204,13 +205,30 @@ function assemble() {
   if (problems.length) fail('Not assembled:\n  ' + problems.join('\n  '));
 
   const escape = (s) => s.replace(/[&"<>]/g, (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' })[c]);
+  // The questions are written afresh on every run (.work/questions.json) and never carried over from the stored page: a page without the file asks none.
+  const questionsFile = join(WORK, 'questions.json');
+  let questions = [];
+  if (existsSync(questionsFile)) {
+    try { questions = JSON.parse(readFileSync(questionsFile, 'utf8')); } catch (e) { fail(`${questionsFile} is not valid JSON: ${e.message}`); }
+    if (!Array.isArray(questions)) fail(`${questionsFile} must be an array of { id, screen, ref, category, text }`);
+    const ids = new Set();
+    const bad = questions.map((q, i) => (!q || ![q.id, q.screen, q.ref, q.text].every((v) => typeof v === 'string' && v.trim()) ? `#${i}: needs id, screen, ref and text` : ids.has(q.id) ? `#${i}: duplicate id ${q.id}` : (ids.add(q.id), ''))).filter(Boolean);
+    const blockText = readdirSync(BLOCKS).map((f) => readFileSync(join(BLOCKS, f), 'utf8')).join('\n');
+    questions.forEach((q, i) => {
+      if (!q || !q.setup) return;
+      if (typeof q.setup !== 'object' || (!q.setup.spec && !Array.isArray(q.setup.given))) bad.push(`#${i}: setup needs a spec (title or id of a scenario) or a given list`);
+      else if (q.setup.spec && !blockText.includes(q.setup.spec)) bad.push(`#${i}: setup.spec "${q.setup.spec}" is no scenario of the prototype`);
+    });
+    if (bad.length) fail('Not assembled — questions.json:\n  ' + bad.join('\n  '));
+  }
+  const questionsTag = questions.length ? `<script type="text/plain" data-em-questions>${JSON.stringify(questions).replace(/</g, '\\u003c')}</script>` : '';
   const html = readFileSync(join(ASSETS, 'index.template.html'), 'utf8')
     .replaceAll('{{CONTEXT}}', escape(report.context))
     .replace('<!-- @@CSS_FRAMEWORK@@', `${CSS[report.cssFramework] ?? CSS.bulma}\n  <!-- @@CSS_FRAMEWORK@@`)
     .replace('/* @@RUNTIME@@ */', () => readFileSync(join(ASSETS, 'runtime.js'), 'utf8'))
-    .replace(/(     ={20,} -->\n)(\n<!-- Load:)/, (_, end, load) => `${end}\n${blocks.join('\n\n')}\n${load}`);
+    .replace(/(     ={20,} -->\n)(\n<!-- Load:)/, (_, end, load) => `${end}\n${blocks.join('\n\n')}\n${questionsTag}\n${load}`);
   writeFileSync(PAGE, html);
-  console.log(`Wrote ${PAGE} — ${blocks.length} slice blocks${stray.length ? `, ignored ${stray.length} stray file(s): ${stray.join(', ')}` : ''}`);
+  console.log(`Wrote ${PAGE} — ${blocks.length} slice blocks, ${questions.length} question(s)${stray.length ? `, ignored ${stray.length} stray file(s): ${stray.join(', ')}` : ''}`);
 }
 
 async function upload() {

@@ -14,11 +14,9 @@ export function paths(cwd) {
     state: join(root, 'state.json'),
     screens: join(root, 'screens'), // one folder per screen node: screen.json + page-N.html
     vendor: join(root, 'vendor'),
-    changes: join(root, 'changes'), // the translated feedback: one ChangeRequested file per change, next to events/
     work: join(root, 'work'),
     blocks: join(root, 'work', 'slices'),
     page: join(root, 'index.html'),
-    feedback: join(root, 'feedback'), // what the player handed over: one json per set, until local-apply-feedback has applied it
   };
 }
 

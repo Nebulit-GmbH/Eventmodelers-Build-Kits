@@ -1,5 +1,5 @@
 // `eventmodelers init --vibe-coding` and `eventmodelers vibe …` — vibe-coded changes reach the event model first, then the model changes the system.
-// Self-contained and removable: delete this folder, test/vibe-local.test.js and the three hooks in cli.js (the import, the `--vibe-coding` option on
+// Self-contained and removable: delete this folder, test/vibe-local.test.js and the three hooks in cli.js (the import, the `--vibe-coding` options on
 // init with its one-line delegate, registerVibe()). `eventmodelers vibe remove` cleans a project first. Project state lives in .vibe/ (state.js).
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -52,8 +52,8 @@ function removeRules(root) {
 }
 
 /**
- * `init --vibe-coding`: .vibe/, the skills and the CLAUDE.md block. No build kit needed — the code is changed by hand (or with Claude Code) and drift
- * detection carries it to the model; a build kit is optional, for changes that start on the board.
+ * `init --vibe-coding`: .vibe/, the skills and the CLAUDE.md block. No build kit needed — changes are modeled first and the code follows; drift
+ * detection catches code changed outside that flow; a build kit is optional, for building slices from the model.
  */
 export async function initVibe({ cwd = process.cwd() } = {}) {
   const parent = findVibeRoot(cwd);
@@ -65,8 +65,17 @@ export async function initVibe({ cwd = process.cwd() } = {}) {
   mkdirSync(paths(cwd).baseline, { recursive: true });
   installSkills(cwd);
   console.log(`✅ Vibe coding initialized: ${DIR}/, skills ${SKILLS.join(', ')} and the modeling skills they use; rules added to CLAUDE.md.`);
-  console.log('\nNothing is covered by the model yet. Run `claude`, then /analyze-code-base and pick the module to start with, and /start-vibe-session at the start of each session —');
+  console.log('\nNothing is covered by the model yet. Run `claude`, then /analyze-code-base and pick the module to start with. Each session starts with a drift sweep by itself —');
   console.log('only the modules you analyse are governed; changes anywhere else just ask first.');
+}
+
+/** `uninstall --vibe-coding` (same as `vibe remove`): .vibe/, the vibe skills and the CLAUDE.md block. Build kit, modeling skills and board stay. */
+export function uninstallVibe({ cwd = process.cwd() } = {}) {
+  const root = findVibeRoot(cwd);
+  if (!root) { console.log('ℹ️  No .vibe/ here or above — nothing to remove.'); return; }
+  removeRules(root);
+  removeVibe(root);
+  console.log('✅ Vibe coding removed.');
 }
 
 const out = (value, json) => console.log(json ? JSON.stringify(value, null, 2) : value);
@@ -174,9 +183,7 @@ export function registerVibe(program) {
   vibe.command('remove')
     .description('Deletes .vibe/, the vibe skills and the CLAUDE.md block. The build kit, the modeling skills and the board are left alone.')
     .action(() => {
-      const root = need(process.cwd());
-      removeRules(root);
-      removeVibe(root);
-      console.log('✅ Vibe coding removed.');
+      need(process.cwd());
+      uninstallVibe();
     });
 }

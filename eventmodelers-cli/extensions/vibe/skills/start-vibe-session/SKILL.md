@@ -1,6 +1,6 @@
 ---
 name: start-vibe-session
-description: Start a vibe-coding session — check the setup, bring model and code in step before any work, then work model first. Use at the start of a session in a folder with a .vibe/ directory, and for "start vibe session", "start vibe coding", "sync the code with the model before we begin".
+description: Start a vibe-coding session — check the setup, bring model and code in step before any work, then work model first. Run it yourself at the first request of every session in a folder with a .vibe/ directory (the CLAUDE.md rule says so), and for "start vibe session", "start vibe coding", "sync the code with the model before we begin".
 ---
 
 # Start a vibe session
@@ -25,6 +25,6 @@ Vibe coding here means: the code is changed by hand or with Claude Code, and the
 
 ## 3. Report, then work model first
 
-One short message: the governed chapters, what was translated, what is still open. Then, for the rest of the session, every change goes through `vibe-control` around the code: find the target code, `vibe check` it before touching it, ask when it is not `governed`, change it, then translate it with `vibe-translate`.
+One short message: the governed chapters, what was translated, what is still open. Then, for the rest of the session, every change goes through `vibe-control` around the code: find the target code, `vibe check` it before touching it, ask when it is not `governed`, model the change first, then change the code to match (`vibe-translate` is only the catch-up for drifted code).
 
 Nothing is ever written into the source code, and the board's `Legacy Sources` notes are views of `.vibe/baseline/` — never edit or read them for state.

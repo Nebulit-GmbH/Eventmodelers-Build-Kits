@@ -2,7 +2,7 @@
 // the app's, not a copy. Needs the app checked out:  MIRO_APP=/path/to/miro-eventmodeling node host/build.mjs
 // dist/ is committed, so using the CLI needs no app checkout; run this again when the player changes in the app.
 import { createRequire } from 'node:module';
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,7 +12,7 @@ const require = createRequire(join(APP, 'package.json'));
 const esbuild = require('esbuild');
 const PLAYER = join(APP, 'src', 'components', 'prototypeplayer');
 
-// What needs the board (login, chat, storage, the modal service) is replaced; matched by the end of the import path.
+// What needs the board (login, chat, the modal service) is replaced; matched by the end of the import path.
 const stub = (name) => join(HERE, 'stubs', name);
 const STUBS = [
   [/\/app\/canvas\/NodeStore$/, 'NodeStore.ts'],
@@ -25,35 +25,16 @@ const STUBS = [
   [/(^|\/)canApply$/, 'canApply.ts'],
   [/(^|\/)submitFeedback$/, 'submitFeedback.ts'],
   [/(^|\/)useApplyStatus$/, 'useApplyStatus.tsx'],
+  [/(^|\/)useFeedbackEntitled$/, 'useFeedbackEntitled.ts'],
   [/\/chat\/chatSend$/, 'chatSend.ts'],
   [/\/api\/BoardApi$/, 'BoardApi.ts'],
-  [/(^|\/)feedbackStorage$/, 'feedbackStorage.ts'],
 ];
 
-// The board's player has a collect-then-Submit/Apply flow; locally a saved feedback is recorded right away (stubs/feedbackStorage.ts) and the agent
-// applies it, so the two buttons and their explanation go. Patched into the app's source as it is read — the build fails loudly when the source moved.
-const PATCHES = {
-  'FeedbackToggle.tsx': [
-    ["{feedback.items.length > 0 && !hideList && <FeedbackActions feedback={feedback} style={style} />}", ''],
-  ],
-  'FeedbackList.tsx': [
-    [/\{\(\s*<form onSubmit=\{e => \{ e\.preventDefault\(\); void send\(\) \}\}[\s\S]*?<\/form>\s*\)\}/, `<p style={{ padding: '0 10px 10px', margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Feedback is recorded as you save it: the agent translates it into changes and applies them to the model and the prototype. Deleting an item here only removes it from this list.</p>`],
-  ],
-};
-
+// The board's player has a collect-then-Submit flow, and locally it is the same: the feedback is collected in the browser (the app's own feedbackStorage)
+// and Submit files it on the platform through this folder's server (stubs/submitFeedback.ts). Apply is the platform's (stubs/canApply.ts: off).
 const plugin = {
   name: 'board-stubs',
   setup(build) {
-    build.onLoad({ filter: /prototypeplayer[\\/]feedback[\\/](FeedbackToggle|FeedbackList)\.tsx$/ }, (args) => {
-      const name = args.path.split(/[\\/]/).pop();
-      let src = readFileSync(args.path, 'utf8');
-      for (const [from, to] of PATCHES[name]) {
-        const next = src.replace(from, to);
-        if (next === src) throw new Error(`build.mjs: the player source moved — ${name} no longer contains what is patched out; update PATCHES`);
-        src = next;
-      }
-      return { contents: src, loader: 'tsx', resolveDir: dirname(args.path) };
-    });
     // One React: the CLI's own node_modules may carry another copy, and two copies break hooks.
     build.onResolve({ filter: /^(react|react-dom|uuid)(\/.*)?$/ }, (args) => (args.pluginData === 'app' ? undefined : build.resolve(args.path, { resolveDir: APP, kind: args.kind, pluginData: 'app' })));
     build.onResolve({ filter: /^@player\// }, (args) => build.resolve('./' + args.path.slice('@player/'.length), { resolveDir: PLAYER, kind: args.kind }));

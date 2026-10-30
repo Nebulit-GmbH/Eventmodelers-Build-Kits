@@ -1,6 +1,6 @@
 ---
 name: vibe-control
-description: Around every code change in a vibe-coding project — find out whether the code is covered by the event model, ask the person what to do when it is not, and translate the change onto the model afterwards. Use at the start of any run that will edit code in a folder with a .vibe/ directory, and for "is this covered by the model", "check coverage", "vibe check".
+description: Around every code change in a vibe-coding project — find out whether the code is covered by the event model, ask the person what to do when it is not, and always model the change first, code second. Use at the start of any run that will edit code in a folder with a .vibe/ directory, and for "is this covered by the model", "check coverage", "vibe check".
 ---
 
 # Vibe control — is this code covered by the model?
@@ -19,7 +19,7 @@ It answers from `.vibe/baseline/` and git alone (no board, no network). Run it f
 
 | Status | Meaning | You |
 |---|---|---|
-| `governed` | in a chapter analysed at depth ≥ 1, unchanged since its last analysis | change the code, then translate it (step 3) — no question |
+| `governed` | in a chapter analysed at depth ≥ 1, unchanged since its last analysis | model the change first, then change the code (step 3) — no question |
 | `drifted` | in an analysed chapter, but code changed since its last analysis and was never translated | ask: translate it onto the model first, or carry on (step 2) |
 | `uncovered` | in no analysed chapter, or one with milestones only | ask (step 2) |
 | `free` | a chapter's *not modeled* path, or a folder the person said to leave alone | change it as asked |
@@ -38,8 +38,12 @@ Record the answer: `{{CLI}} vibe answer --folder <folder> --answer analyse|conti
 
 A run with nobody to answer (unattended) records the question as `CoverageQuestioned` and carries on with `continue` for that folder only — never with `ignore`.
 
-## 3. Governed: change, then translate
+## 3. Governed: model first, code second
 
-Change the code as asked. Then run `vibe-translate` so the model describes what the code now does — it ends with `vibe check` on the touched files saying `governed` again. Nothing is ever written into the source code for any of this; the analysis log is `.vibe/baseline/<chapter>.json` and the board's `Legacy Sources` note is rendered from it.
+**This is the rule, no matter how the person phrases the request.** They ask for a code change ("add a description field") without knowing the model comes first — that is not a reason to go code-first. Never change the code first and translate afterwards.
 
-**A change that starts on the board** (the person asks for a model change, to be built from the model) needs a build kit, which vibe coding does not assume: only when `.build-kit/` exists, model it first, set the affected slices to `planned` with `/update-slice-status` (never one that is `InProgress` — the build agent is on it) and leave the building to it. Without a build kit the code is the thing you change.
+1. **Model it.** Put the requested change on the board with the modeling rules `vibe-translate` points to (read and follow, don't restate), on the chapter's existing elements.
+2. **Then code it.** Change the code so it matches the model you just wrote. Only when `.build-kit/` exists may you instead set the affected slices to `planned` with `/update-slice-status` (never one that is `InProgress` — the build agent is on it) and leave the building to it.
+3. **Close.** `vibe check` on the touched files must say `governed`, then `vibe baseline advance --chapter "<title>"`. Nothing is ever written into the source code for any of this; the analysis log is `.vibe/baseline/<chapter>.json` and the board's `Legacy Sources` note is rendered from it.
+
+`vibe-translate` of an already-made code diff is only the catch-up for `drifted` code (step 2 above).

@@ -11,6 +11,8 @@ Prefer `mcp__eventmodelers__*` tools when available (registered by the `connect`
 
 You are propagating an attribute change (add or rename) across a chain of elements on an eventmodelers board. You start at the target element, apply the change, then walk backwards through inbound dependencies until you reach the source element, applying the change to every element along the way.
 
+> **Fast path:** when the request names the nodes and asks for a local edit (rename or add one field on those nodes, no downstream flow), read only them (`get_nodes { nodeIds, projection: "fields" }`), edit in one `submit_node_events`, verify once. Don't walk the chain, load `eventmodeling-core-rules`, or re-run `connect` when already connected. Run the chain walk below only when the lineage is at stake: a rename across a chain, or a new field that must flow downstream.
+
 ---
 
 ## Step 1 — Gather inputs

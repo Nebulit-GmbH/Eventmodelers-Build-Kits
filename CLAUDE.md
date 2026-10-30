@@ -34,9 +34,10 @@ You are an autonomous agent processing tasks queued for an eventmodelers board.
 | Translate an external/other-system event into a domain event, design its correlation/idempotency rules | `eventmodeling-translating-external-events` |
 | Design an automation's todo-list read model, or the translation-chain for an externally/second-swimlane-triggered automation | `eventmodeling-designing-automation-chains` |
 | Design the read model(s) a command/event's data should feed | `eventmodeling-identifying-outputs` |
+| Ask what happens on a screen / element (what is stored, what comes next, which rules apply) — in `/wdyt` or as the prototype's guided questions | `eventmodeling-workshop-questions` |
 | Write GWT scenarios or a storyline for a command or read model (incl. an automation's todo list) | `eventmodeling-elaborating-scenarios` |
 
-Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions. The four rows above are `eventmodeling-*` methodology skills (not `/`-prefixed): they carry the actual modeling rules (translation-chain shape, redundant-stage checks, linked-copy marking, storyline-vs-GWT judgment) that `/place-element`/`/timeline` alone don't apply — placing the nodes for a translation or automation chain without also invoking the matching row above is how a chain ends up missing its storyline, its read model, or its copy-marking.
+Read `.claude/skills/<skill-name>/SKILL.md` before executing — each skill has required inputs and step-by-step instructions. The five rows above are `eventmodeling-*` methodology skills (not `/`-prefixed): they carry the actual modeling rules (translation-chain shape, redundant-stage checks, linked-copy marking, storyline-vs-GWT judgment) that `/place-element`/`/timeline` alone don't apply — placing the nodes for a translation or automation chain without also invoking the matching row above is how a chain ends up missing its storyline, its read model, or its copy-marking.
 
 ## Progress Entry Format
 

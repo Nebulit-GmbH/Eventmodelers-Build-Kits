@@ -21,7 +21,7 @@ import { homedir, tmpdir } from 'os';
 import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { registerPrototype, initPrototype } from './extensions/prototype/index.js';
-import { registerVibe, initVibe } from './extensions/vibe/index.js';
+import { registerVibe, initVibe, uninstallVibe } from './extensions/vibe/index.js';
 import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
@@ -32,6 +32,7 @@ import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js
 import { latestPublishedVersion, updateHints } from './lib/update-check.js';
 import { guardSnippetReply } from './lib/snippet-guard.js';
 import { modelingPermissions } from './lib/agent-permissions.js';
+import { createTurnUsage } from './lib/turn-usage.js';
 // Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
 // copy that every useShared:true stack also gets copied into its installed kit (see
 // copyDirContents in installStack) for ralph.js to import standalone — see
@@ -2399,6 +2400,26 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   const lastProposalAt = new Map();
 
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
+  const turnUsage = createTurnUsage(); // what each turn cost and where its tokens went (--verbose prints it)
+  let compactRequested = false; // a chat was cleared: the next turn starts with a /compact of the warm conversation
+  let compacting = false; // the in-flight turn is the /compact, not work: its figures are nobody's to record
+  let chatSessionId = null; // the chat session the in-flight turn answers, if it is a chat turn — what its cost is filed under
+  let postedSessionId = null; // ...or the session a message the agent started itself (post_chat_message) landed in during a board-change/standalone turn
+  const postToolIds = new Set(); // tool_use ids of post_chat_message calls in flight
+
+  // The cost popup on an agent's chat message reads the turn that wrote it from the platform. Best effort: a turn that
+  // cannot be recorded is not worth failing for, and only chat turns have a session to file it under.
+  function recordChatTurn(turn) {
+    const sessionId = chatSessionId ?? postedSessionId;
+    postedSessionId = null;
+    postToolIds.clear();
+    if (!turn || !sessionId) return;
+    void fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${cfg.boardId}/agent-turns`, {
+      method: 'POST',
+      headers: { 'x-token': cfg.token, 'Content-Type': 'application/json', ...agentHeaders(cfg) },
+      body: JSON.stringify({ ...turn, sessionId, ...(cfg.agentId ? { agentId: cfg.agentId } : {}), occurredAt: new Date().toISOString() }),
+    }).catch((err) => log(`agent-turns: could not record the turn (${err.message})`));
+  }
   let warmUp = null; // this process's session warm-up turn (see warmUpSession) — null until one is started
   let warmingUp = false; // the in-flight turn is the warm-up: it only reads, so its writes can't echo
 
@@ -2436,21 +2457,31 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   // --verbose logs full tool input and assistant reasoning text; the default
   // (condensed) mode logs only the high-level step — a skill name, or a bare tool
   // name — so a long session reads as a step list instead of a full trace.
+  // The message the agent just wrote tells which session it went into — the turn's cost is filed there.
+  function notePostedSession(block) {
+    if (!postToolIds.has(block.tool_use_id) || block.is_error) return;
+    const raw = typeof block.content === 'string' ? block.content : (Array.isArray(block.content) ? block.content.map((c) => c?.text ?? '').join('') : '');
+    try { const m = JSON.parse(raw); postedSessionId = m?.sessionId ?? m?.session_id ?? postedSessionId; } catch { /* not a message: nothing to file under */ }
+  }
+
   function handleLine(line) {
     if (!line.trim()) return;
     let msg;
     try { msg = JSON.parse(line); } catch { return; }
 
     if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
-      for (const block of msg.message.content) if (block.type === 'tool_result') noteToolEnd(block.tool_use_id, { isError: block.is_error });
+      for (const block of msg.message.content) if (block.type === 'tool_result') { notePostedSession(block); noteToolEnd(block.tool_use_id, { isError: block.is_error }); turnUsage.toolResult(block.tool_use_id, block.content); }
       return;
     }
 
     if (msg.type === 'assistant') {
+      turnUsage.assistantUsage(msg.message?.usage);
       for (const block of msg.message?.content ?? []) {
         if (block.type === 'text' && block.text && verbose) log(block.text);
         if (block.type === 'tool_use') {
           noteToolStart(block.id, block.name, block.input);
+          if (/post_chat_message$/.test(block.name ?? '')) postToolIds.add(block.id);
+          turnUsage.toolUse(block.id, block.name);
           if (verbose) log(`→ ${describeToolUse(block)}`);
           else if (block.name === 'Skill') log(`→ Skill: ${block.input?.skill ?? ''}`);
           else log(`→ ${block.name}`);
@@ -2460,6 +2491,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     }
     if (msg.type === 'result') {
       log(`done (${msg.duration_ms}ms${msg.total_cost_usd ? `, $${msg.total_cost_usd.toFixed(4)}` : ''})`);
+      const usageLine = turnUsage.finish(msg);
+      if (verbose) log(usageLine);
+      if (!compacting) recordChatTurn(turnUsage.lastTurn());
       lastTurnEndedAt = Date.now();
       const turn = pending;
       pending = null;
@@ -2591,6 +2625,13 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       if (otherRunner) return await otherRunner.runTurn(text);
       if (!proc) spawnProcess();
       await warmUpSession();
+      // The person cleared a chat: the history the warm conversation carries is shrunk to a summary first, so it stops being re-read on every call.
+      if (compactRequested) {
+        compactRequested = false;
+        log('compacting the conversation before this turn (a chat was cleared)');
+        compacting = true;
+        try { await sendTurn('/compact'); } catch (err) { log(`compaction failed (the turn goes on without it): ${err.message}`); } finally { compacting = false; }
+      }
       return await sendTurn(text);
     } finally {
       turnsInFlight--;
@@ -2764,8 +2805,80 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     }
   }
 
+  // Every CLEAR_OFFER_EVERY messages of a conversation the agent offers, in the chat, to clear it. The answer is the person's: nothing is
+  // cleared on a "no", or without a click. The counts are this process's (a restart starts counting again), two per exchange — the message and its reply.
+  const CLEAR_OFFER_EVERY = 25;
+  const CLEAR_HEADLINE = 'Your chat history is growing — should we clear it? The messages are deleted and I start fresh.';
+  const CLEAR_YES = 'Clear history';
+  const CLEAR_NO = 'Keep it';
+  const chatCounts = new Map(); // sessionId -> messages seen
+  const clearOffered = new Set(); // sessions with an offer waiting for an answer
+
+  async function agentPost(body) {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-messages`, {
+      method: 'POST',
+      headers: { 'x-token': cfg.token, 'Content-Type': 'application/json', ...agentHeaders(cfg) },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  }
+
+  // The answer to the offer is a chat message whose text is the clicked label and the quoted headline (the confirm snippet's own wording).
+  function clearAnswer(m) {
+    const text = String(m.text ?? '');
+    if (text.startsWith(`${CLEAR_YES} – `) && text.includes(CLEAR_HEADLINE.slice(0, 40))) return 'yes';
+    if (text.startsWith(`${CLEAR_NO} – `) && text.includes(CLEAR_HEADLINE.slice(0, 40))) return 'no';
+    return null;
+  }
+
+  // Handled here, without a model turn. Returns true when the message was the answer to the offer.
+  async function handleClearAnswer(m) {
+    const answer = clearAnswer(m);
+    if (!answer) return false;
+    clearOffered.delete(m.sessionId);
+    if (answer === 'no') {
+      chatCounts.set(m.sessionId, 0); // asked again after another stretch, not at once
+      await agentPost({ text: 'Okay, we keep it.', reply_to: m.id }).catch((err) => log(`chat reply failed: ${err.message}`));
+      return true;
+    }
+    try {
+      const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-sessions/${encodeURIComponent(m.sessionId)}`, {
+        method: 'DELETE',
+        headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      chatCounts.delete(m.sessionId);
+      chatCursor.delete(m.sessionId);
+      compactRequested = true; // the history this process carries goes too — not by killing it, by compacting it before its next turn
+      log(`chat session ${m.sessionId} cleared at the person's request — compacting the conversation before the next turn`);
+    } catch (err) {
+      log(`clearing the chat failed: ${err.message}`);
+    }
+    return true;
+  }
+
+  async function offerClear(m) {
+    const n = (chatCounts.get(m.sessionId) ?? 0) + 2;
+    chatCounts.set(m.sessionId, n);
+    if (n < CLEAR_OFFER_EVERY || clearOffered.has(m.sessionId)) return;
+    clearOffered.add(m.sessionId);
+    try {
+      await agentPost({
+        text: `${CLEAR_HEADLINE} (${CLEAR_YES} / ${CLEAR_NO})`,
+        session_id: m.sessionId,
+        snippet: { kind: 'confirm', headline: CLEAR_HEADLINE, yesLabel: CLEAR_YES, noLabel: CLEAR_NO },
+      });
+      chatCounts.set(m.sessionId, 0);
+      log(`offered to clear the long chat session ${m.sessionId}`);
+    } catch (err) {
+      clearOffered.delete(m.sessionId);
+      log(`clear offer failed: ${err.message}`);
+    }
+  }
+
   async function runChatTurn(m) {
     log(`chat message received: "${oneLine(m.text, 80)}" (session=${m.sessionId})`);
+    if (await handleClearAnswer(m)) return;
     if (m.userId) {
       chatPartners.add(m.userId);
       lastProposalAt.delete(m.userId);
@@ -2773,14 +2886,19 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     let result = '';
     let failed = false;
     try {
-      result = await runTurn(buildChatTurn(m, await cacheChatAttachments(m)));
+      const turn = buildChatTurn(m, await cacheChatAttachments(m));
+      chatSessionId = m.sessionId;
+      result = await runTurn(turn);
     } catch (err) {
       failed = true;
       log(`chat turn failed: ${err.message}`);
+    } finally {
+      chatSessionId = null;
     }
     chatCursor.set(m.sessionId, m.id);
     const text = String(result ?? '').replace(/<promise>[^<]*<\/promise>/g, '').trim();
     await replyIfUnanswered(m, text && !failed ? text : 'Sorry — I could not finish that just now. Please try again.');
+    await offerClear(m);
     // Edits they made while their last proposal waited for this answer get their turn now.
     if (m.userId && proposalBuffer.has(m.userId)) armProposalTurn(STANDALONE_DEBOUNCE_MS);
   }
@@ -3618,9 +3736,9 @@ credentialFlags(program
   .option('--hooks', 'Install the slice commit-scope guard (.githooks/pre-commit, running .build-kit/lib/check-commit-scope.cjs) and wire it up via `git config core.hooksPath .githooks` — only meaningful with --stack (build-kit stacks). Off by default.')
   .option('--demo', 'Install a ready-made demo model into the kit\'s .slices/ — the "Understanding Eventsourcing" context (16 shopping-cart slices covering every slice type), in exactly the shape `fetch` writes, so the build skills and the agent loop have something real to work on before this project is connected to a board. Skipped if .slices/ already holds fetched slices. Off by default.')
   .option('--global', 'Install skills into ~/.claude/skills/ instead of the project — available in every project')
-  .option('--prototype', 'Install the local prototype skills (local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback, connect) and ask for the board credentials — then run `claude` and /local-prototype. See extensions/prototype/README.md')
+  .option('--prototype', 'Install the local prototype skills (local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, connect) and ask for the board credentials — then run `claude` and /local-prototype. See extensions/prototype/README.md')
   .option('--empty', 'With --prototype: create an empty prototype — one "Hello World" slice with its page — instead of fetching a model from the board. No credentials and no board needed; connect one later. An existing local model is left alone.')
-  .option('--vibe-coding', 'Set up vibe coding: you change the code (by hand or with Claude Code), and drift detection translates the changes into the event model on the board. No build kit needed. Installs .vibe/, the vibe skills and the modeling skills they use; run `claude`, then /analyze-code-base for the module to start with and /start-vibe-session at the start of a session. See extensions/vibe/README.md')
+  .option('--vibe-coding', 'Set up vibe coding: model first, code second — changes go onto the event model on the board before the code follows, and drift detection catches code changed outside that flow. No build kit needed. Installs .vibe/, the vibe skills and the modeling skills they use; run `claude`, then /analyze-code-base for the module to start with and /start-vibe-session at the start of a session. See extensions/vibe/README.md')
   .option('-f, --force', 'Re-prompt for credentials even if a config already has everything required — overwrites the existing config.json')
   .option(...AGENT_NAME_OPTION)
   .option(...HANDOVER_OPTION))
@@ -5535,7 +5653,9 @@ program
   .description('Remove everything init (with or without --modeling) installed: the kit dir, the skills it copied (project-local or ~/.claude/skills with --global), its MCP entry in .claude/settings.json, and any files written by init-agents. Leaves the root project scaffold untouched.')
   .option('--build-kit', `Remove ${STACKS.node.kitDirName}/ (the backend-stack kit dir)`)
   .option('--modeling-kit', `Remove ${MODELING_KIT.kitDirName}/ (the modeling-only kit dir)`)
+  .option('--vibe-coding', 'Remove vibe coding: .vibe/, the vibe skills and the CLAUDE.md block (same as `vibe remove`). The build kit, the modeling skills and the board are left alone.')
   .action((opts) => {
+    if (opts.vibeCoding) return uninstallVibe();
     const cwd = process.cwd();
     let targets;
 

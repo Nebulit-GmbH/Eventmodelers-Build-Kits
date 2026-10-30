@@ -12,14 +12,12 @@ import { serve, watchModel } from './serve.js';
 import { resolveAcpAgent } from '../../shared/build-kit/lib/acp-session.js';
 import { createEmptyPrototype } from './empty.js';
 import { startAgentLoop } from './loop.js';
-import { OUTCOMES, REQUESTS, claim, control, markProcessed, markTranslated, stateOf } from './control.js';
-import { addChange } from './changes.js';
-import { listTools } from './mcp.js';
-import { runChanges, submitApplied } from './pipeline.js';
+import { OUTCOMES, REQUESTS, claim, control, markProcessed, stateOf } from './control.js';
+import { submitFeedback } from './feedback.js';
 import { hasLocalChanges, runSync } from './sync.js';
 import { playLink, share } from './share.js';
 import { buildWalkthrough, walkthroughText } from './walkthrough.js';
-import { DIR, editedScreens, hasScreenBaseline, loadScreens, loadSlices, paths, readJson, snapshotBaseline, snapshotScreens, writeJson, writeScreens } from './state.js';
+import { DIR, editedScreens, hasScreenBaseline, loadSlices, paths, readJson, snapshotBaseline, snapshotScreens, writeJson, writeScreens } from './state.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = resolve(HERE, '..', '..', 'cli.js');
@@ -28,23 +26,24 @@ const START = '<!-- eventmodelers-prototype:start -->';
 const END = '<!-- eventmodelers-prototype:end -->';
 
 const SYNC_SWEEP_MS = 30_000;
-const SKILLS = ['local-prototype', 'local-prototype-model', 'local-prototype-build', 'local-prototype-control', 'local-apply-feedback'];
+const SKILLS = ['local-prototype', 'local-prototype-model', 'local-prototype-build', 'local-prototype-control'];
 const SHARED = join(HERE, '..', '..', 'shared', 'skills');
-// The event modeling rules a change has to follow (an automation needs a todo-list read model, every field a source, every slice scenarios …) are
-// the modeling kit's own skills, copied as they are: the translator reads them for the rules and expresses the result as changes — it does not run
-// their board-writing steps. They are not removed again by `prototype remove` (a folder may use them for other work too).
+// The event modeling rules a change to the model has to follow (an automation needs a todo-list read model, every field a source, every slice scenarios …)
+// are the modeling kit's own skills, copied as they are: local-prototype-model reads them for the rules — it does not run their board-writing steps.
+// They are not removed again by `prototype remove` (a folder may use them for other work too).
 const MODELING_KIT_SKILLS = join(HERE, '..', '..', 'stacks', 'modeling-kit', 'templates', '.claude', 'skills');
 export const MODELING_RULES = [
   'eventmodeling-core-rules', 'eventmodeling-designing-event-models', 'eventmodeling-slicing-event-models', 'eventmodeling-identifying-inputs',
   'eventmodeling-identifying-outputs', 'eventmodeling-designing-automation-chains', 'eventmodeling-translating-external-events',
-  'eventmodeling-information-completeness', 'eventmodeling-elaborating-scenarios', 'eventmodeling-validating-event-models',
+  'eventmodeling-information-completeness', 'eventmodeling-elaborating-scenarios', 'eventmodeling-workshop-questions', 'eventmodeling-validating-event-models',
   'eventmodeling-validating-event-models-checklist', 'eventmodeling-applying-conways-law', 'attributes', 'add-next-slice', 'place-element', 'html-screen', 'storyboard-screen',
 ];
 
 /** Installs the skills into .claude/skills/ and the rules block into ./CLAUDE.md (between markers; the rest is untouched). */
-// What this extension installed before its skills got the local- prefix. Removed on (re-)init — but only when the folder really is ours:
-// the platform's modeling kit has skills called `prototype` and `apply-feedback`, which must stay (they never call this CLI's `prototype`).
-const LEGACY = ['prototype', 'prototype-model', 'prototype-build', 'prototype-control', 'apply-feedback'];
+// What this extension installed before its skills got the local- prefix, and `local-apply-feedback`, which went when feedback moved to the platform.
+// Removed on (re-)init — but only when the folder really is ours: the platform's modeling kit has skills called `prototype` and `apply-feedback`,
+// which must stay (they never call this CLI's `prototype`).
+const LEGACY = ['prototype', 'prototype-model', 'prototype-build', 'prototype-control', 'apply-feedback', 'local-apply-feedback'];
 function dropLegacySkills(cwd) {
   for (const name of LEGACY) {
     const file = join(cwd, '.claude', 'skills', name, 'SKILL.md');
@@ -52,8 +51,7 @@ function dropLegacySkills(cwd) {
   }
 }
 
-// The agent works on the local model and records changes; the board is written when the changes are executed (in order, with the conflict check),
-// never by the agent's own MCP tools. The write tools of the board's MCP server are therefore denied in this folder (reads stay: get_*, list_*, validate_*).
+// The agent works on the local model; the board is written by `prototype sync` (with the conflict check), never by the agent's own MCP tools. The write tools of the board's MCP server are therefore denied in this folder (reads stay: get_*, list_*, validate_*).
 export const BOARD_WRITE_TOOLS = [
   'add_column', 'add_comment', 'add_lane', 'add_scenario', 'add_storyline', 'auto_connect_node', 'claim_slice', 'clear_cell', 'commit_board_to_git',
   'create_chapter', 'create_drawing', 'create_prompt', 'create_screen', 'create_slice', 'create_slice_definition', 'create_snippet_type', 'delete_column',
@@ -233,7 +231,7 @@ export async function initPrototype(deps, { cwd = process.cwd(), config, print, 
       const cfg = deps.loadEffectiveConfig(cwd, deps.findInstalledKitDir(cwd), config).config;
       if (REQUIRED.every((k) => cfg[k])) deps.registerMcp(cwd, cfg);
     } catch { /* no usable config: nothing to register */ }
-    console.log('✅ Prototype refreshed: skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback, connect and the event modeling rules (eventmodeling-*); rules in CLAUDE.md; page libraries. The model and .prototype/ are untouched.');
+    console.log('✅ Prototype refreshed: skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, connect and the event modeling rules (eventmodeling-*); rules in CLAUDE.md; page libraries. The model and .prototype/ are untouched.');
     return;
   }
   if (empty) {
@@ -246,7 +244,7 @@ export async function initPrototype(deps, { cwd = process.cwd(), config, print, 
     }
     installSkills(cwd);
     await ensureVendor(cwd);
-    console.log('✅ Skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback installed; rules added to CLAUDE.md.');
+    console.log('✅ Skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control installed; rules added to CLAUDE.md.');
     console.log('\nRun `eventmodelers run --prototype` to see it, and `claude` to change it. To connect a board later: the connect skill (it saves .eventmodelers/config.json).');
     return;
   }
@@ -283,7 +281,7 @@ export async function initPrototype(deps, { cwd = process.cwd(), config, print, 
   if (!interactive || (await askYesNo('\nShould I initialize the prototype here (skills, CLAUDE.md rules, page libraries)?', true))) {
     installSkills(cwd);
     await ensureVendor(cwd);
-    console.log('✅ Prototype initialized: skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, local-apply-feedback, connect; rules added to CLAUDE.md.');
+    console.log('✅ Prototype initialized: skills local-prototype, local-prototype-model, local-prototype-build, local-prototype-control, connect; rules added to CLAUDE.md.');
   }
   console.log(existsSync(p.state)
     ? `\n${fetched ? 'The model is fetched.' : 'A local model is here.'} Run \`claude\`, then /local-prototype — it builds the page from it and serves it.`
@@ -337,7 +335,7 @@ async function fetchScreens(cwd, cfg, ids) {
 }
 
 export function registerPrototype(program, deps) {
-  for (const name of ['prototype', 'contexts', 'fetch', 'sync', 'assemble', 'remove', 'events', 'claim', 'processed', 'changes', 'add', 'translated', 'run', 'submit', 'board', 'tools', 'share']) deps.noInitRequired.add(name); // `status` already is
+  for (const name of ['prototype', 'contexts', 'fetch', 'sync', 'assemble', 'remove', 'events', 'claim', 'processed', 'run', 'share']) deps.noInitRequired.add(name); // `status` already is
 
   // The board in EM Studio, for the player's "Jump to Board" link: the board of this folder's config (none: no link — an empty prototype has no board).
   const studioUrl = (deps, cwd, command) => {
@@ -380,17 +378,21 @@ export function registerPrototype(program, deps) {
     process.on('uncaughtException', keepAlive);
     const stale = () => plan(cwd).slices.filter((s) => s.state !== 'unchanged');
     let agent = null; // the agent loop (run --prototype)
-    const server = await serve({ cwd, port: opts.port, studio: studioUrl(deps, cwd, command), runtime: () => ({ sync: !!opts.sync, agent: !!agent, busy: !!(agent && agent.busy()) }) });
+    let cred = null;
+    const server = await serve({
+      cwd, port: opts.port, studio: studioUrl(deps, cwd, command), runtime: () => ({ sync: !!opts.sync, agent: !!agent, busy: !!(agent && agent.busy()) }),
+      // Submit in the player: the feedback is filed on the platform with this folder's credentials (feedback.js).
+      submitFeedback: async (submission) => { try { cred ??= await credentials(command); } catch (err) { return { ok: false, problems: [`No board credentials: ${err.message}`] }; } return submitFeedback(cwd, cred.cfg, submission, { contexts: listContexts }); },
+    });
     console.log(`\n✅ Prototype: ${server.url}`);
     console.log('   Change it with prompts in Claude Code (`claude` in this folder, or /local-prototype): local-prototype-model changes the model, local-prototype-build reflects it here.');
     if (stale().length) console.log(`   ${stale().length} slice${stale().length === 1 ? '' : 's'} not built into the page yet.`);
     const connection = connectionOf(deps, cwd, command);
     console.log(connection ? `   Board: ${connection.boardId} on ${connection.api.replace(/^https?:\/\//, '')}${connection.context ? ` — ${connection.contextType || 'context'} "${connection.context}"${connection.contextId ? ` (${connection.contextId})` : ''}` : ''}` : '   Board: none connected (a local-only prototype — `connect` adds one).');
 
-    let cred = null;
     let syncing = false, again = false;
     const syncNow = async () => {
-      // While the agent loop executes changes, the board gets them one by one in order — the watcher's sync would send the same edits unordered.
+      // While the agent loop is busy (building, syncing) the watcher's sync waits for it.
       if (agent && agent.busy()) { setTimeout(syncNow, 3000); return; }
       if (syncing) { again = true; return; }
       syncing = true;
@@ -415,24 +417,16 @@ export function registerPrototype(program, deps) {
     // The sync loop: besides pushing on every change, sweep every SYNC_SWEEP_MS so a failed push (offline, expired token) is retried.
     const sweep = opts.sync ? setInterval(() => { if (hasLocalChanges(cwd)) syncNow(); }, SYNC_SWEEP_MS) : null;
     if (opts.sync && hasLocalChanges(cwd)) syncNow();
-    // `run --prototype`: the agent loop reads the control log each iteration (a saved feedback, Sync, Rebuild pressed in the player).
+    // `run --prototype`: the agent loop reads the control log each iteration (Sync, Fetch or Rebuild pressed in the player) and rebuilds stale slices.
     if (opts.loop) {
-      // The agent is told which board and which timeline (chapter) it works on: look the id up once, if this folder was fetched before it was kept.
-      try {
-        const known = readJson(p.state, {});
-        if (connection && !known.contextId && known.context) {
-          cred ??= await credentials(command);
-          const hit = (await listContexts(cred.cfg)).find((c) => c.title === known.context);
-          if (hit) { writeJson(p.state, { ...known, contextId: hit.id, contextType: hit.type === 'CHAPTER' ? 'timeline' : 'context' }); Object.assign(connection, { contextId: hit.id, contextType: hit.type === 'CHAPTER' ? 'timeline' : 'context' }); }
-        }
-      } catch { /* the agent looks it up itself: prototype board */ }
       try {
         const acp = resolveAcpAgent({ name: opts.acpAgent?.name || 'claude', cmd: opts.acpAgent?.cmd });
-        agent = startAgentLoop({ cwd, agent: acp, connection, direct: !!opts.sync, stale: () => stale(), refetch: async () => { cred ??= await credentials(command); await refetchSafely(cwd, cred, readJson(p.state, {}).context); }, credentials: async () => (cred ??= await credentials(command)) });
+        agent = startAgentLoop({ cwd, agent: acp, stale: () => stale(), refetch: async () => { cred ??= await credentials(command); await refetchSafely(cwd, cred, readJson(p.state, {}).context); }, credentials: async () => (cred ??= await credentials(command)) });
       } catch (err) { console.error(`❌ ${err.message}`); }
     }
-    if (agent) console.log(`   Agent loop: each iteration it reads what Sync / Rebuild / saved feedback recorded in the player — Sync and Rebuild are done right away, feedback is translated into changes and applied to the local model, ${opts.sync ? 'and written to the board right away, one by one (--sync)' : 'and the changes stay local until `prototype sync` (--sync writes them to the board right away)'}. Warm ${opts.acpAgent?.cmd ? 'ACP' : (opts.acpAgent?.name || 'claude')} session.`);
-    console.log(opts.sync ? '   --sync: changes go back to the board automatically (and are retried every 30s until they land). Ctrl+c stops.' : '   Changes stay local until `eventmodelers prototype sync` (or Sync in the player). Ctrl+c stops.');
+    if (agent) console.log(`   Agent loop: each iteration it reads what Sync / Fetch / Rebuild recorded in the player — Sync and Fetch are done right away, stale slices are rebuilt. Warm ${opts.acpAgent?.cmd ? 'ACP' : (opts.acpAgent?.name || 'claude')} session.`);
+    console.log('   Feedback: collect it in the player and Submit — it is stored on the platform, where /apply-feedback applies it.');
+    console.log(opts.sync ? '   --sync: model changes go back to the board automatically (and are retried every 30s until they land). Ctrl+c stops.' : '   Model changes stay local until `eventmodelers prototype sync` (or Sync in the player). Ctrl+c stops.');
     await new Promise((done) => process.once('SIGINT', done));
     if (agent) agent.stop();
     if (sweep) clearInterval(sweep);
@@ -448,39 +442,6 @@ export function registerPrototype(program, deps) {
     .option('--port <port>', 'Port to serve on (the next free one is used when it is taken)', (v) => parseInt(v, 10), 4173)
     .option('--sync', 'Write model changes back to the board automatically, a moment after the files settle (retried every 30s until they land)')
     .action(runPrototype);
-
-  proto.command('board').description('Everything a board tool call needs that the local model lacks: the board, the context / timeline (chapter) id, the slices\' ids — and the studio link')
-    .action(async (_, command) => {
-      try {
-        const cwd = process.cwd();
-        const { cfg } = await credentials(command);
-        const state = readJson(paths(cwd).state, {});
-        let ctx = state.contextId ? { id: state.contextId, type: state.contextType } : null;
-        if (!ctx) {
-          const hit = (await listContexts(cfg)).find((c) => c.title === state.context);
-          if (hit) { ctx = { id: hit.id, type: hit.type === 'CHAPTER' ? 'timeline' : 'context' }; writeJson(paths(cwd).state, { ...state, contextId: ctx.id, contextType: ctx.type }); }
-        }
-        console.log(JSON.stringify({
-          boardId: cfg.boardId, organizationId: cfg.organizationId, studio: studioUrl(deps, cwd, command),
-          context: { name: state.context, ...(ctx || {}) },
-          note: 'A timeline is a chapter: its id is the chapterId / timelineId a tool asks for. Tool inputs: `prototype tools <name>`. boardId is filled in when a tool call is executed.',
-          slices: loadSlices(paths(cwd)).map(({ id, slice }) => ({ id, title: slice.title, chapter: slice.chapter, sliceType: slice.sliceType })),
-        }, null, 2));
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
-
-  proto.command('tools').description('The board\'s tools (the eventmodelers MCP tools) a change can call: names, or with a name the exact input schema — so a tool call is written exactly, not guessed')
-    .argument('[name]', 'A tool name: prints its description and input schema')
-    .action(async (name, _, command) => {
-      try {
-        const { cfg } = await credentials(command);
-        const tools = await listTools(cfg);
-        if (!name) { for (const t of tools) console.log(`${t.name}  ${t.description.split('\n')[0].slice(0, 110)}`); return; }
-        const tool = tools.find((t) => t.name === name.replace(/^mcp__eventmodelers__/, ''));
-        if (!tool) { console.error(`❌ No tool "${name}". \`prototype tools\` lists them.`); process.exit(1); }
-        console.log(JSON.stringify(tool, null, 2));
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
 
   proto.command('contexts').description('List the board\'s contexts and timelines — the names `fetch --context` takes')
     .action(async (_, command) => {
@@ -509,23 +470,15 @@ export function registerPrototype(program, deps) {
       console.log('Fetched. Build the page with the local-prototype-build skill, then `eventmodelers prototype` serves it.');
     });
 
-  proto.command('sync').description('Write everything local back to the board: first the changes feedback was translated into — each executed one by one, in order, as its node:changed event or recorded tool call — then the rest of the local model\'s differences (fields, descriptions and HTML screens; the rest is listed as not synced)')
+  proto.command('sync').description('Write everything local back to the board: the local model\'s differences (fields, descriptions and HTML screens; the rest is listed as not synced)')
     .option('--yes', 'Do not ask for confirmation').option('--dry-run', 'Only list what would be written')
     .action(async (opts, command) => {
       const cwd = process.cwd();
       if (!existsSync(paths(cwd).state)) { console.error('❌ No prototype in this folder.'); process.exit(1); }
       try {
-        const c = control(cwd);
-        const todo = c.changes.filter((ch) => ['requested', 'working', 'applied'].includes(ch.state)); // in global order
-        if (todo.length) {
-          console.log(`\nChanges, in order:`);
-          for (const ch of todo) console.log(`  ${ch.state === 'requested' || ch.state === 'working' ? 'execute  ' : 'to board '}#${ch.seq} ${ch.summary}  [${ch.exec.kind === 'node:changed' ? 'node:changed ' + Object.keys(ch.exec.event.meta).join(',') : ch.exec.call.name}]`);
-        }
         if (opts.dryRun) { await runSync({ cwd, cfg: null, dryRun: true }); return; }
         const { cfg } = await credentials(command);
-        if (todo.length && !opts.yes && !(await askYesNo(`\nExecute ${todo.length} change${todo.length === 1 ? '' : 's'} against the board?`, false))) return;
-        if (todo.length) await runChanges(cwd, cfg, { toBoard: true, log: console.log }); // one ordered pass: pending ones executed, applied ones sent
-        await runSync({ cwd, cfg, yes: opts.yes || todo.length > 0 });
+        await runSync({ cwd, cfg, yes: opts.yes });
       } catch (err) {
         console.error(`❌ ${err.message}`);
         process.exit(1);
@@ -574,13 +527,12 @@ export function registerPrototype(program, deps) {
     }
   });
 
-  const events = proto.command('events').description('The control channel between the player and the agent: what the player asked for (a saved feedback → FeedbackRecorded, Sync → SyncRequested, Rebuild → RebuildRequested) and what was processed')
+  const events = proto.command('events').description('The control channel between the player and the agent: what the player asked for (Sync → SyncRequested, Fetch → FetchRequested, Rebuild → RebuildRequested) and what was processed')
     .option('--pending', 'Only the requests nobody has processed yet').option('--type <types>', 'Only these event types, comma separated')
     .action((opts) => {
       const c = control(process.cwd());
       const want = opts.type ? opts.type.split(',') : null;
-      const list = (opts.pending ? c.pending : c.events.filter((e) => REQUESTS.includes(e.type) || e.type === 'FeedbackSubmitted')).filter((e) => !want || want.includes(e.type));
-      if (opts.pending && want && want.includes('FeedbackSubmitted')) list.push(...c.events.filter((e) => e.type === 'FeedbackSubmitted' && !c.processed.has(e.id)));
+      const list = (opts.pending ? c.pending : c.requests).filter((e) => !want || want.includes(e.type));
       console.log(JSON.stringify(list.map((e) => ({ ...e, state: stateOf(c, e.id), ...(c.processed.get(e.id) ? { processed: c.processed.get(e.id) } : {}) })), null, 2));
     });
   events.command('claim').description('Say you started on a request').argument('<id>')
@@ -589,61 +541,6 @@ export function registerPrototype(program, deps) {
     .requiredOption('--outcome <outcome>', `One of: ${OUTCOMES.join(', ')}`).option('--note <text>', 'What was done, or what you need from the person')
     .action((id, opts) => {
       try { markProcessed(process.cwd(), id, opts.outcome, opts.note); console.log(`Processed ${id} (${opts.outcome}).`); } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
-
-  // Stage two and three of a multi-stage update (changes.js): the feedback translated into changes, applied one by one.
-  const changes = proto.command('changes').description('The changes feedback was translated into (.prototype/changes/, next to events/, one global order): what to change in which node, slice or the board, and how far each got')
-    .option('--pending', 'Only the changes not applied to the local model yet')
-    .action((opts) => {
-      const c = control(process.cwd());
-      console.log(JSON.stringify((opts.pending ? c.pendingChanges : c.changes), null, 2));
-    });
-  changes.command('add').description('Record one change a feedback asks for (stage two) — JSON from --json or stdin: summary, scope, target, action, change, exec ({kind: node:changed, attribute, value} or {kind: tool-call, tool, input})')
-    .requiredOption('--from <feedbackEventId>', 'The FeedbackRecorded / FeedbackAnswered event it comes from').option('--json <json>', 'The change as JSON').option('--file <path>', 'The change as a JSON file — for a big value (a screen\'s pages), write the file and pass its path instead of quoting it into the shell')
-    .action(async (opts) => {
-      try {
-        const raw = opts.json ?? (opts.file ? readFileSync(resolve(process.cwd(), opts.file), 'utf8') : await new Promise((ok) => { let b = ''; process.stdin.on('data', (d) => { b += d; }); process.stdin.on('end', () => ok(b)); })); // --json, --file, or stdin
-        const cwd = process.cwd();
-        const from = control(cwd).requests.find((e) => (e.type === 'FeedbackRecorded' || e.type === 'FeedbackAnswered') && (e.id === opts.from || e.id.startsWith(opts.from)));
-        if (!from) throw new Error(`No such feedback request: ${opts.from}`);
-        const ch = addChange(cwd, from.id, JSON.parse(raw));
-        console.log(`Recorded change #${ch.seq} (${ch.id}): ${ch.summary}`);
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
-  changes.command('translated').description('Say the feedback is translated: its changes are recorded; --question / --ask for what still needs the person').argument('<feedbackEventId>')
-    .option('--question <text...>', 'A question the feedback leaves open, as plain text (repeatable)')
-    .option('--ask <json...>', 'A question with options to click: {"question":"…","options":["…","…"]} (repeatable) — the player shows it in a modal and records the answer')
-    .action((id, opts) => {
-      try {
-        const cwd = process.cwd();
-        const asks = (opts.ask || []).map((j) => { try { return JSON.parse(j); } catch { throw new Error(`--ask needs JSON: ${j}`); } });
-        const mine = markTranslated(cwd, id, [...(opts.question || []), ...asks]);
-        console.log(`Translated into ${mine.length} change${mine.length === 1 ? '' : 's'}.`);
-        // A new or changed field that a screen should show is two changes: the node's fields, and the screen's pages. Say so when only the first is there.
-        for (const slice of [...new Set(mine.filter((c) => c.exec.kind === 'node:changed' && c.exec.event.meta.fields).map((c) => c.target.sliceTitle))]) {
-          const screens = loadSlices(paths(cwd)).find((s) => s.slice.title === slice)?.slice.screens || [];
-          const htmlScreens = screens.filter((s) => loadScreens(paths(cwd))[s.linkedId || s.id]?.pages);
-          const pagesDone = mine.some((c) => c.target.sliceTitle === slice && c.exec.kind === 'node:changed' && c.exec.event.meta.pages);
-          if (htmlScreens.length && !pagesDone) console.log(`⚠ "${slice}" changes fields but no change updates its screen's pages (${htmlScreens.map((s) => s.title).join(', ')}) — if the screen should show them, add a node:changed of pages (changes add --from ${id} …). The board's HTML screen is only updated by a change of pages.`);
-        }
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
-  changes.command('run').description('Execute the pending changes one by one, in order (stage three): each is applied to the local model; with --board it is also written to the board — the node:changed event, or the recorded tool call. No agent involved')
-    .option('--board', 'Also write them to the board (a tool call needs this)')
-    .action(async (opts, command) => {
-      try {
-        const cfg = opts.board ? (await credentials(command)).cfg : null;
-        const { results, local } = await runChanges(process.cwd(), cfg, { toBoard: !!opts.board, log: console.log });
-        console.log(results.length ? `${results.filter((r) => r.applied).length} of ${results.length} applied.${local ? ' Rebuild the page: local-prototype-build.' : ''}` : 'No pending changes.');
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
-    });
-  changes.command('submit').description('Write the applied changes to the board, one by one in order — each as its node:changed event')
-    .action(async (_, command) => {
-      try {
-        const { cfg } = await credentials(command);
-        const done = await submitApplied(process.cwd(), cfg, console.log);
-        console.log(done.length ? `Submitted ${done.filter((d) => d.status === 'submitted' || d.status === 'already').length} of ${done.length}.` : 'Nothing applied that is waiting for the board.');
-      } catch (err) { console.error(`❌ ${err.message}`); process.exit(1); }
     });
 
   proto.command('remove').description('Delete .prototype/, the prototype skills and the prototype block in CLAUDE.md (refuses with unsynced changes, unless --discard)')

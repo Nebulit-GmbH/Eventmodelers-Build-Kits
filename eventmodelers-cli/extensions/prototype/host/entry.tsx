@@ -1,6 +1,7 @@
 // The local player: PrototypeModal of the board app (src/components/prototypeplayer/PrototypeModal.tsx), with the page coming from this
 // folder instead of the board's storage. The feedback toggle, composer, list, replay and replay bar are the app's own components —
-// built from its source by build.mjs; only what needs the board (login, chat, storage) is replaced by ./stubs.
+// built from its source by build.mjs; only what needs the board (login, chat, the modal service) is replaced by ./stubs. Submit files the feedback
+// on the platform through this folder's server (stubs/submitFeedback.ts); the platform's /apply-feedback applies it.
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { sandboxDocument } from '@player/sandboxDocument'
@@ -11,6 +12,7 @@ import { fetchLocalPrototype, type PrototypeLoad } from './stubs/prototypeApi'
 import { requestFetch, requestSync } from './stubs/chatSend'
 import { phaseOf } from './stubs/useApplyStatus'
 import { RebuildButton } from '@player/RebuildButton'
+import { usePrototypeRebuild } from '@player/usePrototypeRebuild'
 import '@player/feedback/FeedbackReplay' // registers the replay overlay
 
 const SQUARE: React.CSSProperties = { margin: 0, width: 30, height: 30, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
@@ -47,7 +49,7 @@ const RequestButton: React.FC<{ request: () => Promise<{ id: string } | null>; l
 
 const SyncButton: React.FC = () => (
     <RequestButton request={requestSync} label="Sync" working="Syncing" done="Synced" failed="Sync failed" icon="fa-solid fa-cloud-arrow-up" color="#2563eb"
-        title="Sync: write every change that has not been synced yet to the board — the changes feedback was translated into first, in order, then the rest"
+        title="Sync: write every local model change that has not been synced yet to the board"
         failedTitle="The agent could not sync everything — see its note in the pill, or run /local-prototype-control" />
 )
 
@@ -58,123 +60,7 @@ const FetchButton: React.FC = () => (
         failedTitle="Not fetched — the local model has edits that are not synced yet: Sync first" />
 )
 
-interface Question { id: string; question: string; options: string[] }
-interface FeedbackDetail { id: string; type: string; root: string; state: string; note: string; comments: { id: string; comment: string; element: string; screen: string }[]; questions: Question[]; answers: { text: string; answer: string }[] }
-
-const post = (type: string, data: unknown) => fetch('/api/control', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ type, data }) })
-
-/** The modal behind the orange "Feedback needs you" pill: the open questions with their options to click, a field for an answer of your own, and Discard. */
-const QuestionModal: React.FC<{ id: string; onClose: () => void }> = ({ id, onClose }) => {
-    const [d, setD] = useState<FeedbackDetail | null>(null)
-    const [picked, setPicked] = useState<Record<string, string>>({})
-    const [typed, setTyped] = useState<Record<string, string>>({})
-    const [busy, setBusy] = useState(false)
-    useEffect(() => { void fetch(`/api/control/${id}`).then(r => r.json()).then(setD).catch(() => setD(null)) }, [id])
-    const answerOf = (q: Question) => (typed[q.id] || '').trim() || picked[q.id] || ''
-    // One answer is enough — a question left blank is left to the agent's judgment (or asked again), and an answer in the person's own words counts as much as an option.
-    const ready = !!d && d.questions.some(q => answerOf(q))
-    const send = async () => {
-        if (!d || !ready) return
-        setBusy(true)
-        await post('FeedbackAnswered', { ref: d.root, answers: d.questions.filter(q => answerOf(q)).map(q => ({ question: q.id, text: q.question, answer: answerOf(q) })) })
-        onClose()
-    }
-    const discard = async () => {
-        if (!d) return
-        setBusy(true)
-        await post('FeedbackDiscarded', { ref: d.root })
-        onClose()
-    }
-    return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(15,23,42,.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={onClose}>
-            <div role="dialog" aria-label="Feedback needs you" onClick={e => e.stopPropagation()}
-                style={{ width: 520, maxWidth: '100%', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '2px solid #ea580c', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,.35)', padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#ea580c' }}>
-                    <i className="fa-solid fa-circle-question" />Feedback needs you
-                    <button className="button is-small" style={{ margin: 0, marginLeft: 'auto', width: 30, height: 30, padding: 0 }} onClick={onClose} aria-label="Close"><i className="fa-solid fa-xmark" /></button>
-                </div>
-                {!d && <p style={{ margin: 0, color: 'var(--text-secondary)' }}>Loading…</p>}
-                {d && d.comments.map(c => (
-                    <div key={c.id} style={{ padding: '6px 10px', borderLeft: '4px solid #5b8def', background: 'rgba(91,141,239,.08)', borderRadius: 6, fontSize: 13 }}>
-                        <div style={{ fontWeight: 600, whiteSpace: 'pre-wrap' }}>{c.comment}</div>
-                        {(c.screen || c.element) && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{[c.screen, c.element && `“${c.element.slice(0, 60)}”`].filter(Boolean).join(' · ')}</div>}
-                    </div>
-                ))}
-                {d && d.questions.length === 0 && (
-                    <p style={{ margin: 0, fontSize: 13, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{d.note || 'The agent could not finish this feedback.'}</p>
-                )}
-                {d && d.questions.map(q => (
-                    <div key={q.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <div style={{ fontWeight: 600 }}>{q.question}</div>
-                        {q.options.length > 0 && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                                {q.options.map(o => (
-                                    <button key={o} className="button is-small" onClick={() => { setPicked({ ...picked, [q.id]: o }); setTyped({ ...typed, [q.id]: '' }) }} aria-pressed={picked[q.id] === o && !typed[q.id]}
-                                        style={{ margin: 0, height: 'auto', minHeight: 30, padding: '6px 10px', textAlign: 'left', whiteSpace: 'normal', justifyContent: 'flex-start', ...(picked[q.id] === o && !typed[q.id] ? { background: '#2563eb', borderColor: '#2563eb', color: '#fff' } : {}) }}>
-                                        {o}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        <input className="input is-small" placeholder={q.options.length ? 'Or answer in your own words' : 'Your answer'} value={typed[q.id] || ''} onChange={e => setTyped({ ...typed, [q.id]: e.target.value })}
-                            onKeyDown={e => { if (e.key === 'Enter' && ready) void send() }} />
-                    </div>
-                ))}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <button className="button is-small" style={{ margin: 0, background: '#dc2626', borderColor: '#dc2626', color: '#fff', fontWeight: 600 }} disabled={busy || !d} onClick={() => void discard()}
-                        title="Drop this feedback: its changes that were not executed yet are removed">
-                        <i className="fa-solid fa-trash" style={{ marginRight: 6 }} />Discard
-                    </button>
-                    <span style={{ flex: 1 }} />
-                    <button className="button is-small" style={{ margin: 0 }} onClick={onClose}>Close</button>
-                    {d && d.questions.length > 0 && (
-                        <button className="button is-small is-primary" style={{ margin: 0, fontWeight: 600 }} disabled={!ready || busy} onClick={() => void send()}>
-                            <i className="fa-solid fa-paper-plane" style={{ marginRight: 6 }} />Send answer
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    )
-}
-
-/** Where the feedback given in this session stands (the control log's latest feedback request): recorded, applying, done — or, orange, needing an answer: click it. */
-const FeedbackStatus: React.FC = () => {
-    const [since] = useState(() => Date.now())
-    const [item, setItem] = useState<{ id: string; state: string; note: string } | null>(null)
-    const [hidden, setHidden] = useState<string | null>(null)
-    const [asking, setAsking] = useState(false)
-    useEffect(() => {
-        const t = setInterval(async () => {
-            const list: { id: string; type: string; at: string; state: string; note: string }[] | null = await fetch('/api/control').then(r => r.json()).catch(() => null)
-            const mine = (list || []).filter(e => (e.type === 'FeedbackRecorded' || e.type === 'FeedbackAnswered') && Date.parse(e.at) >= since - 5000).pop()
-            setItem(mine ? { id: mine.id, state: mine.state, note: mine.note } : null)
-        }, 2000)
-        return () => clearInterval(t)
-    }, [since])
-    if (!item || item.state === 'discarded' || hidden === item.id) return null
-    const needsYou = item.state === 'needs-you'
-    const look = item.state === 'applied' ? { bg: '#16a34a', icon: 'fa-solid fa-circle-check', text: 'Feedback applied' }
-        : needsYou ? { bg: '#ea580c', icon: 'fa-solid fa-circle-question', text: 'Feedback needs you' }
-        : item.state === 'failed' ? { bg: '#d97706', icon: 'fa-solid fa-triangle-exclamation', text: 'Feedback could not be applied' }
-        : item.state === 'working' ? { bg: '#2563eb', icon: 'fa-solid fa-spinner fa-spin', text: item.note ? `Applying feedback… ${item.note}` : 'Applying feedback…' }
-        : { bg: '#64748b', icon: 'fa-solid fa-spinner fa-spin', text: 'Feedback recorded — the agent picks it up' }
-    const done = item.state === 'applied' || needsYou || item.state === 'failed'
-    return (
-        <>
-            <span role={needsYou ? 'button' : 'status'} tabIndex={needsYou ? 0 : undefined} onClick={needsYou ? () => setAsking(true) : undefined}
-                onKeyDown={needsYou ? e => { if (e.key === 'Enter' || e.key === ' ') setAsking(true) } : undefined}
-                title={needsYou ? 'Click to answer the agent\'s questions, or discard this feedback' : item.note || undefined}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 10px', borderRadius: 6, background: look.bg, color: '#fff', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', cursor: needsYou ? 'pointer' : undefined }}>
-                <i className={look.icon} />{look.text}
-                {done && <button onClick={e => { e.stopPropagation(); setHidden(item.id) }} aria-label="Hide" style={{ background: 'none', border: 0, color: '#fff', cursor: 'pointer', padding: 0, marginLeft: 2 }}>×</button>}
-            </span>
-            {asking && <QuestionModal id={item.id} onClose={() => setAsking(false)} />}
-        </>
-    )
-}
-
-/** What this run does by itself: whether an agent is connected (answers Sync, Rebuild, feedback) and whether changes go to the board on their own (--sync). */
+/** What this run does by itself: whether an agent is connected (answers Sync, Fetch, Rebuild) and whether changes go to the board on their own (--sync). */
 const RunStatus: React.FC = () => {
     const [st, setSt] = useState<{ sync: boolean; agent: boolean; busy: boolean } | null>(null)
     useEffect(() => {
@@ -191,7 +77,7 @@ const RunStatus: React.FC = () => {
     )
     return (<>
         {pill(st.agent, st.busy ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-robot', st.agent ? (st.busy ? 'Agent working' : 'Agent connected') : 'No agent',
-            st.agent ? 'An agent is connected: it answers Sync, Rebuild and saved feedback' : 'No agent is connected — start with `eventmodelers run --prototype` so feedback, Sync and Rebuild are answered')}
+            st.agent ? 'An agent is connected: it answers Sync, Fetch and Rebuild' : 'No agent is connected — start with `eventmodelers run --prototype` so Sync, Fetch and Rebuild are answered')}
         {pill(st.sync, 'fa-solid fa-cloud-arrow-up', st.sync ? 'Auto-sync on' : 'Auto-sync off',
             st.sync ? 'Changes are written to the board automatically (--sync)' : 'Changes stay local until Sync — start with --sync to write them to the board automatically')}
     </>)
@@ -228,14 +114,15 @@ const LocalPlayer: React.FC = () => {
     const html = load?.kind === 'found' ? load.html : undefined
     const name = (load && 'contextName' in load && load.contextName) || 'Prototype'
     const reloadRef = useRef<() => void>(() => {})
-    const feedback = usePrototypeFeedback(frame, { timelineId: 'local', title: name, html, boardId: 'local', name, onRebuilt: () => reloadRef.current() })
+    const feedback = usePrototypeFeedback(frame, { timelineId: 'local', title: name, html, boardId: 'local' })
+    const agentRebuild = usePrototypeRebuild({ timelineId: 'local', title: name, boardId: 'local', name, onRebuilt: () => reloadRef.current() })
 
     const reload = useCallback(() => { setFrameReady(false); setRun(r => r + 1) }, [])
     reloadRef.current = reload
     useEffect(() => { void fetchLocalPrototype().then(setLoad) }, [run])
     useEffect(() => { document.title = `Prototype · ${name}` }, [name])
 
-    // A rebuild (the page changed on disk) or a finished feedback reloads the page, like the board's player does when the agent rebuilt it.
+    // A rebuild (the page changed on disk) reloads the page, like the board's player does when the agent rebuilt it.
     useEffect(() => {
         const source = new EventSource('/__reload')
         source.onmessage = () => reload()
@@ -272,14 +159,13 @@ const LocalPlayer: React.FC = () => {
                 <button className="button is-small" style={{ margin: 0, height: 24, width: 28, padding: 0 }} onClick={copyLink} title="Copy the link to this prototype" aria-label="Copy link"><i className="fa-solid fa-link" /></button>
                 <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <RunStatus />
-                    {load?.kind === 'found' && <FeedbackStatus />}
-                    {load?.kind === 'found' && <RebuildButton feedback={feedback} />}
+                    {load?.kind === 'found' && <RebuildButton rebuild={agentRebuild} />}
                     {load?.kind === 'found' && <FetchButton />}
                     {load?.kind === 'found' && <SyncButton />}
                     {load?.kind === 'found' && (
                         <button className="button is-small" style={SQUARE} onClick={reload} title="Reload: fetch the latest version" aria-label="Reload"><i className="fa-solid fa-arrows-rotate" /></button>
                     )}
-                    {load?.kind === 'found' && <FeedbackToggle feedback={feedback} style={{ margin: 0 }} />}
+                    {load?.kind === 'found' && <FeedbackToggle feedback={feedback} style={{ margin: 0 }} onRebuild={() => void agentRebuild.rebuild()} />}
                 </span>
             </div>
 

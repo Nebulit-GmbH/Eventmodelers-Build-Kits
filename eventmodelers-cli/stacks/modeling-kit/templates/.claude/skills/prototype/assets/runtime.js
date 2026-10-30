@@ -428,11 +428,28 @@ globalThis.EMRuntime = (function () {
     domain.slices.push({ id: slice.id, title: slice.title, order: slice.order ?? 0 });
   }
 
+  /**
+   * The questions the prototype asks the people playing it, in the order of the guided tour: [{ id, screen, ref, category, text }].
+   * They are not part of any slice: the prototype skill writes them afresh on every run, and `assemble` embeds them as
+   * <script type="text/plain" data-em-questions> — text/plain, because the platform's sanitizer keeps no other non-JS script type. `screen` is a tab title, `ref` says which element: "text:<its visible text, label or placeholder>"
+   * or the value of a data-em-ref attribute; `setup` (optional) is the state to show it in. The player's feedback layer shows them (a ? tag on the element, a Next button through all of them).
+   */
+  function questions() {
+    try {
+      const el = document.querySelector('script[data-em-questions]');
+      const list = el ? JSON.parse(el.textContent || '[]') : [];
+      const seen = new Set();
+      return (Array.isArray(list) ? list : []).filter((q) => q && q.id && q.text && q.ref && q.screen && !seen.has(q.id) && seen.add(q.id));
+      // `setup`, when present: { spec?: <title or id of a scenario of the model>, given?: [{ type, data }] } — the state the prototype is put in
+      // when the question is shown (the event log becomes the scenario's, or these, given events), see emMount's "em-question" listener.
+    } catch (e) { return []; }
+  }
+
   /** Asks the board's player (the page around this iframe) to zoom to a slice: a message, nothing the page itself can do. */
   function zoomToSlice(nodeId) {
     try { window.parent.postMessage({ source: 'proto-kit', type: 'zoom', nodeId }, '*'); } catch (e) { /* not embedded */ }
   }
-  const api = { zoomToSlice, DomainError, reject, createRuntime, project, runSpecs, matches, uuid, defineSlice, domain };
+  const api = { zoomToSlice, DomainError, reject, createRuntime, project, runSpecs, matches, uuid, defineSlice, domain, questions };
 
   return api;
 })();

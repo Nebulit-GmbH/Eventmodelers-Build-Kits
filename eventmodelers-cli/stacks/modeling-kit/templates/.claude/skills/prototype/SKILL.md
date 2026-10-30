@@ -31,7 +31,7 @@ It is put together from:
 
 ## Step 1 — Which context
 
-From `$ARGUMENTS`: the context (a MODEL_CONTEXT name or a timeline name) and optionally `out=<dir>`.
+From `$ARGUMENTS`: the context (a MODEL_CONTEXT name or a timeline name) and optionally `out=<dir>`. Also optionally `more-questions asked=<id,id,…>` (the player's **Add more questions** button): see Step 5b.
 
 The unit is the **effective context**: a timeline assigned to or connected with a MODEL_CONTEXT belongs to that context; a timeline with neither is its own context. Either name returns the whole effective context — every timeline in it, each slice carrying its `chapter`.
 
@@ -69,17 +69,18 @@ A change in one slice can matter to another (a renamed event field that a read m
 
 ## Step 3 — Read the flagged slices
 
-For the new and changed slices only, run in parallel:
+For the new and changed slices only, **one call for all of them** — never one call per slice:
 
 ```
-mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceId": "<id>", "projection": "fields", "format": "json" }
-mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceId": "<id>", "projection": "specs",  "format": "json" }
+mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceIds": ["<id>", …], "format": "json" }
 ```
 
-- `fields` → `sliceType`, `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
-- `specs` → `specifications[]` (`given` / `when` / `then` with example values; a rejection is a `then` step of type `SPEC_ERROR` whose `description` is the message; `expectEmptyList` on read-model steps) and `storylines[]`.
+No `projection`: each slice comes with its fields **and** its specs.
 
-**Screens.** For each of the slice's screens read its own node — `linkedId` when set (a copy can carry its own marks), else `id` — in one call: `mcp__eventmodelers__get_nodes { "boardId", "nodeIds": [...] }`. `HTML_SCREEN` → `meta.pages`, `meta.marks`, `meta.fields`. `SCREEN` → `mcp__eventmodelers__get_image_snapshot_description { "boardId", "nodeId" }` for its sketch `{ elements }` (grid vocabulary in `storyboard-screen`); none (an uploaded screenshot) → the screen's fields are all there is.
+- the slice's elements → `sliceType`, `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
+- its specs → `specifications[]` (`given` / `when` / `then` with example values; a rejection is a `then` step of type `SPEC_ERROR` whose `description` is the message; `expectEmptyList` on read-model steps) and `storylines[]`.
+
+**Screens.** For each of the slices' screens read its own node — `linkedId` when set (a copy can carry its own marks), else `id` — all of them in one call: `mcp__eventmodelers__get_nodes { "boardId", "nodeIds": [...] }`. `HTML_SCREEN` → `meta.pages`, `meta.marks`, `meta.fields`. `SCREEN` → `mcp__eventmodelers__get_image_snapshot_description { "boardId", "nodeId" }` for its sketch `{ elements }` (grid vocabulary in `storyboard-screen`); none (an uploaded screenshot) → the screen's fields are all there is.
 
 **Copies.** An element with `elementCopy: true` is a linked copy (its `id` is the original's). It is defined by the slice that owns the original, never twice. An EVENT whose original lives in another context, or that no COMMAND in this context produces, is an **external event**.
 
@@ -135,6 +136,23 @@ Example values become typed data (`Int`/`Double` → numbers, `Boolean` → bool
 Automation slices usually have no screen part — the Automations tab shows them.
 
 ---
+
+## Step 5b — The questions (afresh on every run)
+
+The prototype also **asks**: a guided tour through the screens, one `?` tag per question on the element it is about, a Next button leading from question to question — also onto another screen. This is how the people playing it tell us what the screens do (what is stored, what happens next, which rules apply). **What to ask, in which order and in which words: `eventmodeling-workshop-questions`** — read it, don't improvise a catalog.
+
+**Regenerate the questions on every run, from the model as it is now** — also when every slice is `unchanged`, and never copied from the stored page: a question that was answered by the model since, or points at an element that is gone, must not come back. Write them to `<out>/.work/questions.json` (`assemble` embeds them; without the file the page asks nothing), an array in tour order:
+
+```json
+[{ "id": "save-note-action", "screen": "Activity Composer", "ref": "text:Save note", "category": "action",
+   "text": "What happens when someone saves a note?",
+   "setup": { "spec": "<title of a scenario>" } }]
+```
+
+- `screen` is a tab title (a screen name from Step 5); `ref` the element: `text:<its visible text, label or placeholder>` — preferably this, so a question never depends on markup inside a slice block — or a `data-em-ref="…"` value you put on the element in a block you are rewriting anyway. `id` unique and **derived, never invented**: `<screen>-<element text>-<category>` as a slug (e.g. `activity-composer-save-note-action`) — the same element and category get the same id on every run even when you reword `text`; the player remembers answered ids, so a changed id makes the customer answer the same question twice. A question the model now answers (the scenario, field or screen exists) is **left out**, not kept. `category` and `text` from the catalog; `setup` optional (see there; `spec` must name a scenario in `specs`, `assemble` checks).
+- **Guide along the timeline, as strictly as possible:** the tour follows the event model left to right — slices by their `order` in `status.json`, inside a slice the elements in timeline order (screen → command → event → read model → the next slice's screen), so Next never jumps back to an earlier part of the story. Depart from it only when unavoidable (a situation a later slice creates is a `setup`, not a reason to reorder). **Drive it forward**: at most two questions per screen, a `next` question after every action ("what happens after this?"), and at the end of the timeline one open question about what follows (`eventmodeling-workshop-questions`, "always ask what comes next") — never a tour that circles the same few screens. Keep it to the questions that matter, and set the scene (`setup`) wherever the question is about a situation.
+
+**`more-questions` (next round).** Without it a rebuild writes the same ids again, and the player hides every one already answered — so a rebuild never brings anything new. With `more-questions asked=<ids>` write the full tour as usual **plus a next round**: new questions whose id is **not** in `asked` — never reuse an id: an id in `asked` is a question already put to the people, and the player would hide the new one as answered. A new question on an element and category that already has one (another angle) gets the derived id plus a round suffix (`…-action-2`, then `-3`); check every id you write against `asked` and against the others in the file. Go deeper than the first round — `rule`, `example`, `who`, `time`, `view` for the elements the happy path showed to be risky, and elements no question touched yet — still only what the model does not answer, still one per element that matters most. Keep the earlier questions in the file (answered ones are hidden by the player, open ones stay open). If the model leaves nothing worth asking, say so in the report rather than inventing questions.
 
 ## Step 6 — Write the blocks, assemble, check
 

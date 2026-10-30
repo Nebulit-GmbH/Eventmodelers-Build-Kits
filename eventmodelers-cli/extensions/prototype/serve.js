@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, watch } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { control, detail, progressOf, record, stateOf } from './control.js';
+import { control, record, stateOf } from './control.js';
 import { paths, readJson } from './state.js';
 import { buildWalkthrough, walkthroughHtml } from './walkthrough.js';
 
@@ -21,7 +21,7 @@ const loopbackOrigin = (origin, port) => LOOPBACK.some((h) => origin === `http:/
 
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html; charset=utf-8' };
 
-export async function serve({ cwd, port = 4173, studio = null, runtime = () => ({ sync: false, agent: false, busy: false }) }) {
+export async function serve({ cwd, port = 4173, studio = null, runtime = () => ({ sync: false, agent: false, busy: false }), submitFeedback = async () => ({ ok: false, problems: ['Feedback is not available in this run.'] }) }) {
   const p = paths(cwd);
   const clients = new Set();
   const server = createServer((req, res) => {
@@ -43,18 +43,21 @@ export async function serve({ cwd, port = 4173, studio = null, runtime = () => (
       req.on('close', () => clients.delete(res));
       return;
     }
-    // The player's own needs: the context's name, the page (it goes into the player's iframe), what Submit / Sync / Rebuild record.
+    // The player's own needs: the context's name, the page (it goes into the player's iframe), what Sync / Fetch / Rebuild record, and Submit (feedback → platform).
     if (path === '/api/context') return json(res, 200, { name: (readJson(join(p.work, 'status.json'), {}) || {}).context || '', studio });
     // Whether this run writes changes to the board by itself (--sync) and whether an agent loop is answering the player's requests.
     if (path === '/api/status') return json(res, 200, runtime());
     // The control channel (see control.js): the player records what the user pressed; the agent's answers show up as state.
     if (path === '/api/control' && req.method === 'GET') {
       const c = control(cwd);
-      return json(res, 200, c.requests.map((e) => ({ id: e.id, seq: e.seq, type: e.type, at: e.at, state: stateOf(c, e.id), note: (c.processed.get(e.id) || {}).note || progressOf(c, e.id) })));
+      return json(res, 200, c.requests.map((e) => ({ id: e.id, seq: e.seq, type: e.type, at: e.at, state: stateOf(c, e.id), note: (c.processed.get(e.id) || {}).note || '' })));
     }
-    if (path.startsWith('/api/control/') && req.method === 'GET') { const d = detail(cwd, path.slice('/api/control/'.length)); return d ? json(res, 200, d) : json(res, 404, { error: 'no such request' }); }
     if (path === '/api/control' && req.method === 'POST') {
       return readBody(req).then((b) => { const { type, data } = JSON.parse(b || '{}'); return json(res, 200, record(cwd, type, data)); }).catch((err) => json(res, 400, { error: err.message }));
+    }
+    // Submit in the player: the named set of feedback goes to the platform (feedback.js) with this folder's credentials; the answer is { ok, id } or { ok: false, problems }.
+    if (path === '/api/feedback' && req.method === 'POST') {
+      return readBody(req).then(async (b) => json(res, 200, await submitFeedback(JSON.parse(b || '{}')))).catch((err) => json(res, 400, { ok: false, problems: [err.message] }));
     }
     // Everything that is only local, slice by slice — built fresh on every request from the model files; changes nothing.
     if (path === '/api/walkthrough') return json(res, 200, buildWalkthrough(cwd));

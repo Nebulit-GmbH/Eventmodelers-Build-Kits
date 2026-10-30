@@ -109,6 +109,10 @@ Every question and every summary theme must be written in plain business languag
 - **Do not flag technical/infrastructure fields** (IDs, timestamps, correlation IDs, version numbers) as missing — these are implementation decisions, not business gaps.
 - **Do not assume** notifications (welcome email, verification, webhook) are missing just because they aren't modelled. They may belong to a different slice or context not yet built. Only ask if the model explicitly implies a notification is needed but nothing wires to it.
 
+### Category J: What happens here? (screens and their elements)
+
+For a screen element the model leaves open — a button with no command, a field nobody stores, a result with no next screen, a command with no rule — ask the facilitator's questions from **`eventmodeling-workshop-questions`** (what happens, what is stored, what comes next, which business rules apply, an example). Same catalog and wording as the questions the prototype asks its players; don't write a second list here. An example you ask for is a future GWT scenario — say so.
+
 ### Category I: Structural shapes
 This category is about the **shape of the model**, not any one flow's business logic — it needs the edge/relationship data and per-slice scenario counts gathered across *all* slices in Step 2, so run it once after all slices are loaded, not per-slice. Check the full element graph against the four shapes defined in `eventmodeling-core-rules`'s **Structural Shapes** section (the bed, left chair, right chair, shelf) — read that section for what each shape is, its threshold, and which one is an always-flag anti-pattern vs. a context-dependent candidate; this section only covers how to word and post the finding once you've decided it holds up.
 
@@ -123,55 +127,58 @@ Whichever of these four you raise, its comment goes on the element at the centre
 
 ---
 
-## Step 4 — Show the findings first; comments only after the person says so
+## Step 4 — In the chat, ask; without a chat, post comments
 
 **When this run has a chat** (`CHAT_SESSION_ID` is set — the request came from the board's chat, as a prompt's
-`origin_session_id` or as a `CHAT` turn), **nothing goes on the board yet.** Steps 4.1 and 4.2 below run only
-after the person has answered. Instead:
+`origin_session_id` or as a `CHAT` turn), the findings are **questions to the person, answered right there**.
+**Nothing goes on the board as a comment or an arrow** — Steps 4.1 and 4.2 are for runs without a chat.
 
-### 4.0 Offer the findings in the chat — a snippet, then the question
+### 4.0 Ask the questions in the chat — a `questions` snippet
 
 Post **one** `post_chat_message` (`sessionId` = `CHAT_SESSION_ID`, no `replyTo` in a prompt turn; `replyTo` =
-this turn's `message_id` in a `CHAT` turn) with a **`tasks` snippet** — it is the list of findings *and* the
-question whether they should become comments:
+this turn's `message_id` in a `CHAT` turn) with a **`questions` snippet** — every finding is a question with its own
+input for the answer:
 
 ```
 mcp__eventmodelers__post_chat_message {
   "boardId": "$BOARD_ID",
   "sessionId": "<CHAT_SESSION_ID>",
-  "text": "I have 7 questions about Registration. Tick the ones that should go on the board as comments.",
+  "text": "I have 7 questions about Registration — answer the ones you can.",
   "snippet": {
-    "kind": "tasks",
-    "headline": "Post these as comments?",
-    "submitLabel": "Post as comments",
-    "tasks": [
-      { "id": "c:<nodeId>:1", "title": "What happens when a customer registers without a name?", "description": "Register Customer", "nodeId": "<nodeId>" },
-      { "id": "c:<nodeId>:2:to:<otherNodeId>", "title": "Does this always reach the shipping step?", "description": "Order Placed → Ship Order (also drawn as an arrow)", "nodeId": "<nodeId>" }
+    "kind": "questions",
+    "headline": "A few questions about Registration",
+    "submitLabel": "Send answers",
+    "questions": [
+      { "id": "q:<nodeId>:1", "title": "What happens when a customer registers without a name?", "description": "Register Customer", "nodeId": "<nodeId>",
+        "sliceId": "<sliceId>", "sliceTitle": "Register Customer", "chapterId": "<chapterId>", "chapterTitle": "Registration" },
+      { "id": "q:<nodeId>:2", "title": "Does this always reach the shipping step?", "description": "Order Placed → Ship Order", "nodeId": "<nodeId>",
+        "sliceId": "<sliceId>", "sliceTitle": "Place Order", "chapterId": "<chapterId>", "chapterTitle": "Ordering" }
     ]
   }
 }
 ```
-- **`title`** is the finding exactly as it would be posted — one sentence, plain business language (the language rule
-  applies). **`description`** names the element it is about (and, for a relational finding, both), and **`nodeId`**
-  is that element's id (the first one, for a relational finding): the person clicks the name to jump to it on the canvas.
-- **`id`** carries what you need later, because the turn that posts the comments remembers nothing:
-  `c:<nodeId>:<n>` for a comment on that node, and `c:<nodeId>:<n>:to:<otherNodeId>` when the finding is relational
-  and also gets an arrow (4.2). Unique per task.
-- The snippet pages itself at 5 per page — put **every** finding in the one snippet, never split them across messages.
-- Then **end the turn.** Post no comment and draw nothing while you wait; zero findings means a one-line text reply
-  and no snippet. The report of Step 5 is this message.
+- **`title`** is the question — one sentence, plain business language (the language rule applies). **`description`**
+  names the element it is about (for a relational finding, both), and **`nodeId`** is that element's id (the first
+  one) — **required on every question**: it is what its answer is correlated with, and the person clicks the name to
+  jump to it on the canvas. A snippet with a question that has no `nodeId` is not shown. Give the **full context**
+  too, whenever you have it from the model you just read: `sliceId` / `sliceTitle` (the slice the node is in) and
+  `chapterId` / `chapterTitle` (the chapter of that slice) — the answer comes back with all of it.
+- **`id`** carries what you need later, because the turn that handles the answers remembers nothing:
+  `q:<nodeId>:<n>`, unique per question.
+- The snippet walks the person through the questions **one at a time** (answer or skip, Next, send at the end) — put **every** question in the one snippet, in the order you want them asked (timeline order, `eventmodeling-workshop-questions`), never split them across messages.
+- Then **end the turn.** Change nothing while you wait; zero findings means a one-line text reply and no snippet.
+  The report of Step 5 is this message.
 
-**The answer arrives as a `CHAT` turn** — `Please do these:` followed by the titles of the ticked findings (or `(by id)`
-and the ids, when the list was long). Read your snippet back with `get_chat_session` (it is on your message as
-`snippet`), match the ticked titles/ids to its tasks, and create **one prompt** for the ticked ones: *"Post these
-/wdyt findings as comments (author wdyt) — skip Steps 1–3 and 4.0: `<id> | <title>` per line"*. Unticked findings were
-declined: drop them. Nothing ticked, or a "no": acknowledge in a line.
+**The answers arrive as a `CHAT` turn** — the message text is one line (`Answered 3 of 7 questions.`); the answers themselves are in
+the header's `context=`, as `snippetReply.selection`: a list of `{ id, title, nodeId, sliceId?, sliceTitle?, chapterId?, chapterTitle?, answer }`,
+one per answered question. The node, slice and chapter are where the answer belongs — no lookup needed. Questions the person left
+open are not in the list: leave them. Then apply each answer to the model as `eventmodeling-workshop-questions` ("What the answers
+become") says: a rule or example → a GWT scenario on the original element (never a `linkedTo` copy), data → fields, what comes next →
+the following screen / event / automation — through the matching skill. An answer that contradicts the model is a question back in the chat, not a silent change.
+Several answers are one prompt (`create_prompt`, one line per answer: `<nodeId> | <title> | <answer>`); reply with one line
+saying what you applied.
 
-**A prompt that starts with "Post these /wdyt findings"** is the posting run: do **not** load the model or analyse
-again — for each line, the id gives the node (and the arrow target), the title is the comment text — and go straight
-to 4.1 (and 4.2 for the `:to:` ones).
-
-**No chat** (run straight from a terminal session): skip 4.0 and post right away, as 4.1 and 4.2 say.
+**No chat** (run straight from a terminal session): skip 4.0 and post comments right away, as 4.1 and 4.2 say.
 
 ## Posting — comments carry every textual question; arrows carry relational hints
 
@@ -230,8 +237,8 @@ A finding about a single element, or about a cluster, gets a comment only — do
 
 ## Step 5 — Report back to the user
 
-**With a chat**, the report is the 4.0 message (a count in its text, the findings in the snippet) and the posting run
-ends with one short chat message: how many comments went up, and the arrows drawn. **Without one**, after posting
+**With a chat**, the report is the 4.0 message (a count in its text, the questions in the snippet) and handling the answers
+ends with one short chat message: what was applied to the model. **Without one**, after posting
 all comments, give the user a concise summary:
 
 1. **Flows analysed**: count and list them by their business name

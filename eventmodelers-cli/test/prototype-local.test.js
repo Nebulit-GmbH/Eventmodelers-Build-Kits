@@ -1,19 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assemble, plan, status } from '../extensions/prototype/local-build.js';
 import { buildWalkthrough, walkthroughHtml } from '../extensions/prototype/walkthrough.js';
 import { diffSlice, hasLocalChanges as hasLocalChangesOf, pending, runSync } from '../extensions/prototype/sync.js';
-import { claim, control, detail, markProcessed, markTranslated, record, stateOf } from '../extensions/prototype/control.js';
-import { addChange, listChanges } from '../extensions/prototype/changes.js';
-import { runChanges, submitApplied } from '../extensions/prototype/pipeline.js';
+import { claim, control, markProcessed, record, stateOf } from '../extensions/prototype/control.js';
+import { submitFeedback } from '../extensions/prototype/feedback.js';
+import { serve } from '../extensions/prototype/serve.js';
 import { playLink, share } from '../extensions/prototype/share.js';
 import { createEmptyPrototype } from '../extensions/prototype/empty.js';
 import { BOARD_WRITE_TOOLS, denyBoardWrites, refetchSafely } from '../extensions/prototype/index.js';
-import { screensToDesign, syncScreens } from '../extensions/prototype/screens-sync.js';
+import { syncScreens } from '../extensions/prototype/screens-sync.js';
 import { editedScreens, loadScreens, loadSlices, paths, readBaseline, snapshotBaseline, snapshotScreens, writeJson, writeScreens } from '../extensions/prototype/state.js';
 
 const DEMO = join(dirname(fileURLToPath(import.meta.url)), '..', 'shared', 'demo-slices', 'Understanding Eventsourcing');
@@ -163,160 +164,33 @@ test('screens live as real html files in their own folder and read back unchange
 
 test('the control log: the player records requests, the agent claims and processes them, and what is processed is never open again', (t) => {
   const { cwd } = project(t);
-  const fb = record(cwd, 'FeedbackRecorded', { name: 'Todo App', events: [], feedbacks: [{ id: 'f1', comment: 'Show the count', element: { tag: 'main', path: 'main', text: '', html: '' }, trail: { screen: 'My Lists', slice: 'Change Price', events: [], interactions: [] } }] });
+  const fetch = record(cwd, 'FetchRequested');
   const sync = record(cwd, 'SyncRequested');
   const rebuild = record(cwd, 'RebuildRequested');
-  record(cwd, 'FeedbackSubmitted', { name: 'Round one', feedbacks: [{ id: 'f2', comment: 'later' }] });
-  assert.deepEqual(control(cwd).pending.map((e) => e.type), ['FeedbackRecorded', 'SyncRequested', 'RebuildRequested'], 'oldest first; Submit is no request');
-  assert.deepEqual(control(cwd).pending.map((e) => e.seq), [1, 2, 3]);
-  assert.equal(stateOf(control(cwd), fb.id), 'sent');
-  claim(cwd, fb.id);
-  assert.equal(stateOf(control(cwd), fb.id), 'working');
-  markProcessed(cwd, fb.id, 'applied', 'changed the model');
-  assert.equal(stateOf(control(cwd), fb.id), 'applied');
+  assert.deepEqual(control(cwd).pending.map((e) => e.type), ['FetchRequested', 'SyncRequested', 'RebuildRequested'], 'oldest first');
+  assert.equal(stateOf(control(cwd), fetch.id), 'sent');
+  claim(cwd, fetch.id);
+  assert.equal(stateOf(control(cwd), fetch.id), 'working');
+  markProcessed(cwd, fetch.id, 'applied', 'fetched');
+  assert.equal(stateOf(control(cwd), fetch.id), 'applied');
   markProcessed(cwd, sync.id, 'needs-you', 'a conflict');
   assert.equal(stateOf(control(cwd), sync.id), 'needs-you');
   // A different process (or the next run) sees only the open request — the processed ones are remembered in the log itself.
   assert.deepEqual(control(cwd).pending.map((e) => e.id), [rebuild.id]);
   assert.throws(() => markProcessed(cwd, rebuild.id, 'done'), /outcome is one of/);
   assert.throws(() => record(cwd, 'ControlProcessed', {}), /Not an event the player records/);
-  assert.throws(() => record(cwd, 'FeedbackRecorded', { feedbacks: [] }), /no feedback/);
 });
 
-test('a feedback event carries the slice title of the trail, whether the page marked the slice by title or id', (t) => {
+test('feedback is not a request: the player cannot record it, and an old feedback event in the log is not open', (t) => {
   const { cwd, p } = project(t);
-  mkdirSync(p.work, { recursive: true });
-  writeJson(join(p.work, 'status.json'), { slices: [{ id: 'abc', title: 'Change Price' }] });
-  const byTitle = record(cwd, 'FeedbackRecorded', { feedbacks: [{ id: '1', comment: 'x', trail: { slice: 'Change Price' } }] });
-  const byId = record(cwd, 'FeedbackRecorded', { feedbacks: [{ id: '2', comment: 'x', trail: { slice: 'abc' } }] });
-  assert.equal(byTitle.data.feedbacks[0].trail.sliceTitle, 'Change Price');
-  assert.equal(byId.data.feedbacks[0].trail.sliceTitle, 'Change Price');
+  for (const type of ['FeedbackRecorded', 'FeedbackAnswered', 'FeedbackDiscarded', 'FeedbackSubmitted']) assert.throws(() => record(cwd, type, { feedbacks: [{ id: 'f' }] }), /Not an event the player records/, type);
+  // a log written by an older version: its feedback events are history, nothing waits for them
+  mkdirSync(join(p.root, 'events'), { recursive: true });
+  writeFileSync(join(p.root, 'events', 'old.json'), JSON.stringify({ id: 'old', seq: 1, type: 'FeedbackRecorded', at: new Date().toISOString(), data: { name: 'x', events: [], feedbacks: [{ id: 'f', comment: 'x' }] } }));
+  assert.deepEqual(control(cwd).pending, []);
 });
 
-// ---- multi-stage update: feedback → executable changes → executed one by one ----
-
-const feedback = (cwd, comment = 'x') => record(cwd, 'FeedbackRecorded', { name: 't', feedbacks: [{ id: comment, comment, trail: { slice: 'Change Price' } }] });
-const priceCommand = (p) => loadSlices(p).find((s) => s.slice.title === 'Change Price').slice.commands[0];
-const field = (name) => ({ name, type: 'String', example: '', mapping: '', optional: false, subfields: [], cardinality: 'Single', idAttribute: false, generated: false, edited: false, tag: false, query: false, technicalAttribute: false, showAttributes: false });
-const nodeChange = (p, value, extra = {}) => ({
-  summary: 'Add a currency field', scope: 'node', target: { sliceTitle: 'Change Price', nodeTitle: priceCommand(p).title }, action: 'add-field',
-  change: { details: 'a currency field', after: 'currency' }, exec: { kind: 'node:changed', attribute: 'fields', value }, ...extra,
-});
-
-// A board that has the model as last fetched, answers the node event, and the MCP tool call.
-function fakeBoard(cwd, { override = null } = {}) {
-  const sent = { events: [], tools: [], order: [] };
-  const p = paths(cwd);
-  const impl = async (url, init = {}) => {
-    const ok = (body) => ({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
-    if (String(url).includes('/slicedata')) {
-      const slices = loadSlices(p).map(({ id }) => readBaseline(p, id));
-      if (override) for (const s of slices) for (const k of ['commands', 'events', 'readmodels', 'screens', 'processors']) for (const e of s[k] || []) if (e.id === override.id) e[override.attr] = override.value;
-      return ok({ slices });
-    }
-    if (String(url).endsWith('/nodes/events')) { sent.events.push(...JSON.parse(init.body)); sent.order.push('node:changed'); return ok({}); }
-    if (String(url).endsWith('/mcp')) { const call = JSON.parse(init.body).params; sent.tools.push(call); sent.order.push(call.name); return ok({ jsonrpc: '2.0', id: 1, result: { content: [{ type: 'text', text: 'ok' }] } }); }
-    throw new Error(`unexpected ${url}`);
-  };
-  return { impl, sent };
-}
 const CFG = { baseUrl: 'http://board.test', organizationId: 'o', boardId: 'b', token: 't' };
-
-test('a change names exactly what to change and carries the ids; changes and events share one global order', (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  const change = addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  const later = record(cwd, 'SyncRequested');
-  assert.deepEqual([fb.seq, change.seq, later.seq], [1, 2, 3], 'one counter for the events and the changes');
-  assert.equal(change.target.nodeId, cmd.id, 'the names were resolved against the model');
-  assert.equal(change.exec.kind, 'node:changed');
-  // the full instructions: the complete node event, its id the change's id — executed verbatim
-  assert.deepEqual(change.exec.event, { id: change.id, eventType: 'node:changed', nodeId: cmd.id, changedAttributes: ['meta.fields'], meta: { fields: [...cmd.fields, field('currency')] } });
-  assert.deepEqual(listChanges(cwd).map((c) => c.seq), [2]);
-  assert.throws(() => addChange(cwd, fb.id, nodeChange(p, [], { target: { sliceTitle: 'Change Price', nodeTitle: 'No Such Thing' } })), /No such node/);
-  assert.throws(() => addChange(cwd, fb.id, nodeChange(p, 'text')), /whole list of fields/);
-  assert.throws(() => addChange(cwd, fb.id, { ...nodeChange(p, []), exec: { kind: 'tool-call', tool: 'delete_node', input: { nodeId: 'x' } } }), /never executed from feedback/);
-  assert.throws(() => addChange(cwd, fb.id, { ...nodeChange(p, []), exec: undefined }), /what to execute/);
-});
-
-test('changes are executed one by one in order, locally and on the board, and the feedback follows them', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  const first = addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  const second = addChange(cwd, fb.id, { summary: 'Mark the slice Planned', scope: 'slice', target: { sliceTitle: 'Change Price' }, action: 'set-status', change: { details: 'Planned' }, exec: { kind: 'tool-call', tool: 'mcp__eventmodelers__update_slice_status', input: { sliceId: 'x', status: 'Planned' } } });
-  markTranslated(cwd, fb.id, ['Which currencies?']);
-  assert.equal(stateOf(control(cwd), fb.id), 'working', 'translated: the request follows its changes');
-  assert.deepEqual(control(cwd).pending.map((e) => e.id), [], 'a translated feedback is not translated again');
-
-  const board = fakeBoard(cwd);
-  const { local, toolCalls } = await runChanges(cwd, CFG, { toBoard: true, fetchImpl: board.impl });
-  assert.ok(local && toolCalls);
-  assert.deepEqual(board.sent.events.map((e) => [e.id, e.eventType, e.changedAttributes[0]]), [[first.id, 'node:changed', 'meta.fields']], 'the node event: its id is the change id');
-  assert.deepEqual(board.sent.events[0].meta.fields.map((f) => f.name), [...cmd.fields.map((f) => f.name), 'currency']);
-  assert.deepEqual(board.sent.tools.map((c) => [c.name, c.arguments.boardId, c.arguments.status]), [['update_slice_status', 'b', 'Planned']], 'the tool call as recorded, boardId filled in');
-  assert.ok(priceCommand(p).fields.some((f) => f.name === 'currency'), 'applied to the local model');
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['submitted', 'submitted']);
-  assert.equal(stateOf(control(cwd), fb.id), 'needs-you', 'the open question is still the person\'s');
-  assert.match(control(cwd).processed.get(fb.id).note, /2 of 2 changes applied.*question: Which currencies/);
-  // the baseline advanced for exactly that attribute: sync has nothing left to send for it
-  assert.deepEqual(pending(cwd).flatMap((c) => c.ops), []);
-  assert.deepEqual(second.seq > first.seq, true);
-});
-
-test('without the board a change is applied locally and waits; a tool call keeps the order and waits too; Sync writes them', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  addChange(cwd, fb.id, { summary: 'A scenario', scope: 'slice', target: { sliceTitle: 'Change Price' }, action: 'add-scenario', change: { details: 'x' }, exec: { kind: 'tool-call', tool: 'add_scenario', input: {} } });
-  markTranslated(cwd, fb.id);
-  const first = await runChanges(cwd, null, { toBoard: false });
-  assert.equal(first.results.length, 1, 'stopped at the tool call: the order is kept');
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['applied', 'requested']);
-  assert.equal(stateOf(control(cwd), fb.id), 'working');
-
-  const board = fakeBoard(cwd);
-  assert.equal((await submitApplied(cwd, CFG, () => {}, board.impl)).length, 1, 'the applied one goes to the board, in order');
-  assert.equal(board.sent.events.length, 1);
-  await runChanges(cwd, CFG, { toBoard: true, fetchImpl: board.impl });
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['submitted', 'submitted']);
-  assert.equal(stateOf(control(cwd), fb.id), 'applied');
-});
-
-test('a node event is never forced over a change made on the board, and a failed tool call does not stop the rest', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  addChange(cwd, fb.id, { summary: 'Broken call', scope: 'board', target: {}, action: 'x', change: { details: 'x' }, exec: { kind: 'tool-call', tool: 'create_slice', input: {} } });
-  markTranslated(cwd, fb.id);
-  const board = fakeBoard(cwd, { override: { id: cmd.id, attr: 'fields', value: [field('changed-on-the-board')] } });
-  const failing = async (url, init) => (String(url).endsWith('/mcp') ? ({ ok: true, status: 200, text: async () => JSON.stringify({ jsonrpc: '2.0', id: 1, result: { isError: true, content: [{ type: 'text', text: 'no such thing' }] } }) }) : board.impl(url, init));
-  const { results } = await runChanges(cwd, CFG, { toBoard: true, fetchImpl: failing });
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['conflict', 'failed']);
-  assert.equal(board.sent.events.length, 0, 'nothing was written over the board\'s change');
-  assert.equal(results.length, 2);
-  assert.equal(stateOf(control(cwd), fb.id), 'needs-you');
-  assert.match(control(cwd).processed.get(fb.id).note, /failed: Broken call \(create_slice: no such thing\).*conflict on the board/);
-});
-
-test('Sync is one ordered pass: a change applied earlier is written before the tool call that came after it', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  addChange(cwd, fb.id, { summary: 'Planned', scope: 'slice', target: { sliceTitle: 'Change Price' }, action: 'set-status', change: { details: 'x' }, exec: { kind: 'tool-call', tool: 'update_slice_status', input: {} } });
-  addChange(cwd, fb.id, { summary: 'Describe it', scope: 'node', target: { sliceTitle: 'Change Price', nodeTitle: cmd.title }, action: 'set-description', change: { details: 'x' }, exec: { kind: 'node:changed', attribute: 'description', value: 'Changes the price' } });
-  markTranslated(cwd, fb.id);
-  await runChanges(cwd, null, { toBoard: false }); // local only: the first change is applied, the tool call stops it
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['applied', 'requested', 'requested']);
-  const board = fakeBoard(cwd);
-  await runChanges(cwd, CFG, { toBoard: true, fetchImpl: board.impl });
-  assert.deepEqual(board.sent.order, ['node:changed', 'update_slice_status', 'node:changed'], 'global order, one pass');
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['submitted', 'submitted', 'submitted']);
-});
 
 test('a screen edited here is told from the board\'s version: the fetch baseline survives a new slice baseline, and an edit shows until it is kept', (t) => {
   const { cwd, p } = project(t);
@@ -384,83 +258,6 @@ test('an HTML screen edited here is written to the board as node:changed meta.pa
   const second = await syncScreens(cwd, CFG, { fetchImpl: changed.impl });
   assert.deepEqual(second.map((r) => [r.nodeId, r.status]), [['s2', 'conflict']]);
   assert.equal(changed.sent.length, 0);
-});
-
-test('feedback can change a screen: a node:changed of pages is applied to the local files and written to the board as the change\'s event', async (t) => {
-  const { cwd, p } = project(t);
-  const withScreen = loadSlices(p).find(({ slice }) => (slice.screens || []).length);
-  const node = withScreen.slice.screens[0];
-  const contentId = node.linkedId || node.id;
-  writeScreens(p, { [contentId]: { type: 'HTML_SCREEN', title: node.title, pages: ['<p>old</p>'], marks: null, cssFrameworks: [] } });
-  snapshotScreens(p);
-  const fb = record(cwd, 'FeedbackRecorded', { name: 't', feedbacks: [{ id: 'f', comment: 'x', trail: { slice: withScreen.slice.title } }] });
-  const change = addChange(cwd, fb.id, { summary: 'Add a description input', scope: 'node', target: { sliceTitle: withScreen.slice.title, nodeTitle: node.title, nodeType: node.type }, action: 'edit-screen', change: { details: 'x' }, exec: { kind: 'node:changed', attribute: 'pages', value: ['<p>new with description</p>'] } });
-  assert.equal(change.exec.event.nodeId, contentId);
-  assert.deepEqual(change.exec.event.changedAttributes, ['meta.pages']);
-  assert.throws(() => addChange(cwd, fb.id, { summary: 'x', scope: 'node', target: { sliceTitle: withScreen.slice.title, nodeTitle: node.title }, action: 'x', change: { details: 'x' }, exec: { kind: 'node:changed', attribute: 'pages', value: [] } }), /whole list of pages/);
-  markTranslated(cwd, fb.id);
-  const fake = screenBoard({ [contentId]: ['<p>old</p>'] });
-  await runChanges(cwd, CFG, { toBoard: true, fetchImpl: fake.impl });
-  assert.equal(readFileSync(join(p.screens, contentId, 'page-1.html'), 'utf8'), '<p>new with description</p>', 'applied locally');
-  assert.deepEqual(fake.sent.map((e) => [e.id, e.meta.pages]), [[change.id, ['<p>new with description</p>']]]);
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['submitted']);
-  assert.deepEqual(editedScreens(p), [], 'written to the board: the baseline follows');
-});
-
-test('a feedback can ask with options, be answered in the modal, and be discarded — which removes the change files that were not executed yet', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd, 'make it better');
-  const cmd = priceCommand(p);
-  addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  markTranslated(cwd, fb.id, [{ question: 'Which currencies?', options: ['EUR only', 'EUR and USD', 'EUR only', ''] }, 'Free text?']);
-  const d = detail(cwd, fb.id);
-  assert.deepEqual(d.questions.map((q) => [q.question, q.options]), [['Which currencies?', ['EUR only', 'EUR and USD', 'EUR only']], ['Free text?', []]], 'structured questions, plain text allowed');
-  assert.equal(d.comments[0].comment, 'make it better');
-  assert.equal(d.state, 'working', 'its change has not run yet');
-
-  // the person answers one by option, one in their own words
-  const [q1, q2] = d.questions;
-  const answered = record(cwd, 'FeedbackAnswered', { ref: fb.id, answers: [{ question: q1.id, answer: 'EUR and USD' }, { question: q2.id, answer: 'only for new lists' }] });
-  assert.deepEqual(answered.data.answers.map((a) => [a.text, a.answer]), [['Which currencies?', 'EUR and USD'], ['Free text?', 'only for new lists']], 'the question text travels with the answer');
-  assert.deepEqual(control(cwd).pending.map((e) => e.type), ['FeedbackAnswered'], 'an answer is a request: the next iteration translates it');
-  assert.throws(() => record(cwd, 'FeedbackAnswered', { ref: fb.id, answers: [{ question: q1.id, answer: '  ' }] }), /no answer/);
-  addChange(cwd, answered.id, { summary: 'Describe it', scope: 'node', target: { sliceTitle: 'Change Price', nodeTitle: cmd.title }, action: 'set-description', change: { details: 'x' }, exec: { kind: 'node:changed', attribute: 'description', value: 'Prices in EUR and USD' } });
-  markTranslated(cwd, answered.id);
-  assert.equal(listChanges(cwd).length, 2);
-
-  // discard: both changes were not executed yet — their files go, the log keeps the story
-  record(cwd, 'FeedbackDiscarded', { ref: fb.id });
-  assert.equal(listChanges(cwd).length, 0, 'the change files are removed');
-  assert.equal(stateOf(control(cwd), fb.id), 'discarded', 'even a feedback that was waiting for an answer (processed as needs-you)');
-  assert.equal(stateOf(control(cwd), answered.id), 'discarded');
-  assert.deepEqual(control(cwd).pending, []);
-  assert.ok(control(cwd).events.some((e) => e.type === 'FeedbackDiscarded'));
-});
-
-test('discarding keeps what was already executed', async (t) => {
-  const { cwd, p } = project(t);
-  const fb = feedback(cwd);
-  const cmd = priceCommand(p);
-  addChange(cwd, fb.id, nodeChange(p, [...cmd.fields, field('currency')]));
-  addChange(cwd, fb.id, { summary: 'Describe it', scope: 'node', target: { sliceTitle: 'Change Price', nodeTitle: cmd.title }, action: 'set-description', change: { details: 'x' }, exec: { kind: 'node:changed', attribute: 'description', value: 'later' } });
-  markTranslated(cwd, fb.id, ['Sure?']);
-  await runChanges(cwd, null, { toBoard: false });
-  assert.deepEqual(control(cwd).changes.map((c) => c.state), ['applied', 'applied']);
-  record(cwd, 'FeedbackDiscarded', { ref: fb.id });
-  assert.equal(listChanges(cwd).length, 2, 'applied changes stay: they are history');
-});
-
-test('a screen of a slice created by a tool call has no design: it is found for the loop to design, and gone once it has pages', (t) => {
-  const { cwd, p } = project(t);
-  const withScreen = loadSlices(p).find(({ slice }) => (slice.screens || []).length);
-  const node = withScreen.slice.screens[0];
-  const id = node.linkedId || node.id;
-  writeScreens(p, { [id]: { type: 'HTML_SCREEN', title: node.title, pages: null, marks: null, cssFrameworks: [] } });
-  assert.deepEqual(screensToDesign(cwd).map((s) => [s.screenId, s.sliceTitle]), [[id, withScreen.slice.title]], 'design pending');
-  writeScreens(p, { [id]: { type: 'HTML_SCREEN', title: node.title, pages: ['   '], marks: null, cssFrameworks: [] } });
-  assert.equal(screensToDesign(cwd).length, 1, 'blank pages are no design either');
-  writeScreens(p, { [id]: { type: 'HTML_SCREEN', title: node.title, pages: ['<p>designed</p>'], marks: null, cssFrameworks: [] } });
-  assert.deepEqual(screensToDesign(cwd), []);
 });
 
 test('the board\'s write tools are denied in a prototype folder, reads and the rest of the settings stay', (t) => {
@@ -557,4 +354,77 @@ test('share warns when the model has edits the board does not, and reports a ref
   // Without a baseline every slice counts as not yet on the board.
   rmSync(p.baseline, { recursive: true, force: true });
   assert.match((await share(cwd, SHARE_CFG, { fetchImpl: ok })).warnings[0], /not synced/);
+});
+
+// ---- feedback goes to the platform ----
+
+// The platform's feedback endpoint: records what it received (gunzipped) and answers as told.
+function platform(answer) {
+  const got = [];
+  const impl = async (url, init = {}) => {
+    got.push({ url: String(url), method: init.method, headers: init.headers, body: JSON.parse(gunzipSync(init.body).toString('utf8')) });
+    const body = typeof answer === 'function' ? answer() : answer;
+    return { ok: body.status < 300, status: body.status, text: async () => JSON.stringify(body.json ?? {}) };
+  };
+  return { impl, got };
+}
+const SUBMISSION = { name: 'Round one', events: [{ type: 'ListCreated' }], feedbacks: [{ id: 'f1', comment: 'Show the count' }] };
+
+test('Submit files the feedback on the platform for the prototype\'s context: gzipped JSON, with the folder\'s token', async (t) => {
+  const { cwd, p } = project(t);
+  writeJson(p.state, { context: 'Understanding Eventsourcing', contextId: 'ctx-1' });
+  const fake = platform({ status: 201, json: { id: 'sub-9' } });
+  assert.deepEqual(await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: fake.impl }), { ok: true, id: 'sub-9' });
+  assert.equal(fake.got.length, 1);
+  assert.equal(fake.got[0].url, 'http://board.test/api/org/o/boards/b/prototype/ctx-1/feedback');
+  assert.equal(fake.got[0].method, 'POST');
+  assert.equal(fake.got[0].headers['x-token'], 't');
+  assert.equal(fake.got[0].headers['content-type'], 'application/gzip');
+  assert.deepEqual(fake.got[0].body, SUBMISSION, 'the whole named set, as the player collected it');
+  assert.deepEqual(control(cwd).events.filter((e) => /Feedback/.test(e.type)), [], 'nothing is recorded locally: the platform applies it');
+});
+
+test('Submit looks the context up by name when the folder has no id, and says so plainly when it cannot file anything', async (t) => {
+  const { cwd } = project(t);
+  const fake = platform({ status: 201, json: { id: 'x' } });
+  const found = await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: fake.impl, contexts: async () => [{ id: 'ctx-2', title: 'Understanding Eventsourcing' }] });
+  assert.equal(found.ok, true);
+  assert.match(fake.got[0].url, /\/prototype\/ctx-2\/feedback$/);
+
+  const none = platform({ status: 201 });
+  const noContext = await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: none.impl, contexts: async () => [] });
+  assert.equal(noContext.ok, false);
+  assert.match(noContext.problems[0], /not tied to a context/);
+  const noBoard = await submitFeedback(cwd, { ...CFG, boardId: undefined }, SUBMISSION, { fetchImpl: none.impl });
+  assert.match(noBoard.problems[0], /No board is connected/);
+  assert.equal(none.got.length, 0, 'nothing was sent');
+});
+
+test('Submit reports what the platform says: the problems of a refused structure, no access, no license, a dead network', async (t) => {
+  const { cwd, p } = project(t);
+  writeJson(p.state, { context: 'c', contextId: 'ctx-1' });
+  const refused = await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: platform({ status: 400, json: { code: 'PROTOTYPE_FEEDBACK_INVALID', context: { problems: ['feedbacks[0].comment: must be 1–2000 characters', 7] } } }).impl });
+  assert.deepEqual(refused, { ok: false, problems: ['feedbacks[0].comment: must be 1–2000 characters'] });
+  assert.match((await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: platform({ status: 403 }).impl })).problems[0], /refused these credentials.*403/);
+  assert.match((await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: platform({ status: 402 }).impl })).problems[0], /license/);
+  assert.match((await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: platform({ status: 500, json: { error: 'boom' } }).impl })).problems[0], /HTTP 500: boom/);
+  const down = await submitFeedback(cwd, CFG, SUBMISSION, { fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
+  assert.equal(down.ok, false);
+  assert.match(down.problems[0], /Could not reach the platform: ECONNREFUSED/);
+});
+
+test('the player\'s server files Submit through /api/feedback and records only Sync, Fetch and Rebuild as requests', async (t) => {
+  const { cwd } = project(t);
+  const seen = [];
+  const server = await serve({ cwd, port: 4390, submitFeedback: async (submission) => { seen.push(submission); return { ok: true, id: 'sub-1' }; } });
+  t.after(() => server.close());
+  const base = server.url.replace('localhost', '127.0.0.1');
+  const post = (path, body) => fetch(base + path.slice(1), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const filed = await post('/api/feedback', SUBMISSION);
+  assert.deepEqual(await filed.json(), { ok: true, id: 'sub-1' });
+  assert.deepEqual(seen, [SUBMISSION]);
+  assert.equal((await post('/api/control', { type: 'SyncRequested', data: {} })).status, 200);
+  assert.equal((await post('/api/control', { type: 'FeedbackRecorded', data: SUBMISSION })).status, 400, 'feedback is no control request');
+  assert.deepEqual(control(cwd).pending.map((e) => e.type), ['SyncRequested']);
+  assert.equal((await fetch(base + 'api/control/anything')).status, 404, 'no question modal behind it any more');
 });
