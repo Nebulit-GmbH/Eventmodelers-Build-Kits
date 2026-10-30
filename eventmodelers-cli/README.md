@@ -899,6 +899,7 @@ npx @eventmodelers/cli export --type json --context Checkout          # = fetch:
 npx @eventmodelers/cli re-init                      # refresh the installed build kit (.build-kit/) + its skills
 npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit (.agent-modeling-kit/) + its skills
 npx @eventmodelers/cli re-init --stack supabase      # override which stack to refresh from (manifest missing/stale, or switching stacks)
+npx @eventmodelers/cli scaffold up [dir]             # start a scaffolded app (same as `npm run up` in its folder)
 npx @eventmodelers/cli scaffold re-init [dir]        # a scaffolded app: refresh every kit in it (root + web/) — `re-init --stack` for each
 ```
 

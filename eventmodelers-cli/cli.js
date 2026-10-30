@@ -22,7 +22,7 @@ import { randomUUID } from 'crypto';
 import { runFetch, FetchAuthError } from './lib/fetch.js';
 import { registerPrototype, initPrototype } from './extensions/prototype/index.js';
 import { registerVibe, initVibe, uninstallVibe } from './extensions/vibe/index.js';
-import { SCAFFOLD_TYPES, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
+import { SCAFFOLD_TYPES, invocation, scaffoldTypeNames, missingPrerequisites, runScaffold, reinitKits, builtInTemplates, initTemplates } from './lib/scaffold.js';
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
 import { buildModel } from './lib/scaffold-model.js';
@@ -4832,7 +4832,7 @@ program
 
 program
   .command('scaffold <target> [args...]')
-  .description('`scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). `scaffold re-init [dir]` refreshes every kit the app has (root and web/) from this CLI version — `re-init --stack` for each, the skeleton itself untouched. Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
+  .description('`scaffold up [dir]` starts a scaffolded app (database, API and web, one command, Ctrl+c stops it; run in its folder or pass dir). `scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). `scaffold re-init [dir]` refreshes every kit the app has (root and web/) from this CLI version — `re-init --stack` for each, the skeleton itself untouched. Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
   .option('--type <name>', `Kind of app to scaffold (${scaffoldTypeNames().join(', ')})`, 'supabase')
   .option('--no-install', 'Stop after generating the skeleton: no npm install, checks or commit')
   .option('--no-check', 'Install dependencies but skip the type-check, tests and web build/lint')
@@ -4860,6 +4860,30 @@ program
         execFileSync(file, fileArgs, { cwd: appDir, stdio: 'inherit' });
       } catch {
         process.exit(1);
+      }
+      return;
+    }
+    if (target === 'up') {
+      if (args.length > 1) {
+        console.error('❌ usage: eventmodelers scaffold up [dir]');
+        process.exit(1);
+      }
+      const up = SCAFFOLD_TYPES[opts.type]?.up;
+      if (!up) {
+        console.error(`❌ Unknown --type "${opts.type}". Available: ${scaffoldTypeNames().join(', ')}`);
+        process.exit(1);
+      }
+      const appDir = resolve(process.cwd(), args[0] ?? '.');
+      if (!existsSync(join(appDir, up.requires))) {
+        console.error(`❌ ${appDir} is not a scaffolded "${opts.type}" app (no ${up.requires}) — run this in its folder or pass the folder as the last argument.`);
+        process.exit(1);
+      }
+      const [file, ...fileArgs] = up.command;
+      const inv = invocation(file, fileArgs);
+      try {
+        execFileSync(inv.file, inv.args, { cwd: appDir, stdio: 'inherit', shell: inv.shell });
+      } catch (err) {
+        process.exit(err.status ?? 1);
       }
       return;
     }
