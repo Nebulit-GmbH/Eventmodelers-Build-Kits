@@ -120,9 +120,9 @@ export function sumUsage(parts) {
   };
 }
 
-/** Records slice build turns. The agent id is the session: the platform requires one, and a
+/** Records slice build turns. `kitType` (`backend` | `ui`) says which build kit ran them. The agent id is the session: the platform requires one, and a
  *  restart of the same build agent is still the same agent building the same slices. */
-export function createSliceTracer({ baseUrl, token, organizationId, boardId: defaultBoardId, agentId, traceFile, log = () => {}, enabled = true } = {}) {
+export function createSliceTracer({ baseUrl, token, organizationId, boardId: defaultBoardId, agentId, traceFile, kitType = null, log = () => {}, enabled = true } = {}) {
   const canUpload = !!(enabled && baseUrl && token && organizationId && agentId);
 
   async function post(trace) {
@@ -158,7 +158,7 @@ export function createSliceTracer({ baseUrl, token, organizationId, boardId: def
       if (!sliceId || !usage) return;
       const trace = {
         id: newId(), occurredAt: new Date().toISOString(),
-        boardId, sliceId, sliceTitle, context, ticketNumber, feature, agentId, sessionId: agentId, attempt, status, ...usage,
+        boardId, sliceId, sliceTitle, context, ticketNumber, feature, kitType, agentId, sessionId: agentId, attempt, status, ...usage,
       };
       write(trace);
       post(trace).catch(() => {});

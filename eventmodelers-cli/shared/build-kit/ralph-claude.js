@@ -2,7 +2,8 @@
 // Ralph loop + realtime agent using Claude Code as the executor.
 // Usage: node ralph-claude.js [project_dir]
 
-import { startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { readPickupStatus, startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { kitTypeOf } from './lib/build-log-share.js';
 import { createSliceTracer, usageFromClaudeResult } from './lib/tracing.js';
 import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
 import { recordToolCall } from './lib/tool-call-events.js';
@@ -29,6 +30,7 @@ const tracer = createSliceTracer({
   organizationId: cfg.organizationId,
   boardId: cfg.boardId,
   agentId: cfg.agentId,
+  kitType: kitTypeOf(readPickupStatus(kitDir)),
   traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
   log: (line) => console.log(`[ralph] ${line}`),
   enabled: tracingOn,

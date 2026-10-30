@@ -14,7 +14,8 @@
 // The agent uses its own tools in the project directory, and every permission request it makes is approved — the
 // same trade as `codex exec --full-auto` under ralph-exec.js.
 
-import { startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { readPickupStatus, startRalph, eventMeta, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { kitTypeOf } from './lib/build-log-share.js';
 import { createSliceTracer } from './lib/tracing.js';
 import { turnTimeoutMs } from './lib/turn.js';
 import { recordToolCall } from './lib/tool-call-events.js';
@@ -50,6 +51,7 @@ const tracer = createSliceTracer({
   organizationId: cfg.organizationId,
   boardId: cfg.boardId,
   agentId: cfg.agentId,
+  kitType: kitTypeOf(readPickupStatus(kitDir)),
   traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
   log: (line) => console.log(`[ralph-acp] ${line}`),
   enabled: tracingOn,

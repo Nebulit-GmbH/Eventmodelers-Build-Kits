@@ -17,7 +17,8 @@
 //        RALPH_EXEC_CMD="opencode run" node ralph-exec.js
 // Or persist it as localAi.exec in .eventmodelers/config.json.
 
-import { startRalph, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { readPickupStatus, startRalph, loadLocalConfig, resolveAgentIdentity, connectHeader } from './lib/ralph.js';
+import { kitTypeOf } from './lib/build-log-share.js';
 import { createSliceTracer, usageFromHarnessEvent, sumUsage } from './lib/tracing.js';
 import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
 import { registerMcp, shellQuote } from './lib/mcp-register.js';
@@ -63,6 +64,7 @@ const tracer = createSliceTracer({
   organizationId: cfg.organizationId,
   boardId: cfg.boardId,
   agentId: cfg.agentId,
+  kitType: kitTypeOf(readPickupStatus(kitDir)),
   traceFile: join(projectDir, '.eventmodelers', 'trace', 'slices.jsonl'),
   log: (line) => console.log(`[ralph-exec] ${line}`),
   enabled: tracingOn,
