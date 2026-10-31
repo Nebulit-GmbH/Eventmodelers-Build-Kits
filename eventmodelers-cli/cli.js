@@ -4832,8 +4832,9 @@ program
 
 program
   .command('scaffold <target> [args...]')
-  .description('`scaffold up [dir]` starts a scaffolded app (database, API and web, one command, Ctrl+c stops it; run in its folder or pass dir). `scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). `scaffold re-init [dir]` refreshes every kit the app has (root and web/) from this CLI version — `re-init --stack` for each, the skeleton itself untouched. Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
+  .description('`scaffold up [dir] [--user <email:password>]` starts a scaffolded app (database, API and web, one command, Ctrl+c stops it; run in its folder or pass dir) and provisions the sign-in user if --user is given. `scaffold add-user <email> <password> [dir]` adds a sign-in user to a scaffolded app (run in its folder, or pass dir). `scaffold re-init [dir]` refreshes every kit the app has (root and web/) from this CLI version — `re-init --stack` for each, the skeleton itself untouched. Otherwise: generate a runnable app skeleton from the board — sign-in, navigation with one entry per timeline, a page shell per screen, 501 for every unbuilt endpoint, hot reload — and install the build kits of the chosen --type into it, ready for `run` to add slices. <target> is an empty or new directory, or a skeleton made earlier (which is refreshed from the current model).')
   .option('--type <name>', `Kind of app to scaffold (${scaffoldTypeNames().join(', ')})`, 'supabase')
+  .option('--user <email:password>', '`scaffold up` only: create this sign-in user (or reset its password) once the database is up, e.g. --user test@test.de:secret')
   .option('--no-install', 'Stop after generating the skeleton: no npm install, checks or commit')
   .option('--no-check', 'Install dependencies but skip the type-check, tests and web build/lint')
   .option('--templates <dir>', 'Folder of *.tmpl files that replace the built-in skeleton template of the same path (or add files). Default: the target\'s own templates/ folder when it exists, so customisations survive a refresh')
@@ -4879,6 +4880,14 @@ program
         process.exit(1);
       }
       const [file, ...fileArgs] = up.command;
+      if (opts.user) {
+        const split = opts.user.indexOf(':');
+        if (split < 1 || split === opts.user.length - 1) {
+          console.error('❌ --user expects <email:password>, e.g. --user test@test.de:secret');
+          process.exit(1);
+        }
+        fileArgs.push('--', '--user', opts.user);
+      }
       const inv = invocation(file, fileArgs);
       try {
         execFileSync(inv.file, inv.args, { cwd: appDir, stdio: 'inherit', shell: inv.shell });

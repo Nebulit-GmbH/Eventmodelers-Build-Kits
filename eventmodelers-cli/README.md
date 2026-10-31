@@ -121,6 +121,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/prototype` | Clickable prototype of one context as one platform-served page: built slice by slice with per-slice hashes (only changed slices rebuild), screens as tabs, in-browser event sourcing with a browsable log, logic from the scenarios, automations runnable from their own tab |
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
 | `/domain-story` | Retells chapters as Domain Storytelling — actors, work objects and numbered activities, drawn as a graph per chapter in the chat |
+| `/regenerate-diagram` | Redraws a pinned Mermaid/SVG diagram node from the current model and writes the new source back into the same node (sent by the diagram's Regenerate button) |
 | `/stressor-analysis` | Residuality-theory stress test of one chapter: wide stressors and their residues, a stressor × element matrix that exposes hidden coupling, redesigns proposed as new slices |
 | `/build-snippet-type` | Build a custom chat snippet type with the person — a card with their own fields and buttons — preview it in the chat, create it after a yes |
 | `/storyboard` | Build a full visual storyboard |
@@ -136,6 +137,12 @@ Use skills in Claude Code with `/skill-name`:
 | `/request-feedback` | Post a comment and mark a slice `Blocked` when it's genuinely ambiguous (backend stacks) |
 
 Which skills install depends on the chosen stack — see `stacks/<name>/templates/.claude/skills/`. `/connect`, `/learn-eventmodelers-api`, `/update-slice-status`, and `/request-feedback` have no stack-specific content and install into every stack from `shared/skills/` instead.
+
+## Local prototype: `init --prototype`
+
+`init --prototype` sets up a folder as a local clickable prototype: it installs the `local-prototype*` skills and the page libraries and asks for the board credentials. Run `claude` in it and use `/local-prototype`. The prototype needs a folder of its own, not an existing project. `--empty` creates a one-slice "Hello World" prototype instead of fetching a model; it needs no credentials and no board, and you can connect one later.
+
+`run --prototype` serves the page in the board's player (the server listens on loopback only and checks Host and Origin) and runs the agent loop. Each iteration it reads what Sync, Rebuild and saved feedback recorded in the control log (`.prototype/events/`) and works through the requests nobody has processed. `re-init` in a prototype folder refreshes the skills, the `CLAUDE.md` rules and the page libraries and leaves the model alone. Sharing a prototype stores the local page on the platform. Details are in `extensions/prototype/README.md`.
 
 ## `init --vibe-coding`: keep the model in step with hand-written code
 
@@ -161,6 +168,17 @@ Only analysed modules are governed. Before the agent changes code it runs `vibe 
 Needs on the machine: Node 22, Docker, Supabase CLI, Flyway + Java (the command lists what is missing). The skeleton itself needs nothing beyond Node, on macOS, Linux and Windows: `npm run up` / `down` / `db:stop` / `user -- <email> <password>` / `check` all go through one plain script, `scripts/dev.mjs`. `<dir>` must be empty or new, or an earlier skeleton, which is refreshed from the current model — generated files are rewritten, pages and anything a builder wrote are kept. Titles come from the board verbatim; a screen's route comes only from a `route /orders` line in its description, the post-sign-in page from a "home page" line, and Bulma is used when the screen mockups use it. `--no-install` stops after generating, `--no-check` skips the checks; ports are picked free automatically and a refresh keeps them (`--port api=3200` pins one; repeatable).
 
 **Your own templates.** `npx @eventmodelers/cli init-templates [paths...]` copies the built-in templates into `./templates/` for you to edit (`--list` shows the paths; name a file such as `web/src/app/Layout.tsx` or a folder such as `web/src/app` to copy only those, and take only what you mean to change — a copied template stops following the CLI's updates; existing files are kept unless `--force`). `scaffold` uses what it finds there and the built-in template for everything else. Or put `*.tmpl` files in a `templates/` folder in the app's root (or point `--templates <dir>` at one, which also works on the first run). A file there replaces the built-in template at the same path — `templates/web/src/app/Layout.tsx.tmpl` replaces `web/src/app/Layout.tsx` — and a path with no built-in counterpart is simply added. The same tokens apply (`__APP_TITLE__`, `__API_PORT__`, `__WEB_PORT__`, `__DB_PORT__`), and every refresh uses them again, so customisations survive a model change. Only `*.tmpl` files count, so nothing in `templates/` is compiled as project code. Files the scaffold writes once (pages, `extraEndpoints.ts`) are never overwritten whatever you put there; edit those in place.
+
+**After the first scaffold** the app is run and maintained with subcommands (all take an optional `[dir]`, default the current folder, and `--type`, default `supabase`):
+
+```bash
+npx @eventmodelers/cli scaffold up [dir]                          # start database, API and web in one command; Ctrl+c stops API and web (Supabase keeps running)
+npx @eventmodelers/cli scaffold up --user test@test.de:secret     # …and create that sign-in user first (or reset its password if it exists)
+npx @eventmodelers/cli scaffold add-user <email> <password> [dir] # add a sign-in user (the app has no sign-up screen); needs the database running
+npx @eventmodelers/cli scaffold re-init [dir]                     # refresh every kit the app has (root + web/) from this CLI version; the skeleton itself is untouched
+```
+
+`scaffold up` is `npm run up` in the app's folder. `--user` takes `<email:password>`, split at the first colon, so the password may contain colons. It is also available as `npm run up -- --user <email:password>`. The user is created once Supabase is up and before API and web start.
 
 The `supabase` skeleton generator is adapted from the em-scaffold skill by Adrian Mowat (MIT, `shared/scaffold/LICENSE-em-scaffold`).
 
@@ -191,9 +209,17 @@ npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then p
 npx @eventmodelers/cli fetch --context <name> --slice-title <title> # same, then print just the slice matching this title
 npx @eventmodelers/cli export --type eventcatalog   # write the model into an EventCatalog project (run inside the catalog, or --out <dir>) — see `export` below
 npx @eventmodelers/cli export --type json --all     # pull every context into <kit-dir>/.slices/ — the pull-based `listen`, same as `fetch`
+npx @eventmodelers/cli init --prototype             # a local clickable prototype in a folder of its own (`--empty` for a one-slice "Hello World", no board needed) — see "Local prototype"
+npx @eventmodelers/cli run --prototype              # serve that prototype and run its agent loop
+npx @eventmodelers/cli init --stack <name> --hooks  # also install the slice commit-scope guard (see "Commit-scope guard")
+npx @eventmodelers/cli init --git <url> [--branch <name>]  # install a community/custom build kit from a git repo
+npx @eventmodelers/cli events [--verbose|--prune]   # decode the event log (see Reading the event log)
+npx @eventmodelers/cli replay <id>                  # put a prompt from the event log back on the board's queue
+npx @eventmodelers/cli learnings                    # print what the build agent has learned (what .build-kit/AGENTS.md says)
 npx @eventmodelers/cli stacks                       # list available stacks
 npx @eventmodelers/cli status                       # check what's installed
 npx @eventmodelers/cli config                       # print the fully resolved config (file + env), token masked
+npx @eventmodelers/cli config --agent-tracing on|off  # whether the build agent sends slice cost data to the platform (`agentTracing` in .eventmodelers/config.json)
 ```
 
 `run` is a thin dispatcher — it just finds the installed kit dir (whatever it's named for the stack) and execs the runner file already sitting in it. The agent loop's actual logic stays in the scaffolded `<kit-dir>/`, not in this package, since you (and the agent itself, via `AGENT.md`) may customize those files per project.
@@ -893,13 +919,49 @@ npx @eventmodelers/cli export --type json --context Checkout          # = fetch:
 
 `--type json` takes only `--context`/`--all`/`--force` (not `--local`, `--check` or `--interactive`). Like `fetch` and `listen`, it needs no installed kit dir.
 
+`--verbose` prints each event's payload under its line (for a tool call, the input it was sent, recorded by runs started with `--verbose`) and also shows the baseline events, the kit's first look at each slice, which are hidden by default. `--watch` is an alias of `--follow`. `--prune` deletes the events nothing reads any more (the journal of finished prompts) and stops; slice state, learnings and open prompts are kept. A run offers the same prune at every 1000 events. In a prototype folder, `events` reads the control log in `.prototype/`.
+
+`replay <id>` submits a prompt from that log again: it goes back on its board's queue as a new prompt with the same text, node, comment, priority and canvas context. `<id>` is a prompt id from `events`, a unique prefix will do. It writes to the platform; `--dry-run` shows the request and stops. `--kit <dir>` and `--global` pick the log like they do for `events`.
+
+### Commit-scope guard (hooks)
+
+`init --stack <name> --hooks` (or `re-init --hooks`) installs `.githooks/pre-commit`, which runs `.build-kit/lib/check-commit-scope.cjs` against the staged changes so a slice's commit stays within that slice, and sets `git config core.hooksPath .githooks`. It is off by default.
+
+```bash
+npx @eventmodelers/cli init-hooks [--stack <name>]   # install/refresh the guard and point git at it, without a full re-scaffold
+npx @eventmodelers/cli disable-hooks                 # unset core.hooksPath; .githooks/ stays on disk, init-hooks turns it back on
+npx @eventmodelers/cli run-checks                    # run the same checks against the staged changes (alias run:checks)
+```
+
+`run-checks` works for every stack: one that ships no checks reports that and exits 0, so an agent loop can call it unconditionally.
+
+### Commands for the build agent
+
+These are called by the agent loop and its skills, not by you, but they are useful to know when reading a run.
+
+```bash
+npx @eventmodelers/cli slice-status <status>         # record the outcome of the slice being built (Done, Waiting, Blocked, …); the loop pushes it to the board when the build ends
+npx @eventmodelers/cli set-slice-status [--remote]   # pick a slice from the active context and change its status in .slices/; --remote also pushes it to the board
+npx @eventmodelers/cli activate-context              # choose the fetched context `run` works through first; when it has no planned slices left, `run` moves on
+npx @eventmodelers/cli ui-baseline check|record [--slice <id>] [--scope ui|backend]
+npx @eventmodelers/cli learn "<text>" [--topic <t>] [--tag <t>] [--scope system|repo] [--slice <s>]
+npx @eventmodelers/cli learn --retract <id> [--reason "<why>"]
+npx @eventmodelers/cli learn --merge <id,id> "<text>" [--reason "<why>"]
+npx @eventmodelers/cli learnings [--ids]
+npx @eventmodelers/cli info "<text>" [--kind <kind>] [--slice <s>] [--tag <t>]
+```
+
+- **`ui-baseline`** decides whether a slice's UI needs work. `check` compares the board's hashes of the slice's screen, of every element of the slice and of its `codeGen.uiPrompts` with what was recorded after the last UI build, and prints `NO_BASELINE`, `UNCHANGED` (skip all UI work) or `CHANGED`. `record` stores the current state once the UI is built; commit the resulting `ui-baseline.json` with the slice. `--scope backend` hashes the elements only, for a kit that builds no UI. Alias: `build-baseline`.
+- **`learn`** records one reusable learning: a codebase pattern, a gotcha, a command that works or doesn't. `.build-kit/AGENTS.md` is generated from the recorded learnings, so never edit it by hand. `--retract` withdraws a wrong or obsolete one; `--merge` replaces several with one (the curator's tool). `learnings --ids` lists each with the id to retract it by.
+- **`info`** records something that is not a reusable learning: a limitation, a decision, a note. It becomes an event in the log and a comment on the slice.
+
 ### Re-init — refresh scripts/skills without touching your app
 
 ```bash
 npx @eventmodelers/cli re-init                      # refresh the installed build kit (.build-kit/) + its skills
 npx @eventmodelers/cli re-init --modeling            # refresh the modeling kit (.agent-modeling-kit/) + its skills
 npx @eventmodelers/cli re-init --stack supabase      # override which stack to refresh from (manifest missing/stale, or switching stacks)
-npx @eventmodelers/cli scaffold up [dir]             # start a scaffolded app (same as `npm run up` in its folder)
+npx @eventmodelers/cli scaffold up [dir] [--user a@b.de:pw]   # start a scaffolded app (same as `npm run up` in its folder); --user also creates that sign-in user
 npx @eventmodelers/cli scaffold re-init [dir]        # a scaffolded app: refresh every kit in it (root + web/) — `re-init --stack` for each
 ```
 

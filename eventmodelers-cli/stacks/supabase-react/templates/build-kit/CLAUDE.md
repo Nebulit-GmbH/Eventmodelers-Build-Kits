@@ -12,7 +12,8 @@ not attempt to build it, flag it via `request-feedback` instead.
 
 - **Strict Path Limitation**: `src/slices/{contextSlug}/{laneSlug}/{slicename}/*` — the one
   exceptions are `src/pages/`, where multiple slices sharing one screen get composed together (see
-  guideline 7 below), and — for the **first slice only** — `src/App.tsx` plus the Vite demo files it
+  guideline 7 below), `src/app/Layout.tsx` and `src/app/layouts/` (a layout slice, written only by `apply-layout`
+  — guideline 12), and — for the **first slice only** — `src/App.tsx` plus the Vite demo files it
   replaces (guideline 10 below); `index.html` and the demo `src/index.css` for every slice (guideline 11)
 - **Slice Organization**: Each feature/domain should be organized as a separate slice
 
@@ -95,6 +96,13 @@ not attempt to build it, flag it via `request-feedback` instead.
     on its next build. Never hand-write CSS to imitate a framework. See `build-state-change` Step 7 /
     `build-state-view` Step 6.
 
+12. **The layout is its own slice, with one owner.** A layout slice (a screen, no commands/read models/
+    processors) is the board's way to say what the app's shell looks like. `apply-layout` turns its screen
+    into `src/app/layouts/<TimelineSlug>Layout.tsx`, registers it in `src/app/Layout.tsx` for every page of
+    the slice's timeline, and saves both as the app's own scaffold templates so `scaffold` refreshes keep
+    them. Feature slices never edit those files and never render a shell of their own; a page title or
+    breadcrumb stays with its page.
+
 At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings. It is generated from the learnings recorded so far — record a new one with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>`, never by editing the file.
 
 When working from a queued task, invoke the `update-slice-status` skill with `InProgress` status before doing anything else. When the task request names the slice to build (a run-loop build), the run loop has already set it to `InProgress` and pushes the final status itself — do not call `update-slice-status`; record the outcome with `npx @eventmodelers/cli slice-status <status>`.
@@ -117,7 +125,8 @@ When asked to build a slice, always follow this flow:
 
 1. Read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`.
    **If `slice.json` is missing, or has no `commands`, `events`, `readmodels`, `screens` or `processors` (only id/title/status/sliceType/contextName), it is a summary stub, not an empty slice — never conclude "nothing to build" from it.** Run `/load-slice` with the slice's `sliceId` to pull the full definition from the board and re-read `slice.json`. Only a slice that is still empty after that full fetch is genuinely empty.
-2. Determine the slice type from `sliceType`:
+2. Determine the slice type. A slice with a screen but no commands, read models or processors is a
+   **layout slice** → invoke `/apply-layout`. Otherwise from `sliceType`:
    - **`STATE_CHANGE`** → invoke `/build-state-change`
    - **`STATE_VIEW`** → invoke `/build-state-view`
    - **`AUTOMATION`** → not this stack's job (no UI counterpart) — invoke `request-feedback`

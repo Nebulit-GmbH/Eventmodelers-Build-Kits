@@ -1,7 +1,8 @@
 // Runs the app locally with Node only: no extra tools, no extra dependencies.
-// Usage: npm run up | down | db:start | db:stop | env | check
+// Usage: npm run up [-- --user <email:password>] | down | db:start | db:stop | env | check
 //   up        start Supabase if needed, write the .env files, then run the API (tsx watch) and the web (vite) with hot reload.
 //             Ctrl+c stops API and web; Supabase keeps running.
+//             --user <email:password> creates that sign-in user (or resets its password) once Supabase is up.
 //   down      stop an `npm run up` from another terminal.
 //   db:start  start the local Supabase stack (ports in supabase/config.toml).
 //   db:stop   stop the local Supabase stack.
@@ -92,6 +93,16 @@ const commands = {
         }
         await commands['db:start']();
         commands.env();
+        const userArg = process.argv.indexOf('--user');
+        if (userArg !== -1) {
+            const value = process.argv[userArg + 1] ?? '';
+            const split = value.indexOf(':');
+            if (split < 1 || split === value.length - 1) {
+                console.error('usage: npm run up -- --user <email:password>');
+                process.exit(1);
+            }
+            must(run(process.execPath, ['scripts/create-user.mjs', value.slice(0, split), value.slice(split + 1)]), 'node');
+        }
 
         const {apiPort, webPort} = JSON.parse(readFileSync('skeleton.json', 'utf8'));
         const busy = [];

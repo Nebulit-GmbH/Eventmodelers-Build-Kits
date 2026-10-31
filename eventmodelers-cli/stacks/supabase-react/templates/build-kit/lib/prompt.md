@@ -48,7 +48,7 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
 
 2. Run `/load-slice sliceId=<payload.sliceId>` to fetch the full slice, then read the slice definition from `.build-kit/.slices/<contextSlug>/<sliceFolder>/slice.json`. The runner keeps a `slice.json` fresh from a summary endpoint, so a file holding only `id`, `title`, `status` and `sliceType` is that stub, not an empty slice — never conclude a slice has no elements from it. Only if the full fetch itself returns no commands/events/read models/fields is the slice actually empty.
 
-3. Determine the **slice type** from `sliceType` in the slice.json:
+3. Determine the **slice type**. First check for a **layout slice**: `screens[]` has an entry and `commands`, `readmodels` and `processors` are all empty → invoke `/apply-layout` (it makes that screen the layout of every page of the slice's timeline; it is not a feature slice, whatever `sliceType` says). Otherwise use `sliceType` in the slice.json:
    - **`STATE_CHANGE`** → invoke `/build-state-change`
    - **`STATE_VIEW`** → invoke `/build-state-view`
    - **`AUTOMATION`** → not this stack's job (no UI counterpart) — invoke `/request-feedback`
@@ -83,7 +83,7 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
    **before committing**, so `ui-baseline.json` is committed with the slice. Never record without having
    done the work the verdict asked for.
 
-5. **Verify against slice.json**: first check where every displayed value comes from — screen examples are samples, so names, selections, options and list rows must be bound to the read model (grep the components for the mockup's example strings; hits outside `samples/` are hardcoded data and must be fixed). Then cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code — specifications are read (Step 3a of the build skill) to understand how the UI should behave and present outcomes; the business logic itself lives in the backend and is not re-implemented here. No invented fields — if it is not in slice.json, it must not be in the code.
+5. **Verify against slice.json** (a layout slice has no fields to cross-check — `/apply-layout`'s own verify step replaces this one): first check where every displayed value comes from — screen examples are samples, so names, selections, options and list rows must be bound to the read model (grep the components for the mockup's example strings; hits outside `samples/` are hardcoded data and must be fixed). Then cross-check the implementation — every command field, event field, and specification in slice.json must appear in the code — specifications are read (Step 3a of the build skill) to understand how the UI should behave and present outcomes; the business logic itself lives in the backend and is not re-implemented here. No invented fields — if it is not in slice.json, it must not be in the code.
 
 6. Run `npm run build` and `npm run lint` (both must pass clean) — plus the slice's own tests only, if any exist.
 
