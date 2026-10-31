@@ -34,23 +34,45 @@
     .em-badge button:hover { color: #bfdbfe; }
     .em-outline-toggle { display: inline-flex; gap: 5px; align-items: center; font: 12px system-ui; color: #9ca3af; cursor: pointer; }
     .em-part-label { font: 600 11px system-ui; color: #6b7280; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .06em; }
-    .em-panel { background: #111827; color: #e5e7eb; padding: 12px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 14px/1.4 system-ui, sans-serif; }
-    .em-panel h2, .em-auto h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #9ca3af; margin: 16px 0 6px; }
+    .em-panel { --p-bg: #0e1522; --p-surface: #161f30; --p-raised: #1d283c; --p-line: #232f45; --p-text: #e7eaf0; --p-muted: #8a95a9; --p-accent: #f97316;
+      background: var(--p-bg); color: var(--p-text); padding: 0 16px 24px; overflow-y: auto; max-height: 100vh; position: sticky; top: 0; font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    .em-panel::-webkit-scrollbar { width: 8px; } .em-panel::-webkit-scrollbar-thumb { background: var(--p-line); border-radius: 4px; }
+    .em-panel h2, .em-auto h2 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: #8a95a9; margin: 0; }
+    .em-sect { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 12px; min-height: 28px; }
+    .em-sect .em-sub { color: var(--p-muted); font-size: 12px; margin-top: 2px; text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .em-empty { color: var(--p-muted); background: var(--p-surface); border: 1px dashed var(--p-line); border-radius: 10px; padding: 18px; text-align: center; }
     /* The panel's tabs are real tabs: a strip with a rule under it, the open tab joined to the content below (same colour, no rule under it) with an orange top edge. */
     .em-panel.em-collapsed { padding: 8px 4px; overflow: hidden; }
-    .em-toggle { background: #1f2937; color: #e5e7eb; border: 0; border-radius: 6px; width: 28px; height: 28px; cursor: pointer; font: 14px system-ui; flex: none; }
-    .em-toggle:hover { background: #374151; }
+    .em-toggle { background: #161f30; color: #8a95a9; border: 1px solid #232f45; border-radius: 7px; width: 28px; height: 28px; cursor: pointer; font: 14px system-ui; flex: none; }
+    .em-toggle:hover { background: #1d283c; color: #e7eaf0; }
     .em-tabs .em-toggle { width: 28px; height: 28px; padding: 0; margin-bottom: 0; border-radius: 6px; color: #e5e7eb; }
     .em-collapsed .em-toggle { display: block; margin: 0 auto 8px; }
     .em-collapsed .em-vlabel { writing-mode: vertical-rl; color: #9ca3af; font: 12px system-ui; letter-spacing: .06em; text-transform: uppercase; text-align: center; cursor: pointer; width: 100%; }
-    .em-tabs { display: flex; gap: 2px; border-bottom: 1px solid #374151; margin: 0 -12px 4px; padding: 0 12px; }
-    .em-tabs button { background: #1f2937; color: #9ca3af; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 7px 12px; margin-bottom: -1px; cursor: pointer; font: 13px system-ui; }
-    .em-tabs button:hover { color: #e5e7eb; }
-    .em-tabs button.em-active { background: #111827; color: #fff; font-weight: 600; border-color: #374151; border-top: 2px solid #f97316; padding-top: 6px; }
-    .em-btn { background: #374151; color: #e5e7eb; border: 0; border-radius: 6px; padding: 5px 9px; cursor: pointer; font: 12px system-ui; }
-    .em-btn.em-on { background: #f97316; color: #111827; }
-    .em-ev { background: #1f2937; border-left: 4px solid #f97316; border-radius: 6px; padding: 6px 8px; margin: 6px 0; font-size: 12px; color: #e5e7eb; }
-    .em-ev b { color: #fdba74; }
+    .em-tabs { display: flex; align-items: center; gap: 4px; border-bottom: 1px solid var(--p-line); margin: 0 -16px; padding: 10px 16px 0; position: sticky; top: 0; background: var(--p-bg); z-index: 5; }
+    .em-tabs button:not(.em-toggle) { background: none; color: var(--p-muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 8px 12px 10px; margin-bottom: -1px; cursor: pointer; font: 500 13px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-transform: capitalize; transition: color .15s, border-color .15s; }
+    .em-tabs button:not(.em-toggle):hover { color: var(--p-text); }
+    .em-tabs button.em-active { color: #fff; border-bottom-color: var(--p-accent); }
+    .em-btn { background: var(--p-raised, #1d283c); color: #e7eaf0; border: 1px solid #2c3a55; border-radius: 7px; padding: 5px 11px; cursor: pointer; font: 500 12px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; transition: background .15s, border-color .15s; }
+    .em-btn:hover { background: #26344e; border-color: #3a4b6b; }
+    .em-btn.em-on { background: #f97316; border-color: #f97316; color: #1a0f05; }
+    .em-btn.em-ghost { background: transparent; border-color: transparent; color: #8a95a9; padding: 5px 8px; } .em-btn.em-ghost:hover { background: #1d283c; color: #e7eaf0; }
+    .em-btn.em-icon { width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.em-ev { background: var(--p-surface, #161f30); border: 1px solid var(--p-line, #232f45); border-left: 3px solid #f97316; border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 12px; color: #e7eaf0; }
+    .em-ev b { color: #fdba74; font-weight: 600; }
+    .em-ev-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; cursor: pointer; }
+    .em-ev-pos { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #8a95a9; background: #0e1522; border-radius: 5px; padding: 1px 6px; }
+    .em-ev-type { font-weight: 600; font-size: 13px; color: #fdba74; }
+    .em-ev-from { color: #8a95a9; font-size: 12px; }
+    .em-ev-time { margin-left: auto; color: #6b7690; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .em-kv { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 3px 14px; margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--p-line, #232f45); }
+    .em-kv dt { color: #8a95a9; margin: 0; } .em-kv dd { margin: 0; word-break: break-word; color: #e7eaf0; } .em-kv dd.em-none { color: #4f5b73; }
+    .em-kv dd a { color: #e7eaf0; text-decoration: none; border-bottom: 1px dotted #4f5b73; } .em-kv dd a:hover { color: #fdba74; border-color: #fdba74; }
+    .em-ev-foot { margin-top: 10px; }
+    .em-pill { display: inline-flex; align-items: center; gap: 4px; font: 600 11px -apple-system, system-ui, sans-serif; padding: 1px 8px; border-radius: 999px; background: #1d283c; color: #8a95a9; }
+    .em-pill.em-pass { background: rgba(34,197,94,.14); color: #4ade80; } .em-pill.em-fail { background: rgba(239,68,68,.15); color: #f87171; }
+    .em-spec-title { font-weight: 600; font-size: 13px; color: #e7eaf0; line-height: 1.35; }
+    .em-spec-meta { color: #8a95a9; font-size: 12px; margin-top: 2px; }
+    .em-chev { display: inline-block; width: 14px; color: #6b7690; font-size: 10px; }
     .em-ev pre { margin: 4px 0 0; padding: 0; background: transparent; white-space: pre-wrap; word-break: break-word; color: #d1d5db; font-size: 11px; } /* background set explicitly: a screen framework (Bulma) styles bare <pre> light, which left this text unreadable */
     .em-slider { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 12px; color: #9ca3af; } .em-slider .em-slider-text { min-width: 120px; text-align: right; }
     /* `.em-panel input` (below) makes every panel input a full-width text box: the slider and the checkbox undo that, with a selector that beats it. */
@@ -59,8 +81,10 @@
     .em-hl { outline: 3px solid #f97316 !important; outline-offset: 2px; box-shadow: 0 0 0 6px rgba(249, 115, 22, 0.25) !important; }
     .em-ev.em-cmd { border-left-color: #3b82f6; } .em-ev.em-cmd b { color: #93c5fd; }
     .em-ev.em-fail { border-left-color: #ef4444; } .em-ev.em-pass { border-left-color: #22c55e; }
+    .em-ev.em-pass:hover, .em-ev.em-fail:hover { border-color: #2c3a55; }
     .em-ev.em-out { border-left-color: #14b8a6; }
-    .em-panel input, .em-panel textarea { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 4px 6px; border-radius: 4px; border: 1px solid #4b5563; background: #111827; color: #fff; }
+    .em-panel input, .em-panel textarea { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 6px 9px; border-radius: 7px; border: 1px solid #2c3a55; background: #0e1522; color: #fff; font: inherit; }
+    .em-panel input:focus, .em-panel textarea:focus { outline: none; border-color: #f97316; }
     .em-auto { max-width: 760px; }
     .em-auto .em-ev { font-size: 13px; }
     .em-auto h2 { color: #6b7280; }
@@ -309,7 +333,8 @@ function EventBrowser({ events }) {
           <button className="em-btn" onClick={() => setFollow(null)}>×</button>
         </div>
       )}
-      <h2>{shown.length === events.length ? `${events.length} events` : `${shown.length} of ${events.length} events`}{withIx ? ` · ${recorded.length} interactions` : ''}</h2>
+      <div className="em-sect" style={{ margin: '4px 0 0' }}><span className="em-pill">{shown.length === events.length ? `${events.length} event${events.length === 1 ? '' : 's'}` : `${shown.length} of ${events.length} events`}{withIx ? ` · ${recorded.length} interactions` : ''}</span></div>
+      {rows.length === 0 && <div className="em-empty">No events yet. Use the prototype and they appear here.</div>}
       {[...rows].reverse().map((row) => {
         if (row.kind === 'interaction') {
           return (
@@ -326,35 +351,41 @@ function EventBrowser({ events }) {
         const future = cursor != null && e.position > cursor;
         return (
           <div key={e.id} className="em-ev" style={future ? { opacity: 0.4 } : null}>
-            <div style={{ cursor: 'pointer' }} onClick={() => setOpen(isOpen ? null : e.id)}>
-              <b>#{e.position} {e.type}</b>
-              {e.metadata.command && <span> ← {e.metadata.command}</span>}
-              {e.metadata.automation && <span> (automation)</span>}
-              {e.metadata.simulated && <span> (simulated)</span>}
-              <span style={{ float: 'right', color: '#9ca3af' }}>{new Date(e.metadata.at).toLocaleTimeString()}</span>
+            <div className="em-ev-head" onClick={() => setOpen(isOpen ? null : e.id)}>
+              <span className="em-ev-pos">#{e.position}</span>
+              <span className="em-ev-type">{e.type}</span>
+              {e.metadata.command && <span className="em-ev-from">← {e.metadata.command}</span>}
+              {e.metadata.automation && <span className="em-pill">automation</span>}
+              {e.metadata.simulated && <span className="em-pill">simulated</span>}
+              <span className="em-ev-time">{new Date(e.metadata.at).toLocaleTimeString()}</span>
             </div>
-            <div style={{ marginTop: 4 }}>
-              {Object.entries(e.data || {}).map(([k, v]) => (
-                <div key={k}>
-                  <span style={{ color: '#9ca3af' }}>{k}: </span>
-                  {v != null && typeof v === 'object' ? (
-                    <code>{JSON.stringify(v)}</code>
-                  ) : (
-                    <a href="#" title="Show every event carrying this value" style={{ color: '#e5e7eb' }}
-                       onClick={(ev) => { ev.preventDefault(); setFollow({ field: k, value: v }); }}>
-                      {String(v)}
-                    </a>
-                  )}
-                </div>
-              ))}
-            </div>
+            {Object.keys(e.data || {}).length > 0 && (
+              <dl className="em-kv">
+                {Object.entries(e.data || {}).flatMap(([k, v]) => {
+                  const none = v === '' || v == null || v === undefined || v === 'undefined';
+                  return [
+                    <dt key={k + 't'}>{k}</dt>,
+                    <dd key={k + 'd'} className={none ? 'em-none' : ''}>
+                      {none ? '—' : v != null && typeof v === 'object' ? (
+                        <code>{JSON.stringify(v)}</code>
+                      ) : (
+                        <a href="#" title="Show every event carrying this value"
+                           onClick={(ev) => { ev.preventDefault(); setFollow({ field: k, value: v }); }}>
+                          {String(v)}
+                        </a>
+                      )}
+                    </dd>,
+                  ];
+                })}
+              </dl>
+            )}
             {isOpen && (
               <pre>{JSON.stringify(
                 Object.assign({ id: e.id, at: e.metadata.at }, e.metadata.command && { command: e.metadata.command },
                   e.metadata.actor && { actor: e.metadata.actor }, e.metadata.automation && { automation: e.metadata.automation },
                   e.metadata.simulated && { simulated: true }), null, 1)}</pre>
             )}
-            <button className="em-btn" style={{ marginTop: 4 }} onClick={() => rt.viewAsOf(e.position)}>View as of here</button>
+            <div className="em-ev-foot"><button className="em-btn" onClick={() => rt.viewAsOf(e.position)}>View as of here</button></div>
           </div>
         );
       })}
@@ -467,8 +498,7 @@ function Panel({ slices, open: panelOpen, onToggle }) {
 
       {tab === 'events' && (
         <>
-          <h2>Event log</h2>
-          <button className="em-btn" onClick={() => rt.reset()}>Reset</button>
+          <div className="em-sect"><h2>Event log</h2><button className="em-btn" onClick={() => rt.reset()}>Reset</button></div>
           <EventBrowser events={events} />
         </>
       )}
@@ -483,27 +513,31 @@ function Panel({ slices, open: panelOpen, onToggle }) {
 
       {tab === 'specs' && (
         <>
-          <h2>Scenarios from the board</h2>
-          {slices && (
-            <p style={{ color: '#9ca3af' }}>
-              {allSpecs ? 'All screens' : 'This screen'}: {shownSpecs.length} of {specResults.length}{' '}
-              <button className="em-btn" onClick={() => setAllSpecs(!allSpecs)}>{allSpecs ? 'This screen only' : 'Show all'}</button>
-            </p>
-          )}
+          <div className="em-sect">
+            <div>
+              <h2>Scenarios</h2>
+              {slices && <div className="em-sub">{allSpecs ? 'All screens' : 'This screen'} · {shownSpecs.length} of {specResults.length}</div>}
+            </div>
+            {slices && <button className="em-btn" onClick={() => setAllSpecs(!allSpecs)}>{allSpecs ? 'This screen only' : 'Show all'}</button>}
+          </div>
+          {shownSpecs.length === 0 && <div className="em-empty">No scenarios for this screen.</div>}
           {shownSpecs.map(([r, i]) => (
-            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div key={i} className={'em-ev ' + (r.pass ? 'em-pass' : 'em-fail')} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ cursor: 'pointer' }} onClick={() => setOpen({ ...open, [i]: !open[i] })} title="Show or hide the scenario as text">
-                  <span style={{ display: 'inline-block', width: 12 }}>{open[i] ? '▾' : '▸'}</span>
-                  <b>{r.pass ? '✓' : '✗'} {r.spec.title}</b> <span>{r.spec.slice}</span>
+                <div style={{ cursor: 'pointer', display: 'flex', gap: 6 }} onClick={() => setOpen({ ...open, [i]: !open[i] })} title="Show or hide the scenario as text">
+                  <span className="em-chev" style={{ marginTop: 3 }}>{open[i] ? '▼' : '▶'}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div className="em-spec-title">{r.spec.title}</div>
+                    <div className="em-spec-meta"><span className={'em-pill ' + (r.pass ? 'em-pass' : 'em-fail')}>{r.pass ? '✓ Passing' : '✗ Failing'}</span> <span style={{ marginLeft: 4 }}>{r.spec.slice}</span></div>
+                  </div>
                 </div>
                 {open[i] && <SpecView spec={r.spec} />}
                 {!r.pass && <pre>{r.detail}</pre>}
               </div>
-              <button className={'em-btn' + (armed === i ? ' em-on' : '')} style={{ flex: 'none' }} onClick={() => playGiven(r.spec, i)}
+              <button className={'em-btn em-icon' + (armed === i ? ' em-on' : '')} style={{ flex: 'none' }} onClick={() => playGiven(r.spec, i)}
                       title="Play the given events: the screens show this scenario's starting state">▶</button>
               {r.spec.sliceId && (
-                <button className="em-btn" style={{ flex: 'none' }} onClick={() => EMRuntime.zoomToSlice(r.spec.sliceId)}
+                <button className="em-btn em-icon" style={{ flex: 'none' }} onClick={() => EMRuntime.zoomToSlice(r.spec.sliceId)}
                         title="Show this scenario's slice on the board"><span aria-hidden>◎</span></button>
               )}
             </div>
