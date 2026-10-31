@@ -1,6 +1,6 @@
 ---
 name: regenerate-diagram
-description: Redraw a diagram that is pinned on the board (a Mermaid or SVG `diagram` node) from the current model — the app's Regenerate button on the diagram sends `/regenerate-diagram <node id> "<title>" (<kind>)`. Reads the node's current source and title to see what it shows, re-reads the board, redraws it with the model as it is now (and fixes layout problems such as overlapping labels), and writes the new source back into the same node. Changes only that node's `diagramSource`.
+description: Redraw a diagram that is pinned on the board (a Mermaid or SVG `diagram` node) from the current model — the app's Regenerate button on the diagram sends `/regenerate-diagram <node id> "<title>" (<kind>)`. Reads the original request it was drawn for (carried silently in the message's context) and the node's current source and title to see what it shows, re-reads the board, redraws it with the model as it is now (and fixes layout problems such as overlapping labels), and writes the new source back into the same node. Changes only that node's `diagramSource`.
 ---
 
 # Regenerate diagram — redraw a pinned diagram from the current model
@@ -17,10 +17,12 @@ The message is `/regenerate-diagram <node id> "<title>" (<kind>)`. Only the node
 
 ## Step 1 — Read the diagram
 
+**The original request.** The app puts the context of the message the diagram was first drawn for back into this message's context (never in its text): the same context that message had (the elements that were visible, and so on), plus `regenerateDiagram: { nodeId, request, reply }` — `request` is what the person originally asked for, `reply` what the agent said when it drew it. **Redraw for that request**: its scope (a chapter, a slice, a flow), its focus and any wish it named ("only the happy path", "left to right") still apply. Take the node id from `regenerateDiagram.nodeId` when it is there. A diagram pinned before this existed has no `regenerateDiagram` (and a diagram from a document or code, not the board, may name things the board does not have): then the old source and title below are all you have.
+
 `get_node { boardId, nodeId }`. Check `meta.type === 'DIAGRAM'` and take `diagramKind`, `diagramSource`, `title`.
 
 - No such node, or not a diagram: say so in one sentence (Step 4) and stop. Write nothing.
-- Read the **current source closely**: it tells you what the diagram is about (a state lifecycle of one aggregate? a sequence of one flow? a context map?), which chapter(s) and which elements it names, and the style the person has seen. **Keep the same kind of diagram, the same scope and the same title.** A regenerated sequence diagram stays a sequence diagram of the same flow; do not change it into something else.
+- Read the **current source closely**: it tells you what the diagram is about (a state lifecycle of one aggregate? a sequence of one flow? a context map?), which chapter(s) and which elements it names, and the style the person has seen. **Keep the same kind of diagram, the same scope (the original request's, when you have it) and the same title.** A regenerated sequence diagram stays a sequence diagram of the same flow; do not change it into something else.
 
 ## Step 2 — Re-read the model
 
