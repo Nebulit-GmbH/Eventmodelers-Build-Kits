@@ -3534,6 +3534,30 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     onSubscribed,
   });
 
+  // The first heartbeat goes out BEFORE any channel is joined: joining runs a catch-up drain, and the platform only hands
+  // prompts to an agent with a live heartbeat (403 AGENT_NOT_CONNECTED otherwise). Pinging after subscribing made that first
+  // drain fail and left the backlog waiting for the next prompt:created.
+  // `status`: 'shutting_down' is the last ping before an exit the board asked for; every other ping says what the agent is
+  // doing right now — modeling while a turn runs (a prompt, a chat reply, a board change), idle otherwise.
+  const ping = async (status) => {
+    const agentStatus = status === 'shutting_down' ? status : turnsInFlight > 0 ? 'modeling' : 'idle';
+    try {
+      const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
+        // chat_enabled tells the board this agent answers chat messages (the panel only offers chat
+        // with one that does); a --worker reports false, and older CLIs send nothing, which the
+        // backend reads as false too.
+        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, chat_enabled: chat, status: agentStatus, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!res.ok) log(`ping failed: ${res.status} ${await res.text().catch(() => '')}`);
+    } catch (err) {
+      log(`ping error: ${err.message}`);
+    }
+  };
+  await ping();
+
   // The kill signal is broadcast on the BOARD channel (see the platform's agent-kill /
   // backoffice/killagent slices), not on the org channel this agent uses for prompts — without
   // this second subscription a modeling agent can only be stopped with a kill(1).
@@ -3567,26 +3591,6 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     refreshRealtimeToken('scheduled').catch(() => {});
   }, 10 * 60 * 1000);
 
-  // `status`: 'shutting_down' is the last ping before an exit the board asked for; every other ping says what the agent is
-  // doing right now — modeling while a turn runs (a prompt, a chat reply, a board change), idle otherwise.
-  const ping = async (status) => {
-    const agentStatus = status === 'shutting_down' ? status : turnsInFlight > 0 ? 'modeling' : 'idle';
-    try {
-      const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${realtimeToken}`, 'Content-Type': 'application/json' },
-        // chat_enabled tells the board this agent answers chat messages (the panel only offers chat
-        // with one that does); a --worker reports false, and older CLIs send nothing, which the
-        // backend reads as false too.
-        body: JSON.stringify({ token: cfg.token, board_id: cfg.boardId, agent_type: 'MODELING', agent_id: cfg.agentId, chat_enabled: chat, status: agentStatus, ...(cfg.agentName ? { agent_name: cfg.agentName } : {}) }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!res.ok) log(`ping failed: ${res.status} ${await res.text().catch(() => '')}`);
-    } catch (err) {
-      log(`ping error: ${err.message}`);
-    }
-  };
-  await ping();
   setInterval(ping, 15_000);
   reportStatus = () => { ping(); };
 }
