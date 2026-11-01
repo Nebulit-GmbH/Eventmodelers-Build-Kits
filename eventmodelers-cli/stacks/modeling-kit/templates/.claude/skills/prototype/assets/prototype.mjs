@@ -11,6 +11,9 @@
  *          <out>/index.html — so a fresh session or folder still rebuilds only what changed), copies the kept blocks to
  *          <out>/.work/slices/<id>.html and writes <out>/.work/status.json. Prints which slices are new,
  *          changed, unchanged or removed. Only new and changed slices need a new block.
+ *          For every new/changed slice it also writes a block skeleton to <out>/.work/slices/<id>.html (generated specs from the
+ *          scenarios and storylines, HTML screens converted to JSX, a defineSlice stub with @@TODO where judgment is needed),
+ *          and the slice's data to <out>/.work/data/<id>.json.
  * assemble writes <out>/index.html from the template, runtime.js and every block in .work/slices that
  *          belongs to a current slice, in timeline order.
  * upload   sends <out>/index.html to the platform (POST .../prototype/<context id>), which sanitizes, gzips
@@ -22,6 +25,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { skeleton } from './scaffold.mjs';
 
 const ASSETS = dirname(fileURLToPath(import.meta.url));
 const [command, ...rest] = process.argv.slice(2);
@@ -139,13 +143,25 @@ async function status() {
   rmSync(BLOCKS, { recursive: true, force: true });
   mkdirSync(BLOCKS, { recursive: true });
 
+  mkdirSync(join(WORK, 'data'), { recursive: true });
+  mkdirSync(join(WORK, 'previous'), { recursive: true });
   const frameworkVotes = {};
+  const generated = {};
   const slices = (fields.slices || []).map((slice, order) => {
     const own = (slice.screens || []).map((x) => screens[x.linkedId || x.id] || null);
     for (const s of own) if (s && s.pages) frameworkVotes[(s.cssFrameworks || [])[0] || 'bulma'] = (frameworkVotes[(s.cssFrameworks || [])[0] || 'bulma'] || 0) + 1;
     const h = hash({ slice, specs: specsById[slice.id] || null, screens: own });
     const before = byId[slice.id];
     if (before && before.hash === h) writeFileSync(join(BLOCKS, `${slice.id}.html`), before.block + '\n');
+    const state = !before ? 'new' : before.hash === h ? 'unchanged' : 'changed';
+    if (state !== 'unchanged') {
+      const ownScreens = (slice.screens || []).map((x) => ({ title: x.title, lane: x.lane, ...(screens[x.linkedId || x.id] || {}) }));
+      writeFileSync(join(WORK, 'data', `${slice.id}.json`), JSON.stringify({ slice, specs: specsById[slice.id] || null, screens: ownScreens }, null, 2));
+      if (before) writeFileSync(join(WORK, 'previous', `${slice.id}.html`), before.block + '\n');
+      const sk = skeleton({ slice, hash: h, order: order + 1, specSlice: specsById[slice.id] || null, screens: ownScreens });
+      writeFileSync(join(BLOCKS, `${slice.id}.html`), sk.block);
+      generated[slice.id] = { specs: sk.specCount, needs: sk.needs };
+    }
     return {
       id: slice.id,
       title: slice.title,
@@ -153,7 +169,7 @@ async function status() {
       chapter: slice.chapter,
       order: order + 1,
       hash: h,
-      state: !before ? 'new' : before.hash === h ? 'unchanged' : 'changed',
+      state,
     };
   });
   const current = new Set(slices.map((s) => s.id));
@@ -169,13 +185,16 @@ async function status() {
   }
   if (!contextName && !contextIsId) contextName = args.context;
 
+  rmSync(join(WORK, 'questions.json'), { force: true }); // the questions are written afresh on every run (SKILL.md Step 5b), never carried over
+
   const report = { context: contextName, contextId, baseline, cssFramework, mixedFrameworks: Object.keys(frameworkVotes).length > 1, slices, removed };
   writeFileSync(join(WORK, 'status.json'), JSON.stringify(report, null, 2));
   for (const s of slices) console.log(`${s.state.padEnd(9)} ${s.hash}  ${s.id}  ${s.title}`);
   for (const r of removed) console.log(`removed   ${''.padEnd(16)}  ${r.id}  ${r.title}`);
   const todo = slices.filter((s) => s.state !== 'unchanged').length;
   console.log(`\n${todo} of ${slices.length} slices to build, ${removed.length} removed (${{ platform: 'compared with the stored prototype', local: 'compared with the local page', none: 'no prototype yet' }[baseline]}) — see ${join(WORK, 'status.json')}`);
-  console.log(`Even with 0 slices to build, this run still writes ${join(WORK, 'questions.json')} (SKILL.md Step 5b) and uploads — "nothing changed" does not skip the questions.`);
+  for (const s of slices.filter((x) => x.state !== 'unchanged')) console.log(`skeleton  ${s.title}: ${generated[s.id].specs} spec(s) generated${generated[s.id].needs.length ? `, ${generated[s.id].needs.length} need(s) by hand` : ''} → ${join(BLOCKS, `${s.id}.html`)}`);
+  console.log(`Questions: this run writes ${join(WORK, 'questions.json')} afresh (SKILL.md Step 5b) and uploads — "nothing changed" does not skip the questions.`);
 }
 
 const CSS = {
@@ -198,6 +217,7 @@ function assemble() {
     const [found] = blocksIn(block);
     if (!found || found.id !== s.id) problems.push(`${file}: not a slice block for ${s.id}`);
     else if (found.hash !== s.hash) problems.push(`${file}: data-em-hash is ${found.hash}, the slice's hash is ${s.hash}`);
+    if (block.includes('@@TODO')) problems.push(`${file}: still has @@TODO — fill every one`);
     if ((block.match(/<\/script/gi) || []).length !== 1) problems.push(`${file}: a closing script tag appears inside the block`);
     return block;
   });

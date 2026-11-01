@@ -85,6 +85,7 @@
     .em-ev.em-out { border-left-color: #14b8a6; }
     .em-panel input, .em-panel textarea { width: 100%; box-sizing: border-box; margin: 2px 0 6px; padding: 6px 9px; border-radius: 7px; border: 1px solid #2c3a55; background: #0e1522; color: #fff; font: inherit; }
     .em-panel input:focus, .em-panel textarea:focus { outline: none; border-color: #f97316; }
+    .em-panel select { box-sizing: border-box; margin: 0; padding: 6px 9px; border-radius: 7px; border: 1px solid #2c3a55; background: #0e1522; color: #fff; font: inherit; } .em-panel .em-input { margin: 0; width: auto; }
     .em-auto { max-width: 760px; }
     .em-auto .em-ev { font-size: 13px; }
     .em-auto h2 { color: #6b7280; }
@@ -455,6 +456,48 @@ function SpecView({ spec }) {
   );
 }
 
+// Named snapshots of the event log. The page has no storage of its own, so the player keeps them: this asks it for the list, and a save / load /
+// delete is a message to it (see the contract at emMount). Outside the player nobody answers: `list` stays null and nothing is shown.
+function Snapshots() {
+  const [list, setList] = useState(null);
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [picked, setPicked] = useState('');
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data;
+      if (e.source !== window.parent || !d || d.source !== 'proto-host' || d.type !== 'snapshots') return;
+      setList(Array.isArray(d.list) ? d.list : []);
+      setError(d.error || '');
+      setPicked((p) => (Array.isArray(d.list) && d.list.some((s) => s.id === p) ? p : ''));
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ source: 'proto-kit', type: 'snapshots-request' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+  if (list === null) return null;
+  const send = (msg) => window.parent.postMessage({ source: 'proto-kit', ...msg }, '*');
+  const save = () => { if (!name.trim()) return; send({ type: 'snapshot-save', name: name.trim(), events: rt.events }); setName(''); };
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, margin: '0 0 10px' }}>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select className="em-input" style={{ flex: 1, minWidth: 0 }} value={picked} onChange={(e) => setPicked(e.target.value)} aria-label="Snapshots">
+          <option value="">{list.length ? 'Snapshots…' : 'No snapshots yet'}</option>
+          {list.map((s) => <option key={s.id} value={s.id}>{s.name} · {s.count} event{s.count === 1 ? '' : 's'} · {new Date(s.at).toLocaleString()}</option>)}
+        </select>
+        <button className="em-btn" disabled={!picked} onClick={() => send({ type: 'snapshot-load', id: picked })} title="Replace the event log with this snapshot">Load</button>
+        <button className="em-btn" disabled={!picked} onClick={() => send({ type: 'snapshot-delete', id: picked })} title="Delete the selected snapshot" aria-label="Delete snapshot">Delete</button>
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input className="em-input" style={{ flex: 1, minWidth: 0 }} placeholder="Snapshot name" maxLength={60} value={name}
+          onChange={(e) => { setName(e.target.value); setError(''); }} onKeyDown={(e) => { if (e.key === 'Enter') save(); }} />
+        <button className="em-btn" disabled={!name.trim()} onClick={save} title="Save the current event log under this name">Save</button>
+      </div>
+      {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
+    </div>
+  );
+}
+
 function Panel({ slices, open: panelOpen, onToggle }) {
   const events = useLog();
   const [tab, setTab] = useState('events');
@@ -499,6 +542,7 @@ function Panel({ slices, open: panelOpen, onToggle }) {
       {tab === 'events' && (
         <>
           <div className="em-sect"><h2>Event log</h2><button className="em-btn" onClick={() => rt.reset()}>Reset</button></div>
+          <Snapshots />
           <EventBrowser events={events} />
         </>
       )}
@@ -648,6 +692,8 @@ function App() {
  * The message contract with the board's player (feedback + replay). Only the embedding page may talk to it; everything else is ignored.
  *   player → page  { source: 'proto-host', type: 'events-request', id }   → { source: 'proto-kit', type: 'events', id, events, cursor }
  *                  { source: 'proto-host', type: 'load', events }          replace the log (a replay starts from a recorded one)
+ *   snapshots      page → player { source: 'proto-kit', type: 'snapshots-request' | 'snapshot-save' {name, events} | 'snapshot-load' {id} | 'snapshot-delete' {id} }
+ *                  player → page { source: 'proto-host', type: 'snapshots', list: [{id, name, at, count}], error? } — the Event log panel's list; a load arrives as `load`
  *                  { source: 'proto-host', type: 'view', position }        show the state as of event #position (null = now)
  *                  { source: 'proto-host', type: 'screen', title }         switch to that screen's tab
  *   page → player  { source: 'proto-kit', type: 'ready' }                  once mounted

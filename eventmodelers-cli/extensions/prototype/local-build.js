@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { skeleton } from '../../stacks/modeling-kit/templates/.claude/skills/prototype/assets/scaffold.mjs';
 import { loadScreens, loadSlices, paths, readJson, sliceHash, writeJson } from './state.js';
 
 const PKG = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -61,12 +62,24 @@ export function status(cwd) {
   const p = paths(cwd);
   const { byId, ...report } = plan(cwd);
   mkdirSync(p.blocks, { recursive: true });
+  const screens = loadScreens(p);
+  const sliceById = Object.fromEntries(loadSlices(p).map(({ slice }) => [slice.id, slice]));
   // Every slice that already has a block keeps it in the work folder: unchanged ones as the page has them, changed ones as the previous
   // version — to be patched in place (Edit) and given the new hash, not rewritten from nothing. Work already done on a changed
   // slice's block is never overwritten by running `status` again. Only new slices start empty.
   for (const s of report.slices) {
     const file = join(p.blocks, `${s.id}.html`);
     if (byId[s.id] && (s.state === 'unchanged' || !existsSync(file))) writeFileSync(file, byId[s.id].block + '\n');
+    // The deterministic part of a new or changed slice's block — specs from the scenarios, screens as JSX, a defineSlice stub — is generated
+    // (shared with the platform skill); the agent only fills the @@TODO. A block already being worked on is left alone.
+    if (s.state !== 'unchanged') {
+      const slice = sliceById[s.id];
+      const own = (slice.screens || []).map((x) => ({ title: x.title, lane: x.lane, ...(screens[x.linkedId || x.id] || {}) }));
+      if (byId[s.id]) { mkdirSync(join(p.work, 'previous'), { recursive: true }); writeFileSync(join(p.work, 'previous', `${s.id}.html`), byId[s.id].block + '\n'); }
+      if (!existsSync(file) || (byId[s.id] && readFileSync(file, 'utf8').trim() === byId[s.id].block.trim())) {
+        writeFileSync(file, skeleton({ slice, hash: s.hash, order: s.order, specSlice: slice, screens: own }).block);
+      }
+    }
   }
   writeJson(join(p.work, 'status.json'), report);
   return report;
@@ -88,6 +101,7 @@ export function assemble(cwd) {
     const [found] = blocksIn(block);
     if (!found || found.id !== s.id) problems.push(`${file}: not a slice block for ${s.id}`);
     else if (found.hash !== s.hash) problems.push(`${file}: data-em-hash is ${found.hash}, the slice's hash is ${s.hash}`);
+    if (block.includes('@@TODO')) problems.push(`${file}: still has @@TODO — fill every one`);
     if ((block.match(/<\/script/gi) || []).length !== 1) problems.push(`${file}: a closing script tag appears inside the block`);
     return block;
   });

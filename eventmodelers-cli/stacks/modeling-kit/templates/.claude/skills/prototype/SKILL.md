@@ -59,9 +59,19 @@ EM_TOKEN="$TOKEN" node <skill-dir>/assets/prototype.mjs status \
 
 Per slice, the hash covers its elements with their fields and dependencies, its scenarios and storylines, and the content of its screens (HTML pages and marks, or the sketch) — not its status, assignee, ticket or comments, so moving a slice to Done rebuilds nothing. The hashes are compared with those on the blocks of the prototype the platform stores for this context — the page itself is the memory, no other state is kept — so a run in another chat session, folder or machine still rebuilds only what changed. `status` downloads it itself; the page never passes through you. Only when the platform has none yet does it fall back to a local `<out>/index.html` (an earlier run whose upload failed); `baseline` in `status.json` says which it was (`platform` / `local` / `none`).
 
-`<out>/.work/status.json` carries the context's id (`contextId` — the MODEL_CONTEXT or timeline the name matched; the platform resolves a timeline to its effective context when storing) and lists every slice with `state` (`new` / `changed` / `unchanged`), its `hash`, `order` and `sliceType`, plus `removed` slices and the CSS framework the screens use. The blocks of unchanged slices are already copied to `<out>/.work/slices/<slice id>.html`.
+`<out>/.work/status.json` carries the context's id (`contextId` — the MODEL_CONTEXT or timeline the name matched; the platform resolves a timeline to its effective context when storing) and lists every slice with `state` (`new` / `changed` / `unchanged`), its `hash`, `order` and `sliceType`, plus `removed` slices, and the CSS framework the screens use. The blocks of unchanged slices are already copied to `<out>/.work/slices/<slice id>.html`.
 
-**Nothing new or changed and nothing removed** → the local page is up to date, but that says nothing about the platform's copy (an earlier run may have stopped before uploading). Skip writing blocks (Steps 3–5) but still run `assemble` and **Upload** in Step 6 — `assemble` takes the template and runtime fresh from the skill, so a kit fix to the harness reaches the page even when the board didn't change — then report.
+**For every new or changed slice `status` also writes the deterministic part of its block** — you don't write it:
+
+| File | What it is |
+|---|---|
+| `<out>/.work/slices/<slice id>.html` | the block **skeleton**: script tag with the right hash and `order`, `GENERATED_SPECS` (every scenario and storyline as a spec entry, example values typed), one component per HTML page of its screens (translated to JSX 1:1), and a `defineSlice` stub with `@@TODO` where judgment is needed |
+| `<out>/.work/data/<slice id>.json` | the slice as the board has it: `slice` (elements with fields, descriptions, dependencies), `specs` (scenarios, storylines) and `screens` (pages, marks, or sketch) — **read this instead of calling the board again** |
+| `<out>/.work/previous/<slice id>.html` | for a `changed` slice, the block as it was — reference only |
+
+`assemble` refuses a block that still contains `@@TODO`. `// NEEDS:` lines in a skeleton name scenarios the generator could not turn into a spec; write those by hand.
+
+**Nothing new or changed and nothing removed** → the local page is up to date, but that says nothing about the platform's copy (an earlier run may have stopped before uploading). Skip Steps 3–5 and 6's block work, but still write the questions (Step 5b), run `assemble` and **Upload** in Step 6 — `assemble` takes the template and runtime fresh from the skill, so a kit fix to the harness reaches the page even when the board didn't change — then report.
 
 A change in one slice can matter to another (a renamed event field that a read model in another slice reads): that slice's own JSON changes with it, so it is flagged too. Build only what is flagged.
 
@@ -69,18 +79,10 @@ A change in one slice can matter to another (a renamed event field that a read m
 
 ## Step 3 — Read the flagged slices
 
-For the new and changed slices only, **one call for all of them** — never one call per slice:
+Read `<out>/.work/data/<slice id>.json` for each flagged slice. No board call is needed for them. (`mcp__eventmodelers__get_slice_data` / `get_nodes` only if a file is missing.)
 
-```
-mcp__eventmodelers__get_slice_data { "boardId": "<BOARD_ID>", "contextName": "<CONTEXT>", "sliceIds": ["<id>", …], "format": "json" }
-```
-
-No `projection`: each slice comes with its fields **and** its specs.
-
-- the slice's elements → `sliceType`, `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
-- its specs → `specifications[]` (`given` / `when` / `then` with example values; a rejection is a `then` step of type `SPEC_ERROR` whose `description` is the message; `expectEmptyList` on read-model steps) and `storylines[]`.
-
-**Screens.** For each of the slices' screens read its own node — `linkedId` when set (a copy can carry its own marks), else `id` — all of them in one call: `mcp__eventmodelers__get_nodes { "boardId", "nodeIds": [...] }`. `HTML_SCREEN` → `meta.pages`, `meta.marks`, `meta.fields`. `SCREEN` → `mcp__eventmodelers__get_image_snapshot_description { "boardId", "nodeId" }` for its sketch `{ elements }` (grid vocabulary in `storyboard-screen`); none (an uploaded screenshot) → the screen's fields are all there is.
+- the slice's elements → `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
+- `specs` → `specifications[]` and `storylines[]`; `screens` → `pages` and `marks` for an HTML screen, `sketch` `{ elements }` for a SCREEN (grid vocabulary in `storyboard-screen`), nothing for an uploaded screenshot (the screen's fields are all there is).
 
 **Copies.** An element with `elementCopy: true` is a linked copy (its `id` is the original's). It is defined by the slice that owns the original, never twice. An EVENT whose original lives in another context, or that no COMMAND in this context produces, is an **external event**.
 
@@ -106,7 +108,7 @@ Write each flagged slice's logic before its UI. Names are the board's titles wit
 
 **External events** — `externalEvents: [{ type, from, fields: [{ name, type, example }] }]` on the slice that consumes them; the simulate panel records them, which is how translation automations get triggered.
 
-**Specs — every scenario and every storyline of the slice**, one entry each:
+**Specs — already generated** into `GENERATED_SPECS` from the scenarios and storylines (the table below is the mapping the generator applies). Check it against the scenarios you analysed, fix what is off, and write any `// NEEDS:` entry by hand:
 
 | Scenario | Spec entry |
 |---|---|
@@ -122,6 +124,8 @@ Example values become typed data (`Int`/`Double` → numbers, `Boolean` → bool
 
 ## Step 5 — The slice's part of the screen
 
+**The skeleton already holds each HTML page translated to JSX** — one component per page, markup 1:1, inline handlers dropped. What is left is judgment: cut the component to this slice's region, replace sample data with the hooks, wire the buttons. Do that by editing the skeleton in place (small edits), never by rewriting the page. A sketch screen has no generated component — redraw it as below.
+
 **Screens are tabs, one per screen name.** Slices whose screens share a name contribute to the same tab, in timeline order — so a screen shown in three slices with three different marks is one tab with three parts. A slice declares its part as `screens: { '<Screen Title>': { actor: '<lane>', part: Component } }`.
 
 **Read the screen HTML for what belongs to this slice:**
@@ -131,7 +135,7 @@ Example values become typed data (`Int`/`Double` → numbers, `Boolean` → bool
 - a button inside a list row navigates with the row's ids (`go('<title>', { orderId })`) or issues that row's command with them.
 - a button the model gives no meaning to: kept as designed, `onClick={() => notModeled('<label>')}` (`const notModeled = useNotModeled()`), and listed in the report.
 
-**HTML screens — 1:1**: translate the slice's region of `meta.pages` into JSX without redesigning it (`class` → `className`, `for` → `htmlFor`, style strings → objects, void elements closed). Several pages → a step-through with local `page` state. **Sketch screens — redrawn**: a 1000×800 relative container, each element absolutely positioned at `gridX*20`/`gridY*20` (`gridWidth*20` × `gridHeight*20`) — `rectangle` → `div`, `headline`/`text` → text at its `fontSize`, `button` → `<button>`, `input` → `<input placeholder>`, `image` → a filled box, `line`/`circle` → inline SVG — then wired the same way.
+**HTML screens — 1:1**: the generated component is the translation (several pages → a step-through with local `page` state, already generated); do not redesign it. **Sketch screens — redrawn**: a 1000×800 relative container, each element absolutely positioned at `gridX*20`/`gridY*20` (`gridWidth*20` × `gridHeight*20`) — `rectangle` → `div`, `headline`/`text` → text at its `fontSize`, `button` → `<button>`, `input` → `<input placeholder>`, `image` → a filled box, `line`/`circle` → inline SVG — then wired the same way.
 
 Automation slices usually have no screen part — the Automations tab shows them.
 
@@ -141,7 +145,7 @@ Automation slices usually have no screen part — the Automations tab shows them
 
 The prototype also **asks**: a guided tour through the screens, one `?` tag per question on the element it is about, a Next button leading from question to question — also onto another screen. This is how the people playing it tell us what the screens do (what is stored, what happens next, which rules apply). **What to ask, in which order and in which words: `eventmodeling-workshop-questions`** — read it, don't improvise a catalog.
 
-**Regenerate the questions on every run, from the model as it is now** — also when every slice is `unchanged`, and never copied from the stored page: a question that was answered by the model since, or points at an element that is gone, must not come back. Write them to `<out>/.work/questions.json` (`assemble` embeds them; without the file the page asks nothing), an array in tour order:
+**Regenerate the questions on every run, from the model as it is now** — also when every slice is `unchanged`, and never copied from the stored page: a question that was answered by the model since, or points at an element that is gone, must not come back, and a fresh look often finds questions the last run did not. Write them to `<out>/.work/questions.json` (`assemble` embeds them; without the file the page asks nothing), an array in tour order:
 
 ```json
 [{ "id": "save-note-action", "screen": "Activity Composer", "ref": "text:Save note", "category": "action",
@@ -156,11 +160,16 @@ The prototype also **asks**: a guided tour through the screens, one `?` tag per 
 
 ## Step 6 — Write the blocks, assemble, check
 
-Write each new or changed slice to `<out>/.work/slices/<slice id>.html`, exactly in the shape of `assets/slices.example.html`:
+Complete each new or changed slice's skeleton in `<out>/.work/slices/<slice id>.html` (Steps 4–5): replace every `@@TODO`, keep the script tag and its hash as generated, keep the shape of `assets/slices.example.html`:
 
-- one `<script type="text/plain" data-em-slice="<slice id>" data-em-title="<slice title>" data-em-hash="<hash from status.json>">` element whose body ends with one `EMRuntime.defineSlice({ id, title, order, commands, readModels, automations, externalEvents, specs, screens })` call; `order` from `status.json`;
+- one `<script type="text/plain" data-em-slice=… data-em-hash=…>` element whose body ends with one `EMRuntime.defineSlice({ id, title, order, commands, readModels, automations, externalEvents, specs, screens })` call (already in the skeleton);
 - JSX and modern JavaScript; React hooks as `React.useState`; `useCommand`, `useReadModel`, `useNav`, `useNotModeled` are globals;
 - never the text of a closing script tag inside the block, not even in a string or comment.
+
+**Slices are independent of each other — each one touches only its own files.** So the work can be split, but it never has to be:
+
+- **Default, any agent: one slice after another**, in `order`. Nothing else is needed.
+- **Only if your environment can run sub-agents / parallel workers** (a task or sub-agent tool; check what you actually have, don't assume): hand each flagged slice to one worker — at most about six at a time — with this brief: *"Complete `<out>/.work/slices/<id>.html` following Steps 3–5 and 6 of `<skill-dir>/SKILL.md` for this one slice; read `<out>/.work/data/<id>.json`; edit only that file; reply with the gaps you found (buttons not modeled and so on)."* Meanwhile you write the questions (Step 5b) — they need only `status.json` and the data files — and, when every worker is done, continue with `assemble`. A worker that fails or returns a block with `@@TODO` left is redone serially. With no such tool, ignore this paragraph.
 
 Then:
 
