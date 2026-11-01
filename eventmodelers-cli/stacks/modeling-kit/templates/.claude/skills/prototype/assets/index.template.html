@@ -61,8 +61,8 @@
     .em-ev b { color: #fdba74; font-weight: 600; }
     .em-ev-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; cursor: pointer; }
     .em-ev-pos { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #8a95a9; background: #0e1522; border-radius: 5px; padding: 1px 6px; }
-    .em-ev-type { font-weight: 600; font-size: 13px; color: #fdba74; }
-    .em-ev-from { color: #8a95a9; font-size: 12px; }
+    .em-ev-type { font-weight: 600; font-size: 13px; color: #1a0f05; background: #f97316; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+    .em-ev-from { font-weight: 600; font-size: 12px; color: #fff; background: #3b82f6; border-radius: 4px; padding: 2px 8px; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
     .em-ev-time { margin-left: auto; color: #6b7690; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
     .em-kv { display: grid; grid-template-columns: minmax(70px, max-content) 1fr; gap: 3px 14px; margin: 8px 0 2px; padding-top: 8px; border-top: 1px solid var(--p-line, #232f45); }
     .em-kv dt { color: #8a95a9; margin: 0; } .em-kv dd { margin: 0; word-break: break-word; color: #e7eaf0; } .em-kv dd.em-none { color: #4f5b73; }
@@ -360,7 +360,7 @@ function EventBrowser({ events }) {
             <div className="em-ev-head" onClick={() => setOpen(isOpen ? null : e.id)}>
               <span className="em-ev-pos">#{e.position}</span>
               <span className="em-ev-type">{e.type}</span>
-              {e.metadata.command && <span className="em-ev-from">← {e.metadata.command}</span>}
+              {e.metadata.command && <span className="em-ev-from">{e.metadata.command}</span>}
               {e.metadata.automation && <span className="em-pill">automation</span>}
               {e.metadata.simulated && <span className="em-pill">simulated</span>}
               <span className="em-ev-time">{new Date(e.metadata.at).toLocaleTimeString()}</span>

@@ -75,6 +75,7 @@ Follow `eventmodeling-information-completeness` before writing any field. It def
 | Design or update a single wireframe/sketch screen (explicit request only) | `/storyboard-screen` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
+| Calculate how much of a slice's business logic its scenarios cover (stored as `meta.data.coverage`, shown on the spec lane) | `/scenario-coverage <chapter>` |
 | Reverse-engineer the business process of an existing code base into the model, as an interview — all chapters first, then one chapter at a time | `/analyze-code-base` |
 | Find what changed in the code since the last analysis (git history from the chapter note's baseline) that the model doesn't reflect, and propose fixes | `/detect-model-drift` |
 | Walk someone through a feature slice by slice, or through every slice a planned feature needs (existing, to adjust, new), as a player in the chat | `/walkthrough` |
