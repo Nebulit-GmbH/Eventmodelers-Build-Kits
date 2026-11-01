@@ -13,6 +13,7 @@ import { requestFetch, requestSync } from './stubs/chatSend'
 import { phaseOf } from './stubs/useApplyStatus'
 import { RebuildButton } from '@player/RebuildButton'
 import { usePrototypeRebuild } from '@player/usePrototypeRebuild'
+import { snapshotsKey, useSnapshots } from '@player/snapshots'
 import '@player/feedback/FeedbackReplay' // registers the replay overlay
 
 const SQUARE: React.CSSProperties = { margin: 0, width: 30, height: 30, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }
@@ -115,6 +116,7 @@ const LocalPlayer: React.FC = () => {
     const name = (load && 'contextName' in load && load.contextName) || 'Prototype'
     const reloadRef = useRef<() => void>(() => {})
     const feedback = usePrototypeFeedback(frame, { timelineId: 'local', title: name, html, boardId: 'local' })
+    useSnapshots(frame, snapshotsKey('local', 'local', name), run) // the Event log panel's named snapshots, kept in this browser
     const agentRebuild = usePrototypeRebuild({ timelineId: 'local', title: name, boardId: 'local', name, onRebuilt: () => reloadRef.current() })
 
     const reload = useCallback(() => { setFrameReady(false); setRun(r => r + 1) }, [])
