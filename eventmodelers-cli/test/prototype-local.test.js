@@ -42,7 +42,8 @@ test('with no page yet every slice is new; a block for each assembles, and only 
   const { cwd, p } = project(t);
   const first = status(cwd);
   assert.ok(first.slices.length > 0 && first.slices.every((s) => s.state === 'new'));
-  assert.throws(() => assemble(cwd), /missing block/);
+  // status generates a skeleton for every new slice; assemble refuses it until the @@TODO are filled
+  assert.throws(() => assemble(cwd), /@@TODO/);
   for (const s of first.slices) {
     writeFileSync(join(p.blocks, `${s.id}.html`), `<script type="text/plain" data-em-slice="${s.id}" data-em-title="${s.title}" data-em-hash="${s.hash}">\nEMRuntime.defineSlice({});\n</script>\n`);
   }
@@ -65,11 +66,13 @@ test('a changed slice keeps its previous block in the work folder to be patched,
   const report = status(cwd);
   const changed = report.slices.find((s) => s.title === 'Change Price');
   assert.equal(changed.state, 'changed');
-  // The previous block is there (old hash), so it is patched with Edit instead of written from nothing; assemble refuses until it has the new hash.
+  // status regenerates the skeleton with the new hash (to be filled in place) and keeps the previous block for reference.
   const kept = readFileSync(join(p.blocks, `${changed.id}.html`), 'utf8');
-  assert.match(kept, /EMRuntime\.defineSlice/);
-  assert.throws(() => assemble(cwd), /data-em-hash is/);
-  writeFileSync(join(p.blocks, `${changed.id}.html`), kept.replace(/data-em-hash="[^"]*"/, `data-em-hash="${changed.hash}"`));
+  assert.match(kept, new RegExp(`data-em-hash="${changed.hash}"`));
+  assert.match(kept, /@@TODO/);
+  assert.match(readFileSync(join(p.work, 'previous', `${changed.id}.html`), 'utf8'), /EMRuntime\.defineSlice/);
+  assert.throws(() => assemble(cwd), /@@TODO/);
+  writeFileSync(join(p.blocks, `${changed.id}.html`), kept.replaceAll('@@TODO', 'done'));
   rmSync(join(p.work, 'status.json'));
   assemble(cwd); // no status.json: assemble takes one itself
   assert.ok(plan(cwd).slices.every((s) => s.state === 'unchanged'));
