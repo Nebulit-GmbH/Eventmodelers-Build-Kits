@@ -29,6 +29,14 @@ MARKDOWN       // Free-text markdown note — the content type a `feedback` lane
 VIDEO          // Embedded video (YouTube/Loom link in `data.url`). API/MCP-only — no palette button in
                // the UI, but renders on the board like any other node. Free-floating: create it via
                // `submit_node_events` with a position and no chapterId/cellId, same as a drawing.
+DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to the board): `meta.diagramKind`
+               // (`svg` | `mermaid`), `meta.diagramSource`, `meta.title`. Free-floating, view only.
+INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved to the board):
+               // `meta.infographicJson`. Free-floating, view only, a snapshot of the snippet.
+TIMELINE_REFERENCE // Read-only view of a timeline (chapter) from ANOTHER board:
+               // `meta.data.reference = {boardId, timelineId}`. Created in the UI only. It is not a real
+               // chapter: no children, no handles, nothing can connect to it, and it is never part of a
+               // slice. Ignore it when building slices, wiring edges or counting chapters; don't edit it.
 ```
 
 ---
