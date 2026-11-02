@@ -1,0 +1,67 @@
+import { useEffect, useMemo, type ReactNode } from 'react';
+import { createPath, parsePath, Router, type To } from 'react-router-dom';
+import {
+  createLocationProjection,
+  navigate,
+  useCommandGateway,
+  useProjection,
+  useReplaying,
+  type NavigationRule,
+} from '../lib/events';
+
+// Events drive the routing: the location is a projection of the event log (src/lib/events/navigation.ts).
+// Every <Link>, <NavLink>, <Navigate> and navigate() goes through the command gateway as a `Navigate`
+// command, so react-router only renders the location the events say. Slices declare their own rules in
+// src/slices/**/navigation.ts (`export const navigation: NavigationRule[]`); deleting a slice folder deletes
+// its rules.
+const modules = import.meta.glob<{ navigation?: NavigationRule[] }>('../slices/**/navigation.ts', { eager: true });
+const rules = Object.values(modules).flatMap((m) => m.navigation ?? []);
+
+const currentUrl = () => window.location.pathname + window.location.search + window.location.hash;
+const toUrl = (to: To) => (typeof to === 'string' ? to : createPath(to));
+
+export function EventRouter({ children }: { children: ReactNode }) {
+  const gateway = useCommandGateway();
+  const replaying = useReplaying();
+  const projection = useMemo(() => createLocationProjection(rules, currentUrl()), []);
+  const { location, mode } = useProjection(projection);
+
+  // Put the entry URL into the log, so a recorded log is self-contained.
+  useEffect(() => {
+    void gateway.send(navigate, { to: currentUrl(), mode: 'history' });
+  }, [gateway]);
+
+  // Browser back/forward/typed URL → an event. (While replaying the gateway ignores it.)
+  useEffect(() => {
+    const onPop = () => void gateway.send(navigate, { to: currentUrl(), mode: 'history' });
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [gateway]);
+
+  // The URL bar renders the projection, never the other way round. A replay leaves browser history alone.
+  useEffect(() => {
+    if (replaying || mode === 'history' || currentUrl() === location) return;
+    window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', location);
+  }, [location, mode, replaying]);
+
+  const navigator = useMemo(
+    () => ({
+      createHref: toUrl,
+      go: (delta: number) => window.history.go(delta),
+      push: (to: To) => void gateway.send(navigate, { to: toUrl(to), mode: 'push' }),
+      replace: (to: To) => void gateway.send(navigate, { to: toUrl(to), mode: 'replace' }),
+    }),
+    [gateway],
+  );
+
+  const loc = useMemo(() => {
+    const { pathname, search, hash } = parsePath(location);
+    return { pathname: pathname ?? '/', search: search ?? '', hash: hash ?? '', state: null, key: 'default' };
+  }, [location]);
+
+  return (
+    <Router location={loc} navigator={navigator}>
+      {children}
+    </Router>
+  );
+}

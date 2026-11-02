@@ -29,13 +29,13 @@ not attempt to build it, flag it via `request-feedback` instead.
 2. Maintain clear separation of concerns within each slice
 3. Headers, auth, `fetch`, and Supabase table access live exclusively in `src/lib/api.ts` — a
    slice component never imports `src/lib/supabase.ts` itself, never calls `fetch`, and never
-   calls `supabase.from(...)` directly; a table-backed read model is always read directly with `queryReadModel` (the backend's `GET` contract is ignored for it); when the backend slice published a UI contract (`ui-contract` skill, `slice.json` `notes[]`) for a *write* or a non-table read, the slice is built *from* it — path, parameters, body and every error response — and falls back to `apiEndpoint`/`fields[]` only when none exists; it calls `postCommand`/`getReadModel`/`queryReadModel` and only contains
+   calls `supabase.from(...)` directly — those calls live in a slice's `commands.ts` command function (guideline 13), never in a component; a table-backed read model is always read directly with `queryReadModel` (the backend's `GET` contract is ignored for it); when the backend slice published a UI contract (`ui-contract` skill, `slice.json` `notes[]`) for a *write* or a non-table read, the slice is built *from* it — path, parameters, body and every error response — and falls back to `apiEndpoint`/`fields[]` only when none exists; it calls `postCommand`/`getReadModel`/`queryReadModel` and only contains
    business logic (validation, request-body shaping, response handling)
 4. A command's/read-model's screen markup (`meta.pages` on its actor HTML_SCREEN node, scoped to
    this slice's `meta.marks` when the screen is shared) is the visual blueprint — translate it into
    JSX rather than redesigning it; see `build-state-change`/`build-state-view` Step 2
-5. A slice's business logic lives in its component by default (plain `useState`, no ceremony). Only
-   split it into a colocated `use<Name>.ts` hook when that's genuinely warranted — reused by more
+5. A slice's *form/draft* state lives in its component by default (plain `useState`, no ceremony); outcomes
+   of remote calls never do (guideline 13). Only split logic into a colocated `use<Name>.ts` hook when that's genuinely warranted — reused by more
    than one sibling component, or non-rendering logic large enough that separating it clearly helps
    — never by default or "for consistency"; see `build-state-change`/`build-state-view` Step 3.
 6. **Design every slice for deletability**: its folder must be removable wholesale without
@@ -71,7 +71,7 @@ not attempt to build it, flag it via `request-feedback` instead.
    `mcp__eventmodelers__get_board_outline` on the screen's chapter (returns `{id, type, title,
    lane}` per node); see `build-state-change`/`build-state-view` Step 2. Omit the segment only for
    the rare slice with no screen at all.
-9. **Every component is testable in isolation, with samples.** A component must render sensibly
+9. **Every component is testable in isolation, with samples — or by replaying events (guideline 13).** A component must render sensibly
    with no data (an empty/background state, not a crash), and must be exercisable with no real
    backend running. Every slice ships a colocated `samples/sample-<N>.json` per numbered scenario
    (`sample-1.json`, `sample-2.json`, ...) — for a STATE_VIEW component, shaped exactly like the
@@ -95,6 +95,29 @@ not attempt to build it, flag it via `request-feedback` instead.
     `src/index.css` if it's still there — automatically, idempotently, so an existing project heals
     on its next build. Never hand-write CSS to imitate a framework. See `build-state-change` Step 7 /
     `build-state-view` Step 6.
+
+13. **The UI is event-sourced** (`src/lib/events/`, shared and slice-agnostic). Every action is a command
+    sent through the **command gateway** (`useCommand(cmd).send(input)`); a command is a plain function
+    `(input) => Promise<NewEvent[]>` created with `defineCommand` that contains the remote call
+    (`postCommand` / `queryReadModel` / `getReadModel`) and returns frontend events — a table read is a
+    command too and returns an outcome-named event carrying the displayed fields (`…Found`, `No…Found`, `…Listed` — not a `Loaded {row}` envelope). **Frontend events are the UI's own
+    facts, never the backend's domain events** (`slice.json` `events[]` are context, not a source for
+    frontend events): every command declares a success event (`<Command>Accepted`) and a failure event per named outcome
+    (`<Command>Rejected`), reads declare `<Thing>Found`/`No<Thing>Found`; the slice's event union is passed
+    to `defineCommand<TInput, TEvent>` so a command can only return events its slice declares. The gateway appends the events to an
+    **in-memory log** (plus `command.started/completed/failed`, which drive pending/error UI) and never
+    knows any command. The UI renders **projections** of that log (`defineProjection` +
+    `useProjection`) — events drive what is on screen, including a success/confirmation view after a
+    command (the projection of its `<Command>Accepted`), never component state set after a call — and so does the **routing**: the location is a projection of the log, every `<Link>`/`navigate` goes through the gateway as a `Navigate` command, and a slice that moves the user on declares its own `navigation.ts` rules over its events (see `build-state-change`), never a `navigate()` after an `await` — so a recorded event list replayed with `store.replay(events)` (dev console:
+    `__events.dump()/replay()/goLive()`) produces the right UI with no remote call — `gateway.send` is a
+    no-op while replaying. Therefore: components never call `postCommand`/`queryReadModel`/`fetch`, never
+    touch the gateway/store directly, and never keep remote results in `useState`/Context. Each slice owns
+    its `events.ts` (`defineEvent`), `commands.ts` and, when it holds read state, `projection.ts`; to react
+    to another slice, match the board's command title with `isCommandCompleted(event, 'Title')` (or
+    re-declare a slice event locally by type string) — never import another slice. A read model made
+    stale by a command is refetched by its projection counting those command completions (see
+    `build-state-view`). Every slice also ships
+    `samples/events-<N>.json` for replaying it in isolation.
 
 12. **The layout is its own slice, with one owner.** A layout slice (a screen, no commands/read models/
     processors) is the board's way to say what the app's shell looks like. `apply-layout` turns its screen
@@ -150,13 +173,18 @@ src/lib/<CrossCutting>Provider.tsx                  # only for concerns every sl
 src/pages/<ScreenTitle>.tsx                         # only when >1 slice shares a screen title — composes their components
 src/App.tsx                                        # base page — replaces the Vite demo when the first slice is built, untouched afterwards
 src/slices/<contextSlug>/<laneSlug>/<sliceFolder>/
-  <CommandTitle>.tsx                                # STATE_CHANGE slice — component (logic inline by default)
-  use<CommandTitle>.ts                              # only if the logic was genuinely worth splitting out
-  <CommandTitle>Context.tsx                         # only if sibling components must share state
-  <ReadModelTitle>.tsx                              # STATE_VIEW slice — component (logic inline by default)
+  navigation.ts                                     # optional — NavigationRule[]: which event moves the user to which route (read by the scaffold's EventRouter)
+  events.ts                                         # defineEvent for the slice's events (+ outcome events like <Thing>Found, failure events)
+  commands.ts                                       # defineCommand functions — the ONLY place the slice calls api.ts
+  projection.ts                                     # STATE_VIEW (or any slice holding read state) — events -> UI state
+  <CommandTitle>.tsx                                # STATE_CHANGE slice — component (useCommand)
+  <ReadModelTitle>.tsx                              # STATE_VIEW slice — component (useCommand + useProjection)
+  use<Name>.ts / <Name>Context.tsx                  # only if genuinely warranted (transient UI coordination)
   samples/
-    sample-1.json                                   # one numbered scenario per file — props (STATE_CHANGE) or query result (STATE_VIEW)
+    sample-1.json                                   # one numbered scenario per file — props (STATE_CHANGE) or query result (STATE_VIEW), served by api.ts in mock mode
     sample-2.json
+    events-1.json                                   # the same scenario as an event list, for replay
+src/lib/events/                                     # shared event-sourcing core (store, gateway, projections, hooks) — slice-agnostic
 ```
 
 Everything under one `<sliceFolder>/` is deletable as a unit — nothing outside it should import
