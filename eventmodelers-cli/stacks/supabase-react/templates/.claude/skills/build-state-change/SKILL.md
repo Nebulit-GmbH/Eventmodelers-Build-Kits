@@ -1,6 +1,6 @@
 ---
 name: build-state-change
-description: Build a write-side React slice for the Supabase stack — one dedicated component per COMMAND plus its slice-owned events and command function (event-sourced UI: the component sends the command through the command gateway; the remote POST via the shared api.ts lives inside the command function and its result is recorded as events), driven by the marked-up region of its actor HTML_SCREEN
+description: Build a write-side React slice for the Supabase stack — one dedicated component per COMMAND (splitting into a hook and/or a colocated Context/Provider only when the slice actually needs one) that POSTs to its slice-defined apiEndpoint via the shared api.ts, driven by the marked-up region of its actor HTML_SCREEN
 ---
 
 # Build State Change Slice
@@ -20,24 +20,6 @@ elements (`slice.json.events[]`) to be recorded by the backend. This stack build
 component never fetches or owns its own data) and POSTs it to an already-existing backend
 endpoint, via `postCommand` in `src/lib/api.ts` — never `fetch` directly. It does not generate any
 server-side code.
-
-**The UI is event-sourced** (`src/lib/events/`, read its `index.ts` and `commandGateway.ts` first).
-The component never calls the backend itself and never keeps the outcome in `useState`:
-1. it sends the command through the **command gateway** (`useCommand(cmd).send(input)`);
-2. the gateway runs the slice's **command function** — a plain `(input) => Promise<NewEvent[]>` that
-   contains the `postCommand` call — and appends what it returns to the in-memory **event log**;
-3. every remote result is an event, declared by the slice: success → `<Command>Accepted`, each named
-   failure → `<Command>Rejected` (via `onError`); the gateway adds `command.completed`/`command.failed`.
-   Submitting/error UI state comes from the `command.*` lifecycle events (`useCommand` → `pending`,
-   `error`), not from local state.
-
-**Frontend events are not backend domain events.** `slice.json` `events[]` describe what the *backend*
-records; the UI never mirrors, re-creates or names its events after them. Frontend events are the UI's
-own facts ("the command was accepted", "the command was rejected as already reserved").
-
-The gateway knows no command; everything command-specific lives in this slice's folder. A recorded
-event list can be replayed (`store.replay(events)`) and the UI ends up in the right state with no
-remote call — `gateway.send` is a no-op while replaying. Never bypass the gateway.
 
 Every component must be renderable and testable **in isolation**, with no real backend running —
 see Step 4 (numbered `samples/`) and `src/lib/api.ts`'s `VITE_DATA_MODE=mock`, which makes
@@ -77,15 +59,15 @@ Extract:
   `slice.json` `notes[]`; parse only its `ui-contract` block — an OpenAPI operation). When present it **overrides
   `apiEndpoint`** and fixes everything the component must honour: the path (+ path `parameters`), the exact
   `requestBody` properties, the 2xx `responses` entry, and every non-2xx response (status + description) — surface each error code as a
-  distinct user-facing state — its own failure event via the command's `onError` (Step 3b), not one generic failure. When absent, the backend slice
+  distinct user-facing state through `onError`, not one generic failure. When absent, the backend slice
   isn't built or re-fetched yet: fall back to `apiEndpoint` / `fields[]` as above and note the assumption
   as a code comment. If contract and `command.fields[]` disagree, the contract wins for the request and
   you record the mismatch as a code comment.
   **Build the call from it**: `postCommand(buildPath('<contract path>', { <path params> }), { <requestBody
   properties> })` — `buildPath` (in `src/lib/api.ts`) fills and URL-encodes `{param}` segments; the body
   carries exactly the contract's `requestBody` properties (props the contract doesn't list stay out).
-- **events[]** — the backend's domain events: context for understanding the slice only. Do **not**
-  create frontend events from them; frontend events are the UI's own vocabulary (Step 3b).
+- **events[]** — informational only (what the backend is expected to emit); this stack does not
+  act on them directly.
 - **screens[]** — the actor `SCREEN` element(s) that trigger this command, if any. Empty when the
   command has no UI trigger (rare — build the component from fields alone in that case, skip Step
   2).
@@ -196,8 +178,8 @@ not substitute the mockup's values.
 
 **Props**: exactly `command.fields[]`, typed per each field's `type` (`String`→`string`,
 `Boolean`→`boolean`, `Int`/`Long`→`number`, etc. — `subfields[]` become a nested object type),
-respecting `optional`. **No callback props** (`onSuccess`/`onError` do not exist here): a parent or
-another slice that cares about the outcome reacts to the *events*. **No other inputs** — no fetching
+respecting `optional`. Add two callback props: `onSuccess?: (result: TResponse) => void` and
+`onError?: (error: ApiError) => void`. **No other inputs** — no context/store reads, no fetching
 inside the component. All business data the component needs arrives via props from its parent.
 
 ### Step 3a — Read the scenarios to understand behavior (not to implement rules)
@@ -212,7 +194,7 @@ accomplish, what outcomes exist, and what each outcome must look like. Use them 
 
 | Scenario shows | What it tells the UI |
 |---|---|
-| `when` this command → `then` EVENT(s) | the success outcome: the success event(s) the command function returns; what to confirm or reset once `command.completed` shows |
+| `when` this command → `then` EVENT(s) | the success outcome: what to confirm or reset after `postCommand` resolves, and what `onSuccess` hands the parent |
 | `when` this command → `then` an error / rejection (e.g. "already reserved") | the failure outcomes that exist: render each as its own readable message from the `ApiError` the backend returns — not one generic failure. The backend decides *whether* it fails; the UI only shows it |
 | `optional` fields, fields that vary between scenarios | which inputs are required vs. optional in the form (mirror the flags, no invented rules) |
 | `given` events before the command | context for what the user was doing — background to understand the flow, not logic to reproduce |
@@ -225,133 +207,61 @@ Rules:
 - If a scenario's outcome needs a UI state the markup doesn't show, add the minimal state and note
   the scenario in a one-line comment (e.g. `// spec: "already reserved" → backend 409 shown inline`).
 
-### Step 3b — Events, command function, component
-
-Three files in the slice folder (all slice-local; nothing here is shared with another slice):
-
-```ts
-// events.ts — FRONTEND events: every outcome of this command, as the UI experiences it. Named as UI
-// facts (`<Command>Accepted`, `<Command>Rejected`), never after a backend domain event from
-// slice.json events[]. Always one success event, plus one failure event per outcome the scenarios name.
-import { defineEvent, type EventOf } from '../../../../lib/events'; // one less '../' if this command has no lane segment
-
-// Success: the backend accepted the command. Payload = the ids the UI needs to tell which one (minimal).
-export const ReserveBikeAccepted = defineEvent<'ReserveBikeAccepted', { bikeId: string; customerId: string }>('ReserveBikeAccepted');
-// spec: "already reserved" → backend 409
-export const ReserveBikeRejected = defineEvent<'ReserveBikeRejected', { bikeId: string; reason: string }>('ReserveBikeRejected');
-
-/** Everything this command can result in — `defineCommand` accepts no other event. */
-export type ReserveBikeEvent = EventOf<typeof ReserveBikeAccepted> | EventOf<typeof ReserveBikeRejected>;
-```
-
-```ts
-// commands.ts — the remote call lives HERE, inside a plain function the gateway runs.
-import { ApiError, buildPath, postCommand } from '../../../../lib/api';
-import { defineCommand } from '../../../../lib/events';
-import { ReserveBikeAccepted, ReserveBikeRejected, type ReserveBikeEvent } from './events';
-
-export interface ReserveBikeInput { bikeId: string; customerId: string } // exactly command.fields[]
-
-export const reserveBike = defineCommand<ReserveBikeInput, ReserveBikeEvent>(
-  'ReserveBike', // command title verbatim — the lifecycle events are keyed by it
-  async (input: ReserveBikeInput) => {
-    await postCommand(buildPath('/api/reservebike', {}), { bikeId: input.bikeId, customerId: input.customerId });
-    return [ReserveBikeAccepted({ bikeId: input.bikeId, customerId: input.customerId })];
-  },
-  {
-    // Every documented non-2xx contract response / scenario failure → its own event.
-    // Anything not mapped here still surfaces as the gateway's `command.failed` (message, status, body).
-    onError: (error, input) =>
-      error instanceof ApiError && error.status === 409
-        ? [ReserveBikeRejected({ bikeId: input.bikeId, reason: error.message })]
-        : [],
-  },
-);
-```
-
-```ts
-// projection.ts — what the UI shows after the command, derived from events. Events drive the UI:
-// a success screen is the projection of `Accepted`, not a `setSubmitted(true)` in the component.
-import { CommandStarted, defineProjection } from '../../../../lib/events';
-import { ReserveBikeAccepted, ReserveBikeRejected } from './events';
-
-export type ReserveBikePhase =
-  | { phase: 'form' }
-  | { phase: 'accepted'; bikeId: string; customerId: string } // → confirmation / success screen
-  | { phase: 'rejected'; reason: string }; // → the form again, with this named reason
-
-export const reserveBikeProjection = defineProjection<ReserveBikePhase>({
-  initial: { phase: 'form' },
-  evolve(state, event) {
-    if (ReserveBikeAccepted.is(event)) return { phase: 'accepted', ...event.data };
-    if (ReserveBikeRejected.is(event)) return { phase: 'rejected', reason: event.data.reason };
-    // sending again starts over (a stale success/rejection must not stay on screen)
-    if (CommandStarted.is(event) && event.data.name === 'ReserveBike') return { phase: 'form' };
-    return state;
-  },
-});
-```
+**Default — keep the logic in the component.** For an ordinary command (one form, one submit
+action, which is most of them) local state and the `postCommand` call live directly inside the
+component. This is the common case and needs nothing more:
 
 ```tsx
-// ReserveBike.tsx — sends the command; renders what the events say. No postCommand, no fetch.
-import { useCommand, useProjection } from '../../../../lib/events';
-import { reserveBike } from './commands';
-import { reserveBikeProjection } from './projection';
+// ReserveBike.tsx
+import { useState } from 'react';
+import { postCommand, ApiError } from '../../../../lib/api'; // one less '../' if this command has no lane segment
 
-export interface ReserveBikeProps { bikeId: string; customerId: string }
+export interface ReserveBikeProps {
+  bikeId: string;
+  customerId: string;
+  onSuccess?: (result: unknown) => void;
+  onError?: (error: ApiError) => void;
+}
 
-export function ReserveBike({ bikeId, customerId }: ReserveBikeProps) {
-  const ui = useProjection(reserveBikeProjection);
-  const { send, pending, error } = useCommand(reserveBike);
-  const handleSubmit = () => void send({ bikeId, customerId });
+export function ReserveBike({ bikeId, customerId, onSuccess, onError }: ReserveBikeProps) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // ...JSX translated from the marked screen fragment, switched on `ui.phase`:
-  //   'form'     → the form; submit disabled while `pending`; `error?.message` for unmapped failures
-  //   'rejected' → the form plus `ui.reason`
-  //   'accepted' → the confirmation/success view (the screen the storyboard shows after this command)
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await postCommand('/api/reservebike', { bikeId, customerId });
+      onSuccess?.(result);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Something went wrong';
+      setError(message);
+      if (err instanceof ApiError) onError?.(err);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // ...JSX translated from the marked screen fragment, wired to handleSubmit...
 }
 ```
 
-Rules:
-- Every command declares a success event **and** a rejection event per named failure — `return []` is
-  never right. The event union (`<Command>Event`) is passed to `defineCommand`, so returning an
-  undeclared event is a compile error.
-- The command function returns events and **nothing else**; it never touches the store, a component
-  or another slice. The gateway appends them (and `command.started`/`command.completed`).
-- A command with a failure outcome the scenarios name gets that failure as a slice event via
-  `onError`; one generic failure is only acceptable when the scenarios name none.
-- **Events drive the UI.** Anything the user sees *because* the command ran — a success screen, a
-  confirmation, a named rejection, the next step — is a projection over the slice's events
-  (`projection.ts`, `defineProjection` + `useProjection`), never `useState` set after `send` resolves
-  and never read from `send`'s return value. That is what makes a replayed log show the same screen.
-  A command whose outcome shows nothing beyond the form's own pending/error needs no projection.
-- **Events drive the routing too.** When the storyboard shows another page after this command (a
-  confirmation page, the list, the next step), the slice declares that as a navigation rule over its own
-  events in `<sliceFolder>/navigation.ts` — never a `navigate()`/`useNavigate` call after `send` resolves:
+The component owns only: local form/loading/error state, whatever client-side validation the
+`specifications[]`/field `optional` flags imply, building the request body from props, and calling
+`postCommand(command.apiEndpoint, body)`. It never imports `supabase`, builds headers, or calls
+`fetch` directly — that is exclusively `src/lib/api.ts`'s job. In `VITE_DATA_MODE=mock`,
+`postCommand` never hits the network at all — it resolves immediately, so this component is fully
+exercisable (submitting/success/error UI states) offline.
 
-  ```ts
-  // navigation.ts — read by the app's EventRouter (scaffold: src/app/EventRouter.tsx) via a glob, so
-  // deleting the slice folder deletes the rule. The route string is the page's route from src/app/model.ts.
-  import type { NavigationRule } from '../../../../lib/events';
-  import { ReserveBikeAccepted } from './events';
-
-  export const navigation: NavigationRule[] = [
-    (event) => (ReserveBikeAccepted.is(event) ? '/reservation-confirmed' : undefined), // storyboard: confirmation page
-  ];
-  ```
-
-  A rule may also match another slice's command by title (`isCommandCompleted(event, 'Title')`) but never
-  imports that slice. Plain `<Link>`/`<NavLink>` need nothing: the EventRouter sends them through the
-  gateway as a `Navigate` command. Only in a project with the scaffold's router; a project with no router
-  shows the confirmation through the slice's `projection.ts` phase instead (above).
-- A step the user takes that only changes the UI ("register another", dismiss) is still a command:
-  a local command whose function makes no remote call and returns its own event
-  (`defineCommand('NewReserveBike', () => [ReserveBikeReset()])`), which the projection folds.
-- To react to *another* slice, use the board's command title, not its events: `isCommandCompleted(event,
-  'ReserveBike')` matches the gateway's `command.completed`; a slice event is re-declared locally by
-  type string with only the fields read. Never import another slice's `events.ts`.
-- Use `useCommand`'s `pending`/`error` for submitting/error UI. Form-field draft values (what the user
-  is typing, before submit) stay in the component's `useState`: they are not outcomes of a remote call.
+**Extract a `use<CommandTitle>.ts` hook only when it earns its keep** — e.g. the exact same logic
+is genuinely reused by more than one component in this slice, or the non-rendering logic (several
+async steps, non-trivial multi-field validation) has grown large enough that pulling it out of the
+component measurably improves readability. Don't extract a hook by default, for uniformity with
+other slices, or "for consistency" — a small command's logic reads perfectly fine inline, and a
+hook file that's just a thin wrapper around `postCommand` is pure ceremony working against
+deletability, not for it (one more file to keep in sync instead of one). When it *is* warranted,
+move the same logic verbatim into a colocated `use<CommandTitle>.ts` and have the component call
+it — nothing about the logic itself changes, only where it lives.
 
 ## Step 4 — Add numbered samples
 
@@ -361,7 +271,7 @@ Every command component ships a `samples/` folder colocated next to it, mirrorin
 is driven entirely by props, each sample is a **full set of prop values** — there's no query for
 `postCommand` to serve (it's already mock-aware on its own, see Step 3). A sample is for whatever
 renders this component in isolation (a `src/pages/` composition, or ad hoc while developing) to
-spread as props, e.g. `<ReserveBike {...sample1} />`.
+spread as props, e.g. `<ReserveBike {...sample1} onSuccess={...} />`.
 
 Add `sample-1.json` for the ordinary case (`command.fields[].example` values); add a numbered
 sample for **each** scenario in `specifications[]` that changes what the component does (an invalid
@@ -369,17 +279,11 @@ input that blocks submit, an `optional` field omitted, a precondition that disab
 Take the values from the scenario's own example data. As in `build-state-view`, the same number across different components' samples is meant to
 represent one coherent scenario across the app, not an arbitrary per-component index.
 
-Also add `samples/events-<N>.json` — the event list (`[{ "type", "data" }]`, as the command function
-would return them) for the same scenario, e.g. `events-1.json` = `[{"type":"ReserveBikeAccepted","data":{...}}]`
-and one per failure outcome (`ReserveBikeRejected`). This is what lets the slice be **replayed in isolation**: wrap the events
-into `AppEvent`s (`id`, `meta`) and `store.replay(...)` — in the dev console `__events.replay(...)`.
-
 ## Step 5 — Context/Provider, only if the marked fragment needs shared local state
 
 Skip this step for the overwhelming majority of commands — an ordinary single-form command is
-fully covered by Step 3b alone, and adding a Context there is needless indirection with nothing to
-show for it. (A Context holds only transient *UI* coordination between sibling components, e.g. a
-wizard step; anything that is the outcome of a remote call is an event + projection, never Context.)
+fully covered by Step 3 alone, and adding a Context there is needless indirection with nothing to
+show for it.
 
 Reach for a Context **only** when the blueprint from Step 2 decomposes into several sibling
 components that must coordinate (e.g. a multi-step wizard, a shared "selected row" between a list
@@ -510,16 +414,8 @@ leaves it alone.
 After writing the hook/component (and context/page/base page, if any), confirm:
 - Every prop matches a `command.fields[]` entry exactly (name + type) — no invented or missing
   fields.
-- The `postCommand` call (inside `commands.ts`, never in the component) uses the UI contract's `path` and `body` when one was found, else `command.apiEndpoint` verbatim — or, when it was missing at build
+- The `postCommand` call uses the UI contract's `path` and `body` when one was found, else `command.apiEndpoint` verbatim — or, when it was missing at build
   time, the provisional `/api/mock/...` path noted in a comment (Step 1).
-- If the storyboard shows another page after the command, `navigation.ts` has the rule on the slice's own
-  events, and no component calls `navigate`/`useNavigate` after an `await`.
-- `events.ts` has `<Command>Accepted` plus a `<Command>Rejected` per scenario failure and the
-  `<Command>Event` union; the command function returns `Accepted` on success (never `[]`), and no
-  frontend event is named after or mirrors a `slice.json` `events[]` backend event.
-- The component imports only `useCommand`/`useProjection` from `src/lib/events` — no `postCommand`, no
-  `fetch`, no gateway/store access, and no `useState` holding a remote result.
-- `samples/events-<N>.json` exists and replaying it renders the slice with no remote call.
 - At least one numbered sample exists under this slice's `samples/` folder, shaped exactly like
   this component's props.
 - Every scenario outcome (success, each named failure) has a rendered state, and **no business rule

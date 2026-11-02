@@ -1,6 +1,6 @@
 ---
 name: build-state-view
-description: Build a read-side React slice for the Supabase stack — a component tailored to its READMODEL(s), event-sourced: a load command function reads the table/view through the shared api.ts (never Supabase directly) and records the outcome the UI learned as an outcome-named event (`<Thing>Found` / `No<Thing>Found` / `<Things>Listed`); the component renders a projection of the event log, so it can be replayed from events or previewed from numbered samples with no remote call
+description: Build a read-side React slice for the Supabase stack — a component tailored to its READMODEL(s), reading its table/view through the shared api.ts (never Supabase directly), which is what lets it also be tested/previewed in isolation from numbered samples/sample-N.json files
 ---
 
 # Build State View Slice
@@ -34,15 +34,6 @@ read) from `src/lib/api.ts`, same as `build-state-change` components only
 ever call `postCommand`. `queryReadModel` is the real Supabase call in production, but in mock mode
 it serves a numbered sample instead (see Step 4) — routing every read through this one seam is what
 makes a component testable/previewable in isolation, with zero Supabase project needed.
-
-**The UI is event-sourced** (`src/lib/events/` — read its `index.ts` and `commandGateway.ts` first).
-A read is a command like any other: the component sends a **load command** through the command
-gateway; the slice's command function (a plain `(input) => Promise<NewEvent[]>`) calls
-`queryReadModel`/`getReadModel` and returns an **outcome-named event** (what the UI learned, carrying the displayed fields — not a `Loaded` envelope around a row); a slice
-**projection** folds the event log into the state the component renders. The component never
-keeps fetched rows in `useState`. Consequences: a recorded event list replayed with
-`store.replay(events)` renders the right UI with no Supabase call (`gateway.send` is a no-op while
-replaying), and the loading/error state comes from the gateway's `command.*` events (`useCommand`).
 
 Assume a read model names a real persisted table unless its `comments[]`, `description`, or a
 custom prompt on the slice explicitly says otherwise (e.g. it's actually a view joining several
@@ -153,57 +144,45 @@ not substitute the mockup's values.
 
 
 **Props**: whatever the component needs to *scope* its query (e.g. `customerId`) — passed in from
-its parent, never read from a global store. The loaded data itself is **not** a prop — it arrives as
-events and is rendered from the slice's projection.
+its parent, never read from a global store. The queried data itself is **not** a prop — the
+component fetches it.
 
-Four slice-local files (nothing shared with another slice):
+**With a UI contract (Step 1, non-table read models only)**: call `getReadModel(buildPath(path, pathParams), queryParams, samples)`
+from `src/lib/api.ts` inside the component instead of the `queryReadModel` snippet below — same
+effect shape (`useEffect` → loading / empty / error / data), but each documented non-2xx response
+(`ApiError.status`) maps to its own state. Never a raw `fetch`.
 
-```ts
-// events.ts
-import { defineEvent, type EventOf } from '../../../../lib/events'; // one less '../' if this read model has no lane segment
+**Default (a table-backed read model — always, unless the contract case above applies) — call `queryReadModel` from `src/lib/api.ts` inside the component**. Never
+`supabase.from(...)` directly, never a raw `fetch`:
 
-export interface ActiveReservation {
+```tsx
+// ActiveReservationView.tsx
+import { useEffect, useState } from 'react';
+import { queryReadModel } from '../../../../lib/api'; // one less '../' if this read model has no lane segment
+
+export interface ActiveReservationViewProps {
+  customerId: string;
+}
+
+interface ActiveReservation {
   status: string;
   // ...remaining readmodel.fields[], typed per each Field.type
 }
-// Outcome-named frontend events: what the UI learned, in the screen's vocabulary — one per outcome the
-// scenarios distinguish (found / empty / each state worth its own event). The payload is the displayed
-// fields (readmodel.fields[]), never a generic `{ row | null }` envelope. A list read model:
-// `ReservationsListed { customerId, reservations: [...] }`.
-export const ActiveReservationFound = defineEvent<
-  'ActiveReservationFound',
-  { customerId: string } & ActiveReservation
->('ActiveReservationFound');
-// spec: "read model is empty" → no active reservation
-export const NoActiveReservationFound = defineEvent<'NoActiveReservationFound', { customerId: string }>(
-  'NoActiveReservationFound',
-);
-
-/** Everything the load command can result in — `defineCommand` accepts no other event. */
-export type ActiveReservationEvent = EventOf<typeof ActiveReservationFound> | EventOf<typeof NoActiveReservationFound>;
-```
-
-```ts
-// commands.ts — the remote read lives HERE. Default (table-backed read model): queryReadModel.
-// Never supabase.from(...) directly, never a raw fetch.
-import { queryReadModel } from '../../../../lib/api';
-import { defineCommand } from '../../../../lib/events';
-import {
-  ActiveReservationFound,
-  NoActiveReservationFound,
-  type ActiveReservation,
-  type ActiveReservationEvent,
-} from './events';
 
 const samples = import.meta.glob<{ default: ActiveReservation }>('./samples/sample-*.json', { eager: true });
 const samplesByNumber = Object.fromEntries(
   Object.entries(samples).map(([path, mod]) => [path.match(/sample-(\d+)\.json$/)![1], mod.default]),
 );
 
-export const loadActiveReservation = defineCommand<{ customerId: string }, ActiveReservationEvent>(
-  'LoadActiveReservation',
-  async ({ customerId }) => {
-    const row = await queryReadModel<ActiveReservation | null>(
+export function ActiveReservationView({ customerId }: ActiveReservationViewProps) {
+  const [data, setData] = useState<ActiveReservation | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    queryReadModel<ActiveReservation>(
       {
         table: 'active_reservations', // readmodel.apiEndpoint, verbatim
         select: 'status, ...', // every readmodel.fields[] name, by its actual column name — not '*'
@@ -211,82 +190,28 @@ export const loadActiveReservation = defineCommand<{ customerId: string }, Activ
         single: true,
       },
       samplesByNumber,
-    );
-    return [row ? ActiveReservationFound({ customerId, ...row }) : NoActiveReservationFound({ customerId })];
-  },
-);
-```
+    )
+      .then((result) => {
+        if (cancelled) return;
+        setData(result);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : 'Something went wrong');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [customerId]);
 
-```ts
-// projection.ts — the state the component renders, folded from events. Pure.
-import { defineProjection, isCommandCompleted } from '../../../../lib/events';
-import { ActiveReservationFound, NoActiveReservationFound, type ActiveReservation } from './events';
-
-// What makes this read model stale (the backend projection updates the table asynchronously) is a
-// *command completing* — matched by the board's command title, never by a backend domain event and
-// never by importing that slice. Only commands whose backend events feed this read model go here.
-const INVALIDATED_BY = ['ReserveBike'];
-
-export interface ActiveReservationState {
-  byCustomer: Record<string, ActiveReservation | null>;
-  /** Bumped by every invalidating command completion; the component's load effect depends on it. */
-  invalidations: number;
-}
-
-export const activeReservationProjection = defineProjection<ActiveReservationState>({
-  initial: { byCustomer: {}, invalidations: 0 },
-  evolve(state, event) {
-    if (ActiveReservationFound.is(event)) {
-      const { customerId, ...reservation } = event.data;
-      return { ...state, byCustomer: { ...state.byCustomer, [customerId]: reservation } };
-    }
-    if (NoActiveReservationFound.is(event))
-      return { ...state, byCustomer: { ...state.byCustomer, [event.data.customerId]: null } };
-    if (INVALIDATED_BY.some((name) => isCommandCompleted(event, name)))
-      return { ...state, invalidations: state.invalidations + 1 };
-    return state;
-  },
-});
-```
-
-```tsx
-// ActiveReservationView.tsx
-import { useEffect } from 'react';
-import { useCommand, useProjection } from '../../../../lib/events';
-import { loadActiveReservation } from './commands';
-import { activeReservationProjection } from './projection';
-
-export interface ActiveReservationViewProps {
-  customerId: string;
-}
-
-export function ActiveReservationView({ customerId }: ActiveReservationViewProps) {
-  const { byCustomer, invalidations } = useProjection(activeReservationProjection);
-  const { send: load, pending, error } = useCommand(loadActiveReservation);
-
-  // (Re)load on mount, when the scope changes, and when an invalidating command completed. While a
-  // recorded log is replayed the gateway ignores this, so the UI shows exactly what the events say.
-  useEffect(() => {
-    void load({ customerId });
-  }, [load, customerId, invalidations]);
-
-  const data = byCustomer[customerId]; // undefined = not loaded yet, null = loaded and empty
-
-  // ...JSX translated from the marked screen fragment. Distinct states: `pending` (loading),
-  // `error?.message` (failed), `data === undefined`/`null` (empty/background), data (rows). A
-  // component must never assume data is present...
+  // ...JSX translated from the marked screen fragment. Render a sensible empty/background
+  // state for `data === null` (or `[]`), distinct from the loading and error states — a
+  // component must never assume data is always present...
 }
 ```
-
-**With a UI contract (Step 1, non-table read models only)**: the command function calls
-`getReadModel(buildPath(path, pathParams), queryParams, samples)` from `src/lib/api.ts` instead of
-`queryReadModel` — same shape otherwise. Each documented non-2xx response (`ApiError.status`) becomes
-its own event via `defineCommand`'s `onError` (e.g. a 404 "no reservation" → the same
-the same `No…Found` empty event, not an error banner); don't collapse them into one generic failure.
-
-**Freshness.** `invalidations` is how a table-backed read model stays current without polling: list
-the commands (from the board) whose backend events feed this read model and bump the counter when one
-completes (`isCommandCompleted`). No such command → no counter.
 
 ### Step 3a — Read the scenarios to understand behavior (not to implement rules)
 
@@ -312,10 +237,11 @@ Select fields explicitly by name rather than `select('*')`. Map each field's `na
 column name — check the paired backend stack's migrations if the naming convention (e.g. camelCase
 vs. snake_case) isn't obvious rather than guessing; if genuinely unclear, use `request-feedback`.
 
-Shared read state between sibling components is the projection itself (`useProjection` in each) —
-not a Context. A `<Name>Context.tsx` only coordinates transient UI state (as in `build-state-change`
-Step 5), and a `use<ReadModelTitle>.ts` hook only when genuinely warranted (logic reused by more than
-one sibling). Don't reach for either by default.
+Extract a `use<ReadModelTitle>.ts` hook, or introduce a colocated `<Name>Context.tsx`, under
+exactly the same conditions as `build-state-change` Steps 3-4 — only when genuinely warranted
+(logic reused by more than one sibling component, or state that must be shared across them). Don't
+reach for either by default; most read-model components are a query plus a render and need
+nothing more.
 
 ## Step 4 — Add numbered samples
 
@@ -334,11 +260,6 @@ same number across *different* components' `samples/` folders is meant to repres
 scenario across the whole app (e.g. every component's `sample-2.json` together tell the story of
 "a long-time customer") — keep that in mind when choosing what a given number represents, rather
 than numbering arbitrarily per component.
-
-Also add `samples/events-<N>.json` — the event list (`[{ "type", "data" }]`) for the same scenario,
-e.g. `events-1.json` = `[{"type":"ActiveReservationFound","data":{"customerId":"…","status":"…"}}]`,
-plus `[{"type":"NoActiveReservationFound","data":{"customerId":"…"}}]` for the empty state. Wrap into `AppEvent`s (`id`, `meta`) and
-`store.replay(...)` (dev console: `__events.replay(...)`) to render the slice with no remote call.
 
 No extra wiring is needed beyond the `import.meta.glob` shown in Step 3 — switching which sample is
 active for the *entire app* is just the `VITE_MOCK_SAMPLE` env var (see `.env.example`); this
@@ -415,11 +336,7 @@ leaves it alone.
   fields.
 - With a UI contract: the `getReadModel` call uses the contract's path and query `parameters`
   verbatim, and every non-2xx response has its own rendered state. Otherwise:
-- The component imports only `useCommand`/`useProjection` from `src/lib/events` — no `queryReadModel`,
-  `getReadModel`, `fetch`, gateway/store access, and no `useState` holding loaded rows.
-- `events.ts` declares outcome-named events (`…Found` / `No…Found` / `…Listed`, payload typed from `readmodel.fields[]`; no `Loaded {row}` envelope); `projection.ts` is pure
-  and folds it (plus any invalidating command completions); `samples/events-<N>.json` exists and replays with no remote call.
-- The `queryReadModel` call (inside `commands.ts`) targets `readmodel.apiEndpoint` verbatim as `table` — or, when it was
+- The `queryReadModel` call targets `readmodel.apiEndpoint` verbatim as `table` — or, when it was
   missing at build time, the provisional `mock_...` table name noted in a comment (Step 1) — never a
   raw `fetch`, a direct `supabase.from(...)` call, or a hardcoded table name that doesn't match
   slice.json.
