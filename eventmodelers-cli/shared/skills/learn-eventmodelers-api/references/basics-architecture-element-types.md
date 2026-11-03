@@ -33,6 +33,9 @@ DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to th
                // (`svg` | `mermaid`), `meta.diagramSource`, `meta.title`. Free-floating, view only.
 INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved to the board):
                // `meta.infographicJson`. Free-floating, view only, a snapshot of the snippet.
+REPORT         // Pinned report chart (a `report` chat snippet saved to the board): `meta.reportJson` (the snippet's JSON
+               // as a string, without `kind`/`confirm`), `meta.title`. Free-floating, view only. To change it, send a
+               // `node:changed` that sets `meta.reportJson` (the `/regenerate-report` skill does).
 TIMELINE_REFERENCE // Read-only view of a timeline (chapter) from ANOTHER board:
                // `meta.data.reference = {boardId, timelineId}`. Created in the UI only. It is not a real
                // chapter: no children, no handles, nothing can connect to it, and it is never part of a

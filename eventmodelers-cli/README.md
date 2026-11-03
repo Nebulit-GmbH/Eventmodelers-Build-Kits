@@ -122,6 +122,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
 | `/domain-story` | Retells chapters as Domain Storytelling — actors, work objects and numbered activities, drawn as a graph per chapter in the chat |
 | `/regenerate-diagram` | Redraws a pinned Mermaid/SVG diagram node from the current model and writes the new source back into the same node (sent by the diagram's Regenerate button) |
+| `/regenerate-report` | Rebuilds a pinned report chart node from the current model and writes the new `reportJson` back into the same node (sent by the report's Regenerate button) |
 | `/stressor-analysis` | Residuality-theory stress test of one chapter: wide stressors and their residues, a stressor × element matrix that exposes hidden coupling, redesigns proposed as new slices |
 | `/build-snippet-type` | Build a custom chat snippet type with the person — a card with their own fields and buttons — preview it in the chat, create it after a yes |
 | `/storyboard` | Build a full visual storyboard |
