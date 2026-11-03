@@ -29,8 +29,8 @@ MARKDOWN       // Free-text markdown note — the content type a `feedback` lane
 VIDEO          // Embedded video (YouTube/Loom link in `data.url`). API/MCP-only — no palette button in
                // the UI, but renders on the board like any other node. Free-floating: create it via
                // `submit_node_events` with a position and no chapterId/cellId, same as a drawing.
-DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to the board): `meta.diagramKind`
-               // (`svg` | `mermaid`), `meta.diagramSource`, `meta.title`. Free-floating, view only.
+DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to the board): `data.diagramKind`
+               // (`svg` | `mermaid`) and `data.diagramSource` on the node's data, `meta.title`. Free-floating, view only.
 INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved to the board):
                // `meta.infographicJson`. Free-floating, view only, a snapshot of the snippet.
 REPORT         // Pinned report chart (a `report` chat snippet saved to the board): `meta.reportJson` (the snippet's JSON
