@@ -1,6 +1,7 @@
 ---
 name: regenerate-report
-description: Rebuild a report chart that is pinned on the board (a `report` node: bar, line or pie) from the current model — the app's Regenerate button on the report sends `/regenerate-report <node id> "<title>" (<chart>)`. Reads the original request it was built for (carried silently in the message's context) and the node's current report to see what it measures, re-reads the board, recomputes the numbers as the model is now, and writes the new report JSON back into the same node. Changes only that node's `reportJson`.
+description: >-
+  Rebuild a report chart that is pinned on the board (a `report` node: bar, line or pie) from the current model — the app's Regenerate button on the report sends `/regenerate-report <node id> "<title>" (<chart>)`. Reads the original request it was built for (carried silently in the message's context) and the node's current report to see what it measures, re-reads the board, recomputes the numbers as the model is now, and writes the new report JSON back into the same node. Changes only that node's `reportJson`.
 ---
 
 # Regenerate report — rebuild a pinned report from the current model
