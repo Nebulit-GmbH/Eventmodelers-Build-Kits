@@ -14,7 +14,8 @@ import { execFileSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import { createRealtimeAdapter, keepSubscribed } from './adapters/realtime-adapter.js';
 import { backoffMs, sleep } from './backoff.js';
-import { adoptAgentEdits, observeBoard, projectStatus, statusOf } from './slice-projection.js';
+import { adoptAgentEdits, applyBoardStatus, observeBoard, projectStatus, statusOf } from './slice-projection.js';
+import { coalesce } from './slice-refresh.js';
 import { fold, statusKey } from './slice-state.js';
 import { readEvents } from './slice-events.js';
 import { claimSlice, recordEvent, settleSlice, settleLeftoverClaims } from './slice-run.js';
@@ -364,7 +365,18 @@ async function fetchFullSlice(cfg, kitDir, sliceId) {
   }
 }
 
-async function handleSliceChanged(payload, cfg, kitDir) {
+// Re-reads of the slice list caused by other people's changes: a burst of events (an import, a bulk status
+// change) becomes one read per agent instead of one per event.
+const SLICE_REFRESH_DELAY_MS = 1500;
+const refreshSlices = coalesce(fetchAndPersistSlices, SLICE_REFRESH_DELAY_MS);
+
+// A slice:changed that only moved a slice's status carries everything the local files need — the other
+// fields of the payload are the ones the write set, so all of them null means none was touched. Anything
+// else (a title, assignee, ticket or feature, or a slice not listed yet) is read from the board.
+const isStatusOnly = (payload) =>
+  !!payload?.sliceStatus && payload.sliceTitle == null && payload.assignee == null && payload.ticketNumber == null && payload.feature == null;
+
+export async function handleSliceChanged(payload, cfg, kitDir, refresh = refreshSlices) {
   console.log(`[agent] slice:changed — slice="${payload.sliceTitle ?? payload.sliceId}" status="${payload.sliceStatus}"`);
   // This agent's own status writes (claim → InProgress, → Done, → Blocked) come straight back
   // as slice:changed. Queuing them only buys a turn in which the agent reads its own echo and
@@ -376,9 +388,12 @@ async function handleSliceChanged(payload, cfg, kitDir) {
     console.log(`[agent] Own write — not queued (slice="${payload.sliceTitle ?? payload.sliceId}" status="${payload.sliceStatus}")`);
     return;
   }
-  await fetchAndPersistSlices(cfg, kitDir).catch((err) =>
-    console.error('[agent] Slice persist error:', err),
-  );
+  const appliedLocally = isStatusOnly(payload) && applyBoardStatus(kitDir, payload.sliceId, payload.sliceStatus, eventMeta(cfg));
+  if (!appliedLocally) {
+    await refresh(cfg, kitDir).catch((err) =>
+      console.error('[agent] Slice persist error:', err),
+    );
+  }
   // Slices in the kit's pickup status (Planned, or Waiting for UI kits) are handled by
   // onPlannedSlice directly — no task needed.
   if (statusKey(payload.sliceStatus) !== statusKey(readPickupStatus(kitDir))) {
@@ -463,6 +478,12 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
       );
     },
   });
+
+  // A slice:changed that never arrived (a dropped message the reconnect logic cannot see) would leave the
+  // local copy stale until the next change — read the whole list now and then to catch it up.
+  setInterval(() => {
+    refreshSlices(cfg, kitDir).catch((err) => console.error(`[agent] ${ts()} Scheduled slice reconcile failed:`, err));
+  }, 10 * 60 * 1000);
 
   setInterval(() => {
     refreshToken('scheduled 10min refresh').catch((err) => console.error(`[agent] ${ts()} Scheduled token refresh failed:`, err));

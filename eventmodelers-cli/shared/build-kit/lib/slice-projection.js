@@ -24,6 +24,42 @@ export function observeBoard(kitDir, boardSlices, meta, current = fold(readEvent
   return changed ? fold(readEvents(kitDir)) : state;
 }
 
+// The board's slice statuses as the slice list reports them (the backend's STATUS_MAP). 'Handover' is the
+// legacy name of Waiting. Undefined for anything else — the caller then reads the board instead of guessing.
+const BOARD_STATUSES = new Set(['Created', 'Ready', 'Done', 'InProgress', 'Blocked', 'Assigned', 'Review', 'Waiting', 'Planned', 'Informational']);
+export function normalizeBoardStatus(raw) {
+  if (raw === 'Handover') return 'Waiting';
+  return BOARD_STATUSES.has(raw) ? raw : undefined;
+}
+
+// Whether the slice is already in a context's index.json — a slice the agent has never listed has to be
+// fetched, because its title, type and context are not in a status event.
+function knowsSlice(kitDir, sliceId) {
+  const slicesDir = join(kitDir, '.slices');
+  if (!existsSync(slicesDir)) return false;
+  for (const ctx of readdirSync(slicesDir, { withFileTypes: true })) {
+    if (!ctx.isDirectory()) continue;
+    try {
+      const index = JSON.parse(readFileSync(join(slicesDir, ctx.name, 'index.json'), 'utf-8'));
+      if ((index.slices ?? []).some((e) => e.id === sliceId)) return true;
+    } catch { /* an unreadable index is left for the next full fetch to repair */ }
+  }
+  return false;
+}
+
+// A status change the board announced for a slice already on disk, applied without reading the board again:
+// the same two steps a full refresh takes for status — record what the board shows (observeBoard, after
+// adopting the agent's own edits), then project the log's status into the files — so a claim held here still
+// wins over the board's InProgress. Returns false when the slice is unknown or the status unrecognised; the
+// caller then falls back to a full refresh.
+export function applyBoardStatus(kitDir, sliceId, boardStatus, meta) {
+  const status = normalizeBoardStatus(boardStatus);
+  if (!sliceId || !status || !knowsSlice(kitDir, sliceId)) return false;
+  const state = observeBoard(kitDir, [{ id: sliceId, status }], meta, adoptAgentEdits(kitDir, fold(readEvents(kitDir)), meta));
+  projectStatus(kitDir, state);
+  return true;
+}
+
 // The build agent still records its outcome by editing a slice's status in index.json (until it has a
 // command of its own). While a slice is claimed the projection keeps that file equal to the log, so any
 // difference is the agent's edit — adopted as `agent-recorded`. This runs before every refresh and before
