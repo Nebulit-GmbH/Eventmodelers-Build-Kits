@@ -66,12 +66,13 @@ interface NodeChangeEvent {
 ---
 
 ### GET `/api/org/:orgId/boards/:boardId/nodes`
-List all nodes on a board.
+List a board's nodes. **A filter is required**: a call with none of `type`, `name`, `chapterId`, `toplevel=true` or `cellId`/`colId` (with `timelineId`) is `400 NODES_FILTER_REQUIRED`, because it would load the whole board — a `projection` alone does not count. Read a board in parts: `toplevel=true` (the nodes in no chapter), then `chapterId` per chapter; or fetch known ids with `POST …/nodes/query`.
 
 **Query params** (each at most once — a repeated or nested param is `400 QUERY_PARAM_INVALID`):
 - `type?: ElementType` — exact match.
 - `name?: string` — partial, case-insensitive title match.
 - `chapterId?: string` — only nodes placed in this chapter (timeline).
+- `toplevel?: "true"` — only the nodes placed in no chapter (the chapters themselves, contexts, drawings); not combinable with `chapterId`, `cellId` or `colId` (`400 TOP_LEVEL_FILTER_CONFLICT`).
 - `projection?: "line" | "fields"` — `line`: compact `{id, type, title, fields?}` per node (`fields` = attribute names only, absent on nodes without fields); `fields`: `{id, type, title, parentId, fields?}` with the full field definitions as stored, but no html, description, sketch or grid data. Either instead of the full record. Neither form carries `cellName` — address existing nodes by `id`. Any other value is `400 PROJECTION_INVALID`.
 - `cellId?: string` — return only the node occupying this timeline cell (format `<rowId>-<colId>`). Requires `timelineId`. Empty array if the cell is unoccupied.
 - `colId?: string` — return every node occupying this column, across *all* rows of the timeline (e.g. to check for an existing COMMAND/READMODEL/SCREEN/AUTOMATION before placing one, since the server caps those at one per column even across separate lane rows). Requires `timelineId`. Combine with `type` to narrow to one element type.
