@@ -17,6 +17,7 @@ From `$ARGUMENTS`, extract:
 |-------|---------------|---------|
 | `sliceName` | the slice title to update (case-insensitive match) | **required** |
 | `newStatus` | the target status value | **required** |
+| `statusReason` | ONE sentence saying why the status changes | optional, but you **should** set it |
 
 Valid status values (case-sensitive):
 
@@ -34,6 +35,13 @@ Valid status values (case-sensitive):
 | `Informational` | Informational / reference slice |
 
 If `newStatus` is not one of these exact values, stop and tell the user the valid options.
+
+### Give a reason (optional, but you should)
+
+`statusReason` is optional — a status change works without it — but whenever you change a status you **should** send one: **one sentence**, in plain words, saying *why* the status changes
+("Backend built and tested, UI contract published.", "Blocked: the order total rule is unclear.", "Reviewed and approved by Anna.").
+It is stored next to `sliceStatus` in the SLICE_BORDER's meta and shown to people as an exclamation-mark icon in the planning view and on the slice header,
+so write it for a person who was not watching. Say what happened, not the status name again. For `Blocked`, also post a comment with the details (see `request-feedback`) and let `statusReason` be its short summary. Don't leave an old reason in place when the status changes — send a new one each time.
 
 ---
 
@@ -69,13 +77,13 @@ Save the matched slice as:
 Prefer the MCP tool — it does the same `node:changed`/`sliceStatus` update in one call, no event envelope to hand-assemble:
 
 ```
-mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "<newStatus>" }
+mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "<newStatus>", "statusReason": "<one sentence: why>" }
 ```
 
 The tool also resolves the slice itself — pass `sliceTitle` (or `columnId`) instead of `sliceId` and the listing step above can be skipped entirely; an ambiguous title comes back with its candidates instead of a guess:
 
 ```
-mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceTitle": "Place Order", "newStatus": "<newStatus>" }
+mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceTitle": "Place Order", "newStatus": "<newStatus>", "statusReason": "<one sentence: why>" }
 ```
 
 A slice that is being *created* takes its status straight from `create_slice`/`create_slice_definition` (`status`) — don't create it and then call this.
@@ -91,10 +99,11 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
     "id": "<new-random-uuid>",
     "eventType": "node:changed",
     "nodeId": "<SLICE_NODE_ID>",
-    "changedAttributes": ["sliceStatus"],
+    "changedAttributes": ["sliceStatus", "statusReason"],
     "meta": {
       "type": "SLICE_BORDER",
-      "sliceStatus": "<newStatus>"
+      "sliceStatus": "<newStatus>",
+      "statusReason": "<one sentence: why>"
     }
   }]'
 ```
@@ -122,6 +131,7 @@ Tell the user:
 - **Slice**: the title that was updated
 - **Previous status**: `CURRENT_STATUS`
 - **New status**: `newStatus`
+- **Reason**: `statusReason` (if set)
 - **Node ID**: `SLICE_NODE_ID`
 - **Outcome**: `SUCCESS`, `ALREADY_IN_STATUS` (another agent got there first — see above), or `ERROR`
 - **Any errors**: raw API message if something failed for a reason other than `ALREADY_IN_STATUS`

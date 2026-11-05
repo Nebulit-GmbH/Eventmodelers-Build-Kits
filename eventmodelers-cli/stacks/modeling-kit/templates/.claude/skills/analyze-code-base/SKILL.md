@@ -116,6 +116,7 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
    - `eventmodeling-designing-automation-chains` / `eventmodeling-translating-external-events` — jobs, listeners, webhooks, outbound calls;
    - `eventmodeling-elaborating-scenarios` — rules from the tests (layer 1+ only), built exactly as that skill says (see *Scenarios* below).
    Feed each skill what the lenses and the mapping table give you; ask only where the code stops (see *Step 1* when the order is unclear).
+   **Screens and scenarios are part of the pass — never skip them.** A chapter with only events, commands and read models is not detailed yet. Every command and read model a person uses gets its `HTML_SCREEN` (storyboarding step), and every command gets at least its happy-path scenario from `eventmodeling-elaborating-scenarios`. Never report "not done: screens, scenarios, tests, UI" and ask for the next chapter; run those steps first. If a step truly can't be done (e.g. no tests to mine for a rule), say why in the chapter's decision rows, but still place the screens and the happy-path scenario.
 2. Stay within the layer's detail budget (below). Every placement batch carries its decision rows (see *Recording decisions*).
 3. Re-space the chapters (see *Keeping chapters apart*) after every batch.
 4. Append this pass's row to the chapter's *Analysis history*.

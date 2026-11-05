@@ -129,10 +129,12 @@ or contradictory — not just "please clarify this slice."
 
 ## Step 4 — Mark the slice Blocked
 
+Blocking is two things: the comment from Step 3 holds the full question, and the `statusReason` is its one-sentence summary (what is missing or contradictory) that people see as an exclamation-mark icon in the planning view and on the slice header. Set both — the reason is optional, but you should always give it here.
+
 Prefer MCP:
 
 ```
-mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "Blocked" }
+mcp__eventmodelers__update_slice_status { "boardId": "<BOARD_ID>", "sliceId": "<SLICE_NODE_ID>", "newStatus": "Blocked", "statusReason": "<one sentence: what is missing>" }
 ```
 
 Also mark the slice 'blocked' locally in the index.json if possible.
@@ -149,10 +151,11 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
     "id": "<new-random-uuid>",
     "eventType": "node:changed",
     "nodeId": "<SLICE_NODE_ID>",
-    "changedAttributes": ["sliceStatus"],
+    "changedAttributes": ["sliceStatus", "statusReason"],
     "meta": {
       "type": "SLICE_BORDER",
-      "sliceStatus": "Blocked"
+      "sliceStatus": "Blocked",
+      "statusReason": "<one sentence: what is missing>"
     }
   }]'
 ```
