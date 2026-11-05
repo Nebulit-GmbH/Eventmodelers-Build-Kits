@@ -36,6 +36,13 @@ INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved
 REPORT         // Pinned report chart (a `report` chat snippet saved to the board): `meta.reportJson` (the snippet's JSON
                // as a string, without `kind`/`confirm`), `meta.title`. Free-floating, view only. To change it, send a
                // `node:changed` that sets `meta.reportJson` (the `/regenerate-report` skill does).
+PDF            // A PDF pasted onto the board (Ctrl/Cmd+V of a PDF file, ≤ 2 MB): `meta.title` is the file name. The file
+               // itself is a blob in the board's image storage under the node id (like an image, `images/<nodeId>`; a
+               // `GET .../images/<nodeId>` returns the PDF bytes) — there is no text, field or data on the node.
+               // Free-floating, resizable, in no chapter or cell, never part of a slice. Ignore it when building slices,
+               // wiring edges or counting elements; it is reference material for people. To put one on the board, upload
+               // the file to `POST .../images/<nodeId>` (the server keeps a PDF as it is) and create the node with
+               // `submit_node_events` (type `PDF`, position, no chapterId/cellId). A picture pasted the same way becomes an OUTLINE.
 TIMELINE_REFERENCE // Read-only view of a timeline (chapter) from ANOTHER board:
                // `meta.data.reference = {boardId, timelineId}`. Created in the UI only. It is not a real
                // chapter: no children, no handles, nothing can connect to it, and it is never part of a
