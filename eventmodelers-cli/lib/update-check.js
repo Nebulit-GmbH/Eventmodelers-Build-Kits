@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { basename, dirname, join, relative } from 'path';
+import { basename, dirname, join, relative, sep } from 'path';
 
 const REGISTRY_URL = 'https://registry.npmjs.org/@eventmodelers/cli/latest';
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -90,4 +90,23 @@ export function updateHints({ currentVersion, latestVersion, kitDirs = [], cwd =
     hints.push(`💡 ${relative(cwd, kitDir) || kitDir}/ was installed by CLI ${kitVersion || '(unknown version)'} — refresh it to ${currentVersion} with: ${reinit}`);
   }
   return hints;
+}
+
+// How this CLI can replace itself, from where it is running — null when it can't (a source
+// checkout, a project-local install: the user's own package manager owns those). `globalRoot`
+// is `npm root -g`; `args` the original command line, so the updated CLI picks up where this one stopped.
+//   npx    → the cached copy is stale, so re-run through npx with @latest (a fresh resolve).
+//   global → `npm i -g` first, then run the freshly installed binary.
+export function selfUpdatePlan({ cliDir, globalRoot, args }) {
+  if (cliDir.split(sep).includes('_npx')) {
+    return { steps: [], run: ['npx', ['-y', '@eventmodelers/cli@latest', ...args]], label: 'npx @eventmodelers/cli@latest' };
+  }
+  if (globalRoot && cliDir.startsWith(join(globalRoot, '@eventmodelers') + sep)) {
+    return {
+      steps: [['npm', ['i', '-g', '@eventmodelers/cli@latest']]],
+      run: ['eventmodelers', args],
+      label: 'npm i -g @eventmodelers/cli@latest',
+    };
+  }
+  return null;
 }

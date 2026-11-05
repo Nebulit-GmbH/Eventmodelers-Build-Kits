@@ -29,7 +29,7 @@ import { buildModel } from './lib/scaffold-model.js';
 import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
 import { ACP_AGENTS, resolveAcpAgent } from './lib/modeling-acp.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
-import { latestPublishedVersion, updateHints } from './lib/update-check.js';
+import { latestPublishedVersion, updateHints, compareVersions, selfUpdatePlan } from './lib/update-check.js';
 import { guardSnippetReply } from './lib/snippet-guard.js';
 import { modelingPermissions } from './lib/agent-permissions.js';
 import { createTurnUsage } from './lib/turn-usage.js';
@@ -3662,6 +3662,29 @@ program.hook('preAction', async (_thisCommand, actionCommand) => {
   const kitDirs = NO_KIT_UPDATE_HINT.has(actionCommand.name()) ? [] : findAllInstalledKitDirs(process.cwd());
   const hints = updateHints({ currentVersion: CLI_VERSION, latestVersion, kitDirs });
   if (hints.length) console.error(`${hints.join('\n')}\n`);
+
+  // The agent (`run`) is the long-lived one that stays stale for weeks, so offer to update and
+  // restart right here instead of leaving the user to copy the command out of the banner.
+  // Only with a person at the terminal; declining just carries on with this version.
+  if (actionCommand.name() !== 'run' || !latestVersion || compareVersions(CLI_VERSION, latestVersion) >= 0) return;
+  if (!process.stdin.isTTY || !process.stderr.isTTY) return;
+  let globalRoot = null;
+  try { globalRoot = execFileSync('npm', ['root', '-g'], { encoding: 'utf-8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch {}
+  const plan = selfUpdatePlan({ cliDir: __dirname, globalRoot, args: process.argv.slice(2) });
+  if (!plan) return;
+
+  const answer = await prompt(`Update to ${latestVersion} now (${plan.label}) and restart this command? [Y/n] `);
+  if (/^n/i.test(answer)) { console.error(''); return; }
+
+  // Hand the terminal back before the child inherits it, and stop it asking again.
+  sharedRl?.close();
+  const childEnv = { ...process.env, EVENTMODELERS_NO_UPDATE_CHECK: '1' };
+  for (const [cmd, args] of plan.steps) {
+    const r = spawnSync(cmd, args, { stdio: 'inherit', env: childEnv });
+    if (r.status !== 0) { console.error(`❌ Update failed — run it yourself: ${plan.label}`); process.exit(r.status || 1); }
+  }
+  const r = spawnSync(plan.run[0], plan.run[1], { stdio: 'inherit', env: childEnv });
+  process.exit(r.status ?? 1);
 });
 
 // A prototype folder (`init --prototype`) has no kit: `re-init` there refreshes the prototype's skills and rules instead.

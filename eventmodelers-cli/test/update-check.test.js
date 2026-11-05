@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { compareVersions, latestPublishedVersion, updateHints } from '../lib/update-check.js';
+import { compareVersions, latestPublishedVersion, updateHints, selfUpdatePlan } from '../lib/update-check.js';
 import { tempKit } from './helpers.js';
 
 const registry = (version) => async () => ({ ok: true, json: async () => ({ version }) });
@@ -58,4 +58,18 @@ test('updateHints stays quiet for a kit already on the current CLI', (t) => {
   const root = tempKit(t);
   const kitDirs = [kit(root, '.build-kit', '1.0.90')];
   assert.deepEqual(updateHints({ currentVersion: '1.0.90', latestVersion: null, kitDirs, cwd: root }), []);
+});
+
+test('selfUpdatePlan: npx cache re-runs through npx@latest, global installs reinstall first, anything else is left alone', () => {
+  const args = ['run', '--modeling'];
+  const viaNpx = selfUpdatePlan({ cliDir: '/h/.npm/_npx/abc/node_modules/@eventmodelers/cli', globalRoot: '/usr/lib/node_modules', args });
+  assert.deepEqual(viaNpx.run, ['npx', ['-y', '@eventmodelers/cli@latest', 'run', '--modeling']]);
+  assert.deepEqual(viaNpx.steps, []);
+
+  const global = selfUpdatePlan({ cliDir: '/usr/lib/node_modules/@eventmodelers/cli', globalRoot: '/usr/lib/node_modules', args });
+  assert.deepEqual(global.steps, [['npm', ['i', '-g', '@eventmodelers/cli@latest']]]);
+  assert.deepEqual(global.run, ['eventmodelers', args]);
+
+  assert.equal(selfUpdatePlan({ cliDir: '/proj/node_modules/@eventmodelers/cli', globalRoot: '/usr/lib/node_modules', args }), null);
+  assert.equal(selfUpdatePlan({ cliDir: '/src/eventmodelers-cli', globalRoot: null, args }), null);
 });
