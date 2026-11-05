@@ -1,19 +1,19 @@
 ---
 name: analyze-code-base
-description: Uncover the business process behind an existing code base and build it on the board as an interview, iteratively — all chapters at high level first, then one chapter per pass, the person choosing which. Reads the code for hypotheses, asks one question at a time, draws as answers land. Use for "analyze this code base", "analyze this existing system", "reverse-engineer the model from the code", "model the legacy app".
+description: Uncover the business process behind an existing code base and build it on the board as an interview, iteratively — all chapters at high level first, then one chapter per pass, the person choosing which. Reads the code and its documentation (README, docs, ADRs, API specs, diagrams, feature files) for hypotheses, asks one question at a time, draws as answers land. Use for "analyze this code base", "analyze this existing system", "reverse-engineer the model from the code", "model the legacy app".
 ---
 
 # Analyze a Code Base
 
-You are the **orchestrator** of an interview. The code gives you a hypothesis; the person gives you the truth. **The board is the deliverable** — never hand over a JSON model, `config.json` or `high-level-analysis.json`.
+You are the **orchestrator** of an interview. The code and its documentation give you hypotheses; the person gives you the truth. **The board is the deliverable** — never hand over a JSON model, `config.json` or `high-level-analysis.json`.
 
-This skill owns only what is specific to legacy code: reading the sources, mapping code to elements, the layering of passes, and recording decisions with code references. Every modeling rule (naming, element types, chaptering, ordering, screens, scenarios, interviewing) lives in the skill named at each step — **read and follow that skill, don't restate or re-implement it here**.
+This skill owns only what is specific to legacy code: reading the sources (code **and** documentation), mapping them to elements, the layering of passes, and recording decisions with code references. Every modeling rule (naming, element types, chaptering, ordering, screens, scenarios, interviewing) lives in the skill named at each step — **read and follow that skill, don't restate or re-implement it here**.
 
 ---
 
 ## Step 0 — Is there a code base?
 
-Resolve the directory to analyse: `$EVENTMODELERS_CODE_DIR` if set (treat it as the repository root for every step below), otherwise the current directory. It must contain source code (`src/`, `pom.xml`, `build.gradle*`, `package.json`, `*.csproj`, …).
+Resolve the directory to analyse: `$EVENTMODELERS_CODE_DIR` if set (treat it as the repository root for every step below), otherwise the current directory. It must contain source code (`src/`, `pom.xml`, `build.gradle*`, `package.json`, `*.csproj`, …). Documentation alongside it (`README*`, `docs/`, ADRs, specs) is read too, but documentation alone is not a code base — without source code, stop as below.
 
 If it does not (an empty folder, a modeling-only workspace holding just `.claude/`, `.eventmodelers/` or `.agent-modeling-kit/`), **stop and answer in one or two plain sentences** — "There is no legacy code here to analyse; run this in the code base" — and do nothing else.
 
@@ -66,9 +66,9 @@ Naming, what to model and the anti-patterns are in `eventmodeling-core-rules` (r
 
 ---
 
-## Reading the sources — four lenses
+## Reading the sources — five lenses
 
-Every pass reads the code through the same four lenses; each produces *hypotheses* to put to the person, never elements on its own. Read only as deep as the current layer needs.
+Every pass reads the code and its documentation through the same five lenses; each produces *hypotheses* to put to the person, never elements on its own. Read only as deep as the current layer needs.
 
 1. **API** (look hardest here) — REST controllers, routes, handlers, message listeners, scheduled jobs, outbound clients. Each entry point is a candidate **screen + command** (a person writes), **screen + read model** (a person reads) or **automation** (jobs, listeners, calls to other systems). Request/response payloads hint at fields; the caller hints at who triggers it.
 2. **Tests** — test names, fixtures, assertions. Names reveal the business vocabulary; arrange/act/assert is a *hint* for Given/When/Then, not its shape — which element goes into Given, When and Then is decided by `eventmodeling-elaborating-scenarios`, never by the test's structure (see *Scenarios* below); error cases reveal the rules that matter. Fixtures are the source of realistic example values.
@@ -81,13 +81,22 @@ Every pass reads the code through the same four lenses; each produces *hypothese
 
 If the code is a generic engine (templates, schemas, configurable entities), model one real case it handles, not the engine (see *Concrete Over Generic* in `eventmodeling-core-rules`).
 
-Where the lenses disagree (a route nobody calls, a table never written, a test for removed behaviour, a screen with no backend), that is a question for the person — not something to model.
+5. **Documentation & other artifacts** — everything that explains the system without being executable. Look for it in the code root and its parents' obvious places: `README*`, `docs/`, `doc/`, `wiki/`, `adr/` / `docs/decisions/` (architecture decision records), `CHANGELOG*` / release notes, `CONTRIBUTING*`, API specs (OpenAPI/Swagger, AsyncAPI, GraphQL schemas, Postman collections, `.http` files), diagrams (PlantUML, Mermaid, draw.io, C4, images in `docs/`), BDD/acceptance material (`*.feature` Gherkin files, acceptance criteria), requirements, user stories and specs (Markdown, `.docx`/PDF exports), runbooks, DB documentation, and in-repo ticket or issue exports. Also read what configures behaviour: CI/CD pipelines, infra (Docker, Helm, Terraform), feature-flag and environment config — they show integrations and jobs the code alone hides.
+   - **No fixed list of file types.** Anything that could plausibly carry business meaning is a candidate: Markdown, text, PDFs, Word/Excel/PowerPoint, CSV and spreadsheets (reference data, rate tables, code lists), JSON/YAML/XML samples and fixtures, HTML pages, images and diagrams, email or chat exports, notebooks. The lists above are examples, not a filter. Judge by what the file may tell you, and treat the unclear ones through the relevance question below.
+   - **Find it by what is committed, not only by name.** List the tracked documents (`git ls-files` filtered to everything that is not source code, lock files or build output; without git, find them) and skim titles and file names. Any committed Markdown, text or PDF file can hold requirements, specs, notes or a glossary — but also changelogs of dependencies, licences, generated output or stale scratch notes.
+   - **In doubt, ask whether a document is relevant** — one question, listing the candidates: *"I found `docs/visits.md`, `NOTES.txt` and `design/old-flow.md`. Which of these describe the business and should I use? Anything to ignore?"* Like the Step 1 question this is **not a gate**: post it, carry on with the code, and use only the unambiguous documents (README, `docs/`, ADRs, API specs) until the answer arrives. Record the answer (relevant / ignored) in the chapter's `Legacy Sources` note and reuse it on later passes. Never read a document as authoritative just because it is committed.
+   - **What it gives you**: the **vocabulary** and the *intent* — glossary terms, personas and roles, the stated purpose of a flow, the rules in prose, the order in user stories and sequence diagrams, the systems around this one, and the *why* behind decisions (ADRs). Often the quickest source for the order and for the business term behind a code name.
+   - **Trust it least on "what the system does today".** Documentation goes stale; code and tests show behaviour, docs show intent. Where a document and the code disagree, that is a question for the person (see below) — and the date, version or commit of the document is part of the evidence. A document is also a *summary*: a flow it describes still has to be found in the code, or marked as documented-only.
+   - **PDFs** (specs, requirement documents, manuals, exported wiki pages) are read like any other document: with the Read tool page by page (`pages`, max 20 per request), starting with the table of contents and the pages relevant to the current chapter. They are subject to the same relevance question as `.md`/`.txt` files.
+   - Documents too large or too binary to read fully (very long PDFs, Word files, a diagram image): skim headings and the parts for the current chapter, and for a whole document to be modelled use `summarize` instead of re-implementing it here.
+
+Where the lenses disagree (a route nobody calls, a table never written, a test for removed behaviour, a screen with no backend, a document describing a flow the code no longer has, or code doing something the documentation never mentions), that is a question for the person — not something to model.
 
 ---
 
 ## From code to elements — the mapping rules
 
-Start with the **API** and **persistence** lenses; they carry the most signal. Tests and UI then confirm and name what they found.
+Start with the **API** and **persistence** lenses; they carry the most signal. Tests, UI and documentation then confirm, name and order what they found — documentation is the first place to look for the business word and the sequence.
 
 | In the code | On the board |
 |-------------|--------------|
@@ -96,6 +105,7 @@ Start with the **API** and **persistence** lenses; they carry the most signal. T
 | **Inbound API call nobody types in** — a webhook, a message/queue listener, a scheduled job, a call from another system | an **AUTOMATION** (+ its COMMAND). A webhook or message from another system goes through the translation chain: external EVENT → todo-list READMODEL → translation AUTOMATION → internal EVENT. |
 | **Outbound call to another system** — HTTP client, SDK, mail/SMS/payment/queue publish | an **AUTOMATION**: it reacts to an event (via its todo-list READMODEL), makes the call, and its COMMAND records the outcome as an EVENT (`Confirmation Mail Sent`, `Payment Failed`). |
 | **Read endpoint / query / join** | a **READMODEL**, fed by the events behind the tables it reads. |
+| **Documentation** — a user story, sequence diagram, ADR, glossary entry, API spec, `.feature` file | no element on its own: it **names** (glossary → titles), **orders** (stories, sequence diagrams → column order), **explains** (ADRs, rules in prose → decision rows, scenario candidates) and **corroborates** the elements derived from code. An API spec lists entry points and payloads like the *API* lens; a documented step with no counterpart in the code is documented-only — ask. |
 
 Rules of thumb: every API call is either a screen-driven command/read or an automation that does something; reaching out to other systems is typically an automation; a row that is only ever read, never written by this system, is reference data from outside — ask where it comes from instead of inventing an event. Class, table and endpoint names go in `description`, not titles.
 
@@ -104,7 +114,7 @@ Rules of thumb: every API call is either a screen-driven command/read or an auto
 ## Progressive elaboration — all chapters first, then one chapter per pass
 
 ### Pass 0 — all chapters, high level
-1. Read the sources broadly through the four lenses to spot the business workflows — don't wait for the Step 1 answer; walk the running UI via `discover-storyboard` once a URL has been given (also when it arrives after Pass 0).
+1. Read the sources broadly through the five lenses — start with the README and `docs/` for the overview and vocabulary — to spot the business workflows — don't wait for the Step 1 answer; walk the running UI via `discover-storyboard` once a URL has been given (also when it arrives after Pass 0).
 2. Group them into chapters and create them as `eventmodeling-brainstorming-events` (§ *Group events by workflow* / *Create one chapter per group*) does — a chapter is a user journey, never one endpoint, controller or CRUD operation. Code is split by operation (`OwnerController#initCreationForm`, `#processFindForm`, `#showOwner`, `#processUpdateOwnerForm`); the story is not — registering, finding, viewing and updating an owner are **one** chapter. Order the chapters per `eventmodeling-plotting-events`; ask where it is unclear. Add the **Decisions** lane, put the `Legacy Sources` note into **column 0** (see *The analysis log*), then sketch only the milestones (titles only) **from column 1 on**.
 3. Report the chapters and **ask which chapter to start with**. Never pick for them.
 
@@ -151,7 +161,8 @@ Every decision you make while turning code into the model is recorded **on the t
 | Decision | Example |
 |----------|---------|
 | Code construct → element | `VisitController#processNewVisitForm` + `visits` insert → *Book Visit* / *Visit Booked* |
-| Order | *Owner Registered* before *Pet Added* — from the UI click path, confirmed by the person |
+| Order | *Owner Registered* before *Pet Added* — from the UI click path or `docs/user-stories.md`, confirmed by the person |
+| Code vs. documentation conflict | `docs/visits.md` says visits can be cancelled, the code has no cancel path → asked; recorded as the person answered |
 | Code term → business term | `PetType` → *Species*, the person's word |
 | Person overrides the code | Code allows cancelling a visit; the person says it never happens → not modeled |
 | Merged / split | Two writes in `OwnerService#save` → one event; one endpoint → two commands |
@@ -206,6 +217,7 @@ Code root `petclinic/` · running UI: http://localhost:8080 (test account `georg
 | API | `src/main/java/org/acme/visit/` | `VisitController` |
 | Persistence | `src/main/resources/db/schema.sql` | `visits` table, `VisitRepository` |
 | Tests | `src/test/java/org/acme/visit/` | `VisitControllerTests` |
+| Docs | `docs/visits.md`, `docs/adr/0007-visit-scheduling.md` | user story *Book a Visit*, ADR 7 |
 | UI | `src/main/resources/templates/pets/` | `createOrUpdateVisitForm.html` |
 
 ## Chapter decisions
@@ -233,7 +245,7 @@ Code root `petclinic/` · running UI: http://localhost:8080 (test account `georg
 | `description` (Visit) | *Reason for Visit* |
 ```
 
-The `Confirmed by` column shows how far to trust a decision: `code` (derived from the sources), `person` (they said so) or `assumed` (neither, still open). An `assumed` row whose question can't be settled from the model also gets a QUESTION comment on the node (see *Principles*); the row records the assumption, the comment asks the question.
+The `Confirmed by` column shows how far to trust a decision: `code` (derived from the sources), `docs` (taken from documentation only, not seen in the code — say which document), `person` (they said so) or `assumed` (neither, still open). An `assumed` row whose question can't be settled from the model also gets a QUESTION comment on the node (see *Principles*); the row records the assumption, the comment asks the question.
 
 Element `description`s still carry their own short code reference. The feedback notes add the *why* and the decisions that span several elements.
 
