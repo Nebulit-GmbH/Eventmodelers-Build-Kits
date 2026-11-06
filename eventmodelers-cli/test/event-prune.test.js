@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendEvent, readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
-import { prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from '../shared/build-kit/lib/event-prune.js';
+import { clearLog, prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from '../shared/build-kit/lib/event-prune.js';
 import { tempKit } from './helpers.js';
 
 // The log grows without bound; most of it is the journal of prompts that are long finished. Pruning removes that
@@ -51,4 +51,26 @@ test('the offer comes at 1000, again at 2000, and a "no" is not repeated before 
   rememberPruneAnswer(kit, 400); // pruned down: the next offer is at 1000 again
   assert.equal(shouldOfferPrune(kit, 1000), true);
   assert.ok(existsSync(join(kit, 'events', '.prune-asked')));
+});
+
+test('clearing deletes the whole log, state included, and a dry run deletes nothing', (t) => {
+  const kit = kitDir(t);
+  received(kit, 'a'); finished(kit, 'a');
+  appendEvent(kit, { type: 'learning-recorded', text: 'gone too', topic: 'T', scope: 'repo' });
+  assert.deepEqual(clearLog(kit, { dryRun: true }), { removed: 3, liveClaims: [] });
+  assert.equal(readEvents(kit).length, 3);
+  assert.equal(clearLog(kit).removed, 3);
+  assert.equal(readEvents(kit).length, 0);
+  assert.equal(existsSync(join(kit, 'events.log')), false);
+  appendEvent(kit, { type: 'learning-recorded', text: 'fresh', topic: 'T', scope: 'repo' });
+  assert.equal(readEvents(kit).length, 1);
+});
+
+test('clearing refuses while a live process holds a claim, unless forced', (t) => {
+  const kit = kitDir(t);
+  appendEvent(kit, { type: 'claimed', slice: 's1', title: 'Add item', pid: process.pid });
+  assert.throws(() => clearLog(kit), /Add item.*stop it first/);
+  assert.equal(readEvents(kit).length, 1);
+  assert.equal(clearLog(kit, { force: true }).removed, 1);
+  assert.equal(readEvents(kit).length, 0);
 });

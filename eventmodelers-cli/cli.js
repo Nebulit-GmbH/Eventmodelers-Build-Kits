@@ -44,7 +44,7 @@ import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/age
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
 import { readEvents, appendEvent, locationOf } from './shared/build-kit/lib/slice-events.js';
 import { findPromptEvent, replayRequest } from './shared/build-kit/lib/prompt-replay.js';
-import { prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from './shared/build-kit/lib/event-prune.js';
+import { clearLog, prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from './shared/build-kit/lib/event-prune.js';
 import { fold } from './shared/build-kit/lib/slice-state.js';
 import { filterEvents, baselineIds, formatEvent, formatPayload, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
@@ -5508,6 +5508,9 @@ program
   .option('--verbose', 'Print each event\'s payload under its line — for a tool call, the input it was sent (recorded by runs started with --verbose). Also shows the baseline events: the kit\'s first look at each slice (a fresh kit records every slice already on the board), which are hidden by default. `--type board-observed` and `--json` show them too.')
   .option('--state', 'Print the state the log folds to (slices, queue, open prompts, learnings) instead of the events')
   .option('--prune', 'Delete the events nothing reads any more — the journal of finished prompts — and stop. Slice state, learnings and open prompts are kept; the same prune a run offers at every 1000 events.')
+  .option('--clear', "Delete the whole log, state included, so the kit starts over (it looks at the board again; attempt counts, blocks and failure history are gone). Lists what it would delete and stops unless --yes is given. Refuses while a run holds a claim, unless --force.")
+  .option('--yes', 'With --clear: really delete')
+  .option('--force', 'With --clear: delete even while a run holds a claim')
   .option('--follow', 'Keep running and print events as they are appended')
   .option('--watch', 'Same as --follow')
   .action(async (opts) => {
@@ -5521,6 +5524,19 @@ program
     const prototypeLog = join(cwd, '.prototype');
     const inPrototype = !opts.global && !opts.kit && !findInstalledKitDir(cwd) && existsSync(join(prototypeLog, 'events.log'));
     const kitDir = opts.global ? globalLog : opts.kit ? resolve(cwd, opts.kit) : inPrototype ? prototypeLog : requireBuildKitDir(cwd);
+    if (opts.clear) {
+      try {
+        const where = relative(cwd, kitDir) || kitDir;
+        const { removed } = clearLog(kitDir, { force: opts.force, dryRun: !opts.yes });
+        console.log(opts.yes
+          ? `Cleared ${removed} events from ${where}.`
+          : `Would delete all ${removed} events from ${where} — state included. Nothing was deleted; run again with --yes to do it.`);
+      } catch (err) {
+        console.error(`❌ ${err.message}`);
+        process.exit(1);
+      }
+      return;
+    }
     if (opts.prune) {
       try {
         const { removed, kept } = pruneLog(kitDir);

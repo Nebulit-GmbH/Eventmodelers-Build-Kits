@@ -7,8 +7,9 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'fs';
 import { isDeepStrictEqual } from 'util';
 import { join } from 'path';
-import { EVENTS_DIR, INDEX_FILE, readEvents } from './slice-events.js';
+import { EVENTS_DIR, INDEX_FILE, SEQ_FILE, readEvents } from './slice-events.js';
 import { fold } from './slice-state.js';
+import { isProcessAlive } from './slice-run.js';
 
 export const PRUNE_EVERY = 1000;
 const ASKED_FILE = '.prune-asked'; // inside events/, which readEvents never lists and the kit's git rules already cover
@@ -38,6 +39,24 @@ export function pruneLog(kitDir) {
   writeFileSync(tmp, lines.length ? `${lines.join('\n')}\n` : '', 'utf-8');
   renameSync(tmp, index);
   return { removed: doomed.size, kept: rest.length };
+}
+
+// Deletes the whole log — every event, state included — so the kit starts over as if freshly installed: it looks at
+// the board again and every slice's attempt count, block and failure history is gone. Refuses while a live process
+// holds a claim (its build would end without a trace) unless `force`. Returns { removed, liveClaims }; with
+// `dryRun` nothing is deleted.
+export function clearLog(kitDir, { force = false, dryRun = false } = {}) {
+  const events = readEvents(kitDir);
+  const liveClaims = Object.entries(fold(events).slices)
+    .filter(([, s]) => s.claim && isProcessAlive(s.claim.pid))
+    .map(([id, s]) => s.claim.title ?? id);
+  if (liveClaims.length && !force) throw new Error(`a run is building ${liveClaims.join(', ')} — stop it first, or pass --force`);
+  if (dryRun) return { removed: events.length, liveClaims };
+  const dir = join(kitDir, EVENTS_DIR);
+  rmSync(dir, { recursive: true, force: true });
+  rmSync(join(kitDir, INDEX_FILE), { force: true });
+  rmSync(join(kitDir, SEQ_FILE), { force: true });
+  return { removed: events.length, liveClaims };
 }
 
 // Asked when the log has reached a multiple of PRUNE_EVERY it has not been asked at yet — 1000, then 2000, … — so a
