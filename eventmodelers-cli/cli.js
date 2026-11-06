@@ -893,7 +893,16 @@ function loadEffectiveConfig(cwd, kitDir, explicitPath) {
   const kitConfigExists = kitConfigPath && existsSync(kitConfigPath);
   const parentConfigPath = findConfigInParents(cwd);
 
-  const merged = { ...readJsonSafe(parentConfigPath), ...(kitConfigExists ? readJsonSafe(kitConfigPath) : {}) };
+  // Credentials are inherited from a parent config, an agent identity never is: every project keeps its
+  // own `agentIds` (see ensureAgentId). Callers write this merged object back into the project's own
+  // config.json, so inheriting it would copy the parent's id into a nested project (an app and its `web/`
+  // UI kit) and both loops would then run as one agent and fight over each other's claims.
+  const parentConfig = readJsonSafe(parentConfigPath);
+  if (parentConfigPath && resolve(parentConfigPath) !== resolve(cwd, '.eventmodelers', 'config.json')) {
+    delete parentConfig.agentIds;
+    delete parentConfig.agentId;
+  }
+  const merged = { ...parentConfig, ...(kitConfigExists ? readJsonSafe(kitConfigPath) : {}) };
   const sources = [parentConfigPath, kitConfigExists ? kitConfigPath : null].filter(Boolean);
 
   return {

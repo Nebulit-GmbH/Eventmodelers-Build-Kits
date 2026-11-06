@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "eventmodelers": {
+      "type": "http",
+      "url": "https://api.eventmodelers.ai/mcp",
+      "headers": {
+        "x-token": "970a9a7e-9961-4152-be70-6d845727f1cd",
+        "x-agent-id": "${EVENTMODELERS_AGENT_ID}"
+      }
+    }
+  }
+}

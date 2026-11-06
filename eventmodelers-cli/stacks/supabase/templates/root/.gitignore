@@ -1,3 +1,6 @@
 node_modules
 .idea
 .eventmodelers
+
+# Build-kit event store (pids/claims of this checkout)
+.build-kit/events

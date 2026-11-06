@@ -4,3 +4,6 @@ target/
 
 # Eventmodelers credentials
 .eventmodelers/
+
+# Build-kit event store (pids/claims of this checkout)
+.build-kit/events

@@ -491,9 +491,21 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
   }, 10 * 60 * 1000);
 
   let lastPingFailed = false;
+  // Backoff: a failing ping (e.g. 402 AGENT_LIMIT_REACHED) doubles the wait, 15s → 5min, so a refused agent
+  // doesn't hammer the platform and flood the log. Any success resets it. `shutting_down` always goes out.
+  const PING_BASE_MS = 15_000, PING_MAX_MS = 5 * 60_000;
+  let pingDelayMs = PING_BASE_MS;
+  let nextPingAt = 0;
+  const failPing = () => {
+    lastPingFailed = true;
+    nextPingAt = Date.now() + pingDelayMs;
+    console.error(`[agent] ${ts()} Next ping in ${Math.round(pingDelayMs / 1000)}s`);
+    pingDelayMs = Math.min(pingDelayMs * 2, PING_MAX_MS);
+  };
   // `status`: 'shutting_down' is the last ping before an exit the board asked for; every other ping says what the agent is
   // doing right now — building (modeling, for a MODELING agent) while a turn runs, idle otherwise.
   const ping = async (status) => {
+    if (status !== 'shutting_down' && Date.now() < nextPingAt) return;
     const agentStatus = status === 'shutting_down' ? status : turnsInFlight > 0 ? (agentType === 'MODELING' ? 'modeling' : 'building') : 'idle';
     try {
       const res = await fetch(`${cfg.baseUrl}/api/agent-alive`, {
@@ -504,7 +516,8 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
       });
       if (!res.ok) {
         console.error(`[agent] ${ts()} Ping failed: ${res.status} ${await res.text().catch(() => '')}`);
-        lastPingFailed = true;
+        failPing();
+        agentRefused = res.status === 402 || res.status === 403 ? `HTTP ${res.status}` : null;
         if (res.status === 401) {
           await refreshToken('ping-401').catch((err) => console.error(`[agent] ${ts()} Token refresh after 401 ping failed:`, err));
         }
@@ -512,9 +525,12 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
       }
       if (lastPingFailed) console.log(`[agent] ${ts()} Ping recovered`);
       lastPingFailed = false;
+      agentRefused = null;
+      pingDelayMs = PING_BASE_MS;
+      nextPingAt = 0;
     } catch (err) {
       console.error(`[agent] ${ts()} Ping error:`, err);
-      lastPingFailed = true;
+      failPing();
     }
   };
   await ping();
@@ -713,6 +729,9 @@ export async function blockStuckSlice(kitDir, cfg, credentialed, planned, attemp
 // otherwise. A change is reported at once (`reportStatus`, set once the heartbeat exists) instead of at the next 15s ping.
 let turnsInFlight = 0;
 let reportStatus = () => {};
+// Set while the platform refuses this agent's heartbeat with 402/403 (e.g. AGENT_LIMIT_REACHED): the agent isn't
+// a connected build agent, so the loop must not claim slices or change their status until a ping is accepted.
+let agentRefused = null;
 
 async function runWithRetry(label, fn) {
   for (let attempt = 1; ; attempt++) {
@@ -864,6 +883,13 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
 
   while (true) {
     let didWork = false;
+
+    // Not accepted as a connected agent (license/agent limit): touch nothing on the board, just wait for the heartbeat to recover.
+    if (credentialed && agentRefused) {
+      console.log(`[ralph] Heartbeat refused by the platform (${agentRefused}) — not claiming slices until it is accepted.`);
+      await sleep(30_000);
+      continue;
+    }
 
     // A claim still open here is a leftover: its process died mid-build, or settling failed last time.
     await settleLeftoverClaims({ kitDir, board, meta, pickupStatus: readPickupStatus(kitDir) });
