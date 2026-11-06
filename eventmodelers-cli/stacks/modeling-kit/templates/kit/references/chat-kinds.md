@@ -42,6 +42,17 @@ The table in `CLAUDE-CHAT.md` step 3 names the kinds; this is the full rule for 
      your call: a quick take is an **answer**, in prose; a thorough review of a whole context or chapter may
      be the same prompt as above. If a reply ends in a question the person answers with a click ("Want me to
      turn these into comments?"), that question is a snippet, not a sentence (`CLAUDE-CHAT.md` step 4, Snippets).
+   - **a handed-over board chat** — `context=` carries `boardChat: {sessionId, title, lastSeq}`: the person gave you a
+     conversation between colleagues (read it with `get_board_chat_session`, `CLAUDE-CHAT.md` step 2). It is not a kind of
+     its own — the message on top is one of the kinds in this list, read against that conversation: "summarize this",
+     "what did we decide?", "is X covered in the model?" is an **answer** (a short summary in prose, not a transcript;
+     name who said what only when it matters); "turn this into slices" / "add what Anna asked for" is **work**, created
+     from what the conversation says, put into the prompt's text (a prompt turn cannot read the board chat, so never
+     write "as discussed" — write the element names and fields). Only what the person *asked for* becomes work: a
+     colleague's wish in the conversation is not a go-ahead. Several colleagues disagreeing is a **clarify** — ask the
+     person which way to go, don't pick a side. You never reply into the board chat itself; your reply is the usual
+     one in the agent chat. A second ask about the same conversation arrives in the same agent chat with a newer
+     `lastSeq` — read only what is new.
    - **clarify** — too vague to act on even with the session behind it: do no work.
    - **work** — it asks for a change to the board: create the work now, as in `CLAUDE-CHAT.md` ("Creating work") — a request is its
      own go-ahead, in every mode.
