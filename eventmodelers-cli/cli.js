@@ -1060,15 +1060,28 @@ async function resolveStack(cliStack) {
   );
 }
 
+// Names what is installed now (from the kit's install manifest) and what this run installs.
+function printInstallVersions(kitDir, stackKey) {
+  const prev = readJsonSafe(join(kitDir, '.eventmodelers', 'install-manifest.json'));
+  if (prev.version) {
+    const same = prev.version === CLI_VERSION;
+    console.log(`Installed: v${prev.version}${prev.stack ? ` (${prev.stack})` : ''}`);
+    console.log(`Installing: v${CLI_VERSION}${stackKey ? ` (${stackKey})` : ''}${same ? ' — same version, files are refreshed' : ''}\n`);
+  } else {
+    console.log(`Installed: nothing yet\nInstalling: v${CLI_VERSION}${stackKey ? ` (${stackKey})` : ''}\n`);
+  }
+}
+
 async function installStack(stackKey, stackCfg, options = {}) {
-    console.log('🚀 Eventmodelers CLI\n');
-    console.log(`Using: ${stackKey} (${stackCfg.label})\n`);
+    console.log(`🚀 Eventmodelers CLI v${CLI_VERSION}\n`);
+    console.log(`Using: ${stackKey} (${stackCfg.label})`);
 
     // Almost always the cwd. The exception is the global modeling install, which is
     // scaffolded into ~/.eventmodelers/kit from wherever `run --standalone` was invoked
     // (see ensureGlobalKit) — the mirror image of options.templatesSource below: where we
     // install TO, versus where we install FROM.
     const targetDir = options.targetDir ? resolve(options.targetDir) : process.cwd();
+    printInstallVersions(join(targetDir, stackCfg.kitDirName), stackKey);
     // `init --git <url>` passes a resolved clone dir's templates/ here instead — every
     // other input (STACKS, MODELING_KIT) keeps using the built-in path.
     const templatesSource = options.templatesSource || join(__dirname, 'stacks', stackKey, 'templates');
@@ -1487,6 +1500,8 @@ async function configureCredentials({ config, configPath, targetDir, requiredFie
 // `re-init` for a build kit: re-copy shared/build-kit (ralph.js, the runners, tracing, adapters)
 // over the installed kit, then re-run the config steps. Stack templates and skills are untouched.
 async function refreshSharedRuntime({ targetDir, kitDir, globalOpts, opts }) {
+  console.log(`🚀 Eventmodelers CLI v${CLI_VERSION}\n`);
+  printInstallVersions(kitDir, readJsonSafe(join(kitDir, '.eventmodelers', 'install-manifest.json')).stack);
   console.log(`📦 Refreshing the shared runtime in ${relative(targetDir, kitDir)}/ (stack files untouched)...`);
   copyDirContents(join(__dirname, 'shared', 'build-kit'), kitDir);
   // The kit is now this CLI's runtime — record that, so the startup "kit is outdated" hint stops.
