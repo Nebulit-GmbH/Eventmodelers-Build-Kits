@@ -482,6 +482,7 @@ async function startRealtimeAgent(cfg, kitDir, { agentType = 'BUILD', createAdap
   // A slice:changed that never arrived (a dropped message the reconnect logic cannot see) would leave the
   // local copy stale until the next change — read the whole list now and then to catch it up.
   setInterval(() => {
+    console.log(`[agent] ${ts()} Scheduled slice reconcile (every 10min): re-reading all slices from the board...`);
     refreshSlices(cfg, kitDir).catch((err) => console.error(`[agent] ${ts()} Scheduled slice reconcile failed:`, err));
   }, 10 * 60 * 1000);
 
