@@ -83,7 +83,9 @@ test('the interval syncs while the loop runs; a failed upload is sent again', as
   share.iterationStarted(planned);
   appendEvent(kitDir, { type: 'info-recorded', text: 'x', slice: 'slice-1' }, {});
   share.start();
-  await new Promise((r) => setTimeout(r, 120));
+  // Wait for the condition, not a fixed time: under a loaded parallel test run the timer can lag well behind 20ms.
+  const deadline = Date.now() + 5000;
+  while (down.posts.length < 2 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 10));
   share.stop();
   assert.ok(down.posts.length >= 2, 'the same events are retried with the next upload');
 });
