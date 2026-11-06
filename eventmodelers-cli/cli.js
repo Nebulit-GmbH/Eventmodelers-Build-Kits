@@ -4525,7 +4525,7 @@ credentialFlags(program
       // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}), ...(acpAgent ? { RALPH_ACP_AGENT: opts.acpAgent ?? '', RALPH_ACP_CMD: opts.acpCmd ?? '' } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', EVENTMODELERS_KIT_DIR: kitDir, RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}), ...(acpAgent ? { RALPH_ACP_AGENT: opts.acpAgent ?? '', RALPH_ACP_CMD: opts.acpCmd ?? '' } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }
@@ -5296,10 +5296,27 @@ program
     console.log(`✅ Pushed status change to the board (node ${slice.id}).`);
   });
 
+// The kit directory the run loop pinned for its agent (EVENTMODELERS_KIT_DIR, set by `eventmodelers run`), or null.
+// An agent's shell cwd drifts; the loop's does not. A stale value (directory gone) is ignored rather than trusted.
+function pinnedKitDir() {
+  const dir = process.env.EVENTMODELERS_KIT_DIR;
+  return dir && existsSync(dir) ? resolve(dir) : null;
+}
+
+// Where an agent-side command resolves the project from: the pinned kit's project, else the shell's cwd.
+function agentCwd() {
+  const pinned = pinnedKitDir();
+  return pinned ? dirname(pinned) : process.cwd();
+}
+
 // The kit a command that records events works against: a build kit if one is installed, else the modeling
 // kit. The build kit wins when both are installed — the modeling agent never runs these commands itself
 // (its Bash is an allowlist); it states its learnings in its reply and `runModeling` records them.
 function requireBuildKitDir(cwd) {
+  // The run loop exports the kit it runs in. Trust it over the shell's cwd: the build agent may `cd` elsewhere in the
+  // project (an app with a root kit and a web/ kit) and its commands must still reach the kit that holds the claim.
+  const pinned = pinnedKitDir();
+  if (pinned) return pinned;
   const installed = findAllInstalledKitDirs(cwd);
   const kitDir = installed.find((d) => !d.endsWith(MODELING_KIT.kitDirName)) ?? installed.find((d) => d.endsWith(MODELING_KIT.kitDirName));
   if (!kitDir) {
@@ -5325,7 +5342,7 @@ program
   .description("For a build agent: record the outcome of the slice the run loop is building (Done, Waiting, Blocked, ...). The loop owns the slice's status on the board and pushes it when the build ends — never edit index.json or call update-slice-status for a loop build.")
   .option('--slice <idOrTitle>', 'The slice, when the loop has claimed more than one (default: the one it is building)')
   .action((status, opts, command) => {
-    const cwd = process.cwd();
+    const cwd = agentCwd();
     // `Handover` is the old name of `Waiting`; older skills and prompts still say it
     const wanted = status.toLowerCase() === 'handover' ? 'waiting' : status.toLowerCase();
     const canonical = SLICE_STATUSES.find((s) => s.value.toLowerCase() === wanted)?.value;
@@ -5359,7 +5376,7 @@ program
       console.error('❌ Action must be `check` or `record`.');
       process.exit(1);
     }
-    const cwd = process.cwd();
+    const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
     let wanted = opts.slice;
     if (!wanted) {
@@ -5367,7 +5384,7 @@ program
       if (claimed.length !== 1) {
         if (!claimed.length) {
           // Where it looked: an agent running from another kit's directory finds no claim in that kit's log.
-          try { appendEvent(kitDir, { type: 'claim-not-found', command: 'build-baseline', claimed: 0, ...locationOf(kitDir, cwd) }, agentEventMeta(cwd, kitDir, command)); } catch { /* best effort */ }
+          try { appendEvent(kitDir, { type: 'claim-not-found', command: 'build-baseline', claimed: 0, ...locationOf(kitDir, process.cwd()) }, agentEventMeta(cwd, kitDir, command)); } catch { /* best effort */ }
         }
         console.error(`❌ ${claimed.length ? `${claimed.length} slices are claimed` : 'No slice is claimed by the run loop'} — name the slice with --slice.`);
         process.exit(1);
@@ -5432,7 +5449,7 @@ program
   .option('--merge <ids>', 'Replace these learnings (comma-separated ids) by one with the given text — the curator\'s tool')
   .option('--reason <reason>', 'Why — recorded with a retraction or a merge')
   .action((text, opts, command) => {
-    const cwd = process.cwd();
+    const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
     const meta = agentEventMeta(cwd, kitDir, command);
     try {
@@ -5465,7 +5482,7 @@ program
   .option('--slice <idOrTitle>', 'The slice it is about (default: the one the run loop has claimed)')
   .option('--tag <tag>', 'Label the info (repeatable)', (tag, tags) => [...tags, tag], [])
   .action(async (text, opts, command) => {
-    const cwd = process.cwd();
+    const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
     const meta = agentEventMeta(cwd, kitDir, command);
     try {
@@ -5647,7 +5664,7 @@ program
   .description('Print the recorded learnings — what .build-kit/AGENTS.md says. With --ids, one line each with the id to retract it by.')
   .option('--ids', 'One line per learning: id, topic, text')
   .action((opts, command) => {
-    const cwd = process.cwd();
+    const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
     syncLearnings({ kitDir, meta: agentEventMeta(cwd, kitDir, command) });
     const all = listLearnings(kitDir);

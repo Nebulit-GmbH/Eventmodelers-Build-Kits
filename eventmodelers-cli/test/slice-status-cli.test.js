@@ -50,3 +50,28 @@ test('without a claimed slice it says why and exits non-zero', (t) => {
   assert.equal(res.status, 1);
   assert.match(res.stderr, /update-slice-status/);
 });
+
+// The agent's shell drifts (an app with a root kit and a web/ kit, the agent cd's into the root to run the
+// tests) — the loop pins its kit with EVENTMODELERS_KIT_DIR so the outcome still reaches the kit holding the claim.
+test('EVENTMODELERS_KIT_DIR wins over the shell cwd, which may have drifted to another directory', async (t) => {
+  const { root, kit } = await projectWithClaim(t);
+  const elsewhere = join(root, 'drifted');
+  mkdirSync(join(elsewhere, '.build-kit'), { recursive: true }); // a sibling kit with no claim — what the agent used to hit
+  const env = { ...process.env, RALPH_AGENT_ID: 'agent-7', EVENTMODELERS_TOKEN: '', FORCE_COLOR: '0' };
+
+  const unpinned = spawnSync(process.execPath, [cli, 'slice-status', 'done'], { cwd: elsewhere, encoding: 'utf-8', env });
+  assert.equal(unpinned.status, 1, 'without the pin the drifted shell finds the wrong kit');
+
+  const pinned = spawnSync(process.execPath, [cli, 'slice-status', 'done'], { cwd: elsewhere, encoding: 'utf-8', env: { ...env, EVENTMODELERS_KIT_DIR: kit } });
+  assert.equal(pinned.status, 0, pinned.stderr);
+  assert.equal(readEvents(kit).filter((e) => e.type === 'agent-recorded').length, 1);
+});
+
+test('a stale EVENTMODELERS_KIT_DIR (directory gone) is ignored, not trusted', async (t) => {
+  const { root } = await projectWithClaim(t);
+  const res = spawnSync(process.execPath, [cli, 'slice-status', 'done'], {
+    cwd: root, encoding: 'utf-8',
+    env: { ...process.env, RALPH_AGENT_ID: 'agent-7', EVENTMODELERS_TOKEN: '', FORCE_COLOR: '0', EVENTMODELERS_KIT_DIR: join(root, 'gone') },
+  });
+  assert.equal(res.status, 0, res.stderr);
+});
