@@ -26,8 +26,10 @@ function describe(e) {
       return [e.slice, e.status ?? ''];
     case 'claimed': {
       const tree = e.cleanTree === true ? 'clean tree' : e.cleanTree === false ? 'dirty tree' : 'not a git tree';
-      return [e.slice, `pid ${e.pid}, ${tree}${e.base ? `, ${e.base.branch}@${String(e.base.head).slice(0, 8)}` : ''}${e.ticketNumber ? `, ticket ${e.ticketNumber}` : ''}${e.assignee ? `, assignee ${e.assignee}` : ''}`];
+      return [e.slice, `pid ${e.pid}, ${tree}${e.kitDir ? `, kit ${e.kitDir}` : ''}${e.base ? `, ${e.base.branch}@${String(e.base.head).slice(0, 8)}` : ''}${e.ticketNumber ? `, ticket ${e.ticketNumber}` : ''}${e.assignee ? `, assignee ${e.assignee}` : ''}`];
     }
+    case 'claim-not-found':
+      return [e.slice ?? e.wanted ?? '', `${e.command ?? 'command'} looked in ${e.kitDir ?? '?'} (cwd ${e.cwd ?? '?'}), ${e.claimed ?? 0} claimed there`];
     case 'claim-confirmed':
       return [e.slice, ''];
     case 'released':

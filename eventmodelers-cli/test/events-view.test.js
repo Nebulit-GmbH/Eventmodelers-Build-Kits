@@ -11,6 +11,11 @@ const ev = (type, extra = {}) => ({ type, id: '11111111-2222-3333-4444-555555555
 const S = 'ccc5e66b-6b29-40b9-a163-269b1b0b173b';
 const line = (e, titles = {}) => formatEvent(e, { titles });
 
+test('a claim shows its kit, and a refused claim lookup shows where it looked', () => {
+  assert.match(line(ev('claimed', { slice: S, pid: 1, cleanTree: true, kitDir: '~/app/web/.build-kit' })), /clean tree, kit ~\/app\/web\/\.build-kit/);
+  assert.match(line(ev('claim-not-found', { wanted: S, command: 'slice-status', kitDir: '~/app/.build-kit', cwd: '~/app', claimed: 0 })), /slice-status looked in ~\/app\/\.build-kit \(cwd ~\/app\), 0 claimed there/);
+});
+
 test('a line starts with the date and time, the event type and the agent that wrote it', () => {
   const l = line(ev('claim-confirmed', { slice: S }));
   assert.match(l, /^2026-10-18 11:54:56 +claim-confirmed +ccc5e66b +.*cc9a$/);

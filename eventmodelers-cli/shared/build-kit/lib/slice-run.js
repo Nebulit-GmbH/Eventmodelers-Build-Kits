@@ -5,7 +5,7 @@
 // `board` is injected: { setStatus(sliceId, status), claim(sliceId, fromStatus), readStatus(sliceId) → status | null }. null means
 // no board (--local): nothing is pushed or read, the log alone decides.
 
-import { appendEvent, readEvents } from './slice-events.js';
+import { appendEvent, readEvents, locationOf } from './slice-events.js';
 import { fold, decideSettle, decideRecovery, statusKey } from './slice-state.js';
 import { adoptAgentEdits, projectStatus } from './slice-projection.js';
 import { discardUnfinishedWork, gitBase } from './slice-git.js';
@@ -35,17 +35,25 @@ export function isProcessAlive(pid) {
 // take the stale file for an edit.
 export function recordAgentStatus({ kitDir, status, sliceId, meta }) {
   const claimed = Object.entries(fold(readEvents(kitDir)).slices).filter(([, s]) => s.claim);
+  // A refusal is recorded with where it looked: the usual cause is an agent running from another kit's
+  // directory (an app with a root kit and a web/ kit), whose log has no claim for the slice.
+  const refuse = (message) => {
+    try {
+      appendEvent(kitDir, { type: 'claim-not-found', ...(sliceId ? { wanted: sliceId } : {}), claimed: claimed.length, command: 'slice-status', ...locationOf(kitDir) }, meta);
+    } catch { /* best effort: the refusal itself is what matters */ }
+    throw new Error(message);
+  };
   let match;
   if (sliceId) {
     const wanted = sliceId.trim().toLowerCase();
     match = claimed.find(([id, s]) => id === sliceId || s.claim.title?.toLowerCase() === wanted);
-    if (!match) throw new Error(`slice "${sliceId}" is not claimed by the run loop — only a slice the loop is building has its status recorded here`);
+    if (!match) refuse(`slice "${sliceId}" is not claimed by the run loop — only a slice the loop is building has its status recorded here`);
   } else if (claimed.length === 1) {
     match = claimed[0];
   } else if (claimed.length > 1) {
     throw new Error(`${claimed.length} slices are claimed (${claimed.map(([, s]) => s.claim.title).join(', ')}) — name one with --slice`);
   } else {
-    throw new Error('no slice is claimed by the run loop. For a task from tasks.json, set the status with the update-slice-status skill instead');
+    refuse('no slice is claimed by the run loop. For a task from tasks.json, set the status with the update-slice-status skill instead');
   }
   const [id, { claim }] = match;
   recordEvent(kitDir, { type: 'agent-recorded', slice: id, status }, meta);
@@ -78,7 +86,7 @@ export async function claimSlice({ kitDir, planned, board, meta, cleanTree, pid 
     }
   }
   const state = recordEvent(kitDir, {
-    type: 'claimed', slice: planned.id, ctx: planned.ctx, title: planned.title, pid, base: gitBase(kitDir), cleanTree,
+    type: 'claimed', slice: planned.id, ctx: planned.ctx, title: planned.title, pid, base: gitBase(kitDir), cleanTree, ...locationOf(kitDir),
     // What the board says about the slice at build time, when it says anything: both can change between builds.
     ...(planned.ticketNumber ? { ticketNumber: planned.ticketNumber } : {}),
     ...(planned.assignee ? { assignee: planned.assignee } : {}),

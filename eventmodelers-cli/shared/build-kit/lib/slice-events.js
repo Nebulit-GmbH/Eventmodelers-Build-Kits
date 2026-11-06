@@ -8,6 +8,7 @@
 import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, renameSync, writeFileSync } from 'fs';
 import { randomUUID } from 'crypto';
 import { join } from 'path';
+import { homedir } from 'os';
 
 export const EVENTS_DIR = 'events';
 export const INDEX_FILE = 'events.log';
@@ -85,6 +86,14 @@ function nextSeq(kitDir) {
 // concurrent processes never interleave however large the event. After a torn index line the new id
 // starts on a fresh line instead of being glued onto the fragment. Every event gets the next sequence number
 // (`seq`), which — not the timestamp — defines the order. Returns the event id.
+// Where a process ran, for events: the kit it works against and its working directory. The log is shared with
+// everyone who can open the board, so the home directory is shown as `~` rather than the user's name.
+export function locationOf(kitDir, cwd = process.cwd()) {
+  const home = homedir();
+  const tidy = (p) => (home && p && (p === home || p.startsWith(home + '/')) ? `~${p.slice(home.length)}` : p);
+  return { kitDir: tidy(kitDir), cwd: tidy(cwd) };
+}
+
 export function appendEvent(kitDir, event, meta) {
   const dir = join(kitDir, EVENTS_DIR);
   mkdirSync(dir, { recursive: true });

@@ -42,7 +42,7 @@ import { recordAgentStatus } from './shared/build-kit/lib/slice-run.js';
 import { findSliceDir, fingerprint, readBaseline, writeBaseline, compare } from './lib/ui-baseline.js';
 import { defaultAgentName, withInstanceSuffix } from './shared/build-kit/lib/agent-name.js';
 import { acquireAgentId } from './shared/build-kit/lib/agent-lock.js';
-import { readEvents } from './shared/build-kit/lib/slice-events.js';
+import { readEvents, appendEvent, locationOf } from './shared/build-kit/lib/slice-events.js';
 import { findPromptEvent, replayRequest } from './shared/build-kit/lib/prompt-replay.js';
 import { prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPrune } from './shared/build-kit/lib/event-prune.js';
 import { fold } from './shared/build-kit/lib/slice-state.js';
@@ -5365,6 +5365,10 @@ program
     if (!wanted) {
       const claimed = Object.entries(fold(readEvents(kitDir)).slices).filter(([, s]) => s.claim);
       if (claimed.length !== 1) {
+        if (!claimed.length) {
+          // Where it looked: an agent running from another kit's directory finds no claim in that kit's log.
+          try { appendEvent(kitDir, { type: 'claim-not-found', command: 'build-baseline', claimed: 0, ...locationOf(kitDir, cwd) }, agentEventMeta(cwd, kitDir, command)); } catch { /* best effort */ }
+        }
         console.error(`❌ ${claimed.length ? `${claimed.length} slices are claimed` : 'No slice is claimed by the run loop'} — name the slice with --slice.`);
         process.exit(1);
       }

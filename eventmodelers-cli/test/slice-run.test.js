@@ -391,6 +391,25 @@ test('the slice can be named by id or by title, and must be one the loop has cla
   assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 'other' }), /not claimed/);
 });
 
+test('a refused slice-status records where it looked, so a claim in another kit is easy to spot', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done', sliceId: 's1', meta: META }), /not claimed/);
+  assert.throws(() => recordAgentStatus({ kitDir: kit, status: 'Done', meta: META }), /no slice is claimed/);
+  const refusals = readEvents(kit).filter((e) => e.type === 'claim-not-found');
+  assert.equal(refusals.length, 2);
+  assert.deepEqual(refusals.map((e) => [e.command, e.wanted, e.claimed]), [['slice-status', 's1', 0], ['slice-status', undefined, 0]]);
+  assert.ok(refusals.every((e) => e.kitDir && e.cwd));
+});
+
+test('a claim records the kit and directory it was made from', async (t) => {
+  quiet(t);
+  const { kit } = project(t);
+  await claim(kit, fakeBoard());
+  const claimed = readEvents(kit).find((e) => e.type === 'claimed');
+  assert.ok(claimed.kitDir && claimed.cwd);
+});
+
 test('without a claim there is nothing to record — the board owns tasks.json statuses', (t) => {
   quiet(t);
   const { kit } = project(t);
