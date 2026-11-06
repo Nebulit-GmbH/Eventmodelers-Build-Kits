@@ -346,6 +346,8 @@ if Conway's Law boundaries are not relevant to the project.
 
 Invoke `eventmodeling-elaborating-scenarios` with the Skill tool **before the first `add_scenario` call** — its scenario types, business-rules-only rule and payload shape are not repeated here, so scenarios written from this file alone come out wrong.
 
+**Linked copies get no scenarios.** A command/read model with `meta.linkedTo` is a copy; add its scenarios and storylines to the origin's column (its own timeline), never the copy's.
+
 **Input**: Commands and read models.
 **Output to carry forward**: Given-When-Then specifications (or storylines, for
 walkthrough-style coverage) for every command **and every read model**, posted

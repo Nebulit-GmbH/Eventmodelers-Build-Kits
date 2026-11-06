@@ -66,6 +66,8 @@ Get the elements a scenario's given/when/then steps may legally reference (EVENT
 An ordered, branchable walkthrough of existing board elements ("beats"), stored alongside GWT
 scenarios on the same SCENARIO spec node, in a sibling `meta.storylines` collection.
 
+> **Scenarios and storylines belong to the original element's column.** If the node has `meta.linkedTo` it is a copy: follow it to the origin and post to the origin's timeline/column. The API does not reject a copy's column, so the caller must resolve it.
+
 ### POST `/api/org/:orgId/boards/:boardId/timelines/:timelineId/columns/:columnId/storylines`
 Append one or more storylines to a column's spec node. The spec node is auto-created if missing
 (shared with scenarios).

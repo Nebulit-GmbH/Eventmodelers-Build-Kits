@@ -128,6 +128,8 @@ After resolving `columnId` (from step 3, or from step 5 if a new column was just
 
 **Prefer MCP:**
 
+> **Original only:** if the target COMMAND/READMODEL has `meta.linkedTo` it is a copy — resolve to the origin (no `linkedTo`) and use the origin's `timelineId`/`columnId`; never put a spec on a copy's column. Same for `add_storyline`. See `eventmodeling-core-rules`.
+
 ```
 mcp__eventmodelers__add_scenario {
   "boardId": "<BOARD_ID>",
