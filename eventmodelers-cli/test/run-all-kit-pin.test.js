@@ -16,8 +16,9 @@ test('run --all pins each kit for its own agent', (t) => {
   for (const dir of [root, join(root, 'web')]) {
     const kit = join(dir, '.build-kit');
     mkdirSync(kit, { recursive: true });
-    // a stub runner: reports which kit it was pinned to
-    writeFileSync(join(kit, 'ralph-claude.js'), `console.log('PINNED=' + process.env.EVENTMODELERS_KIT_DIR);`);
+    // a stub runner: reports which kit it was pinned to, then lingers — the first kit to exit stops all the others,
+    // so exiting at once would kill its sibling before that one has printed anything
+    writeFileSync(join(kit, 'ralph-claude.js'), `console.log('PINNED=' + process.env.EVENTMODELERS_KIT_DIR); setTimeout(() => {}, 1500);`);
   }
   const res = spawnSync(process.execPath, [cli, 'run', '--all', '--sync'], {
     cwd: root, encoding: 'utf-8', timeout: 30000,
