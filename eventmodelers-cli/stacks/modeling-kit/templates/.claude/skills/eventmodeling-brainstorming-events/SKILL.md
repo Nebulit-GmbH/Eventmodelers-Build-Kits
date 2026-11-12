@@ -101,7 +101,7 @@ For each group, create a chapter on the board **before placing any events**. Reu
 ```
 mcp__eventmodelers__create_chapter { "boardId": "<BOARD_ID>", "columns": <numberOfEventsInGroup> }
 ```
-(`x`/`y` are optional — see the vertical-stacking note below. `columns` is optional too — the group's event count is already known at this point, so pass it here to create the chapter with exactly the columns this group needs, instead of the default 3 plus a follow-up `add_column` batch. Response includes the new `timelineId` and `columnIds` — one id per column, left to right, ready to use directly in Step A below.)
+(`x`/`y` are optional — see the vertical-stacking note below. `columns` is optional too — the group's event count is already known at this point, so pass it here to create the chapter with exactly the columns this group needs, instead of the default 3 plus a follow-up `update_chapter` `add_column` batch. Response includes the new `timelineId` and `columnIds` — one id per column, left to right, ready to use directly in Step A below.)
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Create one chapter per group — create the chapter".
 
@@ -128,7 +128,7 @@ Omit `x`/`y` on `create_chapter`: the backend stacks the new chapter below the l
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__move_timeline_position { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "x": 0, "y": <y> }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "operations": [{ "op": "move", "x": 0, "y": <y> }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Timeline Discovery — Step 2: Reposition an existing chapter".
@@ -179,10 +179,10 @@ When a chapter is available, place each event directly into it. **Include `cellI
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "count": <numberOfEvents> }
-# → { "columnId": "<firstColUuid>", "index": <n>, "totalColumns": <n>, "columnIds": ["<col1>", "<col2>", ...] }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "add_column", "count": <numberOfEvents> }] }
+# → { "results": [{ "op": "add_column", "columnId": "<firstColUuid>", "index": <n>, "totalColumns": <n>, "columnIds": ["<col1>", "<col2>", ...] }] }
 ```
-Use `columnIds[i]` for the i-th event in Step C below. (Omit `count`, or pass `1`, for a single event — `columnIds` is only present when `count > 1`.)
+Use `results[0].columnIds[i]` for the i-th event in Step C below. (Omit `count`, or pass `1`, for a single event — `columnIds` is only present when `count > 1`.)
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Mode A — Step A: Ensure enough columns exist".
 

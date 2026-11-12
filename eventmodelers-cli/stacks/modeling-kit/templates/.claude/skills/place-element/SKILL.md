@@ -184,7 +184,7 @@ Only run this when position was omitted (append mode).
 **Prefer MCP:**
 
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>" }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "operations": [{ "op": "add_column" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5 — Create a column when appending".
@@ -243,7 +243,7 @@ Use this REST call (see the curl fallback below) when you don't already have a f
 **Prefer MCP** — pass `afterNodeId` set to the occupying node's id (found in Step 6's cell-occupancy check) and let the tool resolve the index itself, instead of computing `currentColumnIndex + 1` by hand:
 
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "afterNodeId": "<occupyingNodeId>" }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<TIMELINE_ID>", "operations": [{ "op": "add_column", "afterNodeId": "<occupyingNodeId>" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 6 — Insert a column at a specific index" (no relative-insertion equivalent over REST; the index is computed by hand).

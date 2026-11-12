@@ -280,7 +280,7 @@ For each screen:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "add_column" }] }
 ```
 Re-read `get_board_outline` after adding the column and take the new (last) column's `letter` for `CELL_NAME` — don't convert the result's `index` into a letter yourself.
 

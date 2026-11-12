@@ -140,7 +140,7 @@ Build an **empty-column queue**: for each column (in order), compute `actorCellI
 
 Process screens **one at a time**. Do not start the next screen until the current one is fully complete (node created + sketch rendered).
 
-**Before starting the loop**, if the empty-column queue (Step 4) has fewer entries than N screens, create the shortfall in one call — `mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "count": <N - queue.length> }` returns `columnIds: [...]` — and push each new column onto the queue, rather than calling `add_column` once per screen inside Step 5a whenever the queue runs dry.
+**Before starting the loop**, if the empty-column queue (Step 4) has fewer entries than N screens, create the shortfall in one call — `mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "add_column", "count": <N - queue.length> }] }` returns `results[0].columnIds: [...]` — and push each new column onto the queue, rather than calling `add_column` once per screen inside Step 5a whenever the queue runs dry.
 
 **You have ONE chapter (`CHAPTER_ID`). All screens go into this same chapter. Do NOT call the chapter creation endpoint again inside this loop.**
 
@@ -155,7 +155,7 @@ Only SCREEN nodes are created. COMMAND and EVENT nodes are not created.
 **Prefer MCP:**
 
 ```
-mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>" }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "add_column" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Step 5a — Add a column".

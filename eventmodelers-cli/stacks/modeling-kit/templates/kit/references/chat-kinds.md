@@ -42,6 +42,15 @@ The table in `CLAUDE-CHAT.md` step 3 names the kinds; this is the full rule for 
      your call: a quick take is an **answer**, in prose; a thorough review of a whole context or chapter may
      be the same prompt as above. If a reply ends in a question the person answers with a click ("Want me to
      turn these into comments?"), that question is a snippet, not a sentence (`CLAUDE-CHAT.md` step 4, Snippets).
+   - **an applied walkthrough** — the message `Apply the walkthrough “<title>” to the model.` with `context.snippetReply`
+     (`selection: "apply"`, `messageId` = your walkthrough message): the person looked at the proposal and wants it built. It is
+     **work**: read that message's snippet in `get_chat_session` and create the prompt from it — one line per step that is `new` or
+     `changed`, with the element names, fields and rules the step lists (a prompt turn cannot read the chat, so never write "as in the
+     walkthrough"). Steps marked `existing` stay exactly as they are. Reply in one sentence saying what you started.
+   - **a guided-modeling message** — `context=` carries `additionalPrompt: {…}`: the app's instructions that go with what the
+     person said in the wizard (`CLAUDE-CHAT.md` step 2). Not a kind of its own: follow its `instruction` and `modeNote` (in
+     `walkthrough` mode nothing on the board changes), keep to its `chapter` / `screen`, and reply in one plain sentence — a few
+     words when there is nothing to build ("Noted.").
    - **a handed-over board chat** — `context=` carries `boardChat: {sessionId, title, lastSeq}`: the person gave you a
      conversation between colleagues (read it with `get_board_chat_session`, `CLAUDE-CHAT.md` step 2). It is not a kind of
      its own — the message on top is one of the kinds in this list, read against that conversation: "summarize this",

@@ -138,7 +138,7 @@ Before wiring any of the five forward-only pairs, verify that `column(source) �
 Screens placed during Step 3 (Storyboarding) are provisional positions. Steps 4 and 5 may need to move them to align with the commands or read models placed later.
 
 ### Column insertion
-Use `add_column` with `{"index": N}` to insert a column at a specific position (shifts existing columns right) — or, when the insertion point is "immediately before/after a node already on the board" rather than a numeric position you'd otherwise have to compute, pass `beforeNodeId`/`afterNodeId` instead and let the tool resolve the index itself. Do not use no position at all (append) when placing read models or view screens — always target the correct position.
+Use `update_chapter`'s `add_column` operation with `{"index": N}` to insert a column at a specific position (shifts existing columns right) — or, when the insertion point is "immediately before/after a node already on the board" rather than a numeric position you'd otherwise have to compute, pass `beforeNodeId`/`afterNodeId` instead and let the tool resolve the index itself. Do not use no position at all (append) when placing read models or view screens — always target the correct position.
 
 **Suppress auto-connect when inserting into an existing chain.** When you insert columns next to nodes that are *not* meant to connect to what you're about to place — e.g. slotting an output read model's column in beside an automation-chain column — the node placement's default auto-connect will wire the new node to whatever type-compatible node happens to sit in its own or the previous column (the "nearest event to the left"). That is the source of the recurring stray-edge cleanup. When the placement you're about to make should be wired only by your own explicit `set_connection` batch, pass `autoConnect: false` on the placing call (`submit_node_events`, `place_element`, `create_screen`) and then wire every edge yourself. Keep the default (auto-connect on) for Steps 1/3/4 where same-column neighbors are exactly the intended wiring.
 
@@ -152,9 +152,9 @@ Each write tool takes its items as an array, so handling several in one pass is 
 - `create_screen`'s `screens` — creating multiple screens
 - `place_element`'s `elements` — laying out a whole slice or column run, each entry seeing the columns the previous one added
 - `place_element`'s `elements` with `{action: "move", nodeId, cellName}` entries — placing or moving multiple existing nodes within one timeline
-- `delete_node`'s `nodeIds` / `delete_column`'s `columnIds` — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
-- `add_comment`'s `comments`, `create_drawing`'s `drawings`, `add_lane`'s `lanes` — same shape
-- `add_column`'s `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
+- `delete_node`'s `nodeIds` / `update_chapter`'s several `delete_column` operations — removing multiple nodes or columns, e.g. a corrective cleanup after a modeling mistake
+- `add_comment`'s `comments`, `create_drawing`'s `drawings`, `update_chapter`'s `operations` (several `add_lane` entries in one call) — same shape
+- `update_chapter`'s `add_column` `count` param (not `add_column` repeated) — appending or inserting several columns at once; `beforeNodeId`/`afterNodeId` resolve the insertion point from an already-placed node instead of a computed index
 - `create_chapter`'s `columns` param — when the chapter's initial column count is already known, instead of creating the default 3 and appending more after
 
 Also prefer `get_nodes`' `chapterId` param over an unscoped board-wide fetch whenever the step is working within one timeline (the common case), and `get_node`'s `projection: "cells"` over a full chapter fetch whenever only `{rows, columns, cells}` is needed (most cell/column bookkeeping lookups). When only ids/titles/types/attribute names matter (existence check, dedupe by title, picking a chapter or context, finding a node by name), pass `projection: "line"` to `get_nodes` — `{id, type, title, fields}` per node; cell addresses come only from `get_board_outline`.
@@ -425,7 +425,7 @@ Not delegated to a separate skill — performed directly by this orchestrating s
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "lanes": [{ "type": "feedback", "label": "Notes" }] }
+   mcp__eventmodelers__update_chapter { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "operations": [{ "op": "add_lane", "type": "feedback", "label": "Notes" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Step 11 — Document Reasoning — Add a feedback lane".

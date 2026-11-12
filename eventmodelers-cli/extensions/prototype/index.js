@@ -57,7 +57,7 @@ export const BOARD_WRITE_TOOLS = [
   'create_chapter', 'create_drawing', 'create_prompt', 'create_screen', 'create_slice', 'create_slice_definition', 'create_snippet_type', 'delete_column',
   'delete_node', 'drop_node_to_cell', 'link_element', 'move_node_in_timeline', 'move_timeline_position', 'move_timeline_structure', 'place_element',
   'place_image', 'post_chat_message', 'remove_lane', 'render_screen', 'set_connection', 'submit_node_events', 'update_comment', 'update_prompt_status',
-  'update_slice_status',
+  'update_chapter', 'update_slice_status',
 ].map((t) => `mcp__eventmodelers__${t}`);
 
 /** Adds (or removes) the board's write tools to permissions.deny of .claude/settings.local.json, keeping everything else in the file. */

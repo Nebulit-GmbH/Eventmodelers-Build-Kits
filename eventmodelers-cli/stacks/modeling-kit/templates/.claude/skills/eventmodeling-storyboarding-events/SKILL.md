@@ -122,7 +122,7 @@ After completing the screen analysis, use the `handle-comment` skill to post a c
 
    **Prefer MCP:**
    ```
-   mcp__eventmodelers__add_lane { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "lanes": [{ "type": "actor", "label": "<Role Name>" }] }
+   mcp__eventmodelers__update_chapter { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "operations": [{ "op": "add_lane", "type": "actor", "label": "<Role Name>" }] }
    ```
 
    **Fallback (no MCP):** see `references/api-fallback.md` — "Resolve One Actor Lane Per Human Role — Step 3: Create a new actor lane".
@@ -340,7 +340,7 @@ Before placing a screen, ask "whose turn is it in the story?" If the answer is s
 ❌ Wrong:   Member "My Loans" AND Librarian "Confirm Checkout" both in col 11
 ```
 
-If a second role also needs a screen related to the same event, insert a new column immediately after and place the second screen there. Prefer `mcp__eventmodelers__add_column { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "index": N }`; fallback (no MCP) is `POST /timelines/:tl/columns` with `{"index": N}` to insert at the correct position.
+If a second role also needs a screen related to the same event, insert a new column immediately after and place the second screen there. Prefer `mcp__eventmodelers__update_chapter { "boardId": "$BOARD_ID", "timelineId": "$CHAPTER_ID", "operations": [{ "op": "add_column", "index": N }] }`; fallback (no MCP) is `POST /timelines/:tl/columns` with `{"index": N}` to insert at the correct position.
 
 ---
 

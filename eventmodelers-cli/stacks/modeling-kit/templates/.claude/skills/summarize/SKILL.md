@@ -167,7 +167,7 @@ Invoke `eventmodeling-elaborating-scenarios` for every COMMAND and READMODEL. It
 
 The summary lives **on the board, not in a file**: one MARKDOWN note per chapter, in the **first column** of that chapter's `feedback` lane. Same mechanics as `eventmodeling-orchestrating-event-modeling` Step 11 — follow it for the exact calls and its api-fallback:
 
-1. Add the chapter's feedback lane if `meta.timelineData.rows` has none (`add_lane` with `type: "feedback"`, label `"Summary"`). If one exists already (e.g. a Step 11 "Notes" lane), reuse it.
+1. Add the chapter's feedback lane if `meta.timelineData.rows` has none (`update_chapter` `add_lane` operation with `type: "feedback"`, label `"Summary"`). If one exists already (e.g. a Step 11 "Notes" lane), reuse it.
 2. Take the leftmost entry of `meta.timelineData.columns` as the first column (re-read the chapter after modeling — columns may have been added or reordered).
 3. Create the note: `node:created`, `meta.type: "MARKDOWN"`, `cellId = "<feedbackLaneId>-<firstColumnId>"`, title `Summary — <Chapter Name>`, body as plain markdown in **`meta.description`** (not `meta.content` — it is stored but never rendered).
 

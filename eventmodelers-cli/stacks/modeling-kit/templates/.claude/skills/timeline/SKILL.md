@@ -231,7 +231,7 @@ emptyColumns = [columnId, ...]   // in column order, ready to reuse
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnIds": ["<columnId>"] }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "delete_column", "columnId": "<columnId>" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".
@@ -370,7 +370,7 @@ mcp__eventmodelers__delete_node { "boardId": "<BOARD_ID>", "nodeIds": ["<eventNo
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__delete_column { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "columnIds": ["<columnId>"] }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "delete_column", "columnId": "<columnId>" }] }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Delete a column".

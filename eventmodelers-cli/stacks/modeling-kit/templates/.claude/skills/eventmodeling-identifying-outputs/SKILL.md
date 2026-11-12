@@ -236,7 +236,7 @@ Read models go in the `interaction` lane. For a **SCREEN**, the primary read mod
 **For a READMODEL** (interaction lane):
 
 **Prefer MCP** — `place_element` collapses finding/creating the empty interaction cell and creating the node into one call, but it does **not** resolve an occupied target column for you: passing an already-occupied `columnIndex` fails outright rather than auto-inserting a column before it (it only auto-extends when `columnIndex` is *past* the current column count — a different situation). **Target column depends on the consumer type**:
-- **SCREEN**: target the screen's own column index. First check whether that column's interaction row is already occupied (e.g. a command/input screen) — `get_node` with `projection: "cells"` on the chapter. If it is, insert a new column immediately before the screen first (`add_column` with `beforeNodeId` set to the screen's own node id), then pass *that* new column's index to `place_element` instead of the screen's original one.
+- **SCREEN**: target the screen's own column index. First check whether that column's interaction row is already occupied (e.g. a command/input screen) — `get_node` with `projection: "cells"` on the chapter. If it is, insert a new column immediately before the screen first (`update_chapter` `add_column` with `beforeNodeId` set to the screen's own node id), then pass *that* new column's index to `place_element` instead of the screen's original one.
 - **AUTOMATION**: target `consumerColumnIndex - 1` (one column to the *left* of the automation) — never the automation's own column index, since it already holds the COMMAND the automation issues.
 ```
 mcp__eventmodelers__place_element {
@@ -294,7 +294,7 @@ For each view screen S that queries this read model as its primary read model:
     → Place the READMODEL in column(S) itself (same column as S). No adjustment needed.
   If column(S)'s interaction row is already occupied:
     → Insert a new column immediately before column(S) and place the READMODEL there instead.
-    mcp__eventmodelers__add_column { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "beforeNodeId": "<S's node id>" }
+    mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<TL>", "operations": [{ "op": "add_column", "beforeNodeId": "<S's node id>" }] }
     (fallback, no MCP: POST /timelines/:tl/columns {"index": N} with N computed by hand),
     then node:changed to update any node whose cell needs to move.
   If the read model ends up more than one column away from S with nothing in between:

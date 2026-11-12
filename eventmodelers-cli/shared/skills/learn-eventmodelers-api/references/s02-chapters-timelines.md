@@ -19,9 +19,9 @@ Create a chapter node.
 
 **Response**: `200` — `{ id, eventId, columnIds: string[], lanes: Array<{id, type, label}> }`
 
-`lanes` replaces the default Actor/Interaction/Swimlane/Spec set — this is how a chapter gets lanes named after what they hold, or several lanes of one type (one swimlane per context), without an `add_lane` call per lane. They are sorted into the required order (actor → interaction → swimlane → spec → feedback/table) automatically, keeping the given order within a type, so no ordering error is possible. Every column id and lane id comes back in the response — don't re-read the chapter just to place something into it.
+`lanes` replaces the default Actor/Interaction/Swimlane/Spec set — this is how a chapter gets lanes named after what they hold, or several lanes of one type (one swimlane per context), without an `update_chapter` `add_lane` operation per lane. They are sorted into the required order (actor → interaction → swimlane → spec → feedback/table) automatically, keeping the given order within a type, so no ordering error is possible. Every column id and lane id comes back in the response — don't re-read the chapter just to place something into it.
 
-Omitting `position` auto-stacks the new chapter below the lowest existing chapter on the board, using each existing chapter's *actual current* row-height total (not the height it was created with) plus a fixed margin — so a chapter that grew via `add_lane`/`add_column` after another was stacked below it won't get overlapped by yet another auto-stacked chapter.
+Omitting `position` auto-stacks the new chapter below the lowest existing chapter on the board, using each existing chapter's *actual current* row-height total (not the height it was created with) plus a fixed margin — so a chapter that grew via `update_chapter` (`add_lane`/`add_column`) after another was stacked below it won't get overlapped by yet another auto-stacked chapter.
 
 ---
 

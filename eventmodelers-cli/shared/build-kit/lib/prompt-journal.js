@@ -66,6 +66,7 @@ const BOARD_WRITES = {
   create_chapter: ({ title }) => ({ action: 'chapter-created', detail: title ? `"${oneLine(title, 60)}"` : '' }),
   add_column: ({ count: n = 1 }) => ({ action: 'columns-added', detail: String(n) }),
   add_lane: ({ lanes }) => ({ action: 'lanes-added', detail: String(count(lanes)) }),
+  update_chapter: ({ operations }) => ({ action: 'chapter-updated', detail: plural(count(operations), 'operation') }),
   add_scenario: ({ scenarios }) => ({ action: 'scenarios-added', detail: String(count(scenarios)) }),
   add_storyline: ({ storylines }) => ({ action: 'storylines-added', detail: String(count(storylines)) }),
   set_connection: ({ connections }) => ({ action: 'connections-changed', detail: String(count(connections)) }),

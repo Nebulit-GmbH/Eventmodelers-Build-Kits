@@ -106,7 +106,7 @@ In `rows`, look for a row with `type: "feedback"` and label `Implementation` (ca
 **Never write into any other feedback lane** — other lanes (e.g. `Decisions`) belong to the modeling kit or to people. If there is no `Implementation` lane, add one:
 
 ```
-mcp__eventmodelers__add_lane { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "lanes": [{ "type": "feedback", "label": "Implementation" }] }
+mcp__eventmodelers__update_chapter { "boardId": "<BOARD_ID>", "timelineId": "<CHAPTER_ID>", "operations": [{ "op": "add_lane", "type": "feedback", "label": "Implementation" }] }
 ```
 
 ```bash

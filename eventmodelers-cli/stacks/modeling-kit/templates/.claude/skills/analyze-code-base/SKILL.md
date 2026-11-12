@@ -148,7 +148,7 @@ Never add detail that belongs to a deeper layer. Every element must trace to sou
 
 ## Keeping chapters apart
 
-A chapter is sized when it is created, so detailing it later makes it overlap the chapter below. After every batch: read `get_chapter_bounds`, and wherever the next chapter starts above `y + height + 600`, move it **and every chapter below it** down by the missing distance (`move_timeline_position`), keeping their order. A pass isn't done while two chapters overlap.
+A chapter is sized when it is created, so detailing it later makes it overlap the chapter below. After every batch: read `get_chapter_bounds`, and wherever the next chapter starts above `y + height + 600`, move it **and every chapter below it** down by the missing distance (`update_chapter` `move` operation), keeping their order. A pass isn't done while two chapters overlap.
 
 ---
 
@@ -194,8 +194,8 @@ Create notes with `submit_node_events` (`node:created`, `meta.type: "MARKDOWN"`,
 
 Column 0 of every chapter holds **only** the chapter note, titled `Legacy Sources — <Chapter Name>`, in the **Decisions** lane — no slice, no element, no screen, in any lane. It records when the chapter was analysed, against which commit, how deep, where the flow lives in the code, and the decisions that affect the whole chapter (where it starts and ends, its order relative to other chapters, what was left out). The next run starts from it (*Step 0b*).
 
-- **New chapter**: place the note first (`cellId = "<feedbackLaneId>-<firstColumnId>"`), then every element with `columnIndex ≥ 1`. If a skill or `/timeline` put an element into column 0 anyway, insert an empty column with `add_column { index: 0 }` and place the note there.
-- **Existing chapter without the note, or whose column 0 holds elements**: `add_column { index: 0 }` and place the note there; move a `Legacy Sources` note found elsewhere into it (`place_element` `action: "move"`).
+- **New chapter**: place the note first (`cellId = "<feedbackLaneId>-<firstColumnId>"`), then every element with `columnIndex ≥ 1`. If a skill or `/timeline` put an element into column 0 anyway, insert an empty column with `update_chapter` `add_column { index: 0 }` and place the note there.
+- **Existing chapter without the note, or whose column 0 holds elements**: `update_chapter` `add_column { index: 0 }` and place the note there; move a `Legacy Sources` note found elsewhere into it (`place_element` `action: "move"`).
 - **Every pass appends one row** to *Analysis history* (`node:changed` on `meta.description`) — never edit or drop earlier rows; the history is the record of what was analysed when. A Step 0b check that found nothing new gets a row too.
 - **Commit** (if git is available): `git rev-parse --short HEAD` in the code root; if `git status --porcelain` lists changes in the chapter's folders, write `<hash>+dirty`. Without git, write `no git` — the date is then the only marker, and the next run analyses the chapter fully.
 
