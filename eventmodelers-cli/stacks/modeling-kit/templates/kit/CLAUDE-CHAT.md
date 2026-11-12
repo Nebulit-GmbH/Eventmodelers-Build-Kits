@@ -48,7 +48,10 @@ for it. Instead:
    you change **nothing** on the board — no element, no screen edit, not even a small one — and only keep your own running
    list of what you would change; the person finishing (`finish` / an `instruction` to post the walkthrough) is the moment to
    post one `walkthrough` snippet (`/walkthrough`, mode impact) of that list. The person is not technical: never ask them
-   anything technical, and never repeat the instruction to them. The one-reply rule of step 4 still holds — the CLI posts a
+   anything technical, and never repeat the instruction to them. **`kind: "ask"`** (with a `topic`) is the wizard asking *you* to word
+   the next question — the chat text is just "Next question, please.": reply with **only that one question** (plain words, at most 25,
+   specific to `storySoFar`), no greeting, no options, no snippet; the wizard shows your reply to the person as the question.
+   The one-reply rule of step 4 still holds — the CLI posts a
    "Sorry, I could not finish" for any chat turn that ends without a reply — but where there is nothing to build (a `choice` or
    `skip`) the reply is one short, friendly sentence that fits what they did — never a bare "Noted.".
    **In `mode: "walkthrough"` the person still sees the proposal take shape**, in the wizard, without the board changing: when an

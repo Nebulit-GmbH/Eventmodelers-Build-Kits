@@ -204,6 +204,8 @@ npx @eventmodelers/cli run --standalone             # same, plus acting on board
 npx @eventmodelers/cli run --standalone --board-id <uuid>  # …from any directory, against any board (see Power users)
 npx @eventmodelers/cli run --id <id> --name <label>  # override this run's agent identity (id + display name); `init --name` persists a name instead
 npx @eventmodelers/cli run --handover               # backend kit, this run only: finish slices that have a UI at `Waiting` instead of `Done` (see Backend → UI handover)
+npx @eventmodelers/cli run --status-trigger Ready  # this run only: pick slices up from `Ready` instead of the kit's default (`Planned` backend, `Waiting` UI kits)
+npx @eventmodelers/cli run --status-target Review   # this run only: record `Review` when a slice is built instead of `Done` (wins over --handover)
 npx @eventmodelers/cli config --handover on|off      # persist that choice for the project (`handover` in .eventmodelers/config.json)
 npx @eventmodelers/cli fetch --context <name>                     # pull full slice detail for one context on the board into <kit-dir>/.slices/
 npx @eventmodelers/cli fetch --context <name> --slice-id <id>     # same, then print just that slice
@@ -830,7 +832,27 @@ Flow: `Ready → Planned → InProgress → Waiting → InProgress → Done`. Pr
 - **The platform must know the `Ready` / `Waiting` statuses.**
 - A kit declares what it claims in `lib/kit.json` — `{ "pickupStatus": "Waiting" }`; absent means `Planned`.
 - `run --status-trigger <status>` overrides that pickup status for a single run (e.g. `--status-trigger Ready`); nothing is saved.
+- `run --status-target <status>` overrides the status the agent records when it finishes a slice (default `Done`, or `Waiting` for a UI-bearing slice with handover on); a stack can declare it as `"targetStatus"` in `lib/kit.json`. Combine with `--status-trigger` for a whole transition, e.g. `--status-trigger Ready --status-target Review`. Nothing is saved.
 - `run --feature <name>` picks up only the slices that belong to that feature (the names set per slice on the board, matched case-insensitively); without it every slice in the pickup status is built. Slices without a feature wait for a run without the flag. Nothing is saved.
+
+#### Choosing the transition (`--status-trigger` / `--status-target`)
+
+Every build run is one status transition: the kit claims slices in a **start** status and the agent records a **target** status when it finishes. Both have defaults and both can be overridden per run.
+
+| | Start (`--status-trigger`) | Target (`--status-target`) |
+|---|---|---|
+| Backend kits | `Planned` | `Done` (`Waiting` for a slice with a UI when handover is on) |
+| UI kits (`react`, `supabase-react`) | `Waiting` | `Done` |
+| Stack default in `lib/kit.json` | `"pickupStatus"` | `"targetStatus"` |
+
+Precedence, highest first: the run flag, then `lib/kit.json`, then the built-in default. An explicit target overrides `--handover`; without one the handover rule applies as before.
+
+```bash
+npx @eventmodelers/cli run --status-trigger Ready --status-target Review   # build Ready slices, hand them to review
+npx @eventmodelers/cli run --status-target Waiting                         # backend: always finish at Waiting, whatever the slice
+```
+
+Notes: both flags apply to that run only and write nothing; status names are the board's (`Created`, `Ready`, `Planned`, `InProgress`, `Waiting`, `Review`, `Done`, `Blocked`, …), and an unknown target is rejected when the agent records it. The runner states an explicit target to the agent as a `Target status: <status>` line in its task. An already-installed kit needs a `re-init` to pick up `--status-target`.
 
 The contract itself is the shared `ui-contract` skill's job (see above); it also owns the rule for which status a slice ends at.
 

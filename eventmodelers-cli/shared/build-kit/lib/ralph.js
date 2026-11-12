@@ -558,6 +558,20 @@ export function readPickupStatus(kitDir) {
   return 'Planned';
 }
 
+// The status the agent records when it finishes a slice — the other end of pickupStatus. `run --status-target <status>`
+// (RALPH_STATUS_TARGET) wins over a stack's `lib/kit.json` ({ "targetStatus": "..." }); null when neither is set, which
+// leaves the kit's own rule in force (`Done`, or `Waiting` for a UI-bearing slice with handover on). When set it is
+// stated in the task and overrides that rule.
+export function readTargetStatus(kitDir) {
+  const override = (process.env.RALPH_STATUS_TARGET || '').trim();
+  if (override) return canonicalStatus(override);
+  try {
+    const s = JSON.parse(readFileSync(join(kitDir, 'lib', 'kit.json'), 'utf-8')).targetStatus;
+    if (typeof s === 'string' && s.trim()) return canonicalStatus(s.trim());
+  } catch {}
+  return null;
+}
+
 // `run --feature <name>` (RALPH_FEATURE): only slices that belong to this feature are picked up.
 // Matched like the board does — trimmed, case-insensitive. Empty means no filter.
 export function readFeatureFilter() {
@@ -822,14 +836,16 @@ export function createBoard(cfg) {
   };
 }
 
-function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned', queued = null) {
+function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned', queued = null, targetStatus = null) {
   const task = planned
     ? `build the ${pickupStatus} slice "${planned.title}" (id=${planned.id}, context="${planned.ctx}")`
     : `process this queued task (id=${queued?.id}) — the slice change that queued it: ${JSON.stringify(queued?.payload ?? {})}`;
   // Stated explicitly so the agent never has to work it out from config.json: this run's effective
   // value, which is what the `ui-contract` skill (Step 4) follows. UI kits (pickup Waiting) ignore it.
   const handover = planned && statusKey(pickupStatus) !== 'waiting' ? `\nHandover: ${resolveHandover(cfg) ? 'on' : 'off'}\n` : '';
-  return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}`;
+  // Only when set explicitly (run flag or kit.json): the agent records exactly this status, handover or not.
+  const target = planned && targetStatus ? `\nTarget status: ${targetStatus}\n` : '';
+  return `\n\n---\n\nYour task now: ${task}, following the instructions above. Start immediately.\n${handover}${target}`;
 }
 
 // The slice-state event store (events/, events.log) holds pids and claims of this checkout and must never be
@@ -932,7 +948,7 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
         continue;
       }
 
-      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir));
+      const prompt = readFileSync(backendPromptFile, 'utf-8') + taskRequest(planned, cfg, readPickupStatus(kitDir), null, readTargetStatus(kitDir));
       if (credentialed) await fetchFullSlice(cfg, kitDir, planned.id);
       // The iteration opens first, so the claim (→ InProgress) is part of what the board's build log shows.
       if (planned.id) share.iterationStarted(planned);

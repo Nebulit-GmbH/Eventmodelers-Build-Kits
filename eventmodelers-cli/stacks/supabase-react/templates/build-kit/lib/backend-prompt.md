@@ -32,7 +32,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 12. Build against the backend slice's published UI contract (see the `ui-contract` skill, "How the UI build kit looks the contract up") — the build-state-view / build-state-change skills say how to apply it
 13. Run quality checks — `npm run build` (typecheck + build) and `npm run lint`. No test runner is configured in this stack yet; if a slice's specifications demand behavioral tests, flag it via `request-feedback` instead of inventing a test setup ad hoc.
 14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
-15. Record the outcome with `npx @eventmodelers/cli slice-status Done` — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
+15. Record the outcome with `npx @eventmodelers/cli slice-status Done` (or `<status>` when the task has a `Target status: <status>` line — record exactly that, it overrides everything below) — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
 16. Record any reusable learning you have not recorded yet (see **Recording Learnings**).
 17. If an entry in `.build-kit/AGENTS.md` turned out wrong or obsolete, retract it (see **Recording Learnings**).
 18. Finish the iteration.
