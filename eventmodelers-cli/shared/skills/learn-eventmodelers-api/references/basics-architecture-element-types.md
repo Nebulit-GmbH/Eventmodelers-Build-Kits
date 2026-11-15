@@ -33,6 +33,9 @@ DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to th
                // (`svg` | `mermaid`) and `data.diagramSource` on the node's data, `meta.title`. Free-floating, view only.
 INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved to the board):
                // `meta.infographicJson`. Free-floating, view only, a snapshot of the snippet.
+COMIC          // Pinned multi-page comic (a `comic` chat snippet saved to the board): `meta.title`,
+               // `data.comicPages` [{image, title?, alt?, caption?}] (inline SVG data URLs).
+               // Free-floating, view only, resizable.
 REPORT         // Pinned report chart (a `report` chat snippet saved to the board): `meta.reportJson` (the snippet's JSON
                // as a string, without `kind`/`confirm`), `meta.title`. Free-floating, view only. To change it, send a
                // `node:changed` that sets `meta.reportJson` (the `/regenerate-report` skill does).
