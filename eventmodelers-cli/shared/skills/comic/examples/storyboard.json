@@ -1,12 +1,196 @@
-{ "text": "A comic: what happens when an order is placed.", "title": "Order placed",
-  "cast": { "Ana": {"kind":"person","hair":"messy","hairColor":"#5a3825","glasses":true,"skin":"#f2c9a0"}, "Shop": {"kind":"robot","label":"SHOP"} },
-  "pages": [
-   { "accent":"indigo", "alt":"Ana places an order", "panels":[
-     {"scene":"office","characters":[{"who":"Ana","pos":"left","mood":"worried"},{"who":"Shop","pos":"right","mood":"neutral"}],"bubbles":[{"who":"Ana","text":"Did my order go through?"},{"who":"Shop","text":"Let me check the diary of events."}],"caption":"Monday, 9:02"},
-     {"scene":"burst","characters":[{"who":"Ana","pos":"left","mood":"surprised"},{"who":"Shop","pos":"right","mood":"proud"}],"bubbles":[{"who":"Shop","text":"OrderPlaced. It happened, and nobody can erase it."}],"sfx":"DING!"},
-     {"scene":"screen","screen":{"title":"My orders","lines":["Order #1042","2 items","Paid"],"status":"ok"},"characters":[{"who":"Ana","pos":"left","mood":"smile"},{"who":"Shop","pos":"right","mood":"smile"}],"bubbles":[{"who":"Ana","text":"There it is!"}],"caption":"The read model: a notice board for events."} ] },
-   { "accent":"coral", "alt":"four panels", "panels":[
-     {"scene":"night","characters":[{"who":"Ana","pos":"center","mood":"angry"}],"bubbles":[{"who":"Ana","text":"Why is the invoice late?!"}]},
-     {"scene":"plain","characters":[{"who":"Shop","pos":"center","mood":"worried"}],"bubbles":[{"who":"Shop","text":"The automation waits for the payment event.","kind":"think"}]},
-     {"scene":"office","characters":[{"who":"Ana","pos":"left","mood":"neutral"},{"who":"Shop","pos":"right","mood":"smile"}],"bubbles":[{"who":"Shop","text":"Payment received. Sending it now."}]},
-     {"scene":"burst","characters":[{"who":"Ana","pos":"center","mood":"proud"}],"bubbles":[{"who":"Ana","text":"Events make the story easy to follow."}],"caption":"The end"} ] } ] }
+{
+ "text": "A comic: how an order gets from the shop to the customer's door.",
+ "title": "Order placed",
+ "cast": {
+  "Ana": {
+   "kind": "person",
+   "hair": "messy",
+   "hairColor": "#5a3825",
+   "glasses": true,
+   "skin": "#f2c9a0"
+  },
+  "Ben": {
+   "kind": "person",
+   "hair": "short",
+   "hairColor": "#3b2a1e",
+   "skin": "#c68e5f",
+   "color": "#0f9b8e"
+  },
+  "Shop": {
+   "kind": "robot",
+   "label": "SHOP"
+  }
+ },
+ "pages": [
+  {
+   "accent": "indigo",
+   "title": "Ana orders — and sees it confirmed",
+   "alt": "Ana places an order and sees the confirmation",
+   "panels": [
+    {
+     "scene": "office",
+     "characters": [
+      {
+       "who": "Ana",
+       "pos": "left",
+       "mood": "worried"
+      },
+      {
+       "who": "Shop",
+       "pos": "right",
+       "mood": "neutral"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Ana",
+       "text": "I need these two items by Friday."
+      }
+     ],
+     "caption": "Monday, 9:02"
+    },
+    {
+     "scene": "screen",
+     "screen": {
+      "title": "Checkout",
+      "lines": [
+       "2 items",
+       "Deliver by Friday",
+       "Pay now"
+      ],
+      "status": "ok"
+     },
+     "characters": [
+      {
+       "who": "Ana",
+       "pos": "left",
+       "mood": "smile"
+      },
+      {
+       "who": "Shop",
+       "pos": "right",
+       "mood": "smile"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Shop",
+       "text": "Order placed. Payment is next."
+      }
+     ],
+     "caption": "Screen: Checkout → Place Order"
+    },
+    {
+     "scene": "burst",
+     "characters": [
+      {
+       "who": "Ana",
+       "pos": "left",
+       "mood": "proud"
+      },
+      {
+       "who": "Shop",
+       "pos": "right",
+       "mood": "proud"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Ana",
+       "text": "Confirmed. That was quick."
+      }
+     ],
+     "sfx": "DING!"
+    }
+   ]
+  },
+  {
+   "accent": "coral",
+   "title": "No payment, no invoice — and no waiting around",
+   "alt": "Billing waits for payment, then sends the invoice, Ben ships",
+   "panels": [
+    {
+     "scene": "night",
+     "characters": [
+      {
+       "who": "Ana",
+       "pos": "center",
+       "mood": "angry"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Ana",
+       "text": "Where is my invoice?!"
+      }
+     ]
+    },
+    {
+     "scene": "plain",
+     "characters": [
+      {
+       "who": "Shop",
+       "pos": "center",
+       "mood": "worried"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Shop",
+       "text": "Rule: invoices go out after payment arrives.",
+       "kind": "think"
+      }
+     ]
+    },
+    {
+     "scene": "screen",
+     "screen": {
+      "title": "Open orders",
+      "lines": [
+       "Order #1042",
+       "Paid",
+       "Ready to ship"
+      ],
+      "status": "ok"
+     },
+     "characters": [
+      {
+       "who": "Ben",
+       "pos": "left",
+       "mood": "smile"
+      },
+      {
+       "who": "Shop",
+       "pos": "right",
+       "mood": "smile"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Ben",
+       "text": "Payment is in. I'll ship it today."
+      }
+     ],
+     "caption": "Screen: Open orders (warehouse)"
+    },
+    {
+     "scene": "burst",
+     "characters": [
+      {
+       "who": "Ana",
+       "pos": "center",
+       "mood": "proud"
+      }
+     ],
+     "bubbles": [
+      {
+       "who": "Ana",
+       "text": "Invoice and parcel — both on time."
+      }
+     ],
+     "caption": "Order delivered"
+    }
+   ]
+  }
+ ]
+}
