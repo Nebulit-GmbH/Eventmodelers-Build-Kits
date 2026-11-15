@@ -8,8 +8,9 @@
 // Rules:
 // - Programs: curl (only to the platform's baseUrl), python3 (two exact forms), uuidgen, jq, git (read-only
 //   subcommands), and read-only text tools (cat, head, tail, wc, sort, uniq, grep, cut, tr, ls), echo, printf,
-//   mkdir, sleep, date, true, and node for exactly one script: the kit's own prototype skill (.claude/skills/prototype/
-//   assets/prototype.mjs status|assemble|upload — the agent can't edit .claude/, so what runs is fixed). Nothing else —
+//   mkdir, sleep, date, true, and node for exactly two scripts: the kit's own prototype skill (.claude/skills/prototype/
+//   assets/prototype.mjs status|assemble|upload) and comic skill (.claude/skills/comic/scripts/render-comic.mjs <dir>
+//   [--post …]) — the agent can't edit .claude/, so what runs is fixed. Nothing else —
 //   no sh/bash/eval/env/xargs/find/sed/awk/npm/rm/mv/cp, no other node.
 // - No command substitution ($(…), `…`, $((…)), <(…)) except exactly $(uuidgen) and $(seq N) / $(seq A B) — they mint
 //   ids and run nothing else. No subshells, brace groups, brace expansion, background jobs or ~ paths. The only control
@@ -408,6 +409,31 @@ function isPrototypeRun(cmd, policy) {
     && resolve(policy.cwd, script.text) === resolve(policy.cwd, ...PROTOTYPE_SCRIPT);
 }
 
+// The comic skill's script: draws <dir>/storyboard.json as SVG pages and, with --post, posts the comic to the board chat
+// (the token comes in as EM_TOKEN, like the prototype script's). Same rule: resolved against the kit, not the temp roots.
+const COMIC_SCRIPT = ['.claude', 'skills', 'comic', 'scripts', 'render-comic.mjs'];
+const COMIC_VALUE_FLAGS = new Set(['--base', '--org', '--board', '--agent', '--session']);
+
+function isComicRun(cmd, policy) {
+  const [prog, script] = cmd.words;
+  return prog?.text === 'node' && !!script && !script.refs.length
+    && resolve(policy.cwd, script.text) === resolve(policy.cwd, ...COMIC_SCRIPT);
+}
+
+function checkComicRun(cmd, policy) {
+  const [, , dir, ...rest] = cmd.words;
+  if (!dir || dir.text.startsWith('-')) refuse('the comic script runs as: render-comic.mjs <directory> [--post] [--flag value …]');
+  checkPath(dir.text, 'comic directory', policy);
+  for (let k = 0; k < rest.length; k++) {
+    const flag = rest[k].text;
+    if (flag === '--post') continue;
+    if (!COMIC_VALUE_FLAGS.has(flag) || !rest[k + 1]) refuse(`comic script option ${flag} is not allowed`);
+    if (flag === '--base') checkUrl(rest[k + 1], policy);
+    k++;
+  }
+  if (cmd.redirects.some((r) => r.op !== '>&' && r.target.text !== '/dev/null')) refuse('the comic script runs without redirections');
+}
+
 function checkPrototypeRun(cmd, policy) {
   const [, , sub, ...rest] = cmd.words;
   if (!['status', 'assemble', 'upload'].includes(sub?.text)) refuse('the prototype script runs as: status, assemble or upload');
@@ -428,7 +454,8 @@ function checkProgram(cmd, policy) {
   if (progWord.refs.length || prog.includes('/')) refuse(`run programs by plain name — "${prog}"`);
   switch (prog) {
     case 'node':
-      if (!isPrototypeRun(cmd, policy)) refuse('node may only run the kit\'s .claude/skills/prototype/assets/prototype.mjs');
+      if (isComicRun(cmd, policy)) return checkComicRun(cmd, policy);
+      if (!isPrototypeRun(cmd, policy)) refuse('node may only run the kit\'s .claude/skills/prototype/assets/prototype.mjs or .claude/skills/comic/scripts/render-comic.mjs');
       return checkPrototypeRun(cmd, policy);
     case 'curl': return checkCurl(args, policy);
     case 'git': return checkGit(args, policy);
@@ -453,10 +480,10 @@ export function checkBashCommand(command, policy) {
     const assigned = new Set(unwrapLoops(commands));
     for (const cmd of commands) {
       for (const a of cmd.assignments) {
-        // The one place besides curl -H the token may go: the prototype script's EM_TOKEN, nothing else assigned to it.
+        // The one place besides curl -H the token may go: the prototype and comic scripts' EM_TOKEN, nothing else assigned to it.
         if (a.name === 'EM_TOKEN') {
-          if (!isPrototypeRun(cmd, policy) || !/^\$(?:TOKEN|EVENTMODELERS_TOKEN)$/.test(a.word.text.slice(a.name.length + 1))) {
-            refuse('EM_TOKEN may only be set to the board token for the prototype script');
+          if (!(isPrototypeRun(cmd, policy) || isComicRun(cmd, policy)) || !/^\$(?:TOKEN|EVENTMODELERS_TOKEN)$/.test(a.word.text.slice(a.name.length + 1))) {
+            refuse('EM_TOKEN may only be set to the board token for the prototype or comic script');
           }
           a.word.tokenAllowed = true;
           continue;

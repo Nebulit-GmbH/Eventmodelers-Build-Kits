@@ -1,0 +1,12 @@
+{ "text": "A comic: what happens when an order is placed.", "title": "Order placed",
+  "cast": { "Ana": {"kind":"person","hair":"messy","hairColor":"#5a3825","glasses":true,"skin":"#f2c9a0"}, "Shop": {"kind":"robot","label":"SHOP"} },
+  "pages": [
+   { "accent":"indigo", "alt":"Ana places an order", "panels":[
+     {"scene":"office","characters":[{"who":"Ana","pos":"left","mood":"worried"},{"who":"Shop","pos":"right","mood":"neutral"}],"bubbles":[{"who":"Ana","text":"Did my order go through?"},{"who":"Shop","text":"Let me check the diary of events."}],"caption":"Monday, 9:02"},
+     {"scene":"burst","characters":[{"who":"Ana","pos":"left","mood":"surprised"},{"who":"Shop","pos":"right","mood":"proud"}],"bubbles":[{"who":"Shop","text":"OrderPlaced. It happened, and nobody can erase it."}],"sfx":"DING!"},
+     {"scene":"screen","screen":{"title":"My orders","lines":["Order #1042","2 items","Paid"],"status":"ok"},"characters":[{"who":"Ana","pos":"left","mood":"smile"},{"who":"Shop","pos":"right","mood":"smile"}],"bubbles":[{"who":"Ana","text":"There it is!"}],"caption":"The read model: a notice board for events."} ] },
+   { "accent":"coral", "alt":"four panels", "panels":[
+     {"scene":"night","characters":[{"who":"Ana","pos":"center","mood":"angry"}],"bubbles":[{"who":"Ana","text":"Why is the invoice late?!"}]},
+     {"scene":"plain","characters":[{"who":"Shop","pos":"center","mood":"worried"}],"bubbles":[{"who":"Shop","text":"The automation waits for the payment event.","kind":"think"}]},
+     {"scene":"office","characters":[{"who":"Ana","pos":"left","mood":"neutral"},{"who":"Shop","pos":"right","mood":"smile"}],"bubbles":[{"who":"Shop","text":"Payment received. Sending it now."}]},
+     {"scene":"burst","characters":[{"who":"Ana","pos":"center","mood":"proud"}],"bubbles":[{"who":"Ana","text":"Events make the story easy to follow."}],"caption":"The end"} ] } ] }

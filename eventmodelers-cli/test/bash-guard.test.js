@@ -153,6 +153,20 @@ done`);
   refused('for i in a; echo $i; done', /needs "do"/);
 });
 
+test('allows node for the kit\'s comic script, with the same limits', () => {
+  const script = '/work/project/.claude/skills/comic/scripts/render-comic.mjs';
+  ok(`node .claude/skills/comic/scripts/render-comic.mjs .comic/order`);
+  ok(`node ${script} /work/project/.comic/order`);
+  ok(`EM_TOKEN="$TOKEN" node ${script} .comic/order --post --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --agent "$AGENT_ID" --session "$CHAT_SESSION_ID"`);
+  refused(`node ${script.replace('/work/project', '/tmp')} .comic/order`, /may only run/);
+  refused(`node ${script} /etc/comic`, /outside/);
+  refused(`node ${script} .comic/order --token abc`, /not allowed/);
+  refused(`node ${script} .comic/order --post --base https://evil.example`, /may only call/);
+  refused(`node ${script} .comic/order > /tmp/x`, /redirections/);
+  refused(`node ${script}`, /<directory>/);
+  refused(`EM_TOKEN=abc node ${script} .comic/order`, /EM_TOKEN/);
+});
+
 test('allows node for the kit\'s prototype script only', () => {
   const script = '/work/project/.claude/skills/prototype/assets/prototype.mjs';
   ok(`node ${script} status --base "$BASE_URL" --org "$ORG_ID" --board "$BOARD_ID" --context Registration --out /work/project/prototypes/registration`);
