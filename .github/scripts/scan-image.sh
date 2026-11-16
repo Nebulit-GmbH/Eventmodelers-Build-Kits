@@ -36,14 +36,22 @@ docker export "$cid" | tar -x -C "$work" 2>/dev/null || true
 roots=()
 for d in workspace home root opt/eventmodelers-cli etc usr/local/bin; do [ -d "$work/$d" ] && roots+=("$work/$d"); done
 
+# Third-party code the agent installers drop into the home dir (Hermes: sources, tests, vendored
+# Python packages, uv/pnpm caches, certifi bundles). It is code, not our config, and its tests and
+# docs are full of fake tokens. Everything else under home (config.yaml, auth files, ...) is scanned.
+vendor_prune=( -path '*/node_modules' -o -path '*/.hermes/hermes-agent' -o -path '*/.hermes/installs' \
+  -o -path '*/.hermes/cache' -o -path '*/.hermes/tools' -o -path '*/.hermes/skills' -o -path '*/.local/share/uv' )
+
 # Files that exist only to hold credentials. `.env.example` templates and empty rc files are fine.
 while IFS= read -r f; do
   case "$f" in
     *.env.example|*.env.sample) continue ;;
     */.npmrc|*/.yarnrc|*/.yarnrc.yml) [ -s "$f" ] || continue ;;
+    # An installer's template .env (comments/blank lines only) holds nothing.
+    */.env) grep -Eq '^[[:space:]]*(export[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*=[^[:space:]#]' "$f" || continue ;;
   esac
   flag "credential file present: ${f#"$work"}"
-done < <(find "${roots[@]}" -path '*/node_modules' -prune -o -type f \( \
+done < <(find "${roots[@]}" \( "${vendor_prune[@]}" \) -prune -o -type f \( \
     -name '.env' -o -name '.env.*' -o -name auth.json -o -name opencode.json -o -name '.netrc' \
     -o -name '.git-credentials' -o -name '.dockercfg' -o -name '.npmrc' -o -name '.yarnrc' -o -name '.yarnrc.yml' \
     -o -name '*.pem' -o -name 'id_rsa*' -o -name 'id_ed25519*' \
@@ -51,7 +59,7 @@ done < <(find "${roots[@]}" -path '*/node_modules' -prune -o -type f \( \
     -o -path '*/.eventmodelers/config.json' \) -print 2>/dev/null)
 
 # Token-shaped content anywhere in those roots.
-if hits=$(grep -rIlE --exclude-dir=node_modules "$patterns" "${roots[@]}" 2>/dev/null) && [ -n "$hits" ]; then
+if hits=$(find "${roots[@]}" \( "${vendor_prune[@]}" \) -prune -o -type f -print0 2>/dev/null | xargs -0 grep -IlE "$patterns" 2>/dev/null) && [ -n "$hits" ]; then
   while IFS= read -r f; do flag "token-shaped string in ${f#"$work"}"; done <<<"$hits"
 fi
 
@@ -60,7 +68,7 @@ fi
 homes=()
 for d in workspace home root; do [ -d "$work/$d" ] && homes+=("$work/$d"); done
 if [ ${#homes[@]} -gt 0 ]; then
-  if hits=$(grep -rIlE --include='*.json' --exclude-dir=node_modules '"(token|apiKey|api_key)"[[:space:]]*:[[:space:]]*"[^"<$]' "${homes[@]}" 2>/dev/null) && [ -n "$hits" ]; then
+  if hits=$(find "${homes[@]}" \( "${vendor_prune[@]}" \) -prune -o -type f -name '*.json' -print0 2>/dev/null | xargs -0 grep -IlE '"(token|apiKey|api_key)"[[:space:]]*:[[:space:]]*"[^"<$]' 2>/dev/null) && [ -n "$hits" ]; then
     while IFS= read -r f; do flag "populated token field in ${f#"$work"}"; done <<<"$hits"
   fi
 fi
