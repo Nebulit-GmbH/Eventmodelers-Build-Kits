@@ -2,11 +2,11 @@
 
 Only needed when MCP is not connected. Every call below has an MCP equivalent in the main SKILL.md — always prefer that.
 
-## Board Context — Check existing EVENT nodes
+## Board Context — Check existing EVENT nodes of a chapter
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&chapterId=$CHAPTER_ID&projection=line"
 ```
 
 ## Board Context — Check existing CHAPTER nodes

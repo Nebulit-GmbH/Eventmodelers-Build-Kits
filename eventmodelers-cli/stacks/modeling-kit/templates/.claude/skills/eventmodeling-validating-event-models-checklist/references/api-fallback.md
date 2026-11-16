@@ -4,14 +4,16 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ## Board Context
 
+Reads by element type are bound to a chapter: list the chapters first (`nodes?type=CHAPTER&projection=line`), pick `CHAPTER_ID`, and repeat per chapter for a whole-board check.
+
 ```bash
 # Name/type checks — compact per-type lists
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=EVENT&chapterId=$CHAPTER_ID&projection=line"
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=COMMAND&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=COMMAND&chapterId=$CHAPTER_ID&projection=line"
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=READMODEL&chapterId=$CHAPTER_ID&projection=line"
 
 # Field-level checks — fields + dependencies per slice
 curl -s -H "x-token: $TOKEN" \

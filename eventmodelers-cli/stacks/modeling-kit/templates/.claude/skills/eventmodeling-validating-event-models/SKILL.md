@@ -31,10 +31,12 @@ Prefer MCP (no header wiring needed, auth resolves from the connected session). 
 
 - **Naming, past tense, duplicates, attribute names** — only titles, types and field names are needed, so call `get_nodes` once per type with the `line` projection (`{id, type, title, fields}`, `fields` = attribute names):
 
+  Reads by element type are bound to a chapter (a bare `type` read would load every such node on the board). Take the chapters from `get_nodes { "boardId": "$BOARD_ID", "type": "CHAPTER", "projection": "line" }`, validate the chapter in question (repeat per chapter for a whole-board check), and pass its id:
+
   ```
-  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "projection": "line" }
-  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND", "projection": "line" }
-  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "EVENT", "chapterId": "<CHAPTER_ID>", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "COMMAND", "chapterId": "<CHAPTER_ID>", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "READMODEL", "chapterId": "<CHAPTER_ID>", "projection": "line" }
   ```
 
 - **Field-source traceability** (every command field comes from a connected read model or is marked generated) — needs field bodies and dependencies, so use the slice data `fields` projection per context:

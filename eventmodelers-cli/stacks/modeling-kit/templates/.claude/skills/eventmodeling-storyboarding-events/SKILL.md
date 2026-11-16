@@ -90,12 +90,12 @@ Solution: Every event includes timestamp
 
 ## Board Integration
 
-Before starting the analysis, read existing screen nodes from the board to avoid designing screens that already exist. Screens created by this skill default to HTML_SCREEN, but older boards may still have plain SCREEN (sketch) nodes — check both types. Titles and field names are all this dedupe needs, so use `projection: "line"` (no HTML bodies); read a screen in full with `get_node` only if you must inspect its design:
+Before starting the analysis, read the existing screen nodes of the chapter you are storyboarding (`<CHAPTER_ID>`; a read by `type` alone would load every screen on the board) to avoid designing screens that already exist. Screens created by this skill default to HTML_SCREEN, but older boards may still have plain SCREEN (sketch) nodes — check both types. Titles and field names are all this dedupe needs, so use `projection: "line"` (no HTML bodies); read a screen in full with `get_node` only if you must inspect its design:
 
 **Prefer MCP:**
 ```
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN", "projection": "line" }
-mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN", "projection": "line" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "HTML_SCREEN", "chapterId": "<CHAPTER_ID>", "projection": "line" }
+mcp__eventmodelers__get_nodes { "boardId": "$BOARD_ID", "type": "SCREEN", "chapterId": "<CHAPTER_ID>", "projection": "line" }
 ```
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Board Integration — Check existing screen nodes".

@@ -58,6 +58,8 @@ Pick the cheapest read that answers the step's question, and name the reason in 
 
 Two cheap projected calls (e.g. `outline` + `specs`) beat one full call when the step doesn't need comments, prompts or field bodies. `projection: "line"` never carries `sliceStatus`, `meta`, positions, field types or examples; `projection: "fields"` adds the full field definitions and `parentId`, still no `sliceStatus`, positions or node description — if a later step reads any of those, use the full read. `get_nodes { type: "CHAPTER" }` without a projection returns every chapter's full grid; to just list or pick chapters, add `projection: "line"`.
 
+**Scope every node read by chapter — never read the board globally.** Boards can hold thousands of nodes, so a read by element type alone (`get_nodes { type: "EVENT" }`, `GET .../nodes?type=COMMAND`) pulls every such node of every chapter. List the chapters first (`type: "CHAPTER"`, `projection: "line"` — chapters are few and fine to list), pick the one the task is about, then read with `chapterId` (and the cheapest projection). For a whole-board question, loop over the chapters or use `get_board_outline` / `get_slice_data` per chapter or context instead of one board-wide read. A node you only know by title: `name` narrows it. Reading by `type` alone is only fine for the few structural types — `CHAPTER`, `MODEL_CONTEXT`, `SLICE_BORDER`.
+
 ---
 
 ## Authentication & Headers

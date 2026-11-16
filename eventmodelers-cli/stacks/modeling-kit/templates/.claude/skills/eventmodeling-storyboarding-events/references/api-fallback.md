@@ -6,9 +6,9 @@ Only needed when MCP is not connected. Every call below has an MCP equivalent in
 
 ```bash
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=HTML_SCREEN&chapterId=$CHAPTER_ID&projection=line"
 curl -s -H "x-token: $TOKEN" \
-  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN&projection=line"
+  "$BASE_URL/api/org/$ORG_ID/boards/$BOARD_ID/nodes?type=SCREEN&chapterId=$CHAPTER_ID&projection=line"
 ```
 
 ## Resolve One Actor Lane Per Human Role — Step 1: Fetch the chapter's actor rows

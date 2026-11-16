@@ -42,10 +42,12 @@ Read the current board state before running the checklist:
 
 - **Name/type checks** (Phase 1.1 timeline ownership by name, Phase 2.3 past tense, duplicate names) — `get_nodes` once per type with the `line` projection (`{id, type, title, fields}`, `fields` = attribute names only):
 
+  Reads by element type are bound to a chapter (a bare `type` read would load every such node on the board). Take the chapters from `get_nodes { "boardId": "<BOARD_ID>", "type": "CHAPTER", "projection": "line" }`, validate the chapter in question (repeat per chapter for a whole-board check), and pass its id:
+
   ```
-  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT", "projection": "line" }
-  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND", "projection": "line" }
-  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "EVENT", "chapterId": "<CHAPTER_ID>", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "COMMAND", "chapterId": "<CHAPTER_ID>", "projection": "line" }
+  mcp__eventmodelers__get_nodes { "boardId": "<BOARD_ID>", "type": "READMODEL", "chapterId": "<CHAPTER_ID>", "projection": "line" }
   ```
 
 - **Field-level checks** (Phase 2.1/2.2 computed or mutable event data, Phase 3 read-model sources, Phase 5 traceability, Phase 7 structural shapes via dependencies) — the slice data `fields` projection per context: elements with fields and dependencies, no specs/comments:
