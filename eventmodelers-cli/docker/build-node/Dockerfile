@@ -46,7 +46,7 @@ WORKDIR /workspace
 # Its MCP servers live in ~/.hermes/config.yaml (there is no project-level file), so the eventmodelers
 # server is written there with env references only: nothing secret is baked in.
 RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
- && rm -rf /home/node/.hermes/tools/chromium-* /home/node/.hermes/tools/ffmpeg-* \
+ && rm -rf /home/node/.hermes/tools/chromium-* /home/node/.hermes/tools/ffmpeg-* /home/node/.hermes/.env \
  && printf 'mcp_servers:\n  eventmodelers:\n    url: "${EVENTMODELERS_BASE_URL}/mcp"\n    headers:\n      x-token: "${EVENTMODELERS_TOKEN}"\n' >> /home/node/.hermes/config.yaml \
  && /home/node/.local/bin/hermes --version
 ENV PATH=/home/node/.local/bin:$PATH
