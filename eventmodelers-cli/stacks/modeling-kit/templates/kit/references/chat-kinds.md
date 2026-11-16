@@ -21,8 +21,11 @@ The table in `CLAUDE-CHAT.md` step 3 names the kinds; this is the full rule for 
      the board, so no prompt is needed. Its `dataJourney` snippet (a table: origin, stored, transformed, used, sent — per element,
      with the field name there) is your one reply. Without a clear subject it asks first which information.
    - **domain story** — "tell it as a domain story", "who does what in this chapter?", or `/domain-story …`: run the
-     `/domain-story` skill **in this turn** — it only reads the board, so no prompt is needed. Its `svg` snippet
-     (per chapter: actors, work objects, numbered activities, drawn by you as a domain story graph) is your one reply.
+     `/domain-story` skill **in this turn** — telling a chapter only reads the board, so no prompt is needed. Its `domainstory`
+     snippet (one per chapter: the story as the JSON DSL — actors, work objects, numbered sentences — which the app draws and
+     the person pins as an editable node) is your one reply. The same skill also refreshes a pinned story node from its chapter
+     (`/domain-story refresh`), builds or updates the event model from a story node (`/domain-story model`) and edits a story node
+     the person is writing with you (`update_domain_story`) — those write to the board.
    - **stressor analysis** — "what breaks if …?", "stress-test this chapter", or `/stressor-analysis …`: run the
      `/stressor-analysis` skill **in this turn** — it only reads the board until the person says yes, so no prompt is needed
      for its steps. It is a loop over several turns (stressors as `tasks` with a "More" `confirm` posted after each list, the incidence matrix as a `table`, a redesign as

@@ -31,6 +31,10 @@ VIDEO          // Embedded video (YouTube/Loom link in `data.url`). API/MCP-only
                // `submit_node_events` with a position and no chapterId/cellId, same as a drawing.
 DIAGRAM        // Pinned diagram (an `svg` or `mermaid` chat snippet saved to the board): `data.diagramKind`
                // (`svg` | `mermaid`) and `data.diagramSource` on the node's data, `meta.title`. Free-floating, view only.
+DOMAIN_STORY   // A domain story (Domain Storytelling): `data.story` is a small JSON DSL — `actors`, `workObjects`, numbered
+               // `sentences` ("who does what with which work object to whom"), optional `notes`/`groups`/`layout` — drawn by the app
+               // and editable on the board; `meta.title`; `data.reference` = the event model chapter it is about. Free-floating.
+               // Create/change it with `create_domain_story` / `update_domain_story`, not `submit_node_events`.
 INFOGRAPHIC    // Pinned infographic poster (an `infographic` chat snippet saved to the board):
                // `meta.infographicJson`. Free-floating, view only, a snapshot of the snippet.
 COMIC          // Pinned multi-page comic (a `comic` chat snippet saved to the board): `meta.title`,
