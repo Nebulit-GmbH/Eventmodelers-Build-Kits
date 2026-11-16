@@ -289,7 +289,7 @@ npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exe
 npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
 npx @eventmodelers/cli run --modeling --agent pi           # = --exec "pi --approve -p"; needs Pi 1.x (`npm i -g @earendil-works/pi-coding-agent`) — the old @mariozechner package has no MCP. --approve trusts the project so Pi reads .pi/mcp.json and the skills in .agents/skills (`init-agents --hosts pi`)
 npx @eventmodelers/cli run --modeling --agent cursor       # = --exec "agent -p --output-format text --approve-mcps --force --trust"; creates one Cursor chat and resumes it every turn, so only the first turn reads the kit
-npx @eventmodelers/cli run --modeling --agent kiro         # = --exec "kiro-cli chat --no-interactive --trust-all-tools --trust-workspace"; sign in once with `kiro-cli login`. --trust-workspace is what lets a headless run load the project .kiro/settings/mcp.json (the token stays in the environment). CLI only: the Docker images do not carry Kiro
+npx @eventmodelers/cli run --modeling --agent kiro         # = --exec "kiro-cli chat --no-interactive --trust-all-tools --trust-workspace"; sign in once with `kiro-cli login`, or set `KIRO_API_KEY` (Kiro Pro and up) to skip the browser login. --trust-workspace is what lets a headless run load the project .kiro/settings/mcp.json (the token stays in the environment). The Docker images carry it too (`-e AGENT=kiro -e KIRO_API_KEY`)
 npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
 npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
 npx @eventmodelers/cli run --agent                         # list the agents and the command each runs
@@ -331,8 +331,8 @@ server to register by hand (`<baseUrl>/mcp`, header `x-token` from `$EVENTMODELE
 Run `init-agents --hosts <harness>` to install the skills for a harness that does not read
 `.claude/skills`. There are no subagents: self-directed work is done inline.
 
-**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode, Codex, Gemini CLI, Hermes and Pi all installed;
-`AGENT` (`claude` by default, or `opencode`, `codex`, `gemini`, `hermes`, `pi`) picks which one runs. Build from this directory and pass the board's
+**In a container.** `docker/agent/Dockerfile` runs the modeling agent with Claude Code, OpenCode, Codex, Gemini CLI, Hermes, Pi and Kiro all installed;
+`AGENT` (`claude` by default, or `opencode`, `codex`, `gemini`, `hermes`, `pi`, `kiro`) picks which one runs. Build from this directory and pass the board's
 credentials as env vars:
 
 ```bash
@@ -346,7 +346,7 @@ Claude authenticates with `ANTHROPIC_API_KEY`, or with your subscription via `CL
 once). The container is the sandbox, so the image sets `EVENTMODELERS_CODEX_NO_SANDBOX=1`, which makes the `codex` preset run
 `--dangerously-bypass-approvals-and-sandbox` instead of `--full-auto`.
 
-Keys: `OPENAI_API_KEY` (codex), a provider key Pi reads itself (e.g. `ANTHROPIC_API_KEY`; run it as `-e AGENT=pi --model <provider/model>`), `GEMINI_API_KEY` (gemini), and for Hermes a provider key such as `OPENROUTER_API_KEY`. Hermes reads MCP
+Keys: `OPENAI_API_KEY` (codex), a provider key Pi reads itself (e.g. `ANTHROPIC_API_KEY`; run it as `-e AGENT=pi --model <provider/model>`), `GEMINI_API_KEY` (gemini), `KIRO_API_KEY` (kiro; generate it in your Kiro account, Pro plan or higher; there is no browser login in a container), and for Hermes a provider key such as `OPENROUTER_API_KEY`. Hermes reads MCP
 servers only from `~/.hermes/config.yaml`, so the images ship the eventmodelers server there (env references, no secret); outside
 Docker the CLI logs the snippet to add. Run `hermes` in a container as `-e AGENT=hermes --model <provider/model>`.
 

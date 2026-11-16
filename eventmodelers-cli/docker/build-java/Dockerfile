@@ -18,14 +18,14 @@ FROM eclipse-temurin:21-jdk AS jdk
 FROM node:22-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl ca-certificates xz-utils libatomic1 \
+ && apt-get install -y --no-install-recommends git curl ca-certificates xz-utils zstd libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 
 # node:22-slim is Debian bookworm, which has no JDK 21 package — take it from the Temurin image.
 COPY --from=jdk /opt/java/openjdk /opt/java/openjdk
 ENV JAVA_HOME=/opt/java/openjdk PATH=/opt/java/openjdk/bin:$PATH
 
-# All agent CLIs; AGENT (claude, opencode, codex, gemini or hermes) picks the one that runs.
+# All agent CLIs; AGENT (claude, opencode, codex, gemini, hermes or kiro) picks the one that runs.
 # Claude Code refuses --dangerously-skip-permissions as root, hence USER node below.
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli && claude --version && codex --version && gemini --version
 # OpenCode 2.x from its v2 installer, not npm or the v1 installer: `run --standalone` (which the CLI's
@@ -59,6 +59,12 @@ RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
  && printf 'mcp_servers:\n  eventmodelers:\n    url: "${EVENTMODELERS_BASE_URL}/mcp"\n    headers:\n      x-token: "${EVENTMODELERS_TOKEN}"\n' >> /home/node/.hermes/config.yaml \
  && /home/node/.local/bin/hermes --version
 ENV PATH=/home/node/.local/bin:$PATH
+
+# Kiro CLI installs per user into ~/.local/bin (already on PATH). Headless auth is KIRO_API_KEY (Kiro Pro and up),
+# forwarded from the caller's shell at run time: nothing is baked in. KIRO_CLI_SKIP_SETUP skips the interactive
+# first-run setup; zstd above is what the installer's tarball needs.
+RUN curl -fsSL https://cli.kiro.dev/install | KIRO_CLI_SKIP_SETUP=1 bash \
+ && kiro-cli --version
 
 # The container is the sandbox: Codex runs without its own (see resolveAgentPreset in cli.js).
 ENV EVENTMODELERS_CODEX_NO_SANDBOX=1 EVENTMODELERS_NO_UPDATE_CHECK=1 STACK=axon

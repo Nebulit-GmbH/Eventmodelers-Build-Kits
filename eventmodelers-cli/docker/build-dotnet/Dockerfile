@@ -18,7 +18,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet
 FROM node:22-trixie-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl ca-certificates xz-utils libatomic1 libicu76 libssl3t64 zlib1g \
+ && apt-get install -y --no-install-recommends git curl ca-certificates xz-utils zstd libatomic1 libicu76 libssl3t64 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
 # Same Debian release as the .NET 10 SDK image (trixie, hence node:22-trixie-slim), so the SDK copied from the Microsoft image runs as is.
@@ -26,7 +26,7 @@ COPY --from=dotnet /usr/share/dotnet /usr/share/dotnet
 RUN ln -s /usr/share/dotnet/dotnet /usr/local/bin/dotnet
 ENV DOTNET_ROOT=/usr/share/dotnet DOTNET_NOLOGO=1 DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-# All agent CLIs; AGENT (claude, opencode, codex, gemini or hermes) picks the one that runs.
+# All agent CLIs; AGENT (claude, opencode, codex, gemini, hermes or kiro) picks the one that runs.
 # Claude Code refuses --dangerously-skip-permissions as root, hence USER node below.
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli && claude --version && codex --version && gemini --version
 # OpenCode 2.x from its v2 installer, not npm or the v1 installer: `run --standalone` (which the CLI's
@@ -60,6 +60,12 @@ RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
  && printf 'mcp_servers:\n  eventmodelers:\n    url: "${EVENTMODELERS_BASE_URL}/mcp"\n    headers:\n      x-token: "${EVENTMODELERS_TOKEN}"\n' >> /home/node/.hermes/config.yaml \
  && /home/node/.local/bin/hermes --version
 ENV PATH=/home/node/.local/bin:$PATH
+
+# Kiro CLI installs per user into ~/.local/bin (already on PATH). Headless auth is KIRO_API_KEY (Kiro Pro and up),
+# forwarded from the caller's shell at run time: nothing is baked in. KIRO_CLI_SKIP_SETUP skips the interactive
+# first-run setup; zstd above is what the installer's tarball needs.
+RUN curl -fsSL https://cli.kiro.dev/install | KIRO_CLI_SKIP_SETUP=1 bash \
+ && kiro-cli --version
 
 # The container is the sandbox: Codex runs without its own (see resolveAgentPreset in cli.js).
 ENV EVENTMODELERS_CODEX_NO_SANDBOX=1 EVENTMODELERS_NO_UPDATE_CHECK=1 STACK=cratis-csharp KIT_GIT=https://github.com/Cratis/Eventmodelers-Build-Kit-CSharp

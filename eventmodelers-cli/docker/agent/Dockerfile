@@ -10,10 +10,10 @@
 FROM node:22-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends git curl jq uuid-runtime ca-certificates xz-utils libatomic1 \
+ && apt-get install -y --no-install-recommends git curl jq uuid-runtime ca-certificates xz-utils zstd libatomic1 \
  && rm -rf /var/lib/apt/lists/*
 
-# All agent CLIs; AGENT (claude, opencode, codex, gemini, hermes or pi) picks the one that runs.
+# All agent CLIs; AGENT (claude, opencode, codex, gemini, hermes, pi or kiro) picks the one that runs.
 # Runs as USER node (below): the agent never needs root, and Claude Code refuses some permission modes as root.
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli @earendil-works/pi-coding-agent && claude --version && codex --version && gemini --version && pi --version
 # OpenCode 2.x from its v2 installer, not npm or the v1 installer: `run --standalone` (which the CLI's
@@ -46,6 +46,12 @@ RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
  && printf 'mcp_servers:\n  eventmodelers:\n    url: "${EVENTMODELERS_BASE_URL}/mcp"\n    headers:\n      x-token: "${EVENTMODELERS_TOKEN}"\n' >> /home/node/.hermes/config.yaml \
  && /home/node/.local/bin/hermes --version
 ENV PATH=/home/node/.local/bin:$PATH
+
+# Kiro CLI installs per user into ~/.local/bin (already on PATH). Headless auth is KIRO_API_KEY (Kiro Pro and up),
+# forwarded from the caller's shell at run time: nothing is baked in. KIRO_CLI_SKIP_SETUP skips the interactive
+# first-run setup; zstd above is what the installer's tarball needs.
+RUN curl -fsSL https://cli.kiro.dev/install | KIRO_CLI_SKIP_SETUP=1 bash \
+ && kiro-cli --version
 # init asks where credentials come from; 4 = skip, they arrive through the environment at run time.
 RUN printf '4\n' | eventmodelers init --modeling && eventmodelers init-agents --hosts opencode && eventmodelers init-agents --hosts codex
 
