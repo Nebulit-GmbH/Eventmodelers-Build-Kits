@@ -46,7 +46,6 @@ test('run --acp is refused next to --exec or --local-ai, and needs an agent', ()
   assert.match(run(['--agent', 'opencode', '--acp', '--exec', 'x']), /mutually exclusive/);
   assert.match(run(['--agent', 'opencode', '--acp', '--local-ai']), /mutually exclusive/);
   assert.match(run(['--acp']), /--acp needs --agent/);
-  assert.match(run(['--agent', 'opencode', '--acp', '--model', 'x']), /--model does not apply/);
   assert.doesNotMatch(run(['--agent', 'opencode', '--acp']), /modeling loop/); // no longer modeling-only
 });
 
@@ -115,4 +114,18 @@ test('--reset-session is a modeling-loop flag', () => {
   assert.match(run(['--reset-session']), /--reset-session is for the modeling loop/);
   assert.match(run(['--agent', 'opencode', '--acp', '--reset-session']), /--reset-session is for the modeling loop/);
   assert.match(execFileSync('node', [cli, 'run', '--help'], { encoding: 'utf8' }), /--reset-session/);
+});
+
+for (const kind of ['options', 'legacy']) {
+  test(`--model is chosen in the ACP session (${kind})`, async () => {
+    const session = createAcpSession({ agent, cwd: process.cwd(), model: 'prov/m1', env: { ...process.env, FAKE_ACP_MODELS: kind } });
+    try { assert.equal((await session.runTurn('model')).text, 'prov/m1'); } finally { session.close(); }
+  });
+}
+
+test('--model that the ACP agent does not list fails with the choices; an agent with no model choice says so', async () => {
+  const listed = createAcpSession({ agent, cwd: process.cwd(), model: 'nope', env: { ...process.env, FAKE_ACP_MODELS: 'options' } });
+  try { await assert.rejects(listed.runTurn('hello'), /no model "nope" — available: default\/m0, prov\/m1/); } finally { listed.close(); }
+  const none = createAcpSession({ agent, cwd: process.cwd(), model: 'x' });
+  try { await assert.rejects(none.runTurn('hello'), /offers no way to choose a model/); } finally { none.close(); }
 });

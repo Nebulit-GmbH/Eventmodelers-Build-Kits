@@ -25,7 +25,7 @@ export function tokenSummary(u) {
   return `new ${k(u.inputTokens + u.cacheWriteTokens)} · replayed from cache ${k(u.cacheReadTokens)} · out ${k(u.outputTokens)}`;
 }
 
-export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose = false, onToolUse }) {
+export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose = false, model = null, onToolUse }) {
   const timeoutMs = turnTimeoutMs(cfg);
   let primed = false; // a turn has succeeded: the session has read the kit, so later turns skip the preamble
   let queue = Promise.resolve();
@@ -45,6 +45,7 @@ export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose =
         ...(cfg.agentId ? [{ name: 'x-agent-id', value: cfg.agentId }] : []),
       ],
     },
+    model,
     log,
     onExit: () => { primed = false; }, // a new process knows nothing of the kit, so the next turn carries the preamble again
   });

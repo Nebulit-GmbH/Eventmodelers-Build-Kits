@@ -12,6 +12,7 @@ let sessions = 0;
 let prompts = 0;
 const closed = [];
 let sessionId = null;
+let model = 'default/m0';
 
 createInterface({ input: process.stdin }).on('line', (line) => {
   const msg = JSON.parse(line);
@@ -23,8 +24,15 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (msg.method === 'session/new') {
     mcpServers = msg.params.mcpServers;
     sessionId = `ses_${process.pid}_${++sessions}`;
-    return out({ id: msg.id, result: { sessionId } });
+    // FAKE_ACP_MODELS=options: a `model` config option (newer ACP); =legacy: models + session/set_model; unset: neither.
+    const list = ['default/m0', 'prov/m1'];
+    const extra = process.env.FAKE_ACP_MODELS === 'options'
+      ? { configOptions: [{ id: 'model', category: 'model', type: 'select', currentValue: model, options: list.map((v) => ({ value: v, name: v })) }] }
+      : process.env.FAKE_ACP_MODELS === 'legacy' ? { models: { currentModelId: model, availableModels: list.map((modelId) => ({ modelId, name: modelId })) } } : {};
+    return out({ id: msg.id, result: { sessionId, ...extra } });
   }
+  if (msg.method === 'session/set_config_option') { model = msg.params.value; return out({ id: msg.id, result: { configOptions: [] } }); }
+  if (msg.method === 'session/set_model') { model = msg.params.modelId; return out({ id: msg.id, result: {} }); }
   if (msg.method !== 'session/prompt') return;
   const text = msg.params.prompt[0].text;
   prompts += 1;
@@ -45,6 +53,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   }
   if (text === 'mcp') { chunk(sessionId, JSON.stringify(mcpServers)); return done(); }
   if (text === 'closed') { chunk(sessionId, JSON.stringify(closed)); return done(); }
+  if (text === 'model') { chunk(sessionId, model); return done(); }
   if (text === 'session') { chunk(sessionId, sessionId); return done(); }
   if (text === 'refuse') return done('refusal');
   if (text === 'hang') return; // never answers; session/cancel is ignored too

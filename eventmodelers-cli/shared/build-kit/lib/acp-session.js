@@ -88,7 +88,7 @@ const oneLine = (value, max = 160) => {
  * `{ text, usage, stopReason }`; a refusal or cancel, an RPC error, a timeout (err.timedOut) or the process exiting
  * mid-turn rejects it.
  */
-export function createAcpSession({ agent, cwd, env = process.env, mcp, log = () => {}, onExit = () => {} }) {
+export function createAcpSession({ agent, cwd, env = process.env, mcp, model = null, log = () => {}, onExit = () => {} }) {
   let proc = null;
   let initialized = null; // resolves once the process answered `initialize`
   let sessionPromise = null; // resolves to the sessionId of the current conversation
@@ -201,15 +201,34 @@ export function createAcpSession({ agent, cwd, env = process.env, mcp, log = () 
     initialized.catch(() => {}); // surfaced by the turn that awaits it
   }
 
+  // `--model`: ACP has no model argument at startup, so it is chosen in the new session — through the session's
+  // `model` config option where the agent offers one, else the older `models` list + session/set_model. Either way
+  // the id must be one the agent listed: a typo fails here, naming the choices, not as a provider error mid-turn.
+  async function selectModel(session, wanted) {
+    const option = (session.configOptions ?? []).find((o) => o?.category === 'model' || o?.id === 'model');
+    const choices = option
+      ? (option.options ?? []).flatMap((o) => (o.options ? o.options : [o])).map((o) => o.value)
+      : (session.models?.availableModels ?? []).map((m) => m.modelId);
+    if (!option && !session.models) {
+      throw new Error(`${agent.label} offers no way to choose a model over ACP — set it in ${agent.label}'s own configuration instead of --model`);
+    }
+    if (!choices.includes(wanted)) {
+      throw new Error(`${agent.label} has no model "${wanted}" — available: ${choices.slice(0, 40).join(', ') || '(none listed)'}`);
+    }
+    if (option) await request('session/set_config_option', { sessionId: session.sessionId, configId: option.id, value: wanted });
+    else await request('session/set_model', { sessionId: session.sessionId, modelId: wanted });
+  }
+
   // The process and a conversation in it, each created when missing.
   async function ensureSession() {
     if (!proc) spawnProcess();
     await initialized;
     if (!sessionPromise) {
       const created = request('session/new', { cwd, mcpServers: mcp ? [{ type: 'http', name: 'eventmodelers', url: mcp.url, headers: mcp.headers ?? [] }] : [] })
-        .then((session) => {
+        .then(async (session) => {
+          if (model) await selectModel(session, model);
           sessionId = session.sessionId;
-          log(`ACP: ${agent.label} ready (session ${sessionId})`);
+          log(`ACP: ${agent.label} ready (session ${sessionId})${model ? ` on ${model}` : ''}`);
           return sessionId;
         });
       sessionPromise = created;

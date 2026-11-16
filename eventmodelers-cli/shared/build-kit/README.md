@@ -118,7 +118,7 @@ npx @eventmodelers/cli run --agent gemini     # = --exec "gemini --yolo --output
 
 Add `--model <id>` to pick the model — it becomes the harness's `-m <id>`
 (`run --agent opencode --model opencode/big-pickle`); on the default Claude runner it
-overrides `model` from config for that run.
+overrides `model` from config for that run; with `--acp` it is chosen in the ACP session (it must be a model the agent lists — an unknown one fails with the choices).
 
 `--exec` is the manual fallback: any other harness, or one of these with other flags:
 

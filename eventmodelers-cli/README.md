@@ -195,7 +195,7 @@ npx @eventmodelers/cli run --all                      # every build kit in the p
 npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
 npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor, pi, kiro — bare --agent lists them with their exact commands
-npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
+npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai, chosen in the session with --acp
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
 npx @eventmodelers/cli run --sync                   # share this build agent's event log with the board, constantly, for a live dashboard (see agent-build-log.md)

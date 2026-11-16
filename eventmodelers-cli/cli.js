@@ -2269,7 +2269,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   if (acp) {
     const { createModelingAcpRunner } = await import('./lib/modeling-acp.js');
     execRunner = createModelingAcpRunner({
-      cfg, agent: acp, projectDir, log, verbose,
+      cfg, agent: acp, projectDir, log, verbose, model,
       onToolUse: (name, input) => { const id = `acp-${++localCallSeq}`; noteToolStart(id, name, input); return (outcome) => noteToolEnd(id, outcome); },
     });
   }
@@ -4190,7 +4190,7 @@ credentialFlags(program
   .option('--reset-session', 'Modeling loop only: start a fresh agent conversation after every prompt turn, instead of carrying one conversation for the whole run. Works with the default Claude runner (a new `claude` process), --acp, --agent mastra and Cursor\'s chat; a local model and the other --exec agents start every turn fresh anyway. Bounds how far the context grows and keeps each prompt independent of the last; the cost is that the next turn re-reads the kit and the board it needs, and loses what the warm session remembered (which screen was just rendered, which chapter it already read). Off by default. A build kit already starts a fresh conversation per slice.')
   .option('--acp-cmd <command>', 'Drive any ACP agent that is not covered by --agent, e.g. --acp-cmd "my-agent --acp". Implies --acp; the command must speak ACP over stdio and support HTTP MCP servers.')
   .option('--endpoint <url>', 'With --agent mastra: an OpenAI-compatible endpoint to use instead of a built-in provider (e.g. https://api.franconia.ai/v1). --model is then the endpoint\'s own model name, and the key is read from $MASTRA_API_KEY (never from a file). Also settable as mastra.baseUrl in .eventmodelers/config.json.')
-  .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor, pi and kiro) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), `<provider>/<model>` for --agent mastra (e.g. anthropic/claude-sonnet-5-5), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
+  .option('--model <id>', 'The model the agent runs on, for this run only: `-m <id>` on the --agent opencode/codex/gemini command (`--model <id>` for cursor, pi and kiro) (e.g. opencode/big-pickle, gpt-5-codex, gemini-2.5-pro), `--model <id>` for Claude (overriding `model` from config), `<provider>/<model>` for --agent mastra (e.g. anthropic/claude-sonnet-5-5), chosen in the session for --acp/--acp-cmd (must be a model the agent lists; an unknown one fails with the choices), LOCAL_AI_MODEL for --local-ai. Not with --exec — put the harness\'s own model flag in the command there.')
   .option('--exec [command]', 'Fallback for any harness --agent does not cover, or other flags than its preset. Hand each prompt to an external agent command instead of the default Claude runner — for agentic harnesses that bring their own tool loop, e.g. "codex exec --full-auto", "gemini --yolo -p" or "opencode run". One process per prompt; the prompt is appended as a quoted argument and also written to the file named by RALPH_PROMPT_FILE. Bare --exec uses localAi.exec from .eventmodelers/config.json. Claude remains the default when this flag is absent. A build kit runs it via ralph-exec.js; there, with agent tracing on, include the harness\'s JSON output flag (codex exec --json, opencode run --format json, gemini --output-format stream-json) — without it no slice cost is recorded. With --modeling/--standalone/--worker it is how any agent takes board prompts and chats: the loop claims each prompt or chat message and runs the command once for it. Keep the harness in its plain-text output mode there — stdout is the turn\'s answer — the eventmodelers MCP server is registered for it on every run (opencode.json, .gemini/settings.json, or -c flags for codex; any other command logs what to register by hand), authenticating with $EVENTMODELERS_TOKEN from the env the command inherits, and `init-agents --hosts <harness>` installs the skills for a harness that does not read .claude/skills. No subagents: self-directed work is done inline.')
   .option('--all', 'Run every build kit in this project at once — the one in this directory and any up to two levels below it (a scaffolded app has `.build-kit` at the root and in `web/`, so this works from the app or from the folder holding it) — each from its own directory, output prefixed with the directory, Ctrl+c stops them all. Every other flag is passed on to each run. Not interactive: the kits\' credentials must already be configured (except with --force, which asks once per kit up front, here, before the runs start). With --modeling, the modeling agent runs alongside the build kits. Not with --standalone, --worker, --global, --local or --id (one id cannot belong to several agents).')
   .option('--modeling', 'Connect a modeling agent to the board: it takes prompts and chat messages and hands each to an AI — by default one Claude process kept warm across prompts, for low-latency voice/live use; --agent (or --local-ai, or --exec as the manual fallback) picks another. Runs from a modeling-kit install in this directory, or from the global install (~/.eventmodelers/kit) when there is none. Built into the CLI, not a per-project file.')
@@ -4278,10 +4278,6 @@ credentialFlags(program
         console.error('❌ --acp/--acp-cmd are mutually exclusive with --exec, --local-ai and --agent mastra — pick one runner.');
         process.exit(1);
       }
-      if (opts.model !== undefined) {
-        console.error('❌ --model does not apply to --acp/--acp-cmd — the ACP agent picks its model from its own configuration.');
-        process.exit(1);
-      }
       try {
         acpAgent = resolveAcpAgent({ name: opts.acpAgent ?? null, cmd: opts.acpCmd ?? null });
       } catch (err) {
@@ -4321,7 +4317,7 @@ credentialFlags(program
     else if (model && resolveLocalAiTarget(opts) !== null) process.env.LOCAL_AI_MODEL = model;
     // The default Claude runner: the build kit's ralph-claude.js reads RALPH_MODEL from the env it
     // inherits; the modeling loop takes it as runModeling's `model`.
-    else if (model) process.env.RALPH_MODEL = model;
+    else if (model && !acpAgent) process.env.RALPH_MODEL = model; // an ACP agent takes it in its session (acp-session.js)
     if (command.getOptionValueSource('maxAgents') === 'cli' && !opts.standalone) {
       console.log('ℹ️  --max-agents only applies to --standalone turns; ignoring it here.');
     }
@@ -4411,6 +4407,11 @@ credentialFlags(program
       let codeDir = null;
       if (!kitDir) {
         codeDir = cwd;
+        // Not asked for with --global: say what is happening. The agent then runs in the global kit, not here, so a
+        // project-level agent config in this directory (e.g. opencode.json with a model and provider) is not read.
+        if (!opts.global) {
+          console.log(`⚠️  No kit in ${cwd} — falling back to the global install in ${GLOBAL_KIT_DIR}.\n   The agent runs there, not in this directory, so project-level agent configuration here (e.g. opencode.json,\n   model or provider settings) is NOT picked up. To run in this directory instead: npx @eventmodelers/cli init --modeling\n   To pick the model for this run: --model <id>.\n`);
+        }
         // The blob and the individual flags are both "explicit", so they share a
         // precedence tier — with a single --token/--board-id winning, since overriding one
         // field of a pasted blob is the only reason to pass both.
@@ -4462,7 +4463,7 @@ credentialFlags(program
       const runnerLabel = modelingLocalAi ? 'local model' : opts.exec ? 'one agent process per turn' : opts.mastra ? 'warm Mastra agent' : acpAgent ? `warm ${acpAgent.label} over ACP` : 'warm Claude process';
       await new Promise((res) => process.stdout.write(`▶ Starting modeling loop (${runnerLabel}) for ${shown && !shown.startsWith('..') ? shown : kitDir}...\n\n`, res));
       try {
-        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, mastra: !!opts.mastra, acp: acpAgent, resetSession: !!opts.resetSession, model: !opts.exec && modelingLocalAi === null && !acpAgent ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
+        await runModeling(kitDir, projectDir, { codeDir, verbose: !!opts.verbose, standalone: !!opts.standalone, exclusive: !!opts.exclusive, worker: !!opts.worker, overrides, maxAgents, identity, localAi: modelingLocalAi, exec: opts.exec ?? null, mastra: !!opts.mastra, acp: acpAgent, resetSession: !!opts.resetSession, model: !opts.exec && modelingLocalAi === null ? model : null, skipPermissions: !!opts.dangerouslySkipPermissions, browser: !!opts.browser });
       } catch (err) {
         console.error('[modeling] Fatal:', err);
         process.exit(1);
@@ -4534,7 +4535,7 @@ credentialFlags(program
       // path with no stream-json parsing to gate. RALPH_LOCAL is read by ralph.js's startRalph to force
       // the local-only branch even when .eventmodelers/config.json has valid credentials.
       // RALPH_AGENT_ID/RALPH_AGENT_NAME (--id/--name) are read there too.
-      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_STATUS_TARGET: opts.statusTarget ? String(opts.statusTarget).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', EVENTMODELERS_KIT_DIR: kitDir, RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}), ...(acpAgent ? { RALPH_ACP_AGENT: opts.acpAgent ?? '', RALPH_ACP_CMD: opts.acpCmd ?? '' } : {}) } });
+      execSync(cmd, { cwd: kitDir, stdio: 'inherit', env: { ...process.env, RALPH_VERBOSE: opts.verbose ? '1' : '', RALPH_SYNC: opts.sync ? '1' : '', RALPH_LOCAL: opts.local ? '1' : '', RALPH_HANDOVER: opts.handover ? '1' : '', RALPH_STATUS_TRIGGER: opts.statusTrigger ? String(opts.statusTrigger).trim() : '', RALPH_STATUS_TARGET: opts.statusTarget ? String(opts.statusTarget).trim() : '', RALPH_FEATURE: opts.feature ? String(opts.feature).trim() : '', EVENTMODELERS_KIT_DIR: kitDir, RALPH_AGENT_ID: identity.agentId ?? '', RALPH_AGENT_NAME: identity.agentName ?? '', ...(typeof localAiTarget === 'string' ? { LOCAL_AI_TARGET: localAiTarget } : {}), ...(typeof opts.exec === 'string' ? { RALPH_EXEC_CMD: opts.exec } : {}), ...(acpAgent ? { RALPH_ACP_AGENT: opts.acpAgent ?? '', RALPH_ACP_CMD: opts.acpCmd ?? '', RALPH_ACP_MODEL: model ?? '' } : {}) } });
     } catch (err) {
       process.exit(err.status || 1);
     }

@@ -82,7 +82,7 @@ const agentEnv = {
   ...(cfg.token ? { EVENTMODELERS_TOKEN: cfg.token } : {}),
   ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
 };
-const newSession = (env = agentEnv) => createAcpSession({ agent, cwd: projectDir, env, mcp, log: (line) => console.log(`[ralph-acp] ${line}`) });
+const newSession = (env = agentEnv) => createAcpSession({ agent, cwd: projectDir, env, mcp, model: process.env.RALPH_ACP_MODEL || null, log: (line) => console.log(`[ralph-acp] ${line}`) });
 const session = newSession();
 
 // `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced. `use` is the session
