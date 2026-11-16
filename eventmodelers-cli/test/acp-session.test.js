@@ -52,6 +52,7 @@ test('run --acp is refused next to --exec or --local-ai, and needs an agent', ()
 
 test('resolveAcpAgent is shared by the modeling loop and the build kit', () => {
   assert.equal(resolveAcpAgent({ name: 'cursor' }).command, 'cursor-agent');
+  assert.deepEqual(resolveAcpAgent({ name: 'kiro' }).args, ['acp']);
 });
 
 test('input tokens are exclusive of the cache whichever way the agent reports them', () => {

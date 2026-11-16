@@ -567,7 +567,7 @@ default is one process per turn (`--exec`); `claude` and `github` are only avail
 the loop, like the default Claude runner.
 
 ```bash
-npx @eventmodelers/cli run --modeling --agent opencode --acp     # or claude, gemini, codex, cursor, github
+npx @eventmodelers/cli run --modeling --agent opencode --acp     # or claude, gemini, codex, cursor, kiro, github
 npx @eventmodelers/cli run --worker   --agent gemini   --acp     # prompts only, no chat
 npx @eventmodelers/cli run --modeling --acp-cmd "my-agent --acp" # any other ACP agent
 ```
@@ -579,6 +579,7 @@ npx @eventmodelers/cli run --modeling --acp-cmd "my-agent --acp" # any other ACP
 | `claude` | `npx -y @agentclientprotocol/claude-agent-acp` (adapter over the Claude Agent SDK) |
 | `codex` | `npx -y @zed-industries/codex-acp` (the codex-acp adapter) |
 | `cursor` | `cursor-agent acp` |
+| `kiro` | `kiro-cli acp` (uses your `kiro-cli login` session) |
 | `github` | `npx -y @github/copilot --acp` (GitHub Copilot CLI) |
 
 - The eventmodelers MCP server, with its token and agent-id headers, is handed to the agent in the ACP session, so no
@@ -587,7 +588,7 @@ npx @eventmodelers/cli run --modeling --acp-cmd "my-agent --acp" # any other ACP
   whose collaborators you trust with your shell.
 - No subagents: self-directed work is done inline. `run` installs nothing into the agent's own folders, so for the
   agent to see the Event Modeling skills, run `init-agents --hosts <host>` first (`opencode`, `gemini`, `codex`,
-  `cursor`, `copilot` for `--agent github`). Claude reads the kit's `.claude/skills` natively.
+  `cursor`, `kiro`, `copilot` for `--agent github`). Claude reads the kit's `.claude/skills` natively.
 - `--acp` works for both loops. With `--modeling`/`--standalone`/`--worker`/`--global` it answers prompts and chat; in a
   build kit (`run --agent cursor --acp`) it builds Planned slices through `ralph-acp.js`: one warm agent process, a
   fresh conversation per slice, tool calls in the build log, and token usage in the slice cost when the agent reports

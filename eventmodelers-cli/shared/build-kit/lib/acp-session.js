@@ -18,6 +18,7 @@ export const ACP_AGENTS = {
   opencode: { label: 'OpenCode', command: 'opencode', args: ['acp'], host: 'opencode' },
   gemini: { label: 'Gemini CLI', command: 'gemini', args: ['--acp'], host: 'gemini' },
   claude: { label: 'Claude (claude-agent-acp adapter)', command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp'], host: null },
+  kiro: { label: 'Kiro CLI', command: 'kiro-cli', args: ['acp'], host: 'kiro' },
   cursor: { label: 'Cursor', command: 'cursor-agent', args: ['acp'], host: 'cursor' },
   // cumulativeUsage: the prompt response's `usage` is the session's running total, not this turn's (seen in Copilot's own
   // events: 228,847 then 338,137 input tokens for turns of 228,847 and 109,290). The others report per turn.
