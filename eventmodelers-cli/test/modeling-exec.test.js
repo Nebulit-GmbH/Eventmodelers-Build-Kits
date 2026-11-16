@@ -105,6 +105,18 @@ test('pi: the server goes into .pi/mcp.json, exposed directly, and the command i
   assert.equal(withModel('pi --approve -p', 'anthropic/claude-sonnet-5-5'), "pi --approve -p --model 'anthropic/claude-sonnet-5-5'");
 });
 
+test('kiro: the server goes into .kiro/settings/mcp.json and the model flag is --model', () => {
+  const dir = freshDir();
+  const { command, registered } = registerMcp('kiro-cli chat --no-interactive --trust-all-tools --trust-workspace', dir, BASE, () => {});
+  const entry = readJson(join(dir, '.kiro', 'settings', 'mcp.json')).mcpServers.eventmodelers;
+  assert.equal(entry.url, `${BASE}/mcp`);
+  assert.equal(entry.headers['x-token'], '${EVENTMODELERS_TOKEN}');
+  assert.equal(command, 'kiro-cli chat --no-interactive --trust-all-tools --trust-workspace');
+  assert.equal(registered, true);
+  assert.equal(harnessOf('/opt/bin/kiro-cli chat'), 'kiro');
+  assert.equal(withModel('kiro-cli chat --no-interactive', 'claude-sonnet-4'), "kiro-cli chat --no-interactive --model 'claude-sonnet-4'");
+});
+
 test('pi: usage and cost come from the assistant message on turn_end', async () => {
   const { usageFromHarnessEvent } = await import('../shared/build-kit/lib/tracing.js');
   const u = usageFromHarnessEvent({ type: 'turn_end', toolResults: [], message: { role: 'assistant', model: 'claude-sonnet-5-5', usage: { input: 100, output: 20, cacheRead: 5, cacheWrite: 1, cost: { total: 0.01 } } } });

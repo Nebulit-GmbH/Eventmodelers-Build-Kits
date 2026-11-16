@@ -13,12 +13,13 @@ import gemini from './gemini.js';
 import hermes from './hermes.js';
 import cursor from './cursor.js';
 import pi from './pi.js';
+import kiro from './kiro.js';
 import { shellQuote } from './util.js';
 
 export { shellQuote };
 export { opencodeSupportsStandalone, setOpencodeStandaloneSupport } from './opencode.js';
 
-const HARNESSES = [opencode, codex, gemini, hermes, cursor, pi];
+const HARNESSES = [opencode, codex, gemini, hermes, cursor, pi, kiro];
 
 // Every name `--agent` takes, claude (the default runner, no command) first. mastra has no command either: it runs
 // in-process as a runner of its own (ralph-mastra.js, lib/modeling-mastra.js), so it is named here, not in HARNESSES.

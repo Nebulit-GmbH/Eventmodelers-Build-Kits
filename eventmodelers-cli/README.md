@@ -194,7 +194,7 @@ npx @eventmodelers/cli run                          # start the agent loop (ralp
 npx @eventmodelers/cli run --all                      # every build kit in the project at once (this directory and up to two levels below, e.g. a scaffolded app's root and web/), prefixed output, Ctrl+c stops all; other flags (--agent, --handover, …) go to each
 npx @eventmodelers/cli run --all --modeling           # the same, plus a modeling agent running alongside the build kits
 npx @eventmodelers/cli run --local-ai [target]      # board work only via a local/self-hosted model (ralph-local-ai.js) — does NOT build slices; build locally with --exec
-npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor, pi — bare --agent lists them with their exact commands
+npx @eventmodelers/cli run --agent <name>           # pick the agent: claude (default), mastra, opencode, codex, gemini, hermes, cursor, pi, kiro — bare --agent lists them with their exact commands
 npx @eventmodelers/cli run --agent <name> --model <id>  # …on a given model: -m for opencode/codex/gemini, --model for Claude, LOCAL_AI_MODEL for --local-ai
 npx @eventmodelers/cli run --exec "<command>"        # manual fallback for any other harness (ralph-exec.js) — agent tracing needs its JSON flag, e.g. "codex exec --json --full-auto"
 npx @eventmodelers/cli run --local                  # skip platform config/credential lookup entirely — local-only, no board sync
@@ -289,6 +289,7 @@ npx @eventmodelers/cli run --modeling --agent codex        # = --exec "codex exe
 npx @eventmodelers/cli run --modeling --agent gemini       # = --exec "gemini --yolo -p"
 npx @eventmodelers/cli run --modeling --agent pi           # = --exec "pi --approve -p"; needs Pi 1.x (`npm i -g @earendil-works/pi-coding-agent`) — the old @mariozechner package has no MCP. --approve trusts the project so Pi reads .pi/mcp.json and the skills in .agents/skills (`init-agents --hosts pi`)
 npx @eventmodelers/cli run --modeling --agent cursor       # = --exec "agent -p --output-format text --approve-mcps --force --trust"; creates one Cursor chat and resumes it every turn, so only the first turn reads the kit
+npx @eventmodelers/cli run --modeling --agent kiro         # = --exec "kiro-cli chat --no-interactive --trust-all-tools --trust-workspace"; sign in once with `kiro-cli login`. --trust-workspace is what lets a headless run load the project .kiro/settings/mcp.json (the token stays in the environment). CLI only: the Docker images do not carry Kiro
 npx @eventmodelers/cli run --modeling --agent claude       # the default, spelled out
 npx @eventmodelers/cli run --worker --agent opencode --model opencode/big-pickle  # pick the model (a free OpenCode Zen one here)
 npx @eventmodelers/cli run --agent                         # list the agents and the command each runs
@@ -991,6 +992,8 @@ npx @eventmodelers/cli scaffold re-init [dir]        # a scaffolded app: refresh
 `re-init` re-runs `init` against whichever stack `install-manifest.json` says was installed (no need to pass `--stack` again), but skips step 2 of `init` entirely — the root project scaffold (`package.json`, `src/`, `server.ts`, `docker-compose.yml`, etc.) and the root `CLAUDE.md` router are never touched. Use it after upgrading the CLI to pick up fixes to `ralph.js`/skills without re-scaffolding a project you've since built on top of.
 
 You don't have to remember to: on startup every command prints a 💡 hint (on stderr) when a newer CLI is on npm, or when a kit in the current directory was installed by an older CLI than the one running — naming the exact `re-init` command to run. The npm lookup happens at most once a day (cached in `~/.eventmodelers/update-check.json`, 1.5 s timeout, silent when offline). Set `EVENTMODELERS_NO_UPDATE_CHECK=1` to turn it off; it is also off when `CI` is set. When `run` starts on an outdated CLI in an interactive terminal (npx or a global install), it also asks `Update now … and restart this command? [Y/n]` — yes updates and re-runs the same command, no carries on with the current version.
+
+`run`, `init` and `re-init` open with a welcome banner — the logo's three sticky notes drawn in half-block characters (stderr, interactive terminals only; true-colour where `COLORTERM` says so, otherwise a monochrome version). Set `EVENTMODELERS_NO_BANNER=1` to hide it; it is also off when `CI` is set.
 
 Pass `--stack <name>` to override the stack instead of relying on the manifest — useful if the manifest is missing/stale, or you want to point a `.build-kit` install at a different built-in stack's templates. It's mutually exclusive with `--modeling`.
 
