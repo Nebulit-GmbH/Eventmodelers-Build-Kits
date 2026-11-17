@@ -2145,7 +2145,53 @@ async function offerPrune(kitDir, { interactive }) {
   }
 }
 
+// --browser: the product-walkthrough recorder (kit .claude/skills/product-walkthrough/assets/record.mjs) imports the `playwright`
+// package, resolved from the kit directory, and needs Chromium. Neither comes with the kit, and the locked-down agent can't
+// install them (no npm) — so check here and offer to, once. Declining only disables /product-walkthrough; the Playwright MCP
+// server (npx) is unaffected.
+function playwrightReady(kitDir) {
+  const recorder = join(kitDir, '.claude', 'skills', 'product-walkthrough', 'assets', 'record.mjs');
+  if (!existsSync(recorder)) return true; // a kit without the skill has nothing to check
+  // The recorder's own lookup (beside the kit, the working directory, the global npm root) — one source of truth.
+  return spawnSync(process.execPath, [recorder, '--check'], { cwd: kitDir, stdio: 'ignore' }).status === 0;
+}
+
+// A declined install is remembered (per project, in .eventmodelers/) — later runs ignore --browser instead of asking again.
+// Stored as `browserDisabled: true` in the project's .eventmodelers/config.json — set it to false (or remove it) to be asked again.
+const browserConfigPath = (dir) => join(dir, '.eventmodelers', 'config.json');
+
+// Returns false when browser usage is (now) disabled, true otherwise.
+async function ensurePlaywright(kitDir) {
+  if (readJsonSafe(browserConfigPath(kitDir)).browserDisabled === true) return false;
+  if (playwrightReady(kitDir)) return true;
+  const cmd = 'npm install --save-dev playwright && npx playwright install chromium';
+  console.warn('⚠️  --browser: Playwright (and Chromium) is not installed in the kit, so /product-walkthrough cannot open its browser.');
+  if (!process.stdin.isTTY) { console.warn(`   Install it with: (cd ${kitDir} && ${cmd})\n`); return true; }
+  const answer = (await prompt('   Install it now? [Y/n]')).toLowerCase();
+  if (answer && !answer.startsWith('y')) {
+    try {
+      const cfgPath = browserConfigPath(kitDir);
+      const cfg = readJsonSafe(cfgPath);
+      cfg.browserDisabled = true;
+      mkdirSync(dirname(cfgPath), { recursive: true });
+      writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
+    } catch { /* best effort */ }
+    console.warn(`   Skipped — /product-walkthrough stays unavailable and --browser is ignored from now on. To re-enable: set "browserDisabled": false in ${browserConfigPath(kitDir)} and run (cd ${kitDir} && ${cmd})\n`);
+    return false;
+  }
+  try {
+    execSync('npm install --save-dev playwright', { cwd: kitDir, stdio: 'inherit' });
+    execSync('npx playwright install chromium', { cwd: kitDir, stdio: 'inherit' });
+    console.log('✅ Playwright installed.\n');
+    return true;
+  } catch (err) {
+    console.warn(`⚠️  Installing Playwright failed (${err?.message ?? err}) — /product-walkthrough stays unavailable. Run it yourself: (cd ${kitDir} && ${cmd})\n`);
+    return true;
+  }
+}
+
 async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false, standalone = false, exclusive = false, worker = false, overrides = null, maxAgents = DEFAULT_MAX_AGENTS, identity = {}, localAi = null, exec = null, mastra = false, acp = null, resetSession = false, model = null, skipPermissions = false, browser = false } = {}) {
+  if (browser && !skipPermissions && !(await ensurePlaywright(projectDir))) { console.log('Browser usage disabled'); browser = false; } // the dir holding .claude/skills — kitDir is its .agent-modeling-kit
   // --worker: only prompts — no chat, and no board-change turns (it has nowhere to propose).
   const chat = !worker;
   const configLibPath = join(kitDir, 'lib', 'config.js');
@@ -4203,7 +4249,7 @@ credentialFlags(program
   .option('--global', 'Run the modeling agent from the global install (~/.eventmodelers/kit), initializing it on first use, and ignore any kit in this directory. This is also what --modeling/--standalone fall back to on their own when nothing is installed here — pass it explicitly to prefer the global install over a local one. Credentials come from the flags below, EVENTMODELERS_* env vars, or ~/.eventmodelers/boards/<board>.json, so nothing is written into the current directory.')
   .option('--local', 'Skip platform config/credential lookup entirely and run the local-only loop (no board sync, no realtime agent) — even if .eventmodelers/config.json has credentials (build-kit stacks only)')
   .option('--dangerously-skip-permissions', 'Run the modeling agent\'s Claude process with --dangerously-skip-permissions, as before the lockdown: every tool call is approved — any shell command, curl to anywhere, any file the user can read or write, every MCP server the machine configures. Off by default because the agent takes chat messages and snippet clicks from any collaborator on the board; pass it only for a board whose collaborators you trust with your shell. Default Claude runner of --modeling/--standalone/--worker/--global only — not with --agent, --exec or --local-ai, which bring their own permission flags.')
-  .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard. Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
+  .option('--browser', 'Give the locked-down modeling agent a browser: the Playwright MCP server (npx @playwright/mcp) next to the eventmodelers one, for discover-storyboard, and allows the product-walkthrough recorder (node .claude/skills/product-walkthrough/assets/record.mjs). Off by default because a browser can reach any site, which the lockdown otherwise rules out. Default Claude runner only; --dangerously-skip-permissions already loads every MCP server the machine configures.')
   .option('--handover', 'Backend build kit: for this run only, finish slices that have a UI at `Waiting` instead of `Done` (same as the project setting `handover: true`, which `init --handover` / `config --handover on` save — this flag writes nothing). Without it the project setting applies; without both, slices end at `Done`.')
   .option('--status-trigger <status>', 'Build kit: the slice status the agent picks work up from, for this run only (e.g. Ready, Planned, Waiting). Defaults to the kit\'s own pickup status — `Planned` for backend kits, `Handover` for the UI kits. Nothing is written to disk.')
   .option('--status-target <status>', 'Build kit: the status the agent records when it finishes a slice, for this run only (e.g. Done, Waiting, Review). Defaults to `Done` (`Waiting` for a UI-bearing slice with handover on); overrides both. Pair it with --status-trigger to pick the whole transition, e.g. `--status-trigger Ready --status-target Review`. Nothing is written to disk.')

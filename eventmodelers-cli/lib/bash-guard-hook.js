@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // PreToolUse hook for the modeling agent's Bash tool — see lib/bash-guard.js for the rules. The CLI registers it via
-// --settings and hands the policy over in the environment (EVENTMODELERS_GUARD_BASE_URL, EVENTMODELERS_GUARD_ROOTS).
+// --settings and hands the policy over in the environment (EVENTMODELERS_GUARD_BASE_URL, EVENTMODELERS_GUARD_ROOTS, and EVENTMODELERS_GUARD_BROWSER=1 with --browser).
 // It answers "allow" for a command on the list and "deny" (with the reason, which the agent sees) for anything else.
 // It fails closed: an unreadable input, a missing policy or a crash is a deny — a hook that errors would otherwise let
 // the call through to the permission rules.
@@ -23,7 +23,7 @@ process.stdin.on('end', () => {
     const baseUrl = process.env.EVENTMODELERS_GUARD_BASE_URL;
     const roots = JSON.parse(process.env.EVENTMODELERS_GUARD_ROOTS ?? '[]');
     if (!baseUrl || !Array.isArray(roots) || !roots.length) return decide('deny', 'Bash guard has no policy — refusing every command');
-    const result = checkBashCommand(event?.tool_input?.command, { baseUrl, roots, cwd: event?.cwd || process.cwd() });
+    const result = checkBashCommand(event?.tool_input?.command, { baseUrl, roots, cwd: event?.cwd || process.cwd(), browser: process.env.EVENTMODELERS_GUARD_BROWSER === '1' });
     if (result.ok) return decide('allow', 'on the modeling agent\'s command allowlist');
     return decide('deny', `Refused by the agent's command allowlist: ${result.reason}. Use the eventmodelers MCP tools, or curl to ${baseUrl} only.`);
   } catch (err) {

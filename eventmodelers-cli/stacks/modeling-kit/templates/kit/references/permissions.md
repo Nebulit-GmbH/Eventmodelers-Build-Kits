@@ -11,7 +11,8 @@ form, do the work another way or tell the person what you can't do.
   read-only `git` (`git -C <code dir> …`); `cat`/`head`/`tail`/`wc`/`sort`/`uniq`/`grep`/`cut`/`tr`/`ls`, `echo`,
   `printf`, `mkdir`; `for NAME in …; do …; done` loops over these. `node` runs exactly one script, the `/prototype`
   skill's `node .claude/skills/prototype/assets/prototype.mjs status|assemble|upload …` (relative path, no `cd`; the
-  skill gives the flags) — try it, don't assume it is refused. No other `$(…)`, no `while`/`if`, other `python3`
+  skill gives the flags) and, for `/product-walkthrough`, `node .claude/skills/product-walkthrough/assets/record.mjs --url <http(s) url>
+  --out <dir in /tmp or this directory> [--width N --height N]` (nothing else; only when the agent was started with `--browser`) — try them, don't assume they are refused. No other `$(…)`, no `while`/`if`, other `python3`
   scripts, other `node`, `rm`, `cd`. Build a JSON payload with the Write tool in `/tmp`, then
   `curl … --data-binary @/tmp/<file>.json`.
 - **Files:** read and write in this directory and `/tmp`, read the code directory. Reading `.claude/skills/` is fine

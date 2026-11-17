@@ -70,6 +70,8 @@ export function modelingPermissions({ baseUrl, projectDir, codeDir, tmpDir, hook
     env: {
       EVENTMODELERS_GUARD_BASE_URL: baseUrl,
       EVENTMODELERS_GUARD_ROOTS: JSON.stringify(roots),
+      // --browser also unlocks the walkthrough recorder (lib/bash-guard.js) — a browser the person drives, same reach as the MCP one.
+      ...(browser ? { EVENTMODELERS_GUARD_BROWSER: '1' } : {}),
     },
   };
 }

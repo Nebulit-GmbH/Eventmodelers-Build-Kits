@@ -10,7 +10,8 @@
 //   subcommands), and read-only text tools (cat, head, tail, wc, sort, uniq, grep, cut, tr, ls), echo, printf,
 //   mkdir, sleep, date, true, and node for exactly two scripts: the kit's own prototype skill (.claude/skills/prototype/
 //   assets/prototype.mjs status|assemble|upload) and comic skill (.claude/skills/comic/scripts/render-comic.mjs <dir>
-//   [--post …]) — the agent can't edit .claude/, so what runs is fixed. Nothing else —
+//   [--post …]) and product-walkthrough skill (.claude/skills/product-walkthrough/assets/record.mjs --url <http(s)> --out <dir>
+//   [--width N --height N]) — the agent can't edit .claude/, so what runs is fixed. Nothing else —
 //   no sh/bash/eval/env/xargs/find/sed/awk/npm/rm/mv/cp, no other node.
 // - No command substitution ($(…), `…`, $((…)), <(…)) except exactly $(uuidgen) and $(seq N) / $(seq A B) — they mint
 //   ids and run nothing else. No subshells, brace groups, brace expansion, background jobs or ~ paths. The only control
@@ -434,6 +435,38 @@ function checkComicRun(cmd, policy) {
   if (cmd.redirects.some((r) => r.op !== '>&' && r.target.text !== '/dev/null')) refuse('the comic script runs without redirections');
 }
 
+// The product-walkthrough skill's recorder: opens a headed browser the PERSON drives and writes <out>/steps.json. Same rule:
+// resolved against the kit. --url must be a literal http(s) URL (no expansion), --out inside the allowed roots.
+const WALKTHROUGH_SCRIPT = ['.claude', 'skills', 'product-walkthrough', 'assets', 'record.mjs'];
+const WALKTHROUGH_FLAGS = new Set(['--url', '--out', '--width', '--height']);
+
+function isWalkthroughRun(cmd, policy) {
+  const [prog, script] = cmd.words;
+  return prog?.text === 'node' && !!script && !script.refs.length
+    && resolve(policy.cwd, script.text) === resolve(policy.cwd, ...WALKTHROUGH_SCRIPT);
+}
+
+function checkWalkthroughRun(cmd, policy) {
+  // A browser reaches any site, which the lockdown otherwise rules out — so, like the Playwright MCP server, the recorder
+  // exists only when the agent was started with --browser.
+  if (!policy.browser) refuse('the walkthrough recorder opens a browser — it runs only when the agent was started with --browser');
+  const rest = cmd.words.slice(2);
+  if (rest.length % 2) refuse('the walkthrough recorder takes --flag value pairs');
+  let hasUrl = false;
+  for (let k = 0; k < rest.length; k += 2) {
+    const flag = rest[k].text;
+    const value = rest[k + 1];
+    if (!WALKTHROUGH_FLAGS.has(flag)) refuse(`walkthrough recorder option ${flag} is not allowed`);
+    if (flag === '--url') {
+      if (value.refs.length || !/^https?:\/\/[^\s]+$/.test(value.text)) refuse('the walkthrough recorder --url must be a plain http(s) URL');
+      hasUrl = true;
+    } else if (flag === '--out') checkPath(value.text, 'walkthrough output directory', policy);
+    else if (!/^\d{3,4}$/.test(value.text)) refuse(`walkthrough recorder ${flag} must be a number`);
+  }
+  if (!hasUrl) refuse('the walkthrough recorder needs --url');
+  if (cmd.redirects.some((r) => r.op !== '>&' && r.target.text !== '/dev/null')) refuse('the walkthrough recorder runs without redirections');
+}
+
 function checkPrototypeRun(cmd, policy) {
   const [, , sub, ...rest] = cmd.words;
   if (!['status', 'assemble', 'upload'].includes(sub?.text)) refuse('the prototype script runs as: status, assemble or upload');
@@ -455,7 +488,8 @@ function checkProgram(cmd, policy) {
   switch (prog) {
     case 'node':
       if (isComicRun(cmd, policy)) return checkComicRun(cmd, policy);
-      if (!isPrototypeRun(cmd, policy)) refuse('node may only run the kit\'s .claude/skills/prototype/assets/prototype.mjs or .claude/skills/comic/scripts/render-comic.mjs');
+      if (isWalkthroughRun(cmd, policy)) return checkWalkthroughRun(cmd, policy);
+      if (!isPrototypeRun(cmd, policy)) refuse('node may only run the kit\'s .claude/skills/prototype/assets/prototype.mjs, .claude/skills/comic/scripts/render-comic.mjs or .claude/skills/product-walkthrough/assets/record.mjs');
       return checkPrototypeRun(cmd, policy);
     case 'curl': return checkCurl(args, policy);
     case 'git': return checkGit(args, policy);
@@ -471,7 +505,7 @@ function checkProgram(cmd, policy) {
 
 /**
  * `{ok: true}` when every part of `command` is allowed, else `{ok: false, reason}`.
- * policy: { baseUrl, cwd, roots: absolute directories files may be read from / written to }.
+ * policy: { baseUrl, cwd, roots: absolute directories files may be read from / written to, browser?: agent started with --browser }.
  */
 export function checkBashCommand(command, policy) {
   try {

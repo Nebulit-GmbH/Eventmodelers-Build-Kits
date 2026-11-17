@@ -7,9 +7,9 @@ const policy = {
   cwd: '/work/project',
   roots: ['/work/project', '/work/code', '/tmp', '/private/tmp'],
 };
-const ok = (command) => assert.deepEqual(checkBashCommand(command, policy), { ok: true }, command);
-const refused = (command, reason) => {
-  const result = checkBashCommand(command, policy);
+const ok = (command, p = policy) => assert.deepEqual(checkBashCommand(command, p), { ok: true }, command);
+const refused = (command, reason, p = policy) => {
+  const result = checkBashCommand(command, p);
   assert.equal(result.ok, false, `should be refused: ${command}`);
   if (reason) assert.match(result.reason, reason, command);
 };
@@ -165,6 +165,23 @@ test('allows node for the kit\'s comic script, with the same limits', () => {
   refused(`node ${script} .comic/order > /tmp/x`, /redirections/);
   refused(`node ${script}`, /<directory>/);
   refused(`EM_TOKEN=abc node ${script} .comic/order`, /EM_TOKEN/);
+});
+
+test('allows node for the kit\'s product-walkthrough recorder, with strict flags — only with --browser', () => {
+  const bp = { ...policy, browser: true };
+  refused(`node .claude/skills/product-walkthrough/assets/record.mjs --url https://app.example.com --out /tmp/x`, /--browser/);
+  const script = '/work/project/.claude/skills/product-walkthrough/assets/record.mjs';
+  ok(`node .claude/skills/product-walkthrough/assets/record.mjs --url https://app.example.com/start --out /tmp/walkthrough-run`, bp);
+  ok(`node ${script} --url http://localhost:3000 --out .walkthrough/run --width 1280 --height 800`, bp);
+  refused(`node ${script.replace('/work/project', '/tmp')} --url https://a.example --out /tmp/x`, /may only run/, bp);
+  refused(`node ${script} --out /tmp/x`, /needs --url/, bp);
+  refused(`node ${script} --url file:///etc/passwd --out /tmp/x`, /http\(s\)/, bp);
+  refused(`node ${script} --url "$BASE_URL" --out /tmp/x`, /http\(s\)/, bp);
+  refused(`node ${script} --url https://a.example --out /etc/x`, /outside/, bp);
+  refused(`node ${script} --url https://a.example --out /tmp/x --headless true`, /not allowed/, bp);
+  refused(`node ${script} --url https://a.example --out /tmp/x --width big`, /number/, bp);
+  refused(`node ${script} --url https://a.example --out /tmp/x > /tmp/log`, /redirections/, bp);
+  refused(`cd /work/project/.claude/skills/product-walkthrough/assets && node record.mjs --url https://a.example --out /tmp/x`, /"cd"/, bp);
 });
 
 test('allows node for the kit\'s prototype script only', () => {
