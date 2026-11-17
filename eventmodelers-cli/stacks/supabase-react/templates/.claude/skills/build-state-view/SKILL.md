@@ -105,6 +105,12 @@ Identical to `build-state-change` Step 2 — fetch the live screen node
 (or the whole page if unmarked), and treat it as the blueprint. The same `learn-styleguide` note
 applies: prefer its tokens/classes over the mockup's ad hoc styling where they disagree.
 
+**Read the screen's bubbles too.** The node's `data.screenBubbles.items[]` are comments the author pinned
+to specific spots of the mockup (disabled states, conditional display, validation messages, copy) — build
+requirements, not decoration. Apply each bubble that sits in this slice's fragment (all of them when the
+screen is unmarked) to the component, and list in your report what you did with each ("bubble 2 → submit
+is disabled until `email` is valid"). Format and scoping: `learn-eventmodelers-api` → "Screen bubbles".
+
 Also resolve this screen's lane the same way — `mcp__eventmodelers__get_board_outline` on the
 screen's chapter, match this node's `id` to get its `lane`, slugify it to `laneSlug` — skip only if
 `screens[]` was empty in Step 1.

@@ -31,6 +31,8 @@ The turn's header lists `attachments` / `attachment_files`; open the `feedback.j
 
 For each item: the slice (by title, in the chapter named by the prototype's context), then the element inside it — the `HTML_SCREEN` / `SCREEN` whose content holds `element.text`, the command or read model whose field was clicked. Use `list_slices` / `get_nodes`; read only the slices the feedback names.
 
+Before changing a screen, read its `data.screenBubbles.items[]` (full `get_node`; see `learn-eventmodelers-api` → "Screen bubbles") — earlier comments pinned to it may already say what the feedback wants, or conflict with it. Don't delete or edit bubbles.
+
 ## Step 3 — Decide the change, then make it
 
 | The comment is about | Change on the board |

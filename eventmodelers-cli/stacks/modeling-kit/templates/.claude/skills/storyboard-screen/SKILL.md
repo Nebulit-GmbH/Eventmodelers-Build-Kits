@@ -42,6 +42,8 @@ mcp__eventmodelers__get_image_snapshot_description { "boardId": "<BOARD_ID>", "n
 
 Skip this step entirely when the node is brand-new (no prior render) — go straight to Step 3.
 
+Also read the screen's bubbles — `get_node` → `data.screenBubbles.items[]` (comments pinned to spots of the screen; format in `learn-eventmodelers-api` → "Screen bubbles"). Each is an instruction from the author for that spot: honour it in the redesign, and report what you did with it. Never delete or edit a bubble.
+
 ## Step 3 — Design the screen
 
 Design the screen using the grid description language — either from scratch (new screen, or Step 2 returned `404`) or by editing the elements loaded in Step 2. Think carefully about the layout — what elements does this screen need? Where should they go on the 50×40 grid?

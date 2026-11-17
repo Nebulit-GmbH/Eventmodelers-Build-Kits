@@ -44,6 +44,7 @@ mcp__eventmodelers__get_node { "boardId": "<BOARD_ID>", "nodeId": "<NODE_ID>" }
 
 - If `meta.pages` is a non-empty array, use it as the base. For an edit to an existing page, change only that entry and keep the rest of the array untouched. For "add a page", append a new entry to the end of the array — never merge new content into an existing page.
 - If it's empty or the node doesn't exist yet, design from scratch in Step 3.
+- **Read `data.screenBubbles.items[]` from the same response.** They are comments people pinned to spots of the page ("make this red when overdue", "hide for guests") — treat each as a change request for that spot, apply it in the page, and tell the person how you handled each ("bubble 2 → …"). Leave the bubbles themselves untouched (the editor owns them) and keep each bubble's anchor element in the page, or it drifts. Format: `learn-eventmodelers-api` → "Screen bubbles".
 
 Skip this step entirely when creating a brand-new node (no `nodeId` given) — go straight to Step 3.
 

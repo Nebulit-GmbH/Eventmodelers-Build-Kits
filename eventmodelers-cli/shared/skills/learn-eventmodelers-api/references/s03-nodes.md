@@ -155,3 +155,13 @@ With `place` the copy inherits the original's element type and title, so a trans
 **Response**: `200` — `{ nodeId, linkedTo, type }`, plus `placed: { nodeId, cellName, columnIndex }` when `place` was used · `400` — neither or both of `targetNodeId`/`place`, type mismatch, self-link, unsupported element type, or the original is itself a linked copy · `404` — the original or `targetNodeId` doesn't exist
 
 ---
+
+### Screen bubbles (`node.data.screenBubbles`) — read them
+
+A person can pin comments to a screen as numbered speech bubbles ("this button is disabled until…", "show the total in red", "hide for guests"). They are the **author's own instructions for that spot** and often carry rules the model does not — so every agent that reads a `SCREEN` / `HTML_SCREEN` node reads them too.
+
+- **Where**: the full node from `get_node` / `get_nodes` (no `projection`) → `data.screenBubbles = { items: [{ id, pageIndex, x, y, text }], hidden? }`. `hidden: true` only hides them on the board; the comments still count. `slice.json` `screens[]` does **not** carry them — fetch the screen node.
+- **Order**: bubbles are numbered by array order; refer to them as "bubble 2" when reporting.
+- **Position** (`x`/`y`): on an `HTML_SCREEN` page they are page pixels (`pageIndex` = the page), anchored to an element; on an image `SCREEN` they are fractions of the picture in 1/10000 (`pageIndex` 0). Use position only to work out *which element or region* the comment is about — on an HTML screen, the element nearest `x`/`y` in `meta.pages[pageIndex]`.
+- **Scope**: on a screen shared by several slices (`meta.marks`), apply a bubble only if it sits inside the marked fragment of the slice you are working on; the rest belong to other slices.
+- **Read-only unless asked**: a bubble is a comment, not a model element. Act on it (build it, model it), report what you did with each one, and never delete or edit a bubble yourself. When a bubble contradicts the model or another bubble and no defensible reading exists, treat it as real ambiguity (see the questioning rule), otherwise take the reading and say so.

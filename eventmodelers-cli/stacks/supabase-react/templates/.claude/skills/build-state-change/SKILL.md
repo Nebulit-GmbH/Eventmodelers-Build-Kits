@@ -103,6 +103,12 @@ whiteOutside? }]`.
   Ignore markup outside it; it belongs to other slices.
 - **If `meta.marks` is empty**: the whole page (every entry in `meta.pages`, in order, for a
   multi-step flow) is the blueprint.
+**Read the screen's bubbles too.** The node's `data.screenBubbles.items[]` are comments the author pinned
+to specific spots of the mockup (disabled states, conditional display, validation messages, copy) — build
+requirements, not decoration. Apply each bubble that sits in this slice's fragment (all of them when the
+screen is unmarked) to the component, and list in your report what you did with each ("bubble 2 → submit
+is disabled until `email` is valid"). Format and scoping: `learn-eventmodelers-api` → "Screen bubbles".
+
 - **If `screens[]` was empty in Step 1**: there is no visual reference — build the component from
   `fields[]` alone, with plain, unstyled form markup.
 

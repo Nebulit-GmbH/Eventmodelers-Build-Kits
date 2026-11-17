@@ -113,6 +113,8 @@ Every question and every summary theme must be written in plain business languag
 
 For a screen element the model leaves open — a button with no command, a field nobody stores, a result with no next screen, a command with no rule — ask the facilitator's questions from **`eventmodeling-workshop-questions`** (what happens, what is stored, what comes next, which business rules apply, an example). Same catalog and wording as the questions the prototype asks its players; don't write a second list here. An example you ask for is a future GWT scenario — say so.
 
+**Read the screen's bubbles before asking.** A screen's `data.screenBubbles.items[]` (full `get_nodes` record of the `SCREEN` / `HTML_SCREEN`; see `learn-eventmodelers-api` → "Screen bubbles") are comments people already pinned to it — often the very answer ("disabled until the email is valid"). Don't ask what a bubble answers; instead check that the model carries it (a rule with no command/scenario, a field no read model holds) and flag *that* gap, citing the bubble number.
+
 ### Category I: Structural shapes
 This category is about the **shape of the model**, not any one flow's business logic — it needs the edge/relationship data and per-slice scenario counts gathered across *all* slices in Step 2, so run it once after all slices are loaded, not per-slice. Check the full element graph against the four shapes defined in `eventmodeling-core-rules`'s **Structural Shapes** section (the bed, left chair, right chair, shelf) — read that section for what each shape is, its threshold, and which one is an always-flag anti-pattern vs. a context-dependent candidate; this section only covers how to word and post the finding once you've decided it holds up.
 
