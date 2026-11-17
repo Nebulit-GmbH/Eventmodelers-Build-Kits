@@ -328,6 +328,21 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
     }
   }
 
+  // A slice that moved to another context (or whose context was renamed) is still listed in the old
+  // context's index.json, which the loop above no longer visits. fetchFullSlice takes the first index
+  // that lists an id, so it would keep asking the board for the old, now unknown context name.
+  const freshIds = new Set(slices.map((sl) => sl.id));
+  for (const ctx of readdirSync(slicesDir, { withFileTypes: true })) {
+    if (!ctx.isDirectory() || contexts[ctx.name]) continue;
+    const indexPath = join(slicesDir, ctx.name, 'index.json');
+    if (!existsSync(indexPath)) continue;
+    try {
+      const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
+      const kept = (index.slices ?? []).filter((e) => !freshIds.has(e.id));
+      if (kept.length !== (index.slices ?? []).length) writeFileSync(indexPath, JSON.stringify({ ...index, slices: kept }, null, 2), 'utf-8');
+    } catch {}
+  }
+
   // Blocked notes (reason, time) follow the log too; a no-op when nothing changed.
   projectStatus(kitDir, state);
 
@@ -338,7 +353,7 @@ export async function fetchAndPersistSlices(cfg, kitDir) {
 // reads a stub reports the slice as empty. So before a slice is handed to an agent — a Planned
 // build or a queued task — its full definition (elements, fields, specifications) is fetched
 // here and merged in. Best effort: on failure the agent still has /load-slice to fall back on.
-async function fetchFullSlice(cfg, kitDir, sliceId) {
+async function fetchFullSlice(cfg, kitDir, sliceId, retried = false) {
   if (!sliceId) return;
   const slicesDir = join(kitDir, '.slices');
   try {
@@ -361,6 +376,15 @@ async function fetchFullSlice(cfg, kitDir, sliceId) {
     mkdirSync(dirname(sliceJsonPath), { recursive: true });
     writeFileSync(sliceJsonPath, JSON.stringify({ ...existing, ...full }, null, 2), 'utf-8');
   } catch (err) {
+    // The context name we sent is stale: re-read the slice list from the board and try once more.
+    if (!retried && /CONTEXT_NOT_FOUND/.test(err.message)) {
+      try {
+        await fetchAndPersistSlices(cfg, kitDir);
+        return await fetchFullSlice(cfg, kitDir, sliceId, true);
+      } catch (refreshErr) {
+        err = refreshErr;
+      }
+    }
     console.log(`[ralph] full slice fetch failed for ${sliceId} (${err.message}) — the agent will have to /load-slice it`);
   }
 }

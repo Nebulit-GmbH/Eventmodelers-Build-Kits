@@ -2431,7 +2431,9 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       // The skills' curl headers say "x-token: $TOKEN"; the guard lets the token expand only inside a curl -H value.
       TOKEN: cfg.token,
     }),
-    ...(codeDir ? { EVENTMODELERS_CODE_DIR: codeDir } : {}),
+    // With a kit installed in the repo (`<repo>/.agent-modeling-kit`) the agent runs inside the kit folder, so the
+    // code base is the project directory around it — without this, detect-model-drift sees only kit files.
+    ...((codeDir ?? projectDir) ? { EVENTMODELERS_CODE_DIR: codeDir ?? projectDir } : {}),
     ...(cfg.anthropicBaseUrl ? { ANTHROPIC_BASE_URL: cfg.anthropicBaseUrl } : {}),
     EVENTMODELERS_TOKEN: cfg.token,
     // What the connect skill puts in `.mcp.json`'s x-agent-id header and every curl-fallback

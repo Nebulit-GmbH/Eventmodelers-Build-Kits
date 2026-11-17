@@ -312,7 +312,7 @@ function checkCurl(args, policy) {
   if (!urls) refuse('curl needs a URL on the platform');
 }
 
-const GIT_READ = new Set(['status', 'show', 'log', 'diff', 'ls-tree', 'ls-files', 'rev-parse', 'cat-file', 'blame', 'branch', 'fetch', 'grep']);
+const GIT_READ = new Set(['status', 'show', 'log', 'diff', 'ls-tree', 'ls-files', 'rev-parse', 'cat-file', 'merge-base', 'blame', 'branch', 'fetch', 'grep']);
 
 function checkGit(args, policy) {
   let k = 0;

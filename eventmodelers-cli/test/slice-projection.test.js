@@ -187,6 +187,17 @@ test('the refresh still merges onto slice.json and clears a removed ticketNumber
   assert.equal(sliceJson(kit).ticketNumber, null);
 });
 
+test('a context renamed on the board: the old context\'s index no longer lists the slice', async (t) => {
+  quiet(t);
+  const kit = kitWith(t); // s1 listed under "cart"
+  board(t, [{ id: 's1', title: 'Add item', status: 'Planned', contextName: 'Basket' }]);
+  await fetchAndPersistSlices(cfg, kit);
+  const old = JSON.parse(readFileSync(join(kit, '.slices', 'cart', 'index.json'), 'utf-8'));
+  assert.deepEqual(old.slices, []);
+  const fresh = JSON.parse(readFileSync(join(kit, '.slices', 'basket', 'index.json'), 'utf-8'));
+  assert.equal(fresh.slices[0].contextName, 'Basket');
+});
+
 test('a refresh stamps its events with this agent, its type (build), organization and board', async (t) => {
   quiet(t);
   const kit = kitWith(t);
