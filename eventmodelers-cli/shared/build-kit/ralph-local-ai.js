@@ -8,6 +8,7 @@
 //        LOCAL_AI_TARGET=vllm  node ralph-local-ai.js
 //        LOCAL_AI_URL=http://gpu-box:8000/v1 LOCAL_AI_MODEL=Qwen/Qwen3-8B node ralph-local-ai.js
 import { startRalph } from './lib/ralph.js';
+import { turnTimeoutMs, superviseTurn } from './lib/turn.js';
 import { spawn } from 'child_process';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -25,7 +26,13 @@ function runLocalAi(prompt) {
       env: process.env,
     });
     proc.stdin.end(prompt);
-    proc.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`local-ai-agent exited ${code}`))));
+    const turn = superviseTurn(proc, { timeoutMs: turnTimeoutMs({}), label: 'Local AI turn', log: (line) => console.error(`[ralph] ${line}`) });
+    proc.on('close', (code) => {
+      const err = turn.timeoutError();
+      if (err) reject(err);
+      else if (code === 0) resolve();
+      else reject(new Error(`local-ai-agent exited ${code}`));
+    });
     proc.on('error', reject);
   });
 }

@@ -163,3 +163,15 @@ Body `{ slug, title, instructions, schema, template, actions?, sampleData? }` �
 Removes the type with all its versions → `204`. Messages that already show it keep showing it.
 
 ---
+
+### Saved walkthroughs (read access for agents)
+
+A walkthrough snippet can be saved on the board (Walkthroughs modal). The REST routes under
+`/api/org/:orgId/boards/:boardId/walkthroughs` are for people only — the board agent token gets a 401 there. Agents read
+saved walkthroughs through two read-only MCP tools:
+
+- `list_walkthroughs {boardId}` — `[{id, title, tags, stepCount, createdBy, createdAt}]`, newest first, without steps.
+- `get_walkthrough {boardId, walkthroughId}` — one walkthrough with its `snippet` (`title`, `summary`, `steps[]` with
+  `status`, `nodeId`, `elements`, `rules`, `changes`). Unknown id: `WALKTHROUGH_NOT_FOUND`.
+
+To implement a saved walkthrough: `list_walkthroughs`, pick by title, `get_walkthrough`, then work through `steps[]`.
