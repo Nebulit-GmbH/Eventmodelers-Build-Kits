@@ -297,6 +297,7 @@ One question per message, with the best hypothesis attached. The answer arrives 
 - **What goes into Given, When and Then** — per command and per read model: § *1. Command Scenarios*, § *2. Command Scenarios - State Validation*, § *3. View Scenarios*, § *3b. List-type Read Model Scenarios*, § *4. Error Path Scenarios* (worked examples in its `references/examples.md`).
 - **Which elements may appear in a step** — only those `get_spec_info` returns for the timeline: § *Post Scenarios to Board* → *Step 2 — Load valid step elements* and *Step 3 — Resolve step IDs*. A test's mocks, repositories or setup calls are never steps.
 - **Rejections** — § *Step 4c — Error/rejection scenarios*.
+- **Examples, not notes** — what the tests, fixtures and code comments say (fees, limits, dates, ids) becomes example values — fields with an `example` on the Given/When/Then step elements, not prose — never a lone note over empty steps: § *A note never replaces examples — no empty steps* and § *Fill the values essential to the scenario*.
 - **Before reporting** — its § *Quality Checklist*.
 
 ---

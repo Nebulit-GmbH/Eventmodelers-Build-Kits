@@ -78,6 +78,31 @@ assumption or regulation behind the case, why the case matters, a time gap betwe
 cart total is 120 €" (→ field examples), "an email is sent" (→ a `then` event), restating the
 title. Most scenarios need no note; keep any note to a few lines.
 
+### A note never replaces examples — no empty steps (legacy sources especially)
+
+A scenario lives by its examples; the note sits on top. **Never** post a scenario whose rule is
+only in the note while its steps are bare. The typical failure — seen on a legacy analysis:
+`contextNote: "CAR: parkingFee 14.00, independent of time of day or Sunday"`, `given` empty,
+`when: ReportLostTicket` with no values, `then: LostTicketFeeCharged` with no values. The note
+holds the whole rule; the scenario asserts nothing. Model it as:
+
+- the state the rule reads (`parkingFee: 14.00`) → a `given` event that established it, or a
+  `context` read model with that row — never the note;
+- the `when` command with the values the rule decides on and its linking id;
+- the `then` event/read model with the asserted outcome (`fee: 14.00`, same id).
+
+**"Examples" means fields with example values** — `fields: [{name: "parkingFee", example: "14.00"}]`
+on the step's element, nothing else. Values written into the title, description, `contextNote` or
+any other prose are not examples, and an element with no field carrying an `example` counts as
+empty. If the element has no field for the value, add the field first, then give it the example.
+
+Rules: **a `given`/`context` is never left empty when the rule depends on prior state** (empty only
+for an input the business refuses outright, or a first-ever action, and then the title says so);
+**a command or `then` step is never posted without its essential values**. Facts mined from legacy
+code comments, fixtures or tests ("CAR: …", "independent of Sunday") are example values — put them
+on the steps, and keep in the note only the generalisation the values can't show ("same fee at any
+time of day or Sunday").
+
 ### Fill the values essential to the scenario — mandatory
 
 The goal is not to fill every field, but every value **the scenario depends on**: change one of
@@ -563,6 +588,7 @@ After posting, tell the user:
 
 **Per read model — this is a separate, equally mandatory pass, not an afterthought of the command pass above:**
 - [ ] **Essential example values filled (blocking — no exceptions)** — every value the rule decides on, the ids linking the steps and the asserted outcome carry a concrete `example` on their step; every other field left empty, so it is clear which data is relevant; a scenario whose values only appear in its note is not done
+- [ ] **No bare steps (blocking)** — no scenario has an empty `given`/`context` while its rule depends on prior state, and no `when` command or `then` step without its essential values; a rule that lives only in the `contextNote` is moved onto the steps
 - [ ] **Notes carry nothing an element could** — every `contextNote` and note beat holds only background no event, command field or read model can express; anything else is moved into `given`/`when`/`then`/`context` and the note removed
 - [ ] **Every READMODEL on the board has at least one view scenario** — GWT (`given`: source EVENTs, `when`: empty, `then`: the READMODEL) or a storyline. A model with dozens of command scenarios and 0 read-model scenarios is not a complete Step 7 — it's easy to walk away thinking coverage is thorough because the command side looks exhaustive, so check the read-model side explicitly before reporting this step done.
 - [ ] **Population scenario** — the view shows correct data after its source event(s)
