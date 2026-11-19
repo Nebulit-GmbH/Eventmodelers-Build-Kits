@@ -30,6 +30,8 @@ event model of its own, exported in `slice.json` as:
 }
 ```
 
+- **A step with `phase: "pre"` happens before the slice** (page template applied, authorization applied …): `steps` lists those first. There is no
+  catalog of pre events yet, so none has a defined reaction: build nothing for them, and mention each in the slice's notes as "pre action not built".
 - **Steps run in order**, each is *user does something* (`command`) → *the UI reacts* (`events`, one or several). Step 1 of the board's
   interaction model is the slice itself — what is in `slice.json` — and is not repeated here.
 - **The event is the fact, the read model is its result, the screen follows from the read model.** `readModels` is what an item works

@@ -227,7 +227,10 @@ async function fetchPlatformConfig(local) {
   // A client-side pocketbaseUrl (EVENTMODELERS_POCKETBASE_URL / config.json) beats the server's:
   // on-prem the server may advertise its internal docker address (http://pocketbase:8090) that a
   // remote agent cannot reach.
-  return { ...local, ...remote, ...(local.pocketbaseUrl ? { pocketbaseUrl: local.pocketbaseUrl } : {}) };
+  // The baseUrl is the one this client reached the server at and sent its token to: the server does not get to move it.
+  // A self-hosted backend that was never told its public address advertises the hosted default here, and taking that
+  // would send the token to a host the user never configured.
+  return { ...local, ...remote, baseUrl: local.baseUrl, ...(local.pocketbaseUrl ? { pocketbaseUrl: local.pocketbaseUrl } : {}) };
 }
 
 // ── Realtime agent ────────────────────────────────────────────────────────────
