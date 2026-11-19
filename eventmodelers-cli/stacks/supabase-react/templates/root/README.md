@@ -32,7 +32,7 @@ npm run lint    # lint with oxlint
   build skills under `.build-kit/lib/`. See `.build-kit/README.md`.
 - `.claude/skills/` — Claude skills used to build slices (`connect`, `learn-eventmodelers-api`,
   `load-slice`, `build-state-change`, `build-state-view`, `update-slice-status`,
-  `request-feedback`) plus `init-style-guide` / `learn-styleguide` for keeping generated UI
+  `request-feedback`) plus `use-interaction-model` (builds the slice's `interactionModel` — modal, navigation, selection, filter, refresh — into the component), `init-style-guide` / `learn-styleguide` for keeping generated UI
   on-brand — run `init-style-guide` once to hand over CSS/design tokens/brand docs.
   `apply-layout` builds a *layout slice* (a board slice with a screen but no command or read model, plus an
   optional UI prompt): that screen becomes the shell around every page of its timeline.

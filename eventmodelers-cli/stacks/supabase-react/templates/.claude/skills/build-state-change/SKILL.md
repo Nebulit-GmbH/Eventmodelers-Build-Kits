@@ -74,6 +74,9 @@ Extract:
 - **specifications[]** and **storylines[]** (optional) — GWT scenarios / board walkthroughs. These
   describe how the slice should **behave** — read them in full (Step 3a) to understand the outcomes
   and states the UI must present. The business logic itself lives in the backend; the UI does not implement it.
+- **interactionModel** (optional) — what happens around this slice's screen before the command runs (a confirmation
+  modal opens, a step of a wizard, the user navigates on after it), as ordered steps of *user does → UI reacts* with
+  resolved read-model / screen links. When present it is part of what you build: Step 3b.
 
 > **Comments**: each element carries `comments: string[]` (board comments) — read them as
 > implementation hints, and resolve consumed ones via
@@ -269,6 +272,13 @@ deletability, not for it (one more file to keep in sync instead of one). When it
 move the same logic verbatim into a colocated `use<CommandTitle>.ts` and have the component call
 it — nothing about the logic itself changes, only where it lives.
 
+### Step 3b — Build the interaction model, when `slice.json` has one
+
+If `slice.json` carries an **`interactionModel`**, invoke the `use-interaction-model` skill now and follow it. For a command component the typical steps are
+*open a modal → the user confirms (the `submit` is this component's command) → navigate on / refresh a list*: the modal wraps or precedes the form, the
+`submit` is the existing `postCommand`, and what follows `onSuccess` (navigation, a refreshed list) is the `navigated` / `component-updated` event.
+Without an `interactionModel`, skip this step.
+
 ## Step 4 — Add numbered samples
 
 Every command component ships a `samples/` folder colocated next to it, mirroring
@@ -418,6 +428,7 @@ leaves it alone.
 ## Step 9 — Verify against slice.json
 
 After writing the hook/component (and context/page/base page, if any), confirm:
+- With an `interactionModel`: every step is realised or listed in the report with its reason (Step 3b); the `submit` is the command's own `postCommand`, nothing else posts.
 - Every prop matches a `command.fields[]` entry exactly (name + type) — no invented or missing
   fields.
 - The `postCommand` call uses the UI contract's `path` and `body` when one was found, else `command.apiEndpoint` verbatim — or, when it was missing at build

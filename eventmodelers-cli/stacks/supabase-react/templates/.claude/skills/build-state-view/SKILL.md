@@ -90,6 +90,9 @@ Extract:
 - **specifications[]** and **storylines[]** (optional) — GWT scenarios / board walkthroughs. These
   describe how the slice should **behave** — read them in full (Step 3a) to understand the outcomes
   and states the UI must present. The business logic itself lives in the backend; the UI does not implement it.
+- **interactionModel** (optional) — what happens around this slice's screen before the next command runs (a modal
+  opens, a row is selected, a list is filtered, the user goes to another page), as ordered steps of *user does →
+  UI reacts* with resolved read-model / screen links. When present it is part of what you build: Step 3b.
 
 > **Comments**: as in `build-state-change` — resolve consumed ones via the same node-comment
 > endpoint.
@@ -249,6 +252,12 @@ exactly the same conditions as `build-state-change` Steps 3-4 — only when genu
 reach for either by default; most read-model components are a query plus a render and need
 nothing more.
 
+### Step 3b — Build the interaction model, when `slice.json` has one
+
+If `slice.json` carries an **`interactionModel`**, invoke the `use-interaction-model` skill now and follow it: it maps each step to UI behaviour
+(modal, navigation, selection, filter, refresh) around the component you just built. A read-model component is where most of it lives — the
+list's selection and filter state, the refresh of what it shows. Without an `interactionModel`, skip this step.
+
 ## Step 4 — Add numbered samples
 
 Every read-model component ships a `samples/` folder colocated next to it:
@@ -350,6 +359,8 @@ leaves it alone.
   `queryReadModel`'s return value.
 - Every scenario situation (empty, each distinct field value) has a rendered presentation, and the
   component re-derives nothing the read model already holds.
+- With an `interactionModel`: every step is realised or listed in the report with its reason (Step 3b); selection and filter
+  state changes the query's scope/`filters`, never the rows after the fact.
 - If a screen was read in Step 2, the rendered JSX matches the marked (or whole, if unmarked) HTML
   fragment structurally.
 - Nothing in this slice's folder is imported from another slice's folder, and nothing outside it

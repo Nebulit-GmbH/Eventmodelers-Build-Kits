@@ -39,6 +39,33 @@ curl -s -X POST "<BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events" \
 
 ---
 
+### Interaction model (`interactionModel`)
+
+A slice with a screen can carry an **interaction model**: what happens around that screen *before the next command runs* — a modal opens, the user picks a row, a filter narrows a list, a navigation leads on. It is a small event model of its own (the person authors it in the ⇆ button of the slice's column header); it lives on the slice's SLICE_BORDER as `meta.interaction`, is not part of the chapter and adds no element to the board. The slice data carries it as `interactionModel` (**full graph only** — not in the `outline` / `fields` / `specs` projections; omitted when the slice has none).
+
+```json
+"interactionModel": {
+  "steps": [
+    { "command": { "title": "Open order", "kind": "navigate",
+                   "readModels": [{ "id": "rm-2", "title": "Order Detail" }],
+                   "screens":    [{ "id": "s-2", "title": "Order Page" }] },
+      "events":  [{ "title": "Navigated", "kind": "navigated", "field": "orderId",
+                    "readModels": [{ "id": "rm-2", "title": "Order Detail" }],
+                    "screens":    [{ "id": "s-2", "title": "Order Page" }] }] }
+  ]
+}
+```
+
+- **Steps run in order.** Each has an interaction **command** (what the user does) and one or more interaction **events** (what the UI does as a result — the *fact*). Step 1 is the slice itself and is not repeated here.
+- **`kind`** (absent on a custom item) says what a UI build can do with it. Commands: `open-modal`, `submit`, `navigate`, `select-item`, `filter`. Events: `modal-opened`, `navigated`, `component-updated`, `selection-changed`. `title`, `description` and `fields` are the person's words; `field` is a field name the kind carries (the id field of a row, the id a route carries).
+- **The event is the fact, the read model is the result, the screen follows from the read model.** `readModels` is what an item works on or is refreshed from; `screens` are the screens those read models are shown on in the event model (plus any the person linked directly). A `navigated` event therefore says *which screen the user arrives at* through its read model — build that screen from the read model, not from the interaction item. A `component-updated` event refreshes the component that shows its read model.
+- **Links are already resolved.** What the slice itself says is filled in, not asked for: a `submit` carries the slice's own command (`command`), and `select-item` / `filter` / `selection-changed` / `component-updated` carry the slice's read model unless the person linked another. Every link is `{id, title}` of a board element; use the id to read it (`get_node`, `get_slice_data`).
+- **A read model is always from the slice's own context.** A link to one from another context is left out (with the screens it is shown on).
+- **Presentation only.** It never changes what a command or read model must do, and it is not for the backend. **How a UI reacts to each `kind` is defined by each UI build kit in its own skills** (this document only says what the data means) — a kit that does not know a `kind` should treat the item as a custom one, built from its `title` / `description` / `fields`. Read-only for agents — the person edits it on the board.
+- **Read** it from the board's metadata too: `get_node` on the SLICE_BORDER returns `meta.interaction` (the authored form: `{version: 1, steps: [{id, command?, events?: [{id, title, kind?, refs?: {screen?, screens?, readModel?, readModels?, command?, field?}}]}]}`).
+
+---
+
 ### GET `/api/org/:orgId/boards/:boardId/slicedata/slices`
 List all slices on a board.
 
