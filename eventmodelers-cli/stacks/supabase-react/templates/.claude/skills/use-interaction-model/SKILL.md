@@ -20,12 +20,9 @@ event model of its own, exported in `slice.json` as:
 ```json
 "interactionModel": {
   "steps": [
-    { "command": { "title": "Open order", "kind": "navigate",
-                   "readModels": [{ "id": "rm-2", "title": "Order Detail" }],
-                   "screens":    [{ "id": "s-2",  "title": "Order Page" }] },
+    { "command": { "title": "Open order", "kind": "navigate" },
       "events":  [{ "title": "Navigated", "kind": "navigated", "field": "orderId",
-                    "readModels": [{ "id": "rm-2", "title": "Order Detail" }],
-                    "screens":    [{ "id": "s-2",  "title": "Order Page" }] }] }
+                    "screens": [{ "id": "s-2", "title": "Order Page" }] }] }
   ]
 }
 ```
@@ -47,9 +44,9 @@ event model of its own, exported in `slice.json` as:
 
 | `kind` | What the UI does |
 |---|---|
-| `open-modal` → `modal-opened` | A **modal / drawer** that opens when the user acts. It shows what its `readModels` hold (the screen in `screens` is the blueprint for its markup — fetch it as in Step 2). Closing it is plain UI behaviour; it is not listed unless the model says so. |
+| `open-modal` → `modal-opened` | A **modal / drawer** that opens when the user acts. The event's `screens` is the screen the modal shows — its markup is the blueprint (fetch it as in Step 2); `page` says which page of a multi-page screen (0-based, absent = the default page). Closing it is plain UI behaviour; it is not listed unless the model says so. |
 | `submit` | The slice's own command: `postCommand` (see `build-state-change`). Nothing else to build for it here. |
-| `navigate` → `navigated` | **Go to another page.** The destination is the page of the event's `screens` (`src/pages/<ScreenTitle>.tsx`, Step 5/6 of the build skills); `field` is the id the route carries (`orderId`) — the destination reads it to scope its read model query. See "Navigation" below. |
+| `navigate` → `navigated` | **Go to another page.** The destination is the event's `screens` — the target screen (`src/pages/<ScreenTitle>.tsx`, Step 5/6 of the build skills; `page` picks a page of a multi-page screen) — **the link is always on the event, never on the command**; `field` is the id the route carries (`orderId`) — the destination reads it to scope its read model query. See "Navigation" below. |
 | `select-item` → `selection-changed` | The user picks a row/card of the list read model. The selection is **state of the page** (lift it: a prop from the parent, or a colocated `<Name>Context.tsx` when siblings share it — never a global store). `field` names the id field of the row. Components that depend on the selection re-scope their read model query to it. |
 | `filter` | A filter / search control narrows the list: pass the filter to `queryReadModel`'s `filters` (never filter rows in the component against data the read model did not return). |
 | `component-updated` | The component that shows the event's `readModels` **refreshes** from them: re-run its query when the triggering command/filter/selection changes. |
