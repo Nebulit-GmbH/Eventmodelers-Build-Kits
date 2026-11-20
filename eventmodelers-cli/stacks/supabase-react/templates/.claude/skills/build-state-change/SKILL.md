@@ -104,6 +104,9 @@ whiteOutside? }]`.
   `meta.pages[mark.pageIndex]` locate the element carrying `data-em-mark-id="<mark.id>"` — **that
   HTML subtree, not the rest of the page, is the blueprint for what this component builds.**
   Ignore markup outside it; it belongs to other slices.
+- **Which marker is this slice's:** if the slice's interaction model has a `component-placed` event, its `marks` name it. **If the model has no `component-placed` event, use the screen's `component` marker
+  (`meta.marks[]` with `component: true` — the green one) when there is one**: exactly one → that region is this slice's; several → take the one on the page the model's `component-rendered` names, else the first, and say so
+  in the report; none → fall back to the marks belonging to this node as described here, or the whole page when unmarked.
 - **If `meta.marks` is empty**: the whole page (every entry in `meta.pages`, in order, for a
   multi-step flow) is the blueprint.
 **Read the screen's bubbles too.** The node's `data.screenBubbles.items[]` are comments the author pinned
@@ -393,8 +396,12 @@ an existing project that is missing it gets fixed on its next build.
    `btn`/`form-control`/`col-*` → bootstrap, utility classes like `flex p-6` → tailwind). If the
    screen loads **no** framework (`[]`, or nothing detectable), use Vite's default: change nothing —
    skip this whole step, leave `index.html` and `src/index.css` as the template ships them.
-2. **Ensure it's loaded** in `index.html`'s `<head>`, same pinned version the board uses — check with
-   `grep -n -i "bulma\|bootstrap\|cdn.tailwindcss" index.html` first, add only what's missing:
+2. **Ensure it's loaded exactly once, at the version the board uses.** First check *both* places: `grep -n -i "bulma\|bootstrap\|tailwind" index.html src/main.tsx package.json`.
+   A scaffolded app already imports the framework from npm (`import 'bulma/css/bulma.min.css'` in `src/main.tsx`, `"bulma": "0.9.4"` in `package.json`) — then it **is** loaded:
+   add **nothing**, and **never add a CDN link on top of it**. Two copies — above all two *versions* — override each other: Bulma 1.x sets `.title:has(+.subtitle){margin-bottom:0}` while
+   0.9.4 adds `.title+.subtitle{margin-top:-1.25rem}`, so the subtitle slides over the title. If the npm copy is not the board's pinned version (bulma **0.9.4**), pin it in
+   `package.json` (and run the install) instead of adding a second source; remove a CDN link that duplicates an npm import. Only when the framework is in neither place, add it to
+   `index.html`'s `<head>`, same pinned version the board uses:
    - `bulma` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`
    - `bootstrap` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">`
    - `tailwind` → `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`

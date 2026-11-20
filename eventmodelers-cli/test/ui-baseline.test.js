@@ -63,3 +63,30 @@ test('backend scope ignores screens and UI prompts, and a baseline of another sc
   assert.equal(result.verdict, 'UNCHANGED');
   assert.equal(compare(readBaseline(found.path), await fingerprint({ slice, fetchNodes: board(hashes) }), 'ui').verdict, 'NO_BASELINE');
 });
+
+test('a slice present in two contexts is read from the active one, not a stale leftover', () => {
+  const kit = mkdtempSync(join(tmpdir(), 'ui-baseline-'));
+  for (const [ctx, body] of [['default', { id: 'S', title: 'Assign Tag' }], ['foo', { id: 'S', title: 'Assign Tag', commands: [{ id: 'cmd' }] }]]) {
+    mkdirSync(join(kit, '.slices', ctx, 'assign-tag'), { recursive: true });
+    writeFileSync(join(kit, '.slices', ctx, 'assign-tag', 'slice.json'), JSON.stringify(body));
+  }
+  writeFileSync(join(kit, '.slices', 'current_context.json'), JSON.stringify({ name: 'foo' }));
+  assert.ok(findSliceDir(kit, 'Assign Tag').path.endsWith(join('foo', 'assign-tag')));
+  assert.ok(findSliceDir(kit, 'S').slice.commands);
+});
+
+test('an edited interaction model (e.g. fields added to a navigated event) is a change; an old baseline without it is one only when the slice has a model', async () => {
+  const withModel = { ...slice, interactionModel: { steps: [{ events: [{ kind: 'navigated' }] }] } };
+  const found = setup(withModel);
+  const fetchNodes = board({ scr: 'a', cmd: 'b' });
+  writeBaseline(found.path, await fingerprint({ slice: withModel, fetchNodes }));
+  assert.equal(compare(readBaseline(found.path), await fingerprint({ slice: withModel, fetchNodes })).verdict, 'UNCHANGED');
+  const edited = { ...withModel, interactionModel: { steps: [{ events: [{ kind: 'navigated', fields: ['email'] }] }] } };
+  const result = compare(readBaseline(found.path), await fingerprint({ slice: edited, fetchNodes }));
+  assert.equal(result.verdict, 'CHANGED');
+  assert.equal(result.interactionChanged, true);
+  // baseline recorded before the interaction model was tracked
+  const old = { ...readBaseline(found.path) }; delete old.interactionHash;
+  assert.equal(compare(old, await fingerprint({ slice: withModel, fetchNodes })).interactionChanged, true);
+  assert.equal(compare(old, await fingerprint({ slice, fetchNodes })).interactionChanged, false);
+});

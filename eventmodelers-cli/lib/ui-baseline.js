@@ -27,7 +27,12 @@ export function findSliceDir(kitDir, idOrTitle) {
   const slicesDir = join(kitDir, '.slices');
   if (!existsSync(slicesDir)) return null;
   const wanted = String(idOrTitle).trim().toLowerCase();
-  for (const ctx of readdirSync(slicesDir, { withFileTypes: true })) {
+  // The active context first: the same slice can also exist under a leftover context folder (e.g. `default` before
+  // a rename), and that stale copy must never win over the current one.
+  const current = readJson(join(slicesDir, 'current_context.json'))?.name;
+  const contexts = readdirSync(slicesDir, { withFileTypes: true })
+    .sort((a, b) => Number(b.name === current) - Number(a.name === current));
+  for (const ctx of contexts) {
     if (!ctx.isDirectory()) continue;
     for (const dir of readdirSync(join(slicesDir, ctx.name), { withFileTypes: true })) {
       if (!dir.isDirectory()) continue;
@@ -81,6 +86,8 @@ export async function fingerprint({ slice, fetchNodes, scope = 'ui' }) {
     screen: screenNodes.length ? sha(screenNodes.map((n) => [n.id, n.hash])) : null,
     elements: elementNodes.length ? sha(elementNodes.map((n) => [n.id, n.hash])) : null,
     prompts: sha(prompts),
+    // The slice's interaction model (modal, navigation + its fields, selection, ...). Not a board node, so it is hashed from the export itself.
+    interaction: ui && slice.interactionModel ? sha(slice.interactionModel) : null,
     promptList: prompts,
     nodes: [...screenNodes, ...elementNodes],
   };
@@ -91,7 +98,7 @@ export function readBaseline(sliceDir) {
 }
 
 export function writeBaseline(sliceDir, fp, scope = 'ui') {
-  const baseline = { scope, screenHash: fp.screen, elementsHash: fp.elements, uiPromptsHash: fp.prompts, uiPrompts: fp.promptList, nodes: fp.nodes, recordedAt: new Date().toISOString() };
+  const baseline = { scope, screenHash: fp.screen, elementsHash: fp.elements, uiPromptsHash: fp.prompts, interactionHash: fp.interaction, uiPrompts: fp.promptList, nodes: fp.nodes, recordedAt: new Date().toISOString() };
   writeFileSync(join(sliceDir, BASELINE_FILE), JSON.stringify(baseline, null, 2) + '\n');
   return baseline;
 }
@@ -112,12 +119,14 @@ function diffNodes(before, now) {
 export function compare(baseline, fp, scope = 'ui') {
   const none = { changedNodes: [], addedNodes: [], removedNodes: [] };
   // A baseline recorded under another scope says nothing about this one.
-  if (!baseline || (baseline.scope ?? 'ui') !== scope) return { verdict: 'NO_BASELINE', screenChanged: true, elementsChanged: true, promptsChanged: fp.promptList.length > 0, newPrompts: fp.promptList, ...none };
+  if (!baseline || (baseline.scope ?? 'ui') !== scope) return { verdict: 'NO_BASELINE', screenChanged: true, elementsChanged: true, promptsChanged: fp.promptList.length > 0, interactionChanged: fp.interaction !== null, newPrompts: fp.promptList, ...none };
   const screenChanged = baseline.screenHash !== fp.screen;
   const elementsChanged = baseline.elementsHash !== undefined && baseline.elementsHash !== fp.elements;
   const promptsChanged = baseline.uiPromptsHash !== fp.prompts;
+  // A baseline from before the interaction model was tracked has no interactionHash: that is a change only when the slice has an interaction model.
+  const interactionChanged = (baseline.interactionHash ?? null) !== fp.interaction;
   const seen = new Set(baseline.uiPrompts ?? []);
   const newPrompts = promptsChanged ? fp.promptList.filter((p) => !seen.has(p)) : [];
   const nodes = Array.isArray(baseline.nodes) ? diffNodes(baseline.nodes, fp.nodes) : none;
-  return { verdict: screenChanged || elementsChanged || promptsChanged ? 'CHANGED' : 'UNCHANGED', screenChanged, elementsChanged, promptsChanged, newPrompts, ...nodes };
+  return { verdict: screenChanged || elementsChanged || promptsChanged || interactionChanged ? 'CHANGED' : 'UNCHANGED', screenChanged, elementsChanged, promptsChanged, interactionChanged, newPrompts, ...nodes };
 }

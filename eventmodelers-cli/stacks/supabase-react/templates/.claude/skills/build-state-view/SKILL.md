@@ -108,6 +108,8 @@ Identical to `build-state-change` Step 2 — fetch the live screen node
 (or the whole page if unmarked), and treat it as the blueprint. The same `learn-styleguide` note
 applies: prefer its tokens/classes over the mockup's ad hoc styling where they disagree.
 
+**Which marker is this slice's:** if the slice's interaction model has no `component-placed` event, the screen's `component` marker (`marks[].component === true`, green) is this slice's region when there is one — see `build-state-change` Step 2.
+
 **Read the screen's bubbles too.** The node's `data.screenBubbles.items[]` are comments the author pinned
 to specific spots of the mockup (disabled states, conditional display, validation messages, copy) — build
 requirements, not decoration. Apply each bubble that sits in this slice's fragment (all of them when the
@@ -222,6 +224,20 @@ export function ActiveReservationView({ customerId }: ActiveReservationViewProps
 }
 ```
 
+### Step 3-scope — One record or the whole collection? Decide it from the screen, never default to "all rows"
+
+Before writing the query, look at the screen markup (Step 2) and the screen's `fields[]`:
+
+- **The screen shows one record** (one profile / detail card, no repeated rows) while the read model is a collection: the component must show **one** row, never
+  map the whole table. The **screen's fields that also exist on the read model are the parameters that pick that row** — e.g. screen "Customers" with `name` and
+  `email` over read model `Customer` (`name`, `email`) → the component takes `email` as a prop, queries `filters: { email }` with `single: true`, and renders that
+  one row. A field the model flags `query: true` (read model or screen) is a parameter for certain; a screen field that repeats a read-model field is one too.
+- **The page supplies the parameter** (the component never reads the session itself): the value comes from the route (`useParams()`), else — for the signed-in
+  user's own data, e.g. an `email` / `userId` field — from the session (`supabase.auth.getSession()` / `session.user.email`) in the page file, passed down as the prop.
+- **The screen repeats a row** (a table / list / cards from a loop in the markup): render all rows, scoped only by the parameters the model names.
+- If you cannot tell which it is, assume *one record*, say so in a one-line code comment, and list it in the final report — an unscoped collection on a
+  single-record screen is the wrong default (it shows every customer's data to each customer).
+
 ### Step 3a — Read the scenarios to understand behavior (not to implement rules)
 
 **Business logic lives in the backend (the projection). The UI never re-derives it** — no
@@ -313,8 +329,12 @@ an existing project that is missing it gets fixed on its next build.
    `btn`/`form-control`/`col-*` → bootstrap, utility classes like `flex p-6` → tailwind). If the
    screen loads **no** framework (`[]`, or nothing detectable), use Vite's default: change nothing —
    skip this whole step, leave `index.html` and `src/index.css` as the template ships them.
-2. **Ensure it's loaded** in `index.html`'s `<head>`, same pinned version the board uses — check with
-   `grep -n -i "bulma\|bootstrap\|cdn.tailwindcss" index.html` first, add only what's missing:
+2. **Ensure it's loaded exactly once, at the version the board uses.** First check *both* places: `grep -n -i "bulma\|bootstrap\|tailwind" index.html src/main.tsx package.json`.
+   A scaffolded app already imports the framework from npm (`import 'bulma/css/bulma.min.css'` in `src/main.tsx`, `"bulma": "0.9.4"` in `package.json`) — then it **is** loaded:
+   add **nothing**, and **never add a CDN link on top of it**. Two copies — above all two *versions* — override each other: Bulma 1.x sets `.title:has(+.subtitle){margin-bottom:0}` while
+   0.9.4 adds `.title+.subtitle{margin-top:-1.25rem}`, so the subtitle slides over the title. If the npm copy is not the board's pinned version (bulma **0.9.4**), pin it in
+   `package.json` (and run the install) instead of adding a second source; remove a CDN link that duplicates an npm import. Only when the framework is in neither place, add it to
+   `index.html`'s `<head>`, same pinned version the board uses:
    - `bulma` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">`
    - `bootstrap` → `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">`
    - `tailwind` → `<script src="https://cdn.tailwindcss.com/3.4.16"></script>`
@@ -351,6 +371,7 @@ leaves it alone.
   fields.
 - With a UI contract: the `getReadModel` call uses the contract's path and query `parameters`
   verbatim, and every non-2xx response has its own rendered state. Otherwise:
+- Single-record screen: the query is scoped by the screen's parameter (Step 3-scope), never the whole collection.
 - The `queryReadModel` call targets `readmodel.apiEndpoint` verbatim as `table` — or, when it was
   missing at build time, the provisional `mock_...` table name noted in a comment (Step 1) — never a
   raw `fetch`, a direct `supabase.from(...)` call, or a hardcoded table name that doesn't match

@@ -5492,6 +5492,7 @@ program
     if (nodeDetail) console.log(`Since the last recorded build:${nodeDetail}\nWork on exactly these; leave what matches alone.`);
     if (result.screenChanged && result.verdict === 'CHANGED') console.log('SCREEN_CHANGED: re-fetch the screen node, diff the components against it and adjust the UI.');
     if (result.elementsChanged && result.verdict === 'CHANGED') console.log('ELEMENTS_CHANGED: an element of the slice (command, event, read model, processor, table, actor, aggregate, specification, ...) changed on the board — diff slice.json against the code field by field.');
+    if (result.interactionChanged && result.verdict === 'CHANGED') console.log('INTERACTION_CHANGED: the slice\'s interaction model (experience model) changed on the board — walk every step against the code with the use-interaction-model skill (modal, navigation and the fields it passes, selection, filter) and build what is missing or different.');
     if (result.promptsChanged) console.log(`PROMPTS_CHANGED: apply ${result.newPrompts.length ? 'these new/changed UI prompts' : 'the UI prompts (they were edited or removed — re-read them)'}:${result.newPrompts.map((p) => `\n  - ${p.trim()}`).join('')}`);
     console.log('When the UI is done, run `ui-baseline record`.');
   });

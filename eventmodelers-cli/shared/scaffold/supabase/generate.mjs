@@ -223,7 +223,9 @@ write('tsconfig.json', JSON.stringify(tsconfig, null, 2) + '\n');
 
 const webPkgFile = join(target, 'web/package.json');
 const webPkg = JSON.parse(readFileSync(webPkgFile, 'utf8'));
-webPkg.dependencies = {...webPkg.dependencies, 'react-router-dom': '^7.18.4', ...(css === 'bulma' ? {bulma: '^1.0.4'} : {})};
+// bulma is pinned to 0.9.4, the version the board's HTML screens render with — 1.x spaces titles/subtitles differently, and the
+// build skills must never add a second (CDN) copy next to this one.
+webPkg.dependencies = {...webPkg.dependencies, 'react-router-dom': '^7.18.4', ...(css === 'bulma' ? {bulma: '0.9.4'} : {})};
 webPkg.scripts = {...webPkg.scripts, dev: `vite --port ${webPort} --strictPort`};
 write('web/package.json', JSON.stringify(webPkg, null, 2) + '\n');
 

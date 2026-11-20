@@ -75,6 +75,8 @@ This is the build trigger. Setting `InProgress` and building are one atomic step
        matches; do not regenerate the slice from scratch.
      - `ELEMENTS_CHANGED`: diff slice.json against the code field by field (fields,
        `apiEndpoint`/UI contract) and fix every drift.
+     - `INTERACTION_CHANGED`: the slice's `interactionModel` changed (a step, or the fields a `navigated` event passes). Invoke the build skill's Step 3b
+       (`use-interaction-model`) and walk **every** step against the code; build what is missing or different — never conclude "no change" from an unchanged screen.
      - `PROMPTS_CHANGED`: apply the UI prompts it prints — each is an instruction the user typed on the
        board for this slice's UI (e.g. "adjust the UI to the new layout!") — to the component(s) and
        screen markup. Name each prompt and the change you made for it in your final reply.
