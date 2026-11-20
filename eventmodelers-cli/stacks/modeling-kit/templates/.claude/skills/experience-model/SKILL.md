@@ -73,7 +73,7 @@ A step is `{ name?, phase?: "pre", command?, events? }`: the user does something
 | `navigate` | `navigated` | `refs.screen` (+ `refs.page`), `refs.field` = id the route carries, **`fields` = values handed to the target screen, e.g. `["email"]`** |
 | `select-item` | `selection-changed` | `refs.readModel`, `refs.field` = id field of the row |
 | `filter` (`fields`) | `component-updated` | `refs.readModels` |
-| — | `component-placed` (`refs.marks`) · `component-rendered` (`refs.screen`, `refs.page`) | first pre events: what is placed, which page the user starts on |
+| — | `component-placed` (`refs.marks`) · `component-rendered` (`refs.screen`, `refs.page`) | first pre events: what is placed (**only when the slice's screen has at least one marker** — the editor offers it only then), which page the user starts on |
 | — | `item-highlighted` | `refs.readModel`, `refs.field` = the field that holds the viewer |
 
 ### Rules
