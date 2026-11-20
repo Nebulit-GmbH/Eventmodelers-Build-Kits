@@ -57,7 +57,7 @@ EM_TOKEN="$TOKEN" node <skill-dir>/assets/prototype.mjs status \
 
 (`TOKEN` from `connect` — when it is the `$EVENTMODELERS_TOKEN` reference, pass `EM_TOKEN="$EVENTMODELERS_TOKEN"`; never write the token on the command line itself.)
 
-Per slice, the hash covers its elements with their fields and dependencies, its scenarios and storylines, and the content of its screens (HTML pages and marks, or the sketch) — not its status, assignee, ticket or comments, so moving a slice to Done rebuilds nothing. The hashes are compared with those on the blocks of the prototype the platform stores for this context — the page itself is the memory, no other state is kept — so a run in another chat session, folder or machine still rebuilds only what changed. `status` downloads it itself; the page never passes through you. Only when the platform has none yet does it fall back to a local `<out>/index.html` (an earlier run whose upload failed); `baseline` in `status.json` says which it was (`platform` / `local` / `none`).
+Per slice, the hash covers its elements with their fields and dependencies, its scenarios and storylines, its **interaction (experience) model**, and the content of its screens (HTML pages and marks, or the sketch) — not its status, assignee, ticket or comments, so moving a slice to Done rebuilds nothing. The hashes are compared with those on the blocks of the prototype the platform stores for this context — the page itself is the memory, no other state is kept — so a run in another chat session, folder or machine still rebuilds only what changed. `status` downloads it itself; the page never passes through you. Only when the platform has none yet does it fall back to a local `<out>/index.html` (an earlier run whose upload failed); `baseline` in `status.json` says which it was (`platform` / `local` / `none`).
 
 `<out>/.work/status.json` carries the context's id (`contextId` — the MODEL_CONTEXT or timeline the name matched; the platform resolves a timeline to its effective context when storing) and lists every slice with `state` (`new` / `changed` / `unchanged`), its `hash`, `order` and `sliceType`, plus `removed` slices, and the CSS framework the screens use. The blocks of unchanged slices are already copied to `<out>/.work/slices/<slice id>.html`.
 
@@ -82,6 +82,7 @@ A change in one slice can matter to another (a renamed event field that a read m
 Read `<out>/.work/data/<slice id>.json` for each flagged slice. No board call is needed for them. (`mcp__eventmodelers__get_slice_data` / `get_nodes` only if a file is missing.)
 
 - the slice's elements → `commands[]`, `events[]`, `readmodels[]`, `screens[]`, `processors[]` (automations), each element with `fields[]` (`type`, `example`, `generated`, `idAttribute`, `cardinality`, `subfields`, `mapping`), `description` and `dependencies[]` (`INBOUND`/`OUTBOUND`) — the wiring SCREEN → COMMAND → EVENT → READMODEL → SCREEN / AUTOMATION → COMMAND.
+- `slice.interactionModel` (when the slice has one) → the **experience model** around the slice: `steps[]`, each `{ name?, phase?: "pre", command?, events[] }`; an item is `{ kind, title, description?, fields?, roles?, condition?, field?, command?, readModels[], screens[], page?, marks[] }` with every link already resolved to `{id, title}` (marks `{id, name}`). Step 1 is the slice itself and is not in it. **Pre** steps are what the user does to provide what the slice's command needs (and checks on page entry); **post** steps are what follows. The skeleton lists the steps as comment lines (`// step N …`) under an `@@TODO interaction model` marker — Step 5a builds them.
 - `specs` → `specifications[]` and `storylines[]`; `screens` → `pages` and `marks` for an HTML screen, `sketch` `{ elements }` for a SCREEN (grid vocabulary in `storyboard-screen`), nothing for an uploaded screenshot (the screen's fields are all there is).
 
 **Copies.** An element with `elementCopy: true` is a linked copy (its `id` is the original's). It is defined by the slice that owns the original, never twice. An EVENT whose original lives in another context, or that no COMMAND in this context produces, is an **external event**.
@@ -138,6 +139,30 @@ Example values become typed data (`Int`/`Double` → numbers, `Boolean` → bool
 **HTML screens — 1:1**: the generated component is the translation (several pages → a step-through with local `page` state, already generated); do not redesign it. **Sketch screens — redrawn**: a 1000×800 relative container, each element absolutely positioned at `gridX*20`/`gridY*20` (`gridWidth*20` × `gridHeight*20`) — `rectangle` → `div`, `headline`/`text` → text at its `fontSize`, `button` → `<button>`, `input` → `<input placeholder>`, `image` → a filled box, `line`/`circle` → inline SVG — then wired the same way.
 
 Automation slices usually have no screen part — the Automations tab shows them.
+
+### Step 5a — The interaction model: behaviour around the slice
+
+When the slice has an `interactionModel` (the `@@TODO interaction model` lines in its skeleton), the prototype **behaves as the board says**: build each step in the slice's block, in order, then delete the marker lines. It is **presentation only** — a step never adds a business rule, validation or computed value; the command and read model logic stays what Step 4 made of the scenarios.
+
+- **The story.** Steps run left to right: pre steps first (what leads up to the slice's command), then the slice's own command, then the post steps. The screens it links are the states the user sees in that order. The slice's firing action is the command button of Step 5 (`useCommand(...).run(form)`); do not add a second button or fire the command twice.
+- **How each kind behaves in the prototype** (React state inside the slice's part — no new runtime API):
+
+| kind (user → UI) | behaviour |
+|---|---|
+| `click-component` → `component-clicked` | the element carrying `data-em-mark-id="<mark id>"` (the item's `marks`) gets the `onClick` that starts the step; unmarked: the screen's only matching control |
+| `open-modal` → `modal-opened` | local state `modal`; an overlay (fixed backdrop + card) renders the linked page's component (`screens` + `page` → the component named in the skeleton comment, e.g. `Screen…Page2`); closing (× / backdrop) is plain UI. A page of a screen that is **not** this slice's own cannot be rendered from this block — build its markup from `get_node` or report it as a gap |
+| `submit` → `submitted` | the slice's own command: the form's button calls `useCommand('<Command>').run(form)`; on success the next step happens (`submitted` = the success state: button disabled while sending, confirmation) |
+| `navigate` → `navigated` | `useNav().go('<screen title>', { <field>: value })`; `field` is the id the route carries, `fields` are the values handed over (from the form, the selected row or the event just recorded) — the destination reads them from `useNav().params` and scopes its `useReadModel` with them |
+| `select-item` → `selection-changed` | selection is local state (or `go(..., { id })` when another screen reads it); everything that depends on it passes it as `params` to `useReadModel`; `field` names the row's id |
+| `filter` → `component-updated` | filter state passed as `params` to `useReadModel('<ReadModel>', params)`; the read model's `query(state, params)` does the filtering, never the component |
+| `check-visibility` → `visibility-checked` | the `condition` is an instruction in plain words: a small pure `isVisible(data)` over the read model it names; both outcomes reachable |
+| `check-permission` → `permission-checked` / `permission-denied` | the prototype has no signed-in user: show the allowed path and **list the check as not simulated** in the report |
+| `component-placed` / `component-rendered` | placed: already part of the screen markup; rendered: render that page's component where the step sits |
+| `item-highlighted` | needs the current user: not simulated, listed in the report |
+| custom (no `kind`) | the most sensible reading of its `title` / `description` / `fields`; if it isn't clear, keep the screen as designed and list it |
+
+- **Pre steps** run when the screen part mounts (in order, before its content shows); **post steps** run when the command succeeded or when the user acts.
+- Check the result against the story: the pages appear in the order the model says, a modal that belongs before the command really opens before it, and nothing is fired twice. A step you cannot build goes into the report with its reason — never silently dropped.
 
 ---
 
@@ -197,7 +222,7 @@ It prints where the platform stored the page and anything its sanitizer removed.
 In a few lines:
 - that it is uploaded — where the platform stored it (`upload` prints the path) — and that it plays with the ▶ button on any of the context's timelines (the player sandboxes the page without storage, so the event log lives until the player closes — *Copy log* / *Paste log* keep or move a session, *Reset* clears it).
 - what this run did: `N` slices built (new / changed), `M` unchanged and kept, `K` removed — and the totals: tabs, commands, read models, automations by kind, external events to simulate, scenarios and whether they pass.
-- the gaps found, one line each with the element: buttons not modeled, commands nothing issues, read models nothing shows or nothing feeds, screen fields without a read model, todo lists whose scenarios never remove an item, contradictory scenarios, mixed CSS frameworks (`mixedFrameworks` in `status.json`). These are findings about the model — offer `/wdyt` or the matching modeling skill; don't fix the board from here.
+- the gaps found, one line each with the element: buttons not modeled, interaction steps not simulated (permission checks, highlighting the user's own item, a modal page of another slice's screen), commands nothing issues, read models nothing shows or nothing feeds, screen fields without a read model, todo lists whose scenarios never remove an item, contradictory scenarios, mixed CSS frameworks (`mixedFrameworks` in `status.json`). These are findings about the model — offer `/wdyt` or the matching modeling skill; don't fix the board from here.
 
 In a chat turn this report is the reply (`post_chat_message`, `replyTo` = this turn's `message_id`) **and always carries the prototype as a `prototype` snippet**, so the person can try it right there — with Restart, and Full screen for the board's player:
 
