@@ -28,7 +28,7 @@ A step is `{ phase?: "pre", command?, events? }`: the user does something (`comm
 | `check-permission` (`roles`) | `permission-checked` (`roles`) · `permission-denied` | `refs.screen` = the screen shown instead, on `permission-denied` |
 | `check-visibility` | `visibility-checked` (`condition`) | plain-text `condition` |
 | `open-modal` | `modal-opened` | `refs.screen` + `refs.page`: the screen/page whose **marked component** shows in the modal. **Pre** when the modal holds the slice's command form (rule 6) |
-| `click-component` | `component-clicked` | `refs.marks`: the `interaction` mark of the slice's screen that is clicked |
+| `click-component` (pre or post) | `component-clicked` | `refs.marks`: the `interaction` mark of the slice's screen that is clicked. **Pre** when the click opens what the slice's command is submitted from (a button that opens a modal) |
 | `submit` (fires the slice's own command) | `submitted` | — **and no screen / read model on this step (rule 7)** |
 | `navigate` (its own step, after the slice's command) | `navigated` | `refs.screen` (+ `refs.page`), `refs.field` = id the route carries, **`fields` = the values handed to the target screen, e.g. `["email"]`** |
 | `select-item` | `selection-changed` | `refs.readModel`, `refs.field` = id field of the row |
