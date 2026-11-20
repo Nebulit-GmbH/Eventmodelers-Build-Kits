@@ -27,10 +27,10 @@ A step is `{ phase?: "pre", command?, events? }`: the user does something (`comm
 |---|---|---|
 | `check-permission` (`roles`) | `permission-checked` (`roles`) · `permission-denied` | `refs.screen` = the screen shown instead, on `permission-denied` |
 | `check-visibility` | `visibility-checked` (`condition`) | plain-text `condition` |
-| `open-modal` | `modal-opened` | `refs.screen` + `refs.page`: the screen/page whose **marked component** shows in the modal |
+| `open-modal` | `modal-opened` | `refs.screen` + `refs.page`: the screen/page whose **marked component** shows in the modal. **Pre** when the modal holds the slice's command form (rule 6) |
 | `click-component` | `component-clicked` | `refs.marks`: the `interaction` mark of the slice's screen that is clicked |
-| `submit` (fires the slice's own command) | `submitted` | — |
-| `navigate` (or after `submit`) | `navigated` | `refs.screen` (+ `refs.page`), `refs.field` = id the route carries, **`fields` = the values handed to the target screen, e.g. `["email"]`** |
+| `submit` (fires the slice's own command) | `submitted` | — **and no screen / read model on this step (rule 7)** |
+| `navigate` (its own step, after the slice's command) | `navigated` | `refs.screen` (+ `refs.page`), `refs.field` = id the route carries, **`fields` = the values handed to the target screen, e.g. `["email"]`** |
 | `select-item` | `selection-changed` | `refs.readModel`, `refs.field` = id field of the row |
 | `filter` (`fields` = what is filtered by) | `component-updated` | `refs.readModels` |
 | — | `component-placed` (`refs.marks`) · `component-rendered` (`refs.screen`, `refs.page`) | first pre events: what is placed and which page the user starts on |
@@ -45,6 +45,20 @@ Anything else is a **custom item**: a `title` and `description` in the person's 
 3. **Pages follow the screen.** `component-rendered` names the page the user starts on; `modal-opened` the page whose marked component appears in the modal; a page no step mentions is not built. Check against `meta.pages` and `meta.marks`.
 4. **Keep step order = left to right**: pre steps, then post steps in the order things happen. Pair each command with its event (the editor adds the partner automatically; you must send both).
 5. Titles are short, in the editor's wording (`Open modal`, `Modal opened`, `Navigated`).
+6. **Pre or post is decided by the slice's own command.** Everything the user does *before* that command runs is `phase: "pre"` — and that includes a modal / drawer / wizard step that **holds the form the command is submitted from**: "a button opens a modal, the user submits it" = `click-component` → `open-modal` / `modal-opened` as **pre** steps, the slice's command is the submission. Only what happens *after* the command ran is post (redirect, confirmation, refresh). Ask of every step: does the slice's command need this to have happened first? Yes → pre.
+7. **Never a command and a read model in the same slice.** A `submit` step is the slice's own domain command: it ends with `submitted` and links **no** screen or read model — `navigated`, `component-updated`, `item-highlighted`, `selection-changed`, `modal-opened`, `component-rendered` after a submit, or any `refs.screen` / `readModel` on its events, make that column a command *plus* a read model, and `set_interaction_model` refuses it. Where the user goes next is its own **following** step: a `navigate` command with a `navigated` event that links the target screen (`refs.screen`, `fields`). The tool also refuses a post step that opens a modal while a later step submits (rule 6: make it `pre`).
+8. **One cause, one step.** Do not stack unrelated results into one step (`Submitted` + `Redirected to thank you`): the result of the user's action is the next screen — one `navigated` event.
+
+### Example — "the button opens a modal, after submission go to the thank-you page"
+
+| # | phase | command → event | links |
+|---|---|---|---|
+| 1 | `pre` | `click-component` → `component-clicked` | `refs.marks` = the button's `interaction` mark |
+| 2 | `pre` | `open-modal` → `modal-opened` | `refs.screen` / `refs.page` = the form screen / page |
+| — | the slice | the slice's own command (e.g. *Register customer*) — not stored | |
+| 3 | post | `navigate` → `navigated` | `refs.screen` = the thank-you screen, `fields` = the values it shows |
+
+Not: the modal as a post step after the slice, nor a `submit` step with a `Redirected` / `navigated` event stacked in the same step.
 
 ## Step 4 — Write and check
 
