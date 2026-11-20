@@ -19,6 +19,17 @@ Two tools do the work: `get_interaction_model` and `set_interaction_model`. `set
 2. `get_interaction_model { boardId, sliceId | sliceTitle }` → the stored `model` (or `null`). Keep it; you change it, you don't rebuild it from nothing.
 3. Read the slice's screen: `get_slice_data { boardId, contextName, projection: "outline" }` gives the slice's `screens[]`, `readmodels[]`, `commands[]`; then `get_node` on the screen for `meta.pages` (how many pages, what each shows) and `meta.marks` (`id`, `name`, `pageIndex`, `component` / `interaction`). **Page numbers and mark ids you write must exist** — never invent them.
 
+## Step 1b — Take the slice itself into account (no tool checks this — it is your judgment)
+
+The experience is modelled **around the slice**, never beside it. Before writing a step, say in your reply, in one line each: the slice's **command** (what it does in the business), the **action on the screen that fires it** (the click on Publish, the submit of the form — that is the slice, step 1), the **read model** the screen shows and the **event** that results. Then:
+
+- **Pre** = everything the user does to *provide what the command needs*: choosing / toggling / untoggling items, selecting a row, filtering a list, filling in a form, opening the modal that holds it, a check on page entry. The command is not fired until these are done.
+- **The slice** = the firing action. Do not model it a second time (no "Click Publish" or `submit` step that does what the slice already does) — a `submit` step only makes sense when the slice's command really is fired as a *further* action of its own that the slice does not already cover.
+- **Post** = only what *follows* the command: a redirect, a confirmation, a refresh of what the screen shows.
+- Sanity check: read the steps left to right as a story — *prepare → fire the slice → what follows*. If something is prepared **after** the slice and the same command is fired again, it is the wrong way round: the preparation is pre.
+
+*Example — slice "Publish Tags for Item" (command Publish, event Tags Published, screen with tag toggles and a Publish button):* pre = the user toggles tags (`click-component` → `component-clicked`, or `select-item` → `selection-changed` / `component-updated` over the *Tags* read model); the slice = pressing Publish; post = nothing, or the screen shows the published state. **Not**: tagging as a post step followed by "Click Publish" and "Published tags shown" — that fires the slice's command twice.
+
 ## Step 2 — Only link ORIGINAL elements
 
 A node whose `meta.linkedTo` (or `node.data.linkedTo`) is set is a **copy**: follow it to the origin (on a screen, `linkedTo` is a board link ending in `moveToWidget=<origin id>`) and link the origin's id. Never link a copy. Screens and read models you link must exist on the board; read models must be in the slice's own context.
