@@ -5,6 +5,8 @@ description: Build or change the experience model (interaction model) of a slice
 
 # Experience model of a slice
 
+> **Hard rule — never add or change a screen page on your own.** Not a page, not a mark, not a screen: only after the person has **picked** it from your list (Step 2b). This holds in every mode, also standalone, and also when a page would obviously help. If you find yourself about to render, stop and list it instead.
+
 ## When this applies — recognise it, even unnamed
 
 A request is about the experience model when it says **what the user does on a screen and what the UI then does**, whatever the words: *"I want the button to open a modal, and then after submission redirect to the thank-you page"*, *"admins see this, others don't"*, *"clicking a row shows its details"*, *"after saving go back to the list"*, *"add a search"*. Look for these triggers: **open / modal / dialog / popup / drawer · redirect / go to / navigate / back to … page · after submit / after saving / after login · when the user clicks / selects / types · on page load / when the page opens · only visible / only for / hide / show if · filter / search / sort · wizard / step 2 / confirm**. If it also needs new commands, events or read models, build those with their own skills first and then the experience model around them. Do not answer such a request by only editing the screen or the timeline.
@@ -86,6 +88,8 @@ A step is `{ phase?: "pre", command?, events? }`: the user does something (`comm
 Anything none of these says is a **custom item**: a `title` and `description` in the person's words, no `kind` — the exception, not the way to word what a kind already says.
 
 ### Rules
+
+**The screens tell the story left to right, in the order the user sees them.** Read the result screens from the left: the first thing the user sees (the page with the *Register now* button) comes first, then what each step leads to (the modal with the form), and the slice's own screen is the page that **holds the action that fires the slice's command** (the form's submit). So the starting state is shown by a first `component-rendered` pre event on its page, the click and `modal-opened` lead to the form page, and nothing shows the form *before* the page that opens it. Check the order of your `refs.page` values against this story before you save; if the pages exist in a different order, link them by index in the story's order, never in the order they happen to be stored.
 
 **Usually one step at a time.** The experience model shows a UI interaction, and an interaction is one user action with its UI result. Model the one the request describes — a step is a *user action → UI result* pair — and add another only when the request names another action. No long chains "to be complete"; what obviously follows is the builder's.
 

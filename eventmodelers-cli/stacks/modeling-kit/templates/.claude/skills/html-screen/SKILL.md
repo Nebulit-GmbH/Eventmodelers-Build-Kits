@@ -34,6 +34,8 @@ If neither `nodeId` nor (`chapterId` + `cellName`) can be resolved, ask the user
 
 **Resolve the original first — never edit a copy.** If `nodeId` is a screen that appears in several slices, the one you were pointed at may be a linked copy: check `meta.linkedTo` (or `node.data.linkedTo`) on it. When set, it is a mirror — follow it to the origin screen (the node without `linkedTo`; on a screen `linkedTo` is a board link ending in `moveToWidget=<origin id>` — take the id from it) and use **the origin's id** as `nodeId` for every call in this skill: loading the pages, the render in Step 4, the marks and the fields in Step 5. Editing the copy makes it diverge from the origin and from every other slice that shows the screen. In the report (Step 6) name the origin's slice.
 
+**Adding a page to an existing screen is never done on your own initiative.** When another skill (`experience-model`, `storyboard`, …) finds that a page would help, it lists the page and the person picks it; render only the picked pages. A page the person asked for in their own request needs no further question.
+
 If `nodeId` refers to a screen that already has pages (i.e. this is an adjustment/tweak, or "add a page" to an existing screen — not a brand-new screen), **do not design from scratch**. Load the node and inspect `meta.pages`.
 
 **Prefer MCP:**
