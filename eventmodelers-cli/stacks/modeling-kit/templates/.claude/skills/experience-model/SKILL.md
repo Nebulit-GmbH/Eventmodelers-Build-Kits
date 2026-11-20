@@ -49,16 +49,22 @@ There is no command to prepare and no firing action: the **slice is the read mod
 
 A node whose `meta.linkedTo` (or `node.data.linkedTo`) is set is a **copy**: follow it to the origin (on a screen, `linkedTo` is a board link ending in `moveToWidget=<origin id>`) and link the origin's id. Never link a copy. Screens and read models you link must exist on the board; read models must be in the slice's own context.
 
-## Step 2b — Missing screen pages that make the interaction visible: recommend, ask, render only after a yes
+## Step 2b — The page gate: list the pages to add, the person picks — before any `set_interaction_model`
 
-An interaction is easier to read — and to build — when its results are on the board as screens: the page a modal shows, the thank-you page a redirect leads to, the list with a row selected, the confirmation state. Before writing the steps, compare what the steps will **link** (`refs.screen` + `refs.page`) with the pages that exist (`meta.pages` of the slice's screen and of the screens you found in Step 1). **If every page the steps would link already exists, there is nothing to recommend and nothing to ask — skip this step and go straight to Step 3.** Only when a result you would link has no page yet:
+An interaction is easier to read — and to build — when its results are on the board as screen pages: the page a modal shows, the thank-you page a redirect leads to, the list with a row selected, the confirmation state. **This is a gate, not a nicety: do not call `set_interaction_model` before you have passed it.** Compare what the steps would link (`refs.screen` + `refs.page`) with the pages that exist (`meta.pages` of the slice's screen and the screens you found in Step 1), then do exactly one of these:
 
-1. **Do not render it on your own.** Rendering changes the board and the person decides how much of it they want. Put a short **recommendation in the chat** and **stop and wait for the answer** — this holds in every mode, also when you would otherwise act on your own. One line per screen: *which screen node* (the original, never a copy), *a new page of it or a new screen*, *what it shows*, *which step uses it*. Example: "I would add a page **Registration form** to *Registration* (the form shown in the modal, used by step 'Open registration form') and a screen **Thank you** (the page after the redirect, used by step 'Redirect'). Shall I render them before I draw the experience model?"
-2. **Read models count too:** a result that is a UI state (the selected tags, the current selection, the applied filter) and has no read model on the board is recommended the same way — one line, then wait for the yes before `place-element` adds it.
-2. **Read models count too:** a result that is a UI state (the selected tags, the current selection, the applied filter) and has no read model on the board is recommended the same way — one line, then wait for the yes before `place-element` adds it.
-2. **Recommend only what a step will link** — the modal, the target of a navigation, the state a selection or filter leads to. No decorative extras, no screens for steps the person did not ask for.
-3. **On a yes** (for all, or the ones they name): render them with `/html-screen` — append pages to the original screen, keep the look of its existing pages, mind the page limit — **add the marks with the pages** (the explicit ask `html-screen` needs for marks: both halves — `data-em-mark-id` in the markup and the `meta.marks` entry with its `name` and `pageIndex`): the **`interaction`** mark on the element the user clicks (the button, link or row a `click-component` step refers to — `component-clicked` links it in `refs.marks`), the **`component`** mark on the region that is this slice's own component, and a named **area** mark on a region that content is shown in or placed into (the modal body, the panel a result appears in). Beyond those, a **custom mark with a name of your own** is fine wherever a step needs to point at a part of the page that none of them covers ("Tag list", "Total", "Error banner"). Name each mark for what it is ("Register now button", "Registration form") — the name is what the person and the build agent read. **Plain marks only: never `blurOutside` or `whiteOutside`** (leave both unset/false) — a mark here points at a part of the page, it does not spotlight it. Only the marks a step will link — no decoration. Then write the steps against those pages (`refs.screen` + `refs.page`, by page index, and `refs.marks`). A prompt that already asks for the screens ("…and show the thank-you page") is the yes.
-4. **On a no, or no answer:** draw the model with the pages that exist, link only pages that exist, and say in the reply which result has no screen yet — never invent a page number.
+**A — every page the steps would link exists:** say so in one line ("Using page 2 *Registration form* and the screen *Thank you* — all there"), recommend nothing, ask nothing, and go straight to Step 3.
+
+**B — a page is missing: post a pick list in the chat and stop.** Never render on your own; the person decides how much of it they want. List **the pages that could be added to the screen**, numbered, one line each — *which screen* (the original, never a copy), *what the page shows*, *which step would use it*, and the marks it would carry — and let the person pick. Example:
+
+> To show this interaction I can add pages to **Registration**:
+> 1. **Registration form** — the form inside the modal (step "Open registration form"); marks: *Register now button*, *Registration form*
+> 2. **Thank you** — the page after the redirect (step "Redirect"); mark: *Thank-you message*
+> Which should I render? (e.g. "1 and 2", "1", "none")
+
+- Offer only what a step will link: the modal, the target of a navigation, the state a selection or filter leads to — no decorative extras. A UI state that has no read model on the board (the selected tags, the applied filter) is a numbered option too ("3. read model *Selected tags*"), added with `place-element` only on a pick.
+- **On a pick** (a number, several, "all", or a prompt that already asks for them): render exactly those with `/html-screen` — append pages to the original screen, keep the look of its existing pages, mind the page limit — **and add the marks with the pages** (the explicit ask `html-screen` needs for marks: both halves — `data-em-mark-id` in the markup and the `meta.marks` entry with its `name` and `pageIndex`): the **`interaction`** mark on the element the user clicks (`component-clicked` links it in `refs.marks`), the **`component`** mark on this slice's own component region, a named **area** mark on a region content is shown in or placed into. Beyond those a **custom mark with a name of your own** is fine ("Tag list", "Error banner"). **Plain marks only: never `blurOutside` or `whiteOutside`.** Only marks a step will link. Then write the steps against those pages (`refs.screen` + `refs.page` by index, and `refs.marks`).
+- **On "none", or no answer:** draw the model with the pages that exist, link only pages that exist, and say in the reply which result has no page yet — never invent a page number.
 
 ## Step 3 — Write the steps
 
@@ -80,6 +86,9 @@ A step is `{ phase?: "pre", command?, events? }`: the user does something (`comm
 Anything none of these says is a **custom item**: a `title` and `description` in the person's words, no `kind` — the exception, not the way to word what a kind already says.
 
 ### Rules
+
+**Usually one step at a time.** The experience model shows a UI interaction, and an interaction is one user action with its UI result. Model the one the request describes — a step is a *user action → UI result* pair — and add another only when the request names another action. No long chains "to be complete"; what obviously follows is the builder's.
+
 
 1. **Build only what the request says.** No extra dialogs, cancel buttons or confirmations — what obviously follows (closing a dialog) is plain UI the builder adds.
 2. **Hand values over with `fields` on `navigated`.** If the next screen shows one record (a profile, a detail page), put the identifying value in `fields` (`["email"]`) — that is what scopes the next screen's read model to that record. Use values the slice already has (its command / event / screen fields); don't invent fields.
@@ -108,7 +117,7 @@ Not: the modal as a post step after the slice, nor a `submit` step with a `Redir
 
 ## What this skill never does
 
-- Render a screen or a page **without a yes** (Step 2b) — recommend first.
+- Render a screen or a page **that the person did not pick** (Step 2b) — list the pages first.
 - Edit a **copy** of a screen, or link one — resolve to the original first.
 - Touch the slice's command, events, read model or screen content (`html-screen`, `place-element` own those).
 - Add a business rule: validation, a guard, a computed value. If the request is one, say it belongs in the slice's scenarios.
