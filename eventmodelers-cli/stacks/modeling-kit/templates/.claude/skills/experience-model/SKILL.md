@@ -49,6 +49,15 @@ There is no command to prepare and no firing action: the **slice is the read mod
 
 A node whose `meta.linkedTo` (or `node.data.linkedTo`) is set is a **copy**: follow it to the origin (on a screen, `linkedTo` is a board link ending in `moveToWidget=<origin id>`) and link the origin's id. Never link a copy. Screens and read models you link must exist on the board; read models must be in the slice's own context.
 
+## Step 2b — Screen pages that make the interaction visible: recommend, ask, render only after a yes
+
+An interaction is easier to read — and to build — when its results are on the board as screens: the page a modal shows, the thank-you page a redirect leads to, the list with a row selected, the confirmation state. Before writing the steps, compare what the steps will **link** (`refs.screen` + `refs.page`) with the pages that exist (`meta.pages` of the slice's screen and of the screens you found in Step 1). If a result you would link has no page yet:
+
+1. **Do not render it on your own.** Rendering changes the board and the person decides how much of it they want. Put a short **recommendation in the chat** and **stop and wait for the answer** — this holds in every mode, also when you would otherwise act on your own. One line per screen: *which screen node* (the original, never a copy), *a new page of it or a new screen*, *what it shows*, *which step uses it*. Example: "I would add a page **Registration form** to *Registration* (the form shown in the modal, used by step 'Open registration form') and a screen **Thank you** (the page after the redirect, used by step 'Redirect'). Shall I render them before I draw the experience model?"
+2. **Recommend only what a step will link** — the modal, the target of a navigation, the state a selection or filter leads to. No decorative extras, no screens for steps the person did not ask for.
+3. **On a yes** (for all, or the ones they name): render them with `/html-screen` — append pages to the original screen, keep the look of its existing pages, mind the page limit — then write the steps against those pages (`refs.screen` + `refs.page`, by page index). A prompt that already asks for the screens ("…and show the thank-you page") is the yes.
+4. **On a no, or no answer:** draw the model with the pages that exist, link only pages that exist, and say in the reply which result has no screen yet — never invent a page number.
+
 ## Step 3 — Write the steps
 
 A step is `{ phase?: "pre", command?, events? }`: the user does something (`command`, at most one), the UI reacts (`events`, up to 8). **The link (screen, read model, page, marks) always sits on the event, never on the command.** The slice itself is step 1 and is never stored. Pre steps come first.
@@ -97,6 +106,7 @@ Not: the modal as a post step after the slice, nor a `submit` step with a `Redir
 
 ## What this skill never does
 
+- Render a screen or a page **without a yes** (Step 2b) — recommend first.
 - Edit a **copy** of a screen, or link one — resolve to the original first.
 - Touch the slice's command, events, read model or screen content (`html-screen`, `place-element` own those).
 - Add a business rule: validation, a guard, a computed value. If the request is one, say it belongs in the slice's scenarios.
