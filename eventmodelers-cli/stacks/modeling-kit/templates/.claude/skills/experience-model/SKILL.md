@@ -21,7 +21,11 @@ Two tools do the work: `get_interaction_model` and `set_interaction_model`. `set
 
 ## Step 1b — Take the slice itself into account (no tool checks this — it is your judgment)
 
-The experience is modelled **around the slice**, never beside it. Before writing a step, say in your reply, in one line each: the slice's **command** (what it does in the business), the **action on the screen that fires it** (the click on Publish, the submit of the form — that is the slice, step 1), the **read model** the screen shows and the **event** that results. Then:
+The experience is modelled **around the slice**, never beside it. First tell which kind of slice it is from `get_slice_data` (`commands[]`, `readmodels[]`, `screens[]`): a **state change** slice has a command (and its event) behind a screen; a **state view** slice has only a read model shown on a screen and no command. The two are read differently — see below.
+
+### State change slice (a command)
+
+Before writing a step, say in your reply, in one line each: the slice's **command** (what it does in the business), the **action on the screen that fires it** (the click on Publish, the submit of the form — that is the slice, step 1), the **read model** the screen shows and the **event** that results. Then:
 
 - **Pre** = everything the user does to *provide what the command needs*: choosing / toggling / untoggling items, selecting a row, filtering a list, filling in a form, opening the modal that holds it, a check on page entry. The command is not fired until these are done.
 - **The slice** = the firing action. Do not model it a second time (no "Click Publish" or `submit` step that does what the slice already does) — a `submit` step only makes sense when the slice's command really is fired as a *further* action of its own that the slice does not already cover.
@@ -29,6 +33,17 @@ The experience is modelled **around the slice**, never beside it. Before writing
 - Sanity check: read the steps left to right as a story — *prepare → fire the slice → what follows*. If something is prepared **after** the slice and the same command is fired again, it is the wrong way round: the preparation is pre.
 
 *Example — slice "Publish Tags for Item" (command Publish, event Tags Published, screen with tag toggles and a Publish button):* pre = the user toggles tags (`click-component` → `component-clicked`, or `select-item` → `selection-changed` / `component-updated` over the *Tags* read model); the slice = pressing Publish; post = nothing, or the screen shows the published state. **Not**: tagging as a post step followed by "Click Publish" and "Published tags shown" — that fires the slice's command twice.
+
+### State view slice (a read model on a screen, no command)
+
+There is no command to prepare and no firing action: the **slice is the read model shown on its screen** (step 1). Say in your reply which read model the screen shows and what the user can do with the data on display. Then:
+
+- **Pre** = what happens when the page is entered, before the data is shown: a permission or visibility check, the shared layout / menu placed (`component-placed`), another screen rendered into this one (`component-rendered`), a filter that is already set.
+- **Post** = what the user does *with what the screen shows*, one step per action, each with its result: **select a row** (`select-item` → `selection-changed`, with the id field), **narrow the list** (`filter` → `component-updated` over the slice's read model), **open details** in a modal (`open-modal` → `modal-opened`) or on another screen (`navigate` → `navigated`, handing over the id or value the next screen needs in `fields`).
+- No `submit`: a view fires no command. If the user can also *change* something from this screen, that is a different slice (a state change slice with its own screen or button) — model the navigation to it here, nothing more.
+- The read model's own fields decide the `fields` and the row id (`refs.field`); a list screen and its detail screen are two slices linked by a `navigated` event that hands the id over.
+
+*Example — slice "Orders of a customer" (read model Orders on a list screen):* pre = `component-placed` (the shared header) and a permission check if the model asks for it; post = `filter` → `component-updated` (Orders), `select-item` → `selection-changed` (field `orderId`), then `navigate` → `navigated` to the order detail screen with `fields: ["orderId"]`.
 
 ## Step 2 — Only link ORIGINAL elements
 
