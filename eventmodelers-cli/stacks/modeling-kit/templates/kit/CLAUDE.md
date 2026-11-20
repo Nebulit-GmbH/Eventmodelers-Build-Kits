@@ -75,7 +75,7 @@ Follow `eventmodeling-information-completeness` before writing any field. It def
 | Generate a full storyboard with multiple screens | `/storyboard` |
 | Design or update a single screen | `/html-screen` |
 | Design or update a single wireframe/sketch screen (explicit request only) | `/storyboard-screen` |
-| Describe what happens around a slice's screen — open a modal first, navigate on and hand values (e.g. email) to the next screen, select a row, filter a list, check a permission or visibility (the experience / interaction model) | `/experience-model` |
+| **Anything the user does on a screen and what the UI does in response** — a button opens a modal / dialog / drawer, "after submit go to / show the thank-you page", a confirmation step, a wizard step, navigate on and hand values (e.g. email) to the next screen, select a row to show details, search / filter a list, show or hide something ("only admins", "only if …", "when logged in"), a check on page entry (the experience / interaction model). Triggers: *open*, *modal*, *dialog*, *popup*, *redirect*, *go to … page*, *after submit / after saving*, *when the user clicks*, *on page load*, *only visible / only for*, *select*, *filter*, *search*. It is **not** the slice's own command or events (`/place-element`, `/timeline`) and not the screen's content (`/html-screen`) | `/experience-model` |
 | Business analysis, gap spotting, posting questions | `/wdyt` |
 | Analyse the existing model structure, slice coverage, element counts | `/analyze-existing-model` |
 | Calculate how much of a slice's business logic its scenarios cover (stored as `meta.data.coverage`, shown on the spec lane) | `/scenario-coverage <chapter>` |
