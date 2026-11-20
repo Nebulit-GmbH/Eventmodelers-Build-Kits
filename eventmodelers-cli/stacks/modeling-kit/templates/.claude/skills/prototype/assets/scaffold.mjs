@@ -155,6 +155,7 @@ function interactionNotes(slice, screens) {
   const describe = (item) => {
     const bits = [];
     for (const sc of item.screens || []) bits.push(`screen ${compOf(sc.title, item.page)}`);
+    if (['modal-opened', 'navigated', 'component-rendered', 'permission-denied'].includes(item.kind) && !(item.screens || []).length) bits.push('NO SCREEN LINKED — the model is missing a required link: build it from the title / description, and report it');
     if ((item.readModels || []).length) bits.push(`read model ${item.readModels.map((r) => r.title).join(', ')}`);
     if (item.command) bits.push(`command ${item.command.title}`);
     if (item.field) bits.push(`id field ${item.field}`);
