@@ -1,6 +1,7 @@
 ---
 name: experience-model
-description: Build or change the experience model (interaction model) of a slice — everything the user does on its screen and what the UI does in response, before and after the slice's command runs. Use it whenever a request describes behaviour around a screen, even without the words "experience model": a button that opens a modal / dialog / drawer, "after submit go to / show the thank-you page", a confirmation or wizard step, navigating on and handing values (e.g. email) to the next screen, selecting a row to show details, searching or filtering a list, showing or hiding something ("only admins", "only if …"), a permission or visibility check on page entry. Not for the slice's command, events or read model (place-element, timeline) or the screen's content (html-screen).
+description: >-
+  Build or change the experience model (interaction model) of a slice — everything the user does on its screen and what the UI does in response, before and after the slice's command runs. Use it whenever a request describes behaviour around a screen, even without the words "experience model": a button that opens a modal / dialog / drawer, "after submit go to / show the thank-you page", a confirmation or wizard step, navigating on and handing values (e.g. email) to the next screen, selecting a row to show details, searching or filtering a list, showing or hiding something ("only admins", "only if …"), a permission or visibility check on page entry. Not for the slice's command, events or read model (place-element, timeline) or the screen's content (html-screen).
 ---
 
 # Experience model of a slice
