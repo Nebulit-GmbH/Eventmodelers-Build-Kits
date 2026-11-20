@@ -89,7 +89,7 @@ Anything none of these says is a **custom item**: a `title` and `description` in
 
 ### Rules
 
-**The screens tell the story left to right, in the order the user sees them.** Read the result screens from the left: the first thing the user sees (the page with the *Register now* button) comes first, then what each step leads to (the modal with the form), and the slice's own screen is the page that **holds the action that fires the slice's command** (the form's submit). So the starting state is shown by a first `component-rendered` pre event on its page, the click and `modal-opened` lead to the form page, and nothing shows the form *before* the page that opens it. Check the order of your `refs.page` values against this story before you save; if the pages exist in a different order, link them by index in the story's order, never in the order they happen to be stored.
+**The screens tell the story left to right, in the order the user sees them.** Read the result screens from the left: the first thing the user sees (the page with the *Register now* button) comes first, then what each step leads to (the modal with the form), and the slice's own screen is the page that **holds the action that fires the slice's command** (the form's submit). So the starting state is shown by a first `component-rendered` pre event on its page — in the same step as the click that leaves it (a button that *opens a modal* is the trigger of the interaction, not the slice's firing action; the form's submit is) — and the click and `modal-opened` lead to the form page, and nothing shows the form *before* the page that opens it. Check the order of your `refs.page` values against this story before you save; if the pages exist in a different order, link them by index in the story's order, never in the order they happen to be stored.
 
 **Usually one step at a time.** The experience model shows a UI interaction, and an interaction is one user action with its UI result. Model the one the request describes — a step is a *user action → UI result* pair — and add another only when the request names another action. No long chains "to be complete"; what obviously follows is the builder's.
 
@@ -108,12 +108,12 @@ Anything none of these says is a **custom item**: a `title` and `description` in
 
 | # | phase | command → event | links |
 |---|---|---|---|
-| 1 | `pre` | `click-component` → `component-clicked` | `refs.marks` = the button's `interaction` mark |
+| 1 | `pre` | `click-component` → `component-rendered` + `component-clicked` | the first column shows **the page the button is on**: `component-rendered` with `refs.screen` / `refs.page` = the landing page, `component-clicked` with `refs.marks` = the button's `interaction` mark (the button *opens the modal*, it does not fire the slice) |
 | 2 | `pre` | `open-modal` → `modal-opened` | `refs.screen` / `refs.page` = the form screen / page |
 | — | the slice | the slice's own command (e.g. *Register customer*) — not stored | |
 | 3 | post | `navigate` → `navigated` | `refs.screen` = the thank-you screen, `fields` = the values it shows |
 
-Not: the modal as a post step after the slice, nor a `submit` step with a `Redirected` / `navigated` event stacked in the same step.
+Left to right the user sees: **landing page with the button → (click) → modal with the form → (submit = the slice)**. Not: the modal shown before the page with the button that opens it, a first column with no screen,  nor a `submit` step with a `Redirected` / `navigated` event stacked in the same step.
 
 ## Step 4 — Write and check
 
