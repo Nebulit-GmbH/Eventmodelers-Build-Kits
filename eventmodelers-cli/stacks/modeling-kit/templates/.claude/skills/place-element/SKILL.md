@@ -160,7 +160,7 @@ Same rules apply (context=READMODELs only, given=EVENTs only, when=at most one C
 | Step | Allowed types |
 |------|--------------|
 | `given` | `EVENT` only |
-| `when`  | at most one `COMMAND`; empty when `then` has a READMODEL |
+| `when`  | at most one `COMMAND`; with a READMODEL in `then`: an inline `QUERY` object when the outcome depends on the query, otherwise empty (see `eventmodeling-elaborating-scenarios`) |
 | `then` (happy path) | `EVENT` or `READMODEL` — not mixed |
 | `then` (error case) | leave empty, use `expectError: true` |
 

@@ -352,17 +352,15 @@ Then the command should be rejected, reason "Order already confirmed"
 ```
 
 ### 3. View Scenarios (Given-When-Then)
-Specify how read models display data:
+Specify how read models display data. Use a `When` query when the result depends on how the view is asked (parameters, time); drop the `When` when the scenario only shows how event data is projected. Events belong in `Given`, never in `When`:
 
 ```
 Scenario: Display order after creation
 Given an OrderCreated event with orderId, customerId, items, total
-When the OrderStatusView processes this event
 Then the view should display Order ID, Status "Draft", Total, Items, Created
 
 Scenario: Accumulate payment information
-Given OrderConfirmed event processed (status=Confirmed)
-When a PaymentAuthorized event arrives with paymentId, authCode
+Given OrderConfirmed (status=Confirmed) and PaymentAuthorized (paymentId, authCode) events processed
 Then the view should accumulate Payment ID, Auth Code, Payment Status "Authorized"
 ```
 
@@ -372,13 +370,16 @@ Specify expected rows and empty-list intent when the THEN readmodel is a list (`
 ```
 Scenario: Products list shows all created products
 Given a ProductCreated event with name "Shoes", index "0"
-When the ProductList view processes this event
 Then the list should contain: | name | index | ... | Shoes | 0 | ... |
 
 Scenario: Products list is empty after last item is deleted
 Given a ProductDeleted event for the last remaining item
-When the ProductList view processes this event
 Then the list should be empty
+
+Scenario: Price after 4 hours on a Saturday (outcome depends on the query)
+Given a TicketRequested event, Saturday 10:00, ticketId T-004217
+When the TicketInformation view is queried at Saturday 14:00 for T-004217
+Then the view shows amount 6.00
 ```
 
 ### 4. Error Path Scenarios
@@ -471,13 +472,13 @@ mcp__eventmodelers__add_scenario {
 }
 ```
 Pass `compact: true` — you already hold every scenario object you sent, so the response only needs to confirm `{added, scenarioCount, isNewNode}`, not echo all of them back. Same for `add_storyline`. Across a full pass posting scenarios for every command and read model column, this is the bulk of the step's response tokens.
-`given`/`when`/`then` are arrays of `{id, title?, type?, ...}` objects — **not** bare nodeId strings (this differs from the raw REST body shown in the fallback below). The examples in Steps 4b/4c/§Rejection already use this object shape; pass them straight through as the `scenarios` array. For a state-view scenario whose `when` needs to represent a query rather than a COMMAND, `when` may hold a single inline object that is **not** a board node: `{"id": "<generated-uuid>", "type": "QUERY", "title": "...", "fields": [{"name": "...", "example": "..."}]}`. Same server-side rules apply either way (see below).
+`given`/`when`/`then` are arrays of `{id, title?, type?, ...}` objects — **not** bare nodeId strings (this differs from the raw REST body shown in the fallback below). The examples in Steps 4b/4c/§Rejection already use this object shape; pass them straight through as the `scenarios` array. **A state-view scenario (`then` = READMODEL) gets a QUERY as its `when` whenever the outcome depends on how the view is asked** — a query time, an id, a filter, a computed result like a price after 4 h. Leave `when` empty only when the scenario just shows how event data ends up in the view and no query parameter matters. The query carries the parameters the read model is asked with (`ticketId`, the time of the query, …) as `fields` with example values; the situation ("queried 4 h after entry") is expressed by those values, not by a `contextNote`. When a query matters, an empty `when` with the query only described in the note is incomplete. `when` holds a single inline object that is **not** a board node: `{"id": "<generated-uuid>", "type": "QUERY", "title": "...", "fields": [{"name": "...", "example": "..."}]}`. Same server-side rules apply either way (see below).
 
 **Fallback (no MCP):** see `references/api-fallback.md` — "Post Scenarios to Board — Step 4: Post All Scenarios for a Column in One Call".
 
 **Rules enforced by the server (do not pre-validate — let the server reject):**
 - `given`: EVENTs only
-- `when`: at most one COMMAND; empty when `then` contains a READMODEL
+- `when`: at most one COMMAND; for a `then` with a READMODEL it holds the inline QUERY (see below) when the outcome depends on the query, otherwise empty — never a note standing in for a query that matters
 - `then`: EVENTs only OR exactly one READMODEL — never mixed
 - All step node IDs must belong to the same timeline
 
