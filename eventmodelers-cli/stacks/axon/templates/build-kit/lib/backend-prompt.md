@@ -74,35 +74,6 @@ npx @eventmodelers/cli info "<one terse line>" --kind limitation|decision|note
 
 It is recorded as an event and posted as a comment on the slice you are building (`--slice <id>` to name another). Reusable knowledge stays a `learn`.
 
-## Update AGENTS.md Files
-
-Before committing, check if any edited files have learnings worth preserving in nearby AGENTS.md files:
-
-1. **Identify directories with edited files** - Look at which directories you modified
-3. **Add valuable learnings that apply to all tasks** to the Agents.md - If you discovered something future developers/agents should know:
-    - API patterns or conventions specific to that module
-    - Gotchas or non-obvious requirements
-    - Dependencies between files
-    - Testing approaches for that area
-    - Configuration or environment requirements
-
-**Examples of good AGENTS.md additions:**
-
-- "When modifying X, also update Y to keep them in sync"
-- "This module uses pattern Z for all API calls"
-- "Tests require the dev server running on PORT 3000"
-- "Field names must match the template exactly"
-
-**Do NOT add:**
-
-- Slice specific implementation details
-- Story-specific implementation details
-- Temporary debugging notes
-- Information already recorded as a learning in `.build-kit/AGENTS.md`
-- Task specific learnings
-
-Only update AGENTS.md if you have **genuinely reusable knowledge** that would help future work
-
 ## Quality Requirements
 
 - ALL commits must pass your project's quality checks
