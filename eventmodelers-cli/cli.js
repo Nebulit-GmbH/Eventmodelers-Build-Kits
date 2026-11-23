@@ -5722,10 +5722,11 @@ program
   .command('learnings')
   .description('Print the recorded learnings — what .build-kit/AGENTS.md says. With --ids, one line each with the id to retract it by.')
   .option('--ids', 'One line per learning: id, topic, text')
+  .option('--rebuild', 'Regenerate AGENTS.md from the whole event log instead of applying only the learning events after the cursor of this kit (.build-kit/.eventmodelers/learnings-cursor.json)')
   .action((opts, command) => {
     const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
-    syncLearnings({ kitDir, meta: agentEventMeta(cwd, kitDir, command) });
+    syncLearnings({ kitDir, rebuild: opts.rebuild });
     const all = listLearnings(kitDir);
     if (!all.length) {
       console.log('No learnings recorded yet.');

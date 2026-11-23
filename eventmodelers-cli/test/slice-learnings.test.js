@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
@@ -111,24 +111,26 @@ test('listLearnings gives each learning with its id, topic, scope and tags', (t)
   assert.deepEqual(listLearnings(kit), [{ id, text: 'a', topic: 'T', scope: 'system', tags: ['x'] }]);
 });
 
-// ── AGENTS.md is a projection that adopts edits ─────────────────────────────────
+// ── AGENTS.md: events applied once, edits left alone ────────────────────────────
 
-test('an AGENTS.md written by hand (or by an older agent) is adopted once, not overwritten', (t) => {
+test('an AGENTS.md written by hand (or by an older agent) stays as it is: its lines are not turned into events', (t) => {
   const kit = kitDir(t);
-  writeFileSync(join(kit, 'AGENTS.md'), '## Testing\n- Run npm test\n\nAlways rebase before merging\n');
-  syncLearnings({ kitDir: kit, meta: META });
-  syncLearnings({ kitDir: kit, meta: META });
-  assert.deepEqual(learnings(kit).map((l) => [l.topic, l.text, l.tags]), [['Testing', 'Run npm test', ['adopted']], ['Testing', 'Always rebase before merging', ['adopted']]]);
-  assert.match(agents(kit), /Always rebase before merging/);
-  assert.equal(readEvents(kit).length, 2);
+  const hand = '## Testing\n- Run npm test\n\nAlways rebase before merging\n';
+  writeFileSync(join(kit, 'AGENTS.md'), hand);
+  syncLearnings({ kitDir: kit });
+  syncLearnings({ kitDir: kit });
+  assert.equal(agents(kit), hand);
+  assert.deepEqual(readEvents(kit), []);
 });
 
-test('a line added to the generated file by hand, or merged in by a pull, is adopted; duplicates are not', (t) => {
+test('manual edits and pulled lines stay; only the learnings recorded since are appended', (t) => {
   const kit = kitDir(t);
   recordLearning({ kitDir: kit, text: 'Use npm test', topic: 'Testing' });
-  writeFileSync(join(kit, 'AGENTS.md'), `${agents(kit)}- Prefer small commits\n- use npm TEST\n`);
+  writeFileSync(join(kit, 'AGENTS.md'), `${agents(kit)}- Prefer small commits\n`);
   syncLearnings({ kitDir: kit });
-  assert.deepEqual(learnings(kit).map((l) => l.text), ['Use npm test', 'Prefer small commits']);
+  recordLearning({ kitDir: kit, text: 'Mock fetch', topic: 'Testing' });
+  assert.match(agents(kit), /- Use npm test\n- Prefer small commits\n- Mock fetch/);
+  assert.deepEqual(learnings(kit).map((l) => l.text), ['Use npm test', 'Mock fetch']);
 });
 
 test('a retracted learning stays gone from the regenerated file', (t) => {
@@ -260,4 +262,68 @@ test('a reply without learnings writes nothing', (t) => {
   assert.equal(recordTurnLearnings({ kitDir: kit, meta: META, reply: 'All done. <promise>DONE</promise>' }), 0);
   assert.equal(existsSync(join(kit, 'events.log')), false);
   assert.equal(existsSync(join(kit, 'AGENTS.md')), false);
+});
+
+// ── applied record ──────────────────────────────────────────────────────────────
+
+test('applied events are not applied again: a summarized AGENTS.md keeps its shape after a sync', (t) => {
+  const kit = kitDir(t);
+  recordLearning({ kitDir: kit, text: 'detail one', meta: META });
+  recordLearning({ kitDir: kit, text: 'detail two', meta: META });
+  // someone summarizes the file and it is pulled
+  writeFileSync(join(kit, 'AGENTS.md'), '## General\n- the summary\n');
+  syncLearnings({ kitDir: kit, meta: META });
+  assert.ok(!agents(kit).includes('detail'), agents(kit));
+  recordLearning({ kitDir: kit, text: 'a new one', meta: META });
+  assert.match(agents(kit), /the summary\n- a new one/);
+  assert.ok(!agents(kit).includes('detail'));
+  syncLearnings({ kitDir: kit, meta: META, rebuild: true });
+  assert.ok(agents(kit).includes('detail one'));
+});
+
+test('after the log and its numbering are deleted, new events are applied although their seq starts again', (t) => {
+  const kit = kitDir(t);
+  for (let i = 0; i < 5; i++) recordLearning({ kitDir: kit, text: `old ${i}`, meta: META });
+  for (const f of ['events', 'events.log', 'events.seq']) rmSync(join(kit, f), { recursive: true, force: true });
+  recordLearning({ kitDir: kit, text: 'after the wipe', meta: META });
+  assert.ok(agents(kit).includes('old 4') && agents(kit).includes('after the wipe'));
+});
+
+test('an existing installation (log and AGENTS.md, no cursor yet) keeps its file as it is, then applies only what is new', (t) => {
+  const kit = kitDir(t);
+  recordLearning({ kitDir: kit, text: 'detail one', meta: META });
+  recordLearning({ kitDir: kit, text: 'detail two', meta: META });
+  rmSync(join(kit, '.eventmodelers'), { recursive: true, force: true }); // as installed before the cursor existed
+  writeFileSync(join(kit, 'AGENTS.md'), '## General\n- the summary\n');
+  syncLearnings({ kitDir: kit, meta: META });
+  assert.ok(!agents(kit).includes('detail'), agents(kit));
+  recordLearning({ kitDir: kit, text: 'a new one', meta: META });
+  assert.match(agents(kit), /the summary\n- a new one/);
+  assert.ok(!agents(kit).includes('detail'));
+});
+
+test('an existing installation whose log has learnings but no AGENTS.md gets the file written', (t) => {
+  const kit = kitDir(t);
+  recordLearning({ kitDir: kit, text: 'one', meta: META });
+  rmSync(join(kit, '.eventmodelers'), { recursive: true, force: true });
+  rmSync(join(kit, 'AGENTS.md'));
+  syncLearnings({ kitDir: kit, meta: META });
+  assert.ok(agents(kit).includes('one'));
+});
+
+test('rebuild regenerates AGENTS.md from the local events, whatever the file held', (t) => {
+  const kit = kitDir(t);
+  recordLearning({ kitDir: kit, text: 'mine', meta: META });
+  writeFileSync(join(kit, 'AGENTS.md'), '## General\n- a teammate\'s summary\n');
+  syncLearnings({ kitDir: kit, rebuild: true });
+  assert.equal(agents(kit).includes('summary'), false);
+  assert.ok(agents(kit).includes('mine'));
+});
+
+test('a retraction removes the line from a file that was pulled in the meantime', (t) => {
+  const kit = kitDir(t);
+  const { id } = recordLearning({ kitDir: kit, text: 'obsolete', meta: META });
+  writeFileSync(join(kit, 'AGENTS.md'), `${agents(kit)}- teammate line\n`);
+  retractLearning({ kitDir: kit, id, meta: META });
+  assert.ok(!agents(kit).includes('obsolete') && agents(kit).includes('teammate line'));
 });

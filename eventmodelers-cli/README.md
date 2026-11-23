@@ -972,12 +972,12 @@ npx @eventmodelers/cli ui-baseline check|record [--slice <id>] [--scope ui|backe
 npx @eventmodelers/cli learn "<text>" [--topic <t>] [--tag <t>] [--scope system|repo] [--slice <s>]
 npx @eventmodelers/cli learn --retract <id> [--reason "<why>"]
 npx @eventmodelers/cli learn --merge <id,id> "<text>" [--reason "<why>"]
-npx @eventmodelers/cli learnings [--ids]
+npx @eventmodelers/cli learnings [--ids] [--rebuild]
 npx @eventmodelers/cli info "<text>" [--kind <kind>] [--slice <s>] [--tag <t>]
 ```
 
 - **`ui-baseline`** decides whether a slice's UI needs work. `check` compares the board's hashes of the slice's screen, of every element of the slice and of its `codeGen.uiPrompts` with what was recorded after the last UI build, and prints `NO_BASELINE`, `UNCHANGED` (skip all UI work) or `CHANGED`. `record` stores the current state once the UI is built; commit the resulting `ui-baseline.json` with the slice. `--scope backend` hashes the elements only, for a kit that builds no UI. Alias: `build-baseline`.
-- **`learn`** records one reusable learning: a codebase pattern, a gotcha, a command that works or doesn't. `.build-kit/AGENTS.md` is generated from the recorded learnings, so never edit it by hand. `--retract` withdraws a wrong or obsolete one; `--merge` replaces several with one (the curator's tool). `learnings --ids` lists each with the id to retract it by.
+- **`learn`** records one reusable learning: a codebase pattern, a gotcha, a command that works or doesn't. Each learning is an event in the local log (never versioned). `.build-kit/AGENTS.md` is a normal file that you may version and edit: every checkout remembers the last learning event it applied to it (a cursor in `.build-kit/.eventmodelers/learnings-cursor.json`) and applies only the events after it — a learning adds its line, `--retract` removes it, `--merge` swaps several for one (the curator's tool). Lines already in the file (a teammate's, a summary, a manual edit) are left alone and never turned into events, so they have no id. `learnings --ids` lists the learnings in your own log with the id to retract them by. `learnings --rebuild` regenerates the whole file from your local log, whatever the file held — your call. An existing install gets its cursor on the first sync and its file is left as it is.
 - **`info`** records something that is not a reusable learning: a limitation, a decision, a note. It becomes an event in the log and a comment on the slice.
 
 ### Re-init — refresh scripts/skills without touching your app

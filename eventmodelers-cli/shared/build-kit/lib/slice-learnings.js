@@ -1,9 +1,8 @@
-// Learnings as events, and AGENTS.md as their projection (`renderLearnings`). The build agent records a
-// learning with `eventmodelers learn` and withdraws a wrong one with `learn --retract`; nobody edits the
-// file by hand — but when someone does (an older prompt, a pull that merged teammates' lines), the lines
-// are adopted as learnings first, so a regeneration never loses them.
+// Learnings as events, and AGENTS.md as the file they are applied to. The build agent records a learning with
+// `eventmodelers learn` and withdraws a wrong one with `learn --retract`. Each kit applies its own events to the
+// file once (a cursor); the file itself is shared through git and is never read back into the log.
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { appendEvent, readEvents } from './slice-events.js';
 import { fold, learningKey, renderLearnings } from './slice-state.js';
@@ -47,32 +46,103 @@ function writeIfChanged(path, content) {
   return true;
 }
 
-// Writes AGENTS.md from the log, without reading it first. Used right after this module's own events —
-// adopting then would take the line a retraction just removed for a hand edit and bring it back.
+// AGENTS.md is patched, not regenerated: this kit remembers the last learning event it applied
+// (`<kitDir>/.eventmodelers/learnings-cursor.json`, local and gitignored) and applies only the events after it —
+// a learning adds its line, a retraction removes it, a merge swaps the sources for one. Lines the file already
+// holds (a teammate's, from a pull) are left as they are. A cursor the log does not know any more (the log was
+// pruned or deleted) means every event in the log counts as new; applying one the file already reflects changes
+// nothing, so the file is never wiped. `rebuild` regenerates the whole file from the log instead.
 // Nothing is written while there is nothing learned (a project without learnings gets no file).
-function projectLearnings(kitDir, state) {
-  const content = renderLearnings(state);
-  return content ? writeIfChanged(join(kitDir, AGENTS_FILE), content) : false;
+const CURSOR_FILE = join('.eventmodelers', 'learnings-cursor.json');
+const LEARNING_EVENTS = new Set(['learning-recorded', 'learning-retracted', 'learning-merged']);
+
+// The cursor is the time (`at`, with `seq` to order events of the same instant) of the last learning event applied.
+// Time is what a deleted log cannot reset: pruned events stay behind the cursor, so if someone summarizes
+// AGENTS.md and it is pulled, learnings that were already applied are not put back — and events recorded after the
+// log was deleted are newer than the cursor however low their `seq` starts again.
+function readCursor(kitDir) {
+  try {
+    const { at, seq } = JSON.parse(readFileSync(join(kitDir, CURSOR_FILE), 'utf-8'));
+    return typeof at === 'string' ? { at, seq: Number.isInteger(seq) ? seq : 0 } : null;
+  } catch { return null; }
 }
 
-// The entry point before anything reads learnings: adopts what AGENTS.md says that the log does not know
-// yet, then writes the file from the log. Returns { state, written }.
-export function syncLearnings({ kitDir, meta }) {
+function writeCursor(kitDir, event) {
+  if (!event) return;
+  mkdirSync(join(kitDir, '.eventmodelers'), { recursive: true });
+  writeIfChanged(join(kitDir, CURSOR_FILE), `${JSON.stringify({ at: event.at, seq: event.seq }, null, 2)}\n`);
+}
+
+// The file as topic → lines, in file order.
+function readModel(kitDir) {
+  const model = new Map();
   const path = join(kitDir, AGENTS_FILE);
-  let state = fold(readEvents(kitDir));
-  if (existsSync(path)) {
-    const known = new Set(state.learnings.map((l) => learningKey(l.text)));
-    let adopted = false;
-    for (const { topic, text } of parseAgentsFile(readFileSync(path, 'utf-8'))) {
-      const key = learningKey(text);
-      if (known.has(key)) continue;
-      known.add(key);
-      appendEvent(kitDir, { type: 'learning-recorded', text, ...(topic ? { topic } : {}), scope: 'repo', tags: ['adopted'] }, meta);
-      adopted = true;
-    }
-    if (adopted) state = fold(readEvents(kitDir));
+  if (!existsSync(path)) return model;
+  for (const { topic, text } of parseAgentsFile(readFileSync(path, 'utf-8'))) {
+    const name = topic?.trim() || 'General';
+    if (!model.has(name)) model.set(name, []);
+    model.get(name).push(text);
   }
-  return { state, written: projectLearnings(kitDir, state) };
+  return model;
+}
+
+function hasLine(model, key) {
+  return [...model.values()].some((lines) => lines.some((l) => learningKey(l) === key));
+}
+
+function removeLine(model, key) {
+  for (const [name, lines] of model) {
+    const kept = lines.filter((l) => learningKey(l) !== key);
+    if (kept.length) model.set(name, kept); else model.delete(name);
+  }
+}
+
+function addLine(model, topic, text) {
+  if (!learningKey(text) || hasLine(model, learningKey(text))) return;
+  const name = topic?.trim() || 'General';
+  if (!model.has(name)) model.set(name, []);
+  model.get(name).push(String(text).trim());
+}
+
+function applyLearningEvents(kitDir, { rebuild = false } = {}) {
+  const events = readEvents(kitDir);
+  const learningEvents = events.filter((e) => LEARNING_EVENTS.has(e.type));
+  const last = learningEvents.at(-1) ?? null;
+  const path = join(kitDir, AGENTS_FILE);
+  if (rebuild) {
+    const content = renderLearnings(fold(events));
+    writeCursor(kitDir, last);
+    return content ? writeIfChanged(path, content) : false;
+  }
+  const cursor = readCursor(kitDir);
+  // An installation from before the cursor: its AGENTS.md was written from the log by the older version, and may
+  // have been summarized or edited since. Everything in the log up to now counts as applied — the file stays as it is.
+  if (cursor === null && existsSync(path)) { writeCursor(kitDir, last); return false; }
+  const fresh = cursor === null ? learningEvents : learningEvents.filter((e) => e.at > cursor.at || (e.at === cursor.at && e.seq > cursor.seq));
+  const texts = new Map(learningEvents.filter((e) => e.type === 'learning-recorded').map((e) => [e.id, e.text]));
+  const model = readModel(kitDir);
+  for (const e of fresh) {
+    if (e.type === 'learning-recorded') addLine(model, e.topic, e.text);
+    else if (e.type === 'learning-retracted') { const was = e.text ?? texts.get(e.learning); if (was) removeLine(model, learningKey(was)); }
+    else {
+      // The merged line takes the slot of its first source, and that source's topic unless one is named.
+      const topic = e.topic ?? [...model].find(([, lines]) => lines.some((l) => learningKey(l) === learningKey(e.sources?.[0]?.text ?? '')))?.[0];
+      for (const src of e.sources ?? []) removeLine(model, learningKey(src.text));
+      addLine(model, topic, e.text);
+    }
+  }
+  if (fresh.length) writeCursor(kitDir, last);
+  if (!model.size) return false;
+  const body = [...model].map(([name, lines]) => `## ${name}\n${lines.map((l) => `- ${l}`).join('\n')}\n`).join('\n');
+  return writeIfChanged(path, `<!-- Generated from the slice-state event log. Record learnings with the learn command; do not edit. -->\n\n${body}`);
+}
+
+// The entry point before anything reads learnings: applies the learning events this kit has not applied yet to
+// AGENTS.md (see above). What the file holds besides — a teammate's lines from a pull, a summary, a hand edit — is
+// left as it is and is not turned into events. `rebuild` regenerates the whole file from the log. Returns { state, written }.
+export function syncLearnings({ kitDir, rebuild = false }) {
+  const written = applyLearningEvents(kitDir, { rebuild });
+  return { state: fold(readEvents(kitDir)), written };
 }
 
 // Records one learning. A learning the file already has is not recorded again (returned with
@@ -81,11 +151,11 @@ export function recordLearning({ kitDir, text, topic, tags, scope = 'repo', slic
   const clean = String(text ?? '').trim();
   if (!clean) throw new Error('the learning is empty');
   if (!SCOPES.includes(scope)) throw new Error(`scope must be ${SCOPES.join(' or ')}, not "${scope}"`);
-  const { state } = syncLearnings({ kitDir, meta });
+  const { state } = syncLearnings({ kitDir });
   const existing = state.learnings.find((l) => learningKey(l.text) === learningKey(clean));
   if (existing) return { id: existing.id, duplicate: true };
   const id = appendEvent(kitDir, { type: 'learning-recorded', text: clean, ...(topic?.trim() ? { topic: topic.trim() } : {}), scope, ...(slice ? { slice } : {}), tags }, meta);
-  projectLearnings(kitDir, fold(readEvents(kitDir)));
+  applyLearningEvents(kitDir);
   return { id, duplicate: false };
 }
 
@@ -101,10 +171,10 @@ function resolveLearning(learnings, id) {
 
 // Withdraws a learning by id or by a unique prefix of it; `reason` says why (the curator gives one).
 export function retractLearning({ kitDir, id, reason, meta }) {
-  const { state } = syncLearnings({ kitDir, meta });
+  const { state } = syncLearnings({ kitDir });
   const target = resolveLearning(state.learnings, id);
-  appendEvent(kitDir, { type: 'learning-retracted', learning: target.id, ...(reason?.trim() ? { reason: reason.trim() } : {}) }, meta);
-  projectLearnings(kitDir, fold(readEvents(kitDir)));
+  appendEvent(kitDir, { type: 'learning-retracted', learning: target.id, text: target.text, ...(reason?.trim() ? { reason: reason.trim() } : {}) }, meta);
+  applyLearningEvents(kitDir);
   return { id: target.id, text: target.text };
 }
 
@@ -115,7 +185,7 @@ export function listLearnings(kitDir) {
 // The curator's merge: two or more learnings that say the same thing become one. The event keeps what
 // the sources said, so a bad merge can be repaired. Sources of different scopes need the scope named.
 export function mergeLearnings({ kitDir, ids, text, topic, scope, tags, reason, meta }) {
-  const { state } = syncLearnings({ kitDir, meta });
+  const { state } = syncLearnings({ kitDir });
   const sources = [...new Set((ids ?? []).map((id) => resolveLearning(state.learnings, id)))];
   if (sources.length < 2) throw new Error('a merge needs at least two learnings');
   const clean = String(text ?? '').trim();
@@ -132,7 +202,7 @@ export function mergeLearnings({ kitDir, ids, text, topic, scope, tags, reason, 
     ...(reason?.trim() ? { reason: reason.trim() } : {}),
     sources: sources.map(({ id, text: was }) => ({ id, text: was })),
   }, meta);
-  projectLearnings(kitDir, fold(readEvents(kitDir)));
+  applyLearningEvents(kitDir);
   return { id };
 }
 

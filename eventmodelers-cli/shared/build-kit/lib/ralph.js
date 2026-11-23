@@ -876,8 +876,8 @@ function taskRequest(planned = null, cfg = null, pickupStatus = 'Planned', queue
 }
 
 // The slice-state event store (events/, events.log) holds pids and claims of this checkout and must never be
-// versioned. AGENTS.md is rendered from the learning events and adopts what a merge brings in, so where it
-// is tracked, two branches that both regenerated it should keep both sides' lines rather than conflict:
+// versioned. AGENTS.md is patched by each clone's learning events, so where it
+// is tracked, two branches that both added lines to it should keep both sides' lines rather than conflict:
 // `merge=union`. The rules go in .git/info/exclude and .git/info/attributes: local to this clone, never
 // tracked, so the loop does not dirty the working tree it is about to judge (a dirty tree at claim time is
 // taken for a person's own work and is never discarded). Idempotent; best effort.
@@ -937,8 +937,8 @@ async function ralphLoop(kitDir, cfg, onTask, onPlannedSlice, localOnly = false,
     // A claim still open here is a leftover: its process died mid-build, or settling failed last time.
     await settleLeftoverClaims({ kitDir, board, meta, pickupStatus: readPickupStatus(kitDir) });
 
-    // AGENTS.md is the projection of the learning events; anything added to it by hand (or by a pull) is adopted first.
-    syncLearnings({ kitDir, meta });
+    // Learning events this kit has not applied yet go into AGENTS.md; what the file holds besides is left alone.
+    syncLearnings({ kitDir });
     // Enough new learnings, and no build in progress: one agent turn tidies them (merge / retract only).
     if (await curateIfDue({ kitDir, meta, onCurate })) didWork = true;
 
