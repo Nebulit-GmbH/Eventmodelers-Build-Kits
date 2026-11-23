@@ -1,6 +1,6 @@
 # Agent Reference
 
-What task processing relies on: the shape of a task and the API facts the skills use. A reusable learning is recorded with `npx @eventmodelers/cli learn --problem "<situation>" --solution "<what to do>" --topic "<topic>"`, not added here.
+What task processing relies on: the shape of a task and the API facts the skills use. A reusable learning is recorded with `npx @eventmodelers/cli learn "<one terse line>"`, not added here.
 
 ## Tasks
 

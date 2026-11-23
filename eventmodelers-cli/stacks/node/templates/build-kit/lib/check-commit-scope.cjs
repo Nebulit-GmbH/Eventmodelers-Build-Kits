@@ -37,11 +37,6 @@ const path = require('path');
 
 const SLICE_PATTERN = /^src\/slices\/[^/]+\/[^/]+\//;
 
-// The kit's own directory is the agent's bookkeeping, never a slice's code — what it learned (AGENTS.md), the slice
-// definitions, its libs. It is versioned with the slice commit, so it is out of every check: no check sees these paths,
-// and they never make a commit a "slice commit" or count as outside its scope.
-const KIT_DIR_PATTERN = /^\.build-kit\//;
-
 function parseNameStatus(out) {
   return out
     .split('\n')
@@ -107,7 +102,6 @@ function main() {
     process.exit(1);
   }
 
-  changes = changes.filter((c) => !KIT_DIR_PATTERN.test(c.path));
   if (changes.length === 0) process.exit(0);
 
   const touchesSlice = changes.some((c) => SLICE_PATTERN.test(c.path));

@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readEvents } from '../shared/build-kit/lib/slice-events.js';
 import { fold } from '../shared/build-kit/lib/slice-state.js';
-import { curationReplyRequest, LEARNINGS_NUDGE_AFTER, learningsNudge, mergeLearnings, parseAgentsFile, parseTurnLearnings, recordLearning, recordTurnLearnings, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
+import { curationRequest, mergeLearnings, parseAgentsFile, parseTurnLearnings, recordLearning, recordTurnLearnings, retractLearning, listLearnings, syncLearnings } from '../shared/build-kit/lib/slice-learnings.js';
 import { tempKit } from './helpers.js';
 
 // AGENTS.md is a projection of the learning events — and hand edits to it (old prompts, a pull that merged
@@ -202,17 +202,19 @@ test('the curation request lists every learning with its short id, topic, scope 
   const kit = kitDir(t);
   const a = recordLearning({ kitDir: kit, text: 'Run the suite with npm test', topic: 'Testing', tags: ['ci'] });
   const b = recordLearning({ kitDir: kit, text: 'Domain rule X', scope: 'system' });
-  const prompt = curationReplyRequest(fold(readEvents(kit)).learnings);
+  const prompt = curationRequest(fold(readEvents(kit)).learnings);
   assert.match(prompt, new RegExp(`${a.id.slice(0, 8)}\\s+\\[Testing\\]\\s+\\(repo\\)\\s+Run the suite with npm test\\s+#ci`));
   assert.match(prompt, new RegExp(`${b.id.slice(0, 8)}\\s+\\[General\\]\\s+\\(system\\)\\s+Domain rule X`));
-  for (const line of ['MERGE <id', 'RETRACT <id>', 'REWRITE <id>', 'SPLIT <id>']) assert.ok(prompt.includes(line), line);
-  assert.match(prompt, /Add no new learnings/);
+  assert.match(prompt, /learn --merge/);
+  assert.match(prompt, /learn --retract/);
+  assert.match(prompt, /--reason/);
+  assert.match(prompt, /no new/i);
   assert.match(prompt, /evidence/i);
   assert.match(prompt, /keep/i);
 });
 
 test('with nothing to curate there is no request', () => {
-  assert.equal(curationReplyRequest([]), '');
+  assert.equal(curationRequest([]), '');
 });
 
 // ── learnings a turn states in its reply (the locked-down modeling agent never runs `learn` itself) ──
@@ -258,10 +260,4 @@ test('a reply without learnings writes nothing', (t) => {
   assert.equal(recordTurnLearnings({ kitDir: kit, meta: META, reply: 'All done. <promise>DONE</promise>' }), 0);
   assert.equal(existsSync(join(kit, 'events.log')), false);
   assert.equal(existsSync(join(kit, 'AGENTS.md')), false);
-});
-
-test('the nudge appears once the learnings pile up, names the count and the command', () => {
-  assert.equal(learningsNudge(LEARNINGS_NUDGE_AFTER - 1), '');
-  const nudge = learningsNudge(23);
-  assert.match(nudge, /You have 23 learnings\. Summarize them with: npx @eventmodelers\/cli learnings --curate --dry-run/);
 });

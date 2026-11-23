@@ -31,7 +31,7 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 11. Slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in JSON are implemented in code and it fulfills the slice.json. There must be no specification in json that has no equivalent in code.
 12. Only when `handover` is on (the task's `Handover: on` line), invoke the `ui-contract` skill for STATE_VIEW / STATE_CHANGE slices; with handover off skip this step (publishes the UI Contract section to the slice's feedback-lane markdown node)
 13. Run quality checks — TODO: your stack's build command, TODO: your stack's test command (slice-scoped only; do not run all tests).
-14. If checks pass, commit ALL changes with message: `feat: [Slice Name]`. When git versions `.build-kit/AGENTS.md` (`git ls-files --error-unmatch .build-kit/AGENTS.md` succeeds), what you learned on this slice is part of its changes: first record any learning you have not recorded yet and retract any that turned out wrong (see **Recording Learnings**), and include that file in this commit. If it is not versioned, do nothing about it. Then merge back to main as FF merge (update first)
+14. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge (update first)
 15. Record the outcome with `npx @eventmodelers/cli slice-status Done` (or `<status>` when the task has a `Target status: <status>` line — record exactly that, it overrides everything below) — not by editing index.json, and do not call `update-slice-status`: the run loop pushes the status to the board when your turn ends. For STATE_VIEW/STATE_CHANGE slices when `handover` is enabled the status to record is `Waiting`, not `Done` — see the `ui-contract` skill, Step 4. A slice you could not finish needs no status: leave it as it is and the run loop discards the attempt.
 16. Record any reusable learning you have not recorded yet (see **Recording Learnings**).
 17. If an entry in `.build-kit/AGENTS.md` turned out wrong or obsolete, retract it (see **Recording Learnings**).
@@ -46,15 +46,13 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 `.build-kit/AGENTS.md` is generated from the learnings recorded so far — read it at the start of every session, never edit it by hand. Record a learning the moment you have it:
 
 ```
-npx @eventmodelers/cli learn --problem "<the situation or symptom>" --solution "<what to do about it>" --topic "<topic>"
+npx @eventmodelers/cli learn "<one terse line>" --topic "<topic>"
 ```
 
 - Only what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions — and, after a failed approach, what was tried and why it failed. Not slice-specific details, and nothing the code or git log already says.
-- One learning per call: a **problem** (the situation or symptom it applies to) and its **solution** (what to do about it), each one short sentence — the CLI refuses a learning of more than 500 characters in all. The rule, not the story: no slice names, commit ids, or how you found out. A learning that needs more room is two learnings. Before recording, check `.build-kit/AGENTS.md`: if it is already covered, in any wording, do not record it.
-- `--topic` is required: a short heading that groups it (e.g. `git`, `testing`, `projections`). Reuse a heading already in `.build-kit/AGENTS.md` instead of inventing a near-synonym.
+- One learning per call, one line each. A learning that is already in `.build-kit/AGENTS.md` is skipped for you.
 - `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
 - One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
-- When git versions `.build-kit/AGENTS.md`, what you learned on the slice is part of the slice's changes: record your learnings before you commit and include the file in the slice's commit. When the file is not versioned, do nothing about it.
 
 ### Recording Info
 

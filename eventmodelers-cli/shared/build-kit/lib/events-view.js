@@ -51,8 +51,6 @@ function describe(e) {
       return [e.learning, e.reason ? oneLine(e.reason, 120) : ''];
     case 'learning-merged':
       return ['', `${plural(e.sources?.length ?? e.learnings?.length ?? 0, 'learning')} → ${oneLine(e.text, 120)}${e.reason ? ` — ${oneLine(e.reason, 80)}` : ''}`];
-    case 'learning-rewritten':
-      return [e.learning, `[${e.topic ?? 'General'}] ${oneLine(e.text, 140)}${e.reason ? ` — ${oneLine(e.reason, 60)}` : ''}`];
     case 'learnings-curated':
       return ['', ''];
     case 'info-recorded':

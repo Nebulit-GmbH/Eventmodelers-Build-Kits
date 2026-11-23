@@ -592,7 +592,7 @@ npx @eventmodelers/cli run --modeling --acp-cmd "my-agent --acp" # any other ACP
 - `--acp` works for both loops. With `--modeling`/`--standalone`/`--worker`/`--global` it answers prompts and chat; in a
   build kit (`run --agent cursor --acp`) it builds Planned slices through `ralph-acp.js`: one warm agent process, a
   fresh conversation per slice, tool calls in the build log, and token usage in the slice cost when the agent reports
-  it (no price: ACP reports tokens only).
+  it (no price: ACP reports tokens only). The curation turn runs in a short-lived process of its own.
 - `--acp` is mutually exclusive with `--exec`, `--local-ai` and `--agent mastra`.
   `--model` does not apply: the agent picks its model from its own configuration.
 
@@ -969,15 +969,15 @@ npx @eventmodelers/cli slice-status <status>         # record the outcome of the
 npx @eventmodelers/cli set-slice-status [--remote]   # pick a slice from the active context and change its status in .slices/; --remote also pushes it to the board
 npx @eventmodelers/cli activate-context              # choose the fetched context `run` works through first; when it has no planned slices left, `run` moves on
 npx @eventmodelers/cli ui-baseline check|record [--slice <id>] [--scope ui|backend]
-npx @eventmodelers/cli learn --problem "<situation>" --solution "<what to do>" --topic <t> [--tag <t>] [--scope system|repo] [--slice <s>]
+npx @eventmodelers/cli learn "<text>" [--topic <t>] [--tag <t>] [--scope system|repo] [--slice <s>]
 npx @eventmodelers/cli learn --retract <id> [--reason "<why>"]
 npx @eventmodelers/cli learn --merge <id,id> "<text>" [--reason "<why>"]
-npx @eventmodelers/cli learnings [--ids] [--curate [--dry-run] [--agent <name> | --exec "<command>" | --local-ai [target]]]
+npx @eventmodelers/cli learnings [--ids]
 npx @eventmodelers/cli info "<text>" [--kind <kind>] [--slice <s>] [--tag <t>]
 ```
 
 - **`ui-baseline`** decides whether a slice's UI needs work. `check` compares the board's hashes of the slice's screen, of every element of the slice and of its `codeGen.uiPrompts` with what was recorded after the last UI build, and prints `NO_BASELINE`, `UNCHANGED` (skip all UI work) or `CHANGED`. `record` stores the current state once the UI is built; commit the resulting `ui-baseline.json` with the slice. `--scope backend` hashes the elements only, for a kit that builds no UI. Alias: `build-baseline`.
-- **`learn`** records one reusable learning as a short **problem** (the situation or symptom) and its **solution** (what to do about it): a codebase pattern, a gotcha, a command that works or doesn't. The CLI enforces the form: both are required, at most 500 characters together, one line each, and `--topic` is required. Free text, a missing part or a longer one is refused with the form to use. A learning that needs more room is two learnings. `.build-kit/AGENTS.md` is generated from the recorded learnings, so never edit it by hand. `--retract` withdraws a wrong or obsolete one; `--merge` replaces several with one (the curator's tool). `learnings --ids` lists each with the id to retract it by. `learnings --curate` runs the curator. Curation is never automatic: nothing tidies the learnings behind your back, so a person decides when, looks at `--dry-run` first, and commits the result if the file is shared. The agent only answers with `MERGE`/`RETRACT` lines and the CLI applies them, so it works with any agent and needs no shell access: Claude by default, any other harness with `--agent <name>` (codex, opencode, gemini, …) `--exec "<command>"`, or a local model with `--local-ai [ollama|vllm|lmstudio|llamacpp]` (same `LOCAL_AI_*` / `localAi` settings as `run`; it gets no tools, so it judges from the learnings alone). It can merge duplicates, retract obsolete learnings, **rewrite** older free-text ones into the `problem → solution` form under a topic — summarizing one that is too long to fit — and **split** one that really holds two independent rules (all checked with the limits `learn` enforces; the original text stays in the log), never add. The CLI marks the learnings that are already in the form, so the curator skips exactly those. `--dry-run` prints what it would merge, retract and rewrite and changes nothing — look at it first. Only `--agent mastra` is not supported here (an in-process session, not a command).
+- **`learn`** records one reusable learning: a codebase pattern, a gotcha, a command that works or doesn't. `.build-kit/AGENTS.md` is generated from the recorded learnings, so never edit it by hand. `--retract` withdraws a wrong or obsolete one; `--merge` replaces several with one (the curator's tool). `learnings --ids` lists each with the id to retract it by.
 - **`info`** records something that is not a reusable learning: a limitation, a decision, a note. It becomes an event in the log and a comment on the slice.
 
 ### Re-init — refresh scripts/skills without touching your app

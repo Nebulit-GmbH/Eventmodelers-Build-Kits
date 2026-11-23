@@ -36,11 +36,6 @@ const fs = require('fs');
 const path = require('path');
 
 const SLICE_PATTERN = /^src\/slices\/[^/]+\/[^/]+\//;
-
-// The kit's own directory is the agent's bookkeeping, never a slice's code — what it learned (AGENTS.md), the slice
-// definitions, its libs. It is versioned with the slice commit, so it is out of every check: no check sees these paths,
-// and they never make a commit a "slice commit" or count as outside its scope.
-const KIT_DIR_PATTERN = /^\.build-kit\//;
 // A webhook slice is a self-contained edge function with no src/slices/ folder
 // of its own — still counts as "this is a slice commit" for the gate below.
 const WEBHOOK_FUNCTION_PATTERN = /^supabase\/functions\/[^/]+\/index\.ts$/;
@@ -110,7 +105,6 @@ function main() {
     process.exit(1);
   }
 
-  changes = changes.filter((c) => !KIT_DIR_PATTERN.test(c.path));
   if (changes.length === 0) process.exit(0);
 
   const touchesSlice = changes.some((c) => SLICE_PATTERN.test(c.path) || WEBHOOK_FUNCTION_PATTERN.test(c.path));
