@@ -91,3 +91,44 @@ test('the threshold is RALPH_CURATE_AFTER, 10 by default, 0 to switch curation o
   assert.equal(curationThreshold({ RALPH_CURATE_AFTER: 'many' }), 10);
   assert.equal(curationThreshold({ RALPH_CURATE_AFTER: '-3' }), 10);
 });
+
+// `learnings --curate` works with any agent: it only answers, the CLI applies its MERGE / RETRACT lines.
+import { applyCurationReply, curationReplyRequest } from '../shared/build-kit/lib/slice-learnings.js';
+
+test('a curator reply of MERGE and RETRACT lines is applied; a bad line is skipped, not half-applied', (t) => {
+  quiet(t);
+  const kit = kitDir(t);
+  const [a, b, c, d] = learn(kit, 4).map((l) => l.id.slice(0, 8));
+  const reply = [
+    'Here is what I found:',
+    `MERGE ${a},${b} | one and two | same fact`,
+    `RETRACT ${c} | the code no longer does this`,
+    `MERGE ${d},deadbeef | nope | unknown id`,
+    `RETRACT ${d}`,
+  ].join('\n');
+  const result = applyCurationReply({ kitDir: kit, reply, meta: META });
+  assert.deepEqual([result.merged, result.retracted, result.skipped.length], [1, 1, 1]);
+  assert.deepEqual(state(kit).learnings.map((l) => l.text), ['one and two', 'learning 4']);
+});
+
+test('NONE, an empty reply and fenced examples change nothing', (t) => {
+  quiet(t);
+  const kit = kitDir(t);
+  const [a, b] = learn(kit, 2).map((l) => l.id.slice(0, 8));
+  for (const reply of ['NONE', '', null, `\`\`\`\nMERGE ${a},${b} | x | y\n\`\`\``]) {
+    assert.deepEqual(applyCurationReply({ kitDir: kit, reply, meta: META }), { merged: 0, retracted: 0, skipped: [] });
+  }
+  assert.equal(state(kit).learnings.length, 2);
+  assert.match(curationReplyRequest(state(kit).learnings), /MERGE <id,id,…>/);
+});
+
+// `learn` enforces the form: a short problem, a short solution, a topic.
+import { composeLearning, MAX_PROBLEM_LENGTH, MAX_SOLUTION_LENGTH } from '../shared/build-kit/lib/slice-learnings.js';
+
+test('a learning is a short problem and solution under a topic, and nothing else is accepted', () => {
+  assert.deepEqual(composeLearning({ problem: '  A stale branch touches a slice.\n', solution: 'Check the merge-base first', topic: ' git ' }), { text: 'A stale branch touches a slice → Check the merge-base first', topic: 'git' });
+  assert.throws(() => composeLearning({ problem: 'p', solution: '', topic: 't' }), /needs --solution/);
+  assert.throws(() => composeLearning({ problem: 'p', solution: 's' }), /needs --topic/);
+  assert.throws(() => composeLearning({ problem: 'x'.repeat(MAX_PROBLEM_LENGTH + 1), solution: 's', topic: 't' }), /problem is \d+ characters/);
+  assert.throws(() => composeLearning({ problem: 'p', solution: 'x'.repeat(MAX_SOLUTION_LENGTH + 1), topic: 't' }), /solution is \d+ characters/);
+});

@@ -89,6 +89,23 @@ export function recordLearning({ kitDir, text, topic, tags, scope = 'repo', slic
   return { id, duplicate: false };
 }
 
+// What `learn` accepts from an agent: the problem (the situation or symptom it applies to) and the solution (what to do
+// about it), each one short sentence, plus the topic it is filed under. The size limits are what keeps AGENTS.md short —
+// a learning that needs more room is two learnings. Enforced here, in the CLI's own code, not left to the prompt.
+export const MAX_PROBLEM_LENGTH = 160;
+export const MAX_SOLUTION_LENGTH = 240;
+const LEARN_FORM = 'learn --problem "<the situation or symptom, one short sentence>" --solution "<what to do about it, one short sentence>" --topic "<topic>"';
+
+export function composeLearning({ problem, solution, topic }) {
+  const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const [p, s, t] = [clean(problem), clean(solution), clean(topic)];
+  const missing = [!p && '--problem', !s && '--solution', !t && '--topic'].filter(Boolean);
+  if (missing.length) throw new Error(`a learning needs ${missing.join(', ')} — the form is: ${LEARN_FORM}`);
+  if (p.length > MAX_PROBLEM_LENGTH) throw new Error(`the problem is ${p.length} characters, at most ${MAX_PROBLEM_LENGTH}: state the situation, not the story (no slice names, commit ids or how you found out). If it needs more room, it is two learnings.`);
+  if (s.length > MAX_SOLUTION_LENGTH) throw new Error(`the solution is ${s.length} characters, at most ${MAX_SOLUTION_LENGTH}: state the rule, not the incident. If it needs more room, it is two learnings.`);
+  return { text: `${p.replace(/[.:;]+$/, '')} → ${s}`, topic: t };
+}
+
 // A learning by its id or by a unique prefix of it (`learnings --ids` shows the first eight characters).
 function resolveLearning(learnings, id) {
   const wanted = String(id ?? '').trim();
@@ -152,13 +169,64 @@ export function curationRequest(learnings) {
 Rules:
 - No new learnings — recording one is refused while you curate. Merge or retract only.
 - Retract only with evidence you have checked: the code, the git log, the slice definitions. Put it in --reason. If you cannot judge a learning, keep it.
-- A merge must not lose information: the combined text says everything its sources said, in one line, and adds nothing.
+- A merge must not lose information: the combined text says everything its sources said, in one line, and adds nothing. Write it as \`<problem> → <solution>\`, the rule and not the story: leave out slice names, commit ids and how it was found out.
 - Learnings with scope "system" are about the modeled domain; merge or retract them only when the evidence is in the slices or the code.
 - Leave learnings that are fine alone. Finish with one line saying what you merged and retracted.
 
 Learnings:
 ${list}
 `;
+}
+
+// The same curation, for an agent that only answers (`learnings --curate` with any harness, whose Bash may be locked
+// down or absent): it replies with MERGE / RETRACT lines and the CLI — trusted code — applies them through the same
+// mergeLearnings / retractLearning the commands use. A line it gets wrong is skipped, never half-applied.
+export function curationReplyRequest(learnings) {
+  if (!learnings.length) return '';
+  const list = learnings.map((l) => `  ${l.id.slice(0, 8)}  [${l.topic ?? 'General'}]  (${l.scope})  ${l.text}${l.tags?.length ? `  ${l.tags.map((t) => `#${t}`).join(' ')}` : ''}`).join('\n');
+  return `You are the curator of this project's learnings. Below is everything recorded so far: id, [topic], (scope), the learning, #tags. Do not edit any file and do not run any command that changes anything. Answer with these lines, one per change, and nothing else is applied:
+
+MERGE <id,id,…> | <combined text> | <why they are the same>
+RETRACT <id> | <what you found>
+
+Rules:
+- Merge learnings that say the same thing into one terse line. A merge must not lose information: the combined text says every rule its sources gave, and adds nothing. Write it as \`<problem> → <solution>\`, the rule and not the story: leave out slice names, commit ids and how it was found out. Sources of different scopes cannot be merged.
+- Retract only a learning that is wrong or obsolete, and only with evidence you checked in the code, the git log or the slice definitions — put it after the second "|". If you cannot judge a learning, keep it.
+- Learnings with scope "system" are about the modeled domain; change them only when the evidence is in the slices or the code.
+- Leave learnings that are fine alone. Add no new learnings. If nothing needs changing, answer: NONE
+
+Learnings:
+${list}
+`;
+}
+
+const CURATION_MERGE = /^\s*(?:[-*]\s+)?MERGE\s+([0-9a-f]{4,}(?:\s*,\s*[0-9a-f]{4,})+)\s*\|\s*(.+)\|\s*(\S.*?)\s*$/i;
+const CURATION_RETRACT = /^\s*(?:[-*]\s+)?RETRACT\s+([0-9a-f]{4,})\s*\|\s*(\S.*?)\s*$/i;
+
+// Applies the MERGE / RETRACT lines of a curator's reply. Returns { merged, retracted, skipped: [message] }.
+export function applyCurationReply({ kitDir, reply, meta }) {
+  const out = { merged: 0, retracted: 0, skipped: [] };
+  let fenced = false;
+  for (const line of String(reply ?? '').split('\n')) {
+    if (line.trim().startsWith('```')) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    try {
+      let m = CURATION_MERGE.exec(line);
+      if (m) {
+        mergeLearnings({ kitDir, ids: m[1].split(',').map((id) => id.trim()), text: m[2].trim(), reason: m[3], meta });
+        out.merged++;
+        continue;
+      }
+      m = CURATION_RETRACT.exec(line);
+      if (m) {
+        retractLearning({ kitDir, id: m[1], reason: m[2], meta });
+        out.retracted++;
+      }
+    } catch (err) {
+      out.skipped.push(`${line.trim().slice(0, 80)} — ${err.message}`);
+    }
+  }
+  return out;
 }
 
 // ── learnings a turn states in its reply ────────────────────────────────────────

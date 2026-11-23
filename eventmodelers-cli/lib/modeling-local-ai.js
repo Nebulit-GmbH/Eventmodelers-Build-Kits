@@ -175,6 +175,23 @@ function systemPrompt({ boardId, organizationId, standalone }) {
   ].join('\n');
 }
 
+// One toolless question to a local model, answered in text — for jobs that need no board tools (curating the
+// learnings: the CLI applies the model's MERGE / RETRACT lines itself). Same endpoint, dialect and settings as a turn.
+export async function completeOnce({ target, localAi = {}, prompt }) {
+  const t = resolveLocalAiTarget({ target, localAi });
+  const d = DIALECTS[t.dialect];
+  const body = d.shape({ model: t.model, messages: [{ role: 'user', content: prompt }], stream: false }, { numCtx: t.numCtx });
+  const res = await fetch(t.endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(t.dialect === 'openai' ? { Authorization: `Bearer ${t.apiKey}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${t.dialect} HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const message = d.unwrap(await res.json());
+  if (!message) throw new Error(`${t.dialect}: response carried no message`);
+  return { text: stripThinking(message.content), model: t.model };
+}
+
 export function createModelingLocalAiRunner({ cfg, target, log, verbose = false, standalone = false, onToolUse = () => () => {} }) {
   const t = resolveLocalAiTarget({ target, localAi: cfg.localAi || {} });
   let tools = null; // the MCP tool set, fetched once per session

@@ -11,6 +11,7 @@ import {
   rmSync,
   readdirSync,
   statSync,
+  mkdtempSync,
   writeFileSync,
   readFileSync,
   appendFileSync,
@@ -26,7 +27,7 @@ import { SCAFFOLD_TYPES, invocation, scaffoldTypeNames, missingPrerequisites, ru
 import { supervise } from './lib/supervise.js';
 import { findBuildKitDirs } from './lib/build-kits.js';
 import { buildModel } from './lib/scaffold-model.js';
-import { createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
+import { completeOnce, createModelingLocalAiRunner } from './lib/modeling-local-ai.js';
 import { ACP_AGENTS, resolveAcpAgent } from './lib/modeling-acp.js';
 import { run as runSpecKittyAdapter } from './lib/adapters/spec-kitty-adapter.js';
 import { latestPublishedVersion, updateHints, compareVersions, selfUpdatePlan } from './lib/update-check.js';
@@ -49,12 +50,12 @@ import { clearLog, prunableEvents, pruneLog, rememberPruneAnswer, shouldOfferPru
 import { fold } from './shared/build-kit/lib/slice-state.js';
 import { filterEvents, baselineIds, formatEvent, formatPayload, sliceTitles, summarize } from './shared/build-kit/lib/events-view.js';
 import { stableGlobalAgentId } from './lib/global-agent-id.js';
-import { AGENT_NAMES, presetCommand, withModel } from './shared/build-kit/lib/harnesses/index.js';
-import { ensureLearningsGitRules } from './shared/build-kit/lib/ralph.js';
+import { AGENT_NAMES, presetCommand, shellQuote, withModel } from './shared/build-kit/lib/harnesses/index.js';
+import { ensureLearningsGitRules, loadLocalConfig } from './shared/build-kit/lib/ralph.js';
 import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { cancelLiveTurns } from './shared/build-kit/lib/turn.js';
 import { INFO_KINDS, infoComment, recordInfo, recordTurnInfos } from './shared/build-kit/lib/slice-info.js';
-import { listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
+import { applyCurationReply, composeLearning, curationReplyRequest, listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -5499,8 +5500,10 @@ program
 
 program
   .command('learn [text]')
-  .description("For a build agent: record one reusable learning (a codebase pattern, a gotcha, a command that works or doesn't, what a failed approach tried and why it failed). .build-kit/AGENTS.md is generated from the recorded learnings — never edit it by hand. --retract withdraws a wrong or obsolete one (ids: `learnings --ids`).")
-  .option('--topic <topic>', 'Group the learning under this heading in AGENTS.md')
+  .description("For a build agent: record one reusable learning as a short problem and its solution — `learn --problem \"…\" --solution \"…\" --topic \"…\"` (a codebase pattern, a gotcha, a command that works or doesn't, what a failed approach tried and why it failed). Problem and solution are each one short sentence, topic is required; longer is refused. .build-kit/AGENTS.md is generated from the recorded learnings — never edit it by hand. --retract withdraws a wrong or obsolete one (ids: `learnings --ids`).")
+  .option('--problem <problem>', 'The situation or symptom the learning applies to — one short sentence (at most 160 characters)')
+  .option('--solution <solution>', 'What to do about it — one short sentence (at most 240 characters)')
+  .option('--topic <topic>', 'The heading it is filed under in AGENTS.md — required; reuse a heading that is already there')
   .option('--tag <tag>', 'Label the learning (repeatable)', (tag, tags) => [...tags, tag], [])
   .option('--scope <scope>', 'system: true of the modeled domain · repo: about the codebase and its tooling (default repo)')
   .option('--slice <slice>', 'The slice it was learned on')
@@ -5523,10 +5526,11 @@ program
         console.log(`✅ Merged ${ids.length} learnings into one (${merged.id.slice(0, 8)}).`);
         return;
       }
-      if (text === undefined) throw new Error('give the learning as text, or --retract <id>, or --merge <ids> <text>');
       // The curator may only merge and retract — an LLM asked to tidy must not add facts of its own.
       if (process.env.EVENTMODELERS_CURATING === '1') throw new Error('a curation turn only merges and retracts — new learnings are not recorded during it');
-      const result = recordLearning({ kitDir, text, topic: opts.topic, tags: opts.tag, scope: opts.scope ?? 'repo', slice: opts.slice, meta });
+      if (text !== undefined && opts.problem === undefined && opts.solution === undefined) throw new Error('a learning is a problem and its solution, not free text — use: learn --problem "<situation>" --solution "<what to do>" --topic "<topic>"');
+      const composed = composeLearning({ problem: opts.problem, solution: opts.solution, topic: opts.topic });
+      const result = recordLearning({ kitDir, text: composed.text, topic: composed.topic, tags: opts.tag, scope: opts.scope ?? 'repo', slice: opts.slice, meta });
       console.log(result.duplicate ? `ℹ️  Already recorded (${result.id.slice(0, 8)}) — nothing to add.` : `✅ Recorded (${result.id.slice(0, 8)}) — .build-kit/AGENTS.md is updated.`);
     } catch (err) {
       console.error(`❌ ${err.message}`);
@@ -5722,10 +5726,63 @@ program
   .command('learnings')
   .description('Print the recorded learnings — what .build-kit/AGENTS.md says. With --ids, one line each with the id to retract it by.')
   .option('--ids', 'One line per learning: id, topic, text')
-  .action((opts, command) => {
+  .option('--curate', 'Run the curator now instead of waiting for RALPH_CURATE_AFTER new learnings: an agent turn that proposes merging duplicates and retracting obsolete learnings (it never adds), which the CLI applies. Claude by default; pick another with --agent or --exec.')
+  .option('--agent [name]', `With --curate: the agent that curates — ${AGENT_NAMES.filter((n) => n !== 'mastra').join(', ')} (default claude). Bare --agent lists them.`)
+  .option('--local-ai [target]', `With --curate: a local or self-hosted model (${LOCAL_AI_TARGETS.join(', ')}; bare means ollama, or LOCAL_AI_URL / localAi.* in the config) answers instead — no tools, so it judges from the learnings alone.`)
+  .option('--exec [command]', 'With --curate: any other agent command, e.g. "codex exec --full-auto"; the prompt is appended as one quoted argument (and written to $RALPH_PROMPT_FILE) and its stdout is the answer.')
+  .action(async (opts, command) => {
     const cwd = agentCwd();
     const kitDir = requireBuildKitDir(cwd);
-    syncLearnings({ kitDir, meta: agentEventMeta(cwd, kitDir, command) });
+    const meta = agentEventMeta(cwd, kitDir, command);
+    syncLearnings({ kitDir, meta });
+    if (opts.curate) {
+      const before = listLearnings(kitDir);
+      if (before.length < 2) {
+        console.log('Fewer than two learnings recorded — nothing to curate.');
+        return;
+      }
+      const localAi = resolveLocalAiTarget(opts);
+      if (localAi !== null && opts.exec) {
+        console.error('❌ --local-ai and --exec are mutually exclusive — pick one agent.');
+        process.exit(1);
+      }
+      const execCmd = resolveAgentPreset(opts, 'modeling') ?? (typeof opts.exec === 'string' ? opts.exec : null);
+      if (opts.mastra) {
+        console.error('❌ --curate does not run on --agent mastra (an in-process session, not a command) — use claude, another --agent, or --exec "<command>".');
+        process.exit(1);
+      }
+      console.log(`Curating ${before.length} learnings with ${localAi !== null ? 'a local model' : execCmd ?? 'claude'} …`);
+      // The agent only answers: the CLI applies its MERGE / RETRACT lines, so it needs no `learn` access and can be
+      // sandboxed (or toolless) — the same contract for every agent.
+      const prompt = curationReplyRequest(listLearnings(kitDir));
+      let run;
+      if (localAi !== null) {
+        try {
+          const { text, model } = await completeOnce({ target: typeof localAi === 'string' ? localAi : undefined, localAi: loadLocalConfig(kitDir).localAi ?? {}, prompt });
+          console.log(`(answered by ${model})`);
+          run = { status: 0, stdout: text };
+        } catch (err) {
+          run = { status: 1, error: err };
+        }
+      } else if (execCmd) {
+        const promptFile = join(mkdtempSync(join(tmpdir(), 'curate-')), 'prompt.md');
+        writeFileSync(promptFile, prompt);
+        run = spawnSync(`${execCmd} ${shellQuote(prompt)}`, { cwd, shell: true, encoding: 'utf-8', stdio: ['inherit', 'pipe', 'inherit'], env: { ...process.env, EVENTMODELERS_CURATING: '1', RALPH_PROMPT_FILE: promptFile } });
+      } else {
+        run = spawnSync('claude', ['-p', '--allowedTools', 'Read', 'Grep', 'Glob', 'Bash(git log:*)', 'Bash(git show:*)'], { cwd, input: prompt, encoding: 'utf-8', stdio: ['pipe', 'pipe', 'inherit'], env: { ...process.env, EVENTMODELERS_CURATING: '1' } });
+      }
+      if (run.error || run.status !== 0) {
+        console.error(`❌ The curation turn failed (${run.error?.message ?? `exit ${run.status}`}) — the learnings stay as they are.`);
+        process.exit(1);
+      }
+      const result = applyCurationReply({ kitDir, reply: run.stdout, meta });
+      appendEvent(kitDir, { type: 'learnings-curated' }, meta);
+      syncLearnings({ kitDir, meta });
+      for (const msg of result.skipped) console.log(`⚠️  Skipped: ${msg}`);
+      if (!result.merged && !result.retracted) console.log(`The agent proposed no change${result.skipped.length ? '' : ' that the CLI could read'}. Its answer:\n${String(run.stdout ?? '').trim().split('\n').map((l) => `  | ${l}`).join('\n') || '  | (empty)'}`);
+      console.log(`✅ Merged ${result.merged}, retracted ${result.retracted}: ${before.length} → ${listLearnings(kitDir).length} learnings. See them with \`learnings\`.`);
+      return;
+    }
     const all = listLearnings(kitDir);
     if (!all.length) {
       console.log('No learnings recorded yet.');

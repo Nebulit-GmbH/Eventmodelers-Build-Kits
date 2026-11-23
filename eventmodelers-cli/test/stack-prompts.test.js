@@ -58,7 +58,9 @@ for (const stack of stacks) {
 
   test(`${stack}: the build prompt teaches learn, retract and lastAttempt`, () => {
     const backend = readFileSync(join(stacksDir, stack, 'templates/build-kit/lib/backend-prompt.md'), 'utf-8');
-    assert.match(backend, /npx @eventmodelers\/cli learn "/);
+    assert.match(backend, /npx @eventmodelers\/cli learn --problem "/);
+    assert.match(backend, /--solution "/);
+    assert.match(backend, /`--topic` is required/);
     assert.match(backend, /learn --retract/);
     assert.match(backend, /learnings --ids/);
     assert.match(backend, /`lastAttempt`/);

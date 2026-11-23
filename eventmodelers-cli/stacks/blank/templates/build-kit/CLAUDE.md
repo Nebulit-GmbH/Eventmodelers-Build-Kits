@@ -23,7 +23,7 @@ TODO — any other guardrails worth stating up front (e.g. ignore routes files u
 asked, ignore tests unless asked, slice names are case-insensitive) — copy the ones
 that still apply from an existing stack's build-kit/CLAUDE.md.
 
-At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings. It is generated from the learnings recorded so far — record a new one with `npx @eventmodelers/cli learn "<one terse line>" --topic <topic>`, never by editing the file.
+At the start of every session, read `.build-kit/AGENTS.md` if it exists to load accumulated project learnings. It is generated from the learnings recorded so far — record a new one with `npx @eventmodelers/cli learn --problem "<the situation or symptom>" --solution "<what to do about it>" --topic <topic>`, never by editing the file.
 
 When working from a queued task, invoke the `update-slice-status` skill with `InProgress` status before doing anything else. When the task request names the slice to build (a run-loop build), the run loop has already set it to `InProgress` and pushes the final status itself — do not call `update-slice-status`; record the outcome with `npx @eventmodelers/cli slice-status <status>`.
 
