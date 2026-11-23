@@ -79,10 +79,18 @@ test('learn enforces a short problem, a short solution and a topic', (t) => {
   assert.match(free.stderr, /problem and its solution/);
   assert.match(run(root, 'learn', '--problem', 'p', '--solution', 's').stderr, /needs --topic/);
   assert.match(run(root, 'learn', '--problem', 'p', '--topic', 't').stderr, /needs --solution/);
-  assert.match(learn(root, 'x'.repeat(161)).stderr, /at most 160/);
-  assert.match(learn(root, 'p', 'x'.repeat(241)).stderr, /at most 240/);
+  assert.match(learn(root, 'x'.repeat(300), 'y'.repeat(300)).stderr, /at most 500/);
   assert.equal(readEvents(kit).length, 0);
-  assert.equal(learn(root, 'x'.repeat(160), 'y'.repeat(240)).status, 0);
+  assert.equal(learn(root, 'x'.repeat(150), 'y'.repeat(300)).status, 0);
+});
+
+test('an agent running learn or learnings is never nudged to curate, however many learnings there are', (t) => {
+  const { root } = project(t);
+  for (let i = 0; i < 22; i++) assert.equal(learn(root, `Problem ${i}`, `Solution ${i}`).status, 0);
+  for (const res of [learn(root, 'One more', 'Solution'), run(root, 'learnings'), run(root, 'learnings', '--ids')]) {
+    assert.equal(res.status, 0, res.stderr);
+    assert.doesNotMatch(res.stdout + res.stderr, /Summarize them/);
+  }
 });
 
 test('without a build kit there is nowhere to record', (t) => {

@@ -3,7 +3,7 @@
 // Design and the precedence rule: slice-state-test-design.md.
 //
 // Events (one writer per type): board-observed, claimed, claim-confirmed, agent-recorded, settled,
-// released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learnings-curated,
+// released, attempt-failed, blocked, learning-recorded, learning-retracted, learning-merged, learning-rewritten,
 // info-recorded (read by nothing here — it is the record), task-queued, task-done, prompt-received, prompt-finished. Unknown types are ignored, so a
 // newer loop's log is readable.
 
@@ -83,7 +83,7 @@ function mergeLearnings(learnings, e) {
   const sources = learnings.filter((l) => e.learnings?.includes(l.id));
   if (!sources.length) return learnings;
   const tags = [...new Set([...sources.flatMap((l) => l.tags), ...(e.tags ?? [])])];
-  const merged = { id: e.id, text: e.text, topic: e.topic ?? sources[0].topic, slice: undefined, scope: e.scope ?? sources[0].scope, tags, curated: true };
+  const merged = { id: e.id, text: e.text, topic: e.topic ?? sources[0].topic, slice: undefined, scope: e.scope ?? sources[0].scope, tags };
   return learnings.flatMap((l) => (l === sources[0] ? [merged] : sources.includes(l) ? [] : [l]));
 }
 
@@ -111,20 +111,15 @@ export function fold(events) {
       tasks = tasks.filter((t) => t.id !== e.task);
     }
     // Learnings are not about one slice (the slice is just where it was learned), so they sit beside them.
-    if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice, scope: e.scope ?? 'repo', tags: e.tags ?? [], curated: false });
+    if (e.type === 'learning-recorded') learnings.push({ id: e.id, text: e.text, topic: e.topic, slice: e.slice, scope: e.scope ?? 'repo', tags: e.tags ?? [] });
     else if (e.type === 'learning-retracted') learnings = learnings.filter((l) => l.id !== e.learning);
     else if (e.type === 'learning-merged') learnings = mergeLearnings(learnings, e);
-    else if (e.type === 'learnings-curated') learnings = learnings.map((l) => ({ ...l, curated: true }));
+    // The curator's rewrite: the same learning (same id) in the problem → solution form; what it said is kept in the event.
+    else if (e.type === 'learning-rewritten') learnings = learnings.map((l) => (l.id === e.learning ? { ...l, text: e.text, topic: e.topic ?? l.topic } : l));
     if (!e.slice || !Object.hasOwn(apply, e.type)) continue;
     apply[e.type](slices[e.slice] ??= emptySlice(), e);
   }
   return { slices, learnings, tasks, prompts: [...prompts.values()] };
-}
-
-// The curator (an LLM, writing events) is worth a turn once this many learnings have been recorded since
-// it last reviewed them.
-export function needsCuration(state, threshold) {
-  return state.learnings.filter((l) => !l.curated).length >= threshold && threshold > 0;
 }
 
 // Two learnings that differ only in case or whitespace are the same learning.

@@ -89,7 +89,7 @@ const session = await createMastraSession({
 });
 
 // `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
-async function runMastra(prompt, slice = null, extraEnv = {}) {
+async function runMastra(prompt, slice = null) {
   // A planned slice starts a fresh conversation: the process and its MCP connection stay warm, but one slice's
   // reading and edits are not context for the next, and a session that never forgets would outgrow its window.
   if (slice) session.reset();
@@ -98,7 +98,6 @@ async function runMastra(prompt, slice = null, extraEnv = {}) {
   try {
     const result = await session.runTurn(inlineHeader + prompt, {
       signal: controller.signal,
-      env: extraEnv, // the curation turn's EVENTMODELERS_CURATING=1, which makes `learn` refuse to add learnings
       onToolCall: (name, args) => {
         recordToolCall({ kitDir, slice, tool: name, meta: eventMeta(cfg) });
         console.log(verbose ? `→ ${name} ${JSON.stringify(args).slice(0, 100)}` : `→ ${name}`);
@@ -129,7 +128,6 @@ startRalph({
   projectDir,
   onTask: runMastra,
   onPlannedSlice: runMastra,
-  onCurate: (prompt, { env } = {}) => runMastra(prompt, null, env),
   localOnly,
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);

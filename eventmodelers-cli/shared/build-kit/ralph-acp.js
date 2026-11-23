@@ -82,18 +82,16 @@ const agentEnv = {
   ...(cfg.token ? { EVENTMODELERS_TOKEN: cfg.token } : {}),
   ...(cfg.agentId ? { EVENTMODELERS_AGENT_ID: cfg.agentId } : {}),
 };
-const newSession = (env = agentEnv) => createAcpSession({ agent, cwd: projectDir, env, mcp, model: process.env.RALPH_ACP_MODEL || null, log: (line) => console.log(`[ralph-acp] ${line}`) });
-const session = newSession();
+const session = createAcpSession({ agent, cwd: projectDir, env: agentEnv, mcp, model: process.env.RALPH_ACP_MODEL || null, log: (line) => console.log(`[ralph-acp] ${line}`) });
 
-// `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced. `use` is the session
-// the turn runs in: the warm one, or a short-lived one for the curation turn.
-async function runAcp(prompt, slice = null, use = session) {
+// `slice` is set for a planned-slice build (see startRalph) — the only turns that are traced.
+async function runAcp(prompt, slice = null) {
   // A planned slice starts a fresh conversation: the process and its MCP connection stay warm, but one slice's
   // reading and edits are not context for the next, and a session that never forgets would outgrow its window.
-  if (slice) use.reset();
+  if (slice) session.reset();
   const startedAt = Date.now();
   try {
-    const result = await use.runTurn(PREAMBLE + inlineHeader + prompt, {
+    const result = await session.runTurn(PREAMBLE + inlineHeader + prompt, {
       timeoutMs,
       onToolCall: (name, input) => {
         recordToolCall({ kitDir, slice, tool: name, meta: eventMeta(cfg) });
@@ -109,17 +107,6 @@ async function runAcp(prompt, slice = null, use = session) {
   }
 }
 
-// The curation turn needs EVENTMODELERS_CURATING=1 in the agent's own environment (it makes `learn` refuse new
-// learnings), and a warm process cannot take env per turn — so it runs in a short-lived process of its own.
-async function curate(prompt, { env = {} } = {}) {
-  const curator = newSession({ ...agentEnv, ...env });
-  try {
-    return await runAcp(prompt, null, curator);
-  } finally {
-    curator.close();
-  }
-}
-
 for (const sig of ['SIGINT', 'SIGTERM']) {
   process.on(sig, () => { session.close(); process.exit(0); });
 }
@@ -129,7 +116,6 @@ startRalph({
   projectDir,
   onTask: (prompt) => runAcp(prompt),
   onPlannedSlice: (prompt, slice) => runAcp(prompt, slice),
-  onCurate: curate,
   localOnly,
 }).catch((err) => {
   console.error('[ralph] Fatal:', err);

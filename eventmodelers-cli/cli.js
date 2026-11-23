@@ -55,7 +55,7 @@ import { ensureLearningsGitRules, loadLocalConfig } from './shared/build-kit/lib
 import { createCallTracker, heldPromptsRequest, journalPromptAction, shouldJournalCall, journalPromptFinished, journalPromptReceived, recoverOwnPrompts } from './shared/build-kit/lib/prompt-journal.js';
 import { cancelLiveTurns } from './shared/build-kit/lib/turn.js';
 import { INFO_KINDS, infoComment, recordInfo, recordTurnInfos } from './shared/build-kit/lib/slice-info.js';
-import { applyCurationReply, composeLearning, curationReplyRequest, listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
+import { applyCurationReply, composeLearning, curationReplyRequest, learningsNudge, listLearnings, mergeLearnings, recordLearning, recordTurnLearnings, retractLearning, syncLearnings } from './shared/build-kit/lib/slice-learnings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -5501,8 +5501,8 @@ program
 program
   .command('learn [text]')
   .description("For a build agent: record one reusable learning as a short problem and its solution — `learn --problem \"…\" --solution \"…\" --topic \"…\"` (a codebase pattern, a gotcha, a command that works or doesn't, what a failed approach tried and why it failed). Problem and solution are each one short sentence, topic is required; longer is refused. .build-kit/AGENTS.md is generated from the recorded learnings — never edit it by hand. --retract withdraws a wrong or obsolete one (ids: `learnings --ids`).")
-  .option('--problem <problem>', 'The situation or symptom the learning applies to — one short sentence (at most 160 characters)')
-  .option('--solution <solution>', 'What to do about it — one short sentence (at most 240 characters)')
+  .option('--problem <problem>', 'The situation or symptom the learning applies to — one short sentence (the whole learning, problem and solution together, is at most 500 characters)')
+  .option('--solution <solution>', 'What to do about it — one short sentence')
   .option('--topic <topic>', 'The heading it is filed under in AGENTS.md — required; reuse a heading that is already there')
   .option('--tag <tag>', 'Label the learning (repeatable)', (tag, tags) => [...tags, tag], [])
   .option('--scope <scope>', 'system: true of the modeled domain · repo: about the codebase and its tooling (default repo)')
@@ -5532,6 +5532,7 @@ program
       const composed = composeLearning({ problem: opts.problem, solution: opts.solution, topic: opts.topic });
       const result = recordLearning({ kitDir, text: composed.text, topic: composed.topic, tags: opts.tag, scope: opts.scope ?? 'repo', slice: opts.slice, meta });
       console.log(result.duplicate ? `ℹ️  Already recorded (${result.id.slice(0, 8)}) — nothing to add.` : `✅ Recorded (${result.id.slice(0, 8)}) — .build-kit/AGENTS.md is updated.`);
+      if (process.stdout.isTTY) { const nudge = learningsNudge(listLearnings(kitDir).length); if (nudge) console.log(nudge); }
     } catch (err) {
       console.error(`❌ ${err.message}`);
       process.exit(1);
@@ -5726,7 +5727,8 @@ program
   .command('learnings')
   .description('Print the recorded learnings — what .build-kit/AGENTS.md says. With --ids, one line each with the id to retract it by.')
   .option('--ids', 'One line per learning: id, topic, text')
-  .option('--curate', 'Run the curator now instead of waiting for RALPH_CURATE_AFTER new learnings: an agent turn that proposes merging duplicates and retracting obsolete learnings (it never adds), which the CLI applies. Claude by default; pick another with --agent or --exec.')
+  .option('--curate', 'Run the curator, an agent turn that proposes merging duplicates and retracting obsolete learnings (it never adds), which the CLI applies. Claude by default; pick another with --agent or --exec.')
+  .option('--dry-run', 'With --curate: show what the curator would merge, retract and rewrite, and change nothing.')
   .option('--agent [name]', `With --curate: the agent that curates — ${AGENT_NAMES.filter((n) => n !== 'mastra').join(', ')} (default claude). Bare --agent lists them.`)
   .option('--local-ai [target]', `With --curate: a local or self-hosted model (${LOCAL_AI_TARGETS.join(', ')}; bare means ollama, or LOCAL_AI_URL / localAi.* in the config) answers instead — no tools, so it judges from the learnings alone.`)
   .option('--exec [command]', 'With --curate: any other agent command, e.g. "codex exec --full-auto"; the prompt is appended as one quoted argument (and written to $RALPH_PROMPT_FILE) and its stdout is the answer.')
@@ -5775,12 +5777,23 @@ program
         console.error(`❌ The curation turn failed (${run.error?.message ?? `exit ${run.status}`}) — the learnings stay as they are.`);
         process.exit(1);
       }
-      const result = applyCurationReply({ kitDir, reply: run.stdout, meta });
-      appendEvent(kitDir, { type: 'learnings-curated' }, meta);
-      syncLearnings({ kitDir, meta });
+      const result = applyCurationReply({ kitDir, reply: run.stdout, meta, dryRun: !!opts.dryRun });
+      if (!opts.dryRun) {
+        syncLearnings({ kitDir, meta });
+      }
+      const short = (t) => (t.length > 150 ? `${t.slice(0, 150)}…` : t);
+      for (const c of result.changes) {
+        console.log(`\n${opts.dryRun ? 'Would ' : ''}${c.kind}:`);
+        for (const b of c.before) console.log(`  - ${short(b)}`);
+        if (c.kind === 'retract') console.log(`  ✗ ${short(c.reason)}`);
+        else for (const a of [].concat(c.after)) console.log(`  + ${short(a)}`);
+      }
+      console.log('');
       for (const msg of result.skipped) console.log(`⚠️  Skipped: ${msg}`);
-      if (!result.merged && !result.retracted) console.log(`The agent proposed no change${result.skipped.length ? '' : ' that the CLI could read'}. Its answer:\n${String(run.stdout ?? '').trim().split('\n').map((l) => `  | ${l}`).join('\n') || '  | (empty)'}`);
-      console.log(`✅ Merged ${result.merged}, retracted ${result.retracted}: ${before.length} → ${listLearnings(kitDir).length} learnings. See them with \`learnings\`.`);
+      const changed = result.merged + result.retracted + result.rewritten + result.split;
+      if (!changed) console.log(`The agent proposed no change${result.skipped.length ? '' : ' that the CLI could read'}. Its answer:\n${String(run.stdout ?? '').trim().split('\n').map((l) => `  | ${l}`).join('\n') || '  | (empty)'}`);
+      const counts = `merged ${result.merged}, retracted ${result.retracted}, rewritten ${result.rewritten}, split ${result.split}`;
+      console.log(opts.dryRun ? `🔍 Dry run — nothing written. Would have: ${counts}. Run without --dry-run to apply.` : `✅ ${counts[0].toUpperCase()}${counts.slice(1)}: ${before.length} → ${listLearnings(kitDir).length} learnings. See them with \`learnings\`.`);
       return;
     }
     const all = listLearnings(kitDir);
@@ -5788,11 +5801,15 @@ program
       console.log('No learnings recorded yet.');
       return;
     }
+    // A person at a terminal is reminded that nothing curates the list for them; an agent reading this output is not told.
+    const nudge = process.stdout.isTTY ? learningsNudge(all.length) : '';
     if (!opts.ids) {
       console.log(readFileSync(join(kitDir, 'AGENTS.md'), 'utf-8').trimEnd());
+      if (nudge) console.log(`\n${nudge}`);
       return;
     }
     for (const l of all) console.log(`  ${l.id.slice(0, 8)}  [${l.topic ?? 'General'}]  ${l.text}`);
+    if (nudge) console.log(`\n${nudge}`);
   });
 
 program

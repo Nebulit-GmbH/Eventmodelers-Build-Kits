@@ -123,10 +123,11 @@ npx @eventmodelers/cli learn --problem "<the situation or symptom>" --solution "
 ```
 
 - Only what is genuinely reusable: codebase patterns, gotchas, commands that work or don't, conventions — and, after a failed approach, what was tried and why it failed. Not slice-specific details, and nothing the code or git log already says.
-- One learning per call: a **problem** (the situation or symptom it applies to) and its **solution** (what to do about it), each one short sentence — the CLI refuses more than 160 and 240 characters. The rule, not the story: no slice names, commit ids, or how you found out. A learning that needs more room is two learnings. One already in `.build-kit/AGENTS.md` is skipped for you.
+- One learning per call: a **problem** (the situation or symptom it applies to) and its **solution** (what to do about it), each one short sentence — the CLI refuses a learning of more than 500 characters in all. The rule, not the story: no slice names, commit ids, or how you found out. A learning that needs more room is two learnings. Before recording, check `.build-kit/AGENTS.md`: if it is already covered, in any wording, do not record it.
 - `--topic` is required: a short heading that groups it (e.g. `git`, `testing`, `projections`). Reuse a heading already in `.build-kit/AGENTS.md` instead of inventing a near-synonym.
 - `--scope system` for what is true of the modeled domain (a business rule, a naming convention of the model); `repo` (the default) for the codebase and its tooling. `--tag <tag>` labels it (repeatable).
 - One in `.build-kit/AGENTS.md` that turned out wrong or obsolete: `npx @eventmodelers/cli learnings --ids` lists each with its id, `npx @eventmodelers/cli learn --retract <id>` removes it.
+- When git versions `.build-kit/AGENTS.md`, what you learned on the slice is part of the slice's changes: record your learnings before you commit and include the file in the slice's commit. When the file is not versioned, do nothing about it.
 
 ### Recording Info
 

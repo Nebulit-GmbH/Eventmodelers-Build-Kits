@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fold, learningKey, renderLearnings, needsCuration, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
+import { fold, learningKey, renderLearnings, decideSettle, decideRecovery } from '../shared/build-kit/lib/slice-state.js';
 
 // Design: slice-state-test-design.md (layers A and B). Case numbers refer to slice-state-learnings.md.
 
@@ -252,7 +252,7 @@ test('a learning carries its tags, none by default', () => {
   assert.deepEqual(b.tags, []);
 });
 
-// The curator is an LLM that writes events: it merges and retracts, and marks what it has reviewed.
+// The curator is an LLM that writes events: it merges, retracts, rewrites and splits — only when a person runs it.
 
 test('learning-merged replaces its sources by one learning, in the slot of the first', () => {
   const state = fold([
@@ -264,10 +264,10 @@ test('learning-merged replaces its sources by one learning, in the slot of the f
   assert.deepEqual(state.learnings.map((l) => [l.id, l.text]), [['m1', 'Run the suite with npm test'], ['l2', 'rebase before merge']]);
 });
 
-test('a merged learning keeps the sources\' scope unless the merge names one, and counts as curated', () => {
+test('a merged learning keeps the sources\' scope unless the merge names one', () => {
   const events = [learning('l1', { scope: 'system' }), learning('l2', { scope: 'system' })];
   const kept = fold([...events, { type: 'learning-merged', id: 'm1', learnings: ['l1', 'l2'], text: 'x' }]).learnings[0];
-  assert.deepEqual([kept.scope, kept.curated], ['system', true]);
+  assert.equal(kept.scope, 'system');
   const named = fold([...events, { type: 'learning-merged', id: 'm2', learnings: ['l1', 'l2'], text: 'x', scope: 'repo' }]).learnings[0];
   assert.equal(named.scope, 'repo');
 });
@@ -291,18 +291,6 @@ test('a merge naming unknown learnings merges only the known ones; naming none c
   const events = [learning('l1'), learning('l2')];
   assert.deepEqual(texts([...events, { type: 'learning-merged', id: 'm1', learnings: ['l1', 'nope'], text: 'merged' }]), ['merged', 'learned l2']);
   assert.deepEqual(texts([...events, { type: 'learning-merged', id: 'm2', learnings: ['nope'], text: 'merged' }]), ['learned l1', 'learned l2']);
-});
-
-test('learnings-curated marks everything recorded so far; later learnings are uncurated', () => {
-  const state = fold([learning('l1'), learning('l2'), { type: 'learnings-curated' }, learning('l3')]);
-  assert.deepEqual(state.learnings.map((l) => l.curated), [true, true, false]);
-});
-
-test('needsCuration is true once enough learnings are waiting for review', () => {
-  const state = fold([learning('l1'), { type: 'learnings-curated' }, learning('l2'), learning('l3')]);
-  assert.equal(needsCuration(state, 2), true);
-  assert.equal(needsCuration(state, 3), false);
-  assert.equal(needsCuration(fold([]), 1), false);
 });
 
 test('renderLearnings groups by topic, one line each, topics in order of first appearance', () => {
@@ -423,4 +411,15 @@ test('recovery covers every open claim and skips slices without one', () => {
   ]);
   const result = decideRecovery(state, facts({ isAlive: (pid) => pid === 300, boardStatuses: { s1: 'InProgress', s2: 'InProgress' } }));
   assert.deepEqual(result.map((r) => r.slice), ['s1']);
+});
+
+test('learning-rewritten replaces the text and topic of the same learning, in place', () => {
+  const events = [
+    { type: 'learning-recorded', id: 'l1', text: 'one', topic: 'Old' },
+    { type: 'learning-recorded', id: 'l2', text: 'two' },
+    { type: 'learning-rewritten', learning: 'l1', text: 'p → s', topic: 'New' },
+    { type: 'learning-rewritten', learning: 'nope', text: 'ignored' },
+  ];
+  const learnings = fold(events).learnings;
+  assert.deepEqual(learnings.map((l) => [l.id, l.text, l.topic]), [['l1', 'p → s', 'New'], ['l2', 'two', undefined]]);
 });
