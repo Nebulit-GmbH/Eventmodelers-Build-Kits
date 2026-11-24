@@ -4562,6 +4562,10 @@ credentialFlags(program
         process.exit(1);
       }
       await forceBuildKitCredentials(kitDir, cwd, opts, globalOpts);
+      // The prompt's readline interface keeps the TTY in raw mode while it is open, so Ctrl-C would be a
+      // keypress nobody reads (this process is blocked in execSync below) instead of a SIGINT for the runner.
+      // `run --all` closes it for the same reason; this single-kit path never did.
+      if (sharedRl) sharedRl.close();
     }
 
     // ralph-claude.js hands every turn to a `claude` that only discovers MCP servers from
