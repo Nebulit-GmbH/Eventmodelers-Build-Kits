@@ -32,7 +32,7 @@ Group, don't transcribe. Work out, from the scenarios and the slice's elements:
 
 1. **Purpose** — what the command / read model / automation is for, in one sentence (the slice's title and its element names tell you).
 2. **The normal case(s)** — scenarios that end in a success event or in the expected read-model state.
-3. **The rules** — what each scenario's *given* establishes that changes the outcome: thresholds, duplicates, state preconditions, time limits. Merge scenarios that illustrate the same rule into one statement with its examples.
+3. **The business rules** — what each scenario's *given* establishes that changes the outcome: thresholds, duplicates, state preconditions, time limits. Merge scenarios that illustrate the same rule into one statement with its examples.
 4. **The rejections** — scenarios with `expectError` or a rejecting outcome: what is refused, and why (`errorDescription`).
 5. **Lifecycles** — storylines: tell them as one story in beat order (what the list shows first, what happens, what it shows next).
 6. **Values** — only the example values that carry a rule (the dates, the wrong token, the amount on the wrong side of a limit, the linking id). Skip the rest; the scenarios left other fields empty on purpose.
@@ -49,18 +49,15 @@ One consistent text, in this shape (omit a section the slice has nothing for):
 ## The normal flow
 <Prose. Who does what, what happens as a result. Concrete example from the happy-path scenario.>
 
-## Rules
-<One short paragraph or bullet per rule, each grounded in a scenario's example:
-"A second registration with the same e-mail (anna@example.com) is refused — the customer is already known.">
+## Business rules
+<Every rule the scenarios establish, stated plainly as a rule a business person could repeat — one short sentence or bullet each, then its example:
+"A customer can only be registered once. Registering again with the same e-mail (anna@example.com) is refused.">
 
 ## What is refused
 <Rejections and their reasons.>
 
 ## How it develops over time
 <Storyline(s) as one story: first…, then…, finally…>
-
-## Open points
-<Only if real: scenarios that contradict each other, a rule hinted at but not specified, a case a reader would expect and none covers.>
 ```
 
 Style rules — they make it read as *one* text rather than a scenario dump:
@@ -71,6 +68,9 @@ Style rules — they make it read as *one* text rather than a scenario dump:
 - **Order** by importance: normal flow → rules → rejections → lifecycle, not by scenario order on the board.
 - **Examples inline** and short: *"an order of €120 qualifies for free shipping; one of €99.90 does not."* Never paste whole step field lists.
 - **Every scenario is accounted for** by some sentence; none is quoted by title. If two scenarios say the same thing, one sentence covers both.
+- **Business rules are stated explicitly, as rules.** Each rule gets its own plain-language sentence in the form "X must / may only / is only allowed when Y" (e.g. "An order of €100 or more ships for free."), before or alongside its example — never left implicit in an example or buried in the flow. Cover every rule the scenarios establish (limits, duplicates, required states, time windows, who may do what), and merge scenarios that show the same rule into one statement.
+- **The text states only what is specified.** No "Open points", gaps, contradictions, questions or to-dos in it — those are not for the business reader and never go into the stored text. If you find any (scenarios that contradict each other, a rule hinted at but not specified, an expected case no scenario covers), mention them only in the Step 6 report to the user, never in the documentation.
+- **Readable by a business person without technical understanding**, whatever the audience setting says about naming: plain everyday language, no jargon (no "payload", "aggregate", "projection", "idempotent", "stream", ids, field types, status codes), short sentences, no abbreviations that aren't common business vocabulary. Developer audience only widens the naming of elements; it never adds technical filler.
 - No padding, no marketing language, no advice. Length follows the content: a slice with 3 scenarios gets a few paragraphs, not a page.
 
 ## Step 5 — Store it as documentation on the spec node
@@ -83,4 +83,4 @@ If `file` was given, write the same text there too; otherwise create no files.
 
 ## Step 6 — Report
 
-One line per slice: slice, spec node, number of scenarios and storylines summarized, open points found. Include the text itself in the reply only when no write was possible.
+One line per slice: slice, spec node, number of scenarios and storylines summarized, and any open points found (reported here only — never written into the documentation). Include the text itself in the reply only when no write was possible.
