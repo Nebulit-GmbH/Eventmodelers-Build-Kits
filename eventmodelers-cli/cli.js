@@ -33,6 +33,7 @@ import { latestPublishedVersion, updateHints, compareVersions, selfUpdatePlan } 
 import { guardSnippetReply } from './lib/snippet-guard.js';
 import { modelingPermissions } from './lib/agent-permissions.js';
 import { createTurnUsage } from './lib/turn-usage.js';
+import { isPromptTooLong, shouldCompact, contextWindow } from './lib/context-guard.js';
 import { showBanner } from './lib/banner.js';
 // Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
 // copy that every useShared:true stack also gets copied into its installed kit (see
@@ -2698,6 +2699,11 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       if (otherRunner) return await otherRunner.runTurn(text);
       if (!proc) spawnProcess();
       await warmUpSession();
+      // Before it can overflow: a conversation past ~75% of the window is compacted between turns.
+      if (!compactRequested && shouldCompact(turnUsage.lastTurn()?.contextTokens, contextWindow())) {
+        log(`the conversation carries ${turnUsage.lastTurn().contextTokens} tokens — compacting it before this turn`);
+        compactRequested = true;
+      }
       // The person cleared a chat: the history the warm conversation carries is shrunk to a summary first, so it stops being re-read on every call.
       if (compactRequested) {
         compactRequested = false;
@@ -2705,7 +2711,16 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         compacting = true;
         try { await sendTurn('/compact'); } catch (err) { log(`compaction failed (the turn goes on without it): ${err.message}`); } finally { compacting = false; }
       }
-      return await sendTurn(text);
+      try {
+        return await sendTurn(text);
+      } catch (err) {
+        if (!isPromptTooLong(err)) throw err;
+        // The conversation no longer fits: every later turn would fail the same way until the session is replaced.
+        // Replacing it throws away what the agent has read, so it is the person's call (see offerReset) — not done here.
+        log(`the conversation outgrew the context window (${err.message}) — the session needs a reset`);
+        err.promptTooLong = true;
+        throw err;
+      }
     } finally {
       turnsInFlight--;
       reportStatus();
@@ -2904,6 +2919,17 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     return null;
   }
 
+  // Deletes the chat session's messages on the platform and forgets what this process knows about it.
+  async function deleteChatSession(sessionId) {
+    const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    chatCounts.delete(sessionId);
+    chatCursor.delete(sessionId);
+  }
+
   // Handled here, without a model turn. Returns true when the message was the answer to the offer.
   async function handleClearAnswer(m) {
     const answer = clearAnswer(m);
@@ -2915,13 +2941,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       return true;
     }
     try {
-      const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-sessions/${encodeURIComponent(m.sessionId)}`, {
-        method: 'DELETE',
-        headers: { 'x-token': cfg.token, ...agentHeaders(cfg) },
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      chatCounts.delete(m.sessionId);
-      chatCursor.delete(m.sessionId);
+      await deleteChatSession(m.sessionId);
       compactRequested = true; // the history this process carries goes too — not by killing it, by compacting it before its next turn
       log(`chat session ${m.sessionId} cleared at the person's request — compacting the conversation before the next turn`);
     } catch (err) {
@@ -2949,9 +2969,69 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     }
   }
 
+  // The warm conversation outgrew the context window: no further turn can succeed until the session is replaced. Replacing it
+  // drops what the agent has read (CLAUDE.md, chapters), so the person decides — a confirm snippet in the chat, answered like the
+  // clear offer. A yes also clears the chat history (like the clear offer), so the person sends the request again.
+  const RESET_HEADLINE = 'This conversation has grown too long for me to continue. Should I start a fresh session? I lose what I had read so far and this chat history is cleared; the board stays as it is.';
+  const RESET_YES = 'Start fresh session';
+  const RESET_NO = 'Not now';
+  const resetOffers = new Map(); // sessionId -> the message to run again after a yes (or null)
+  function resetAnswer(m) {
+    const text = String(m.text ?? '');
+    if (text.startsWith(`${RESET_YES} – `) && text.includes(RESET_HEADLINE.slice(0, 40))) return 'yes';
+    if (text.startsWith(`${RESET_NO} – `) && text.includes(RESET_HEADLINE.slice(0, 40))) return 'no';
+    return null;
+  }
+  // Returns true when the offer is out (the caller then says nothing else), false when it could not be posted.
+  async function offerReset(sessionId, failedMessage = null) {
+    if (!sessionId) return false;
+    if (resetOffers.has(sessionId)) { resetOffers.set(sessionId, failedMessage ?? resetOffers.get(sessionId)); return true; } // already asked, still waiting
+    try {
+      await agentPost({
+        text: `${RESET_HEADLINE} (${RESET_YES} / ${RESET_NO})`,
+        session_id: sessionId,
+        ...(failedMessage ? { reply_to: failedMessage.id } : {}),
+        snippet: { kind: 'confirm', headline: RESET_HEADLINE, yesLabel: RESET_YES, noLabel: RESET_NO },
+      });
+      resetOffers.set(sessionId, failedMessage);
+      log(`offered to reset the overflowing session in chat ${sessionId}`);
+      return true;
+    } catch (err) {
+      log(`reset offer failed: ${err.message}`);
+      return false;
+    }
+  }
+  async function handleResetAnswer(m) {
+    const answer = resetAnswer(m);
+    if (!answer) return false;
+    resetOffers.delete(m.sessionId);
+    if (answer === 'no') {
+      await agentPost({ text: 'Okay. I stay as I am — messages will keep failing until the session is reset.', reply_to: m.id }).catch((err) => log(`chat reply failed: ${err.message}`));
+      return true;
+    }
+    resetClaudeSession();
+    if (proc) {
+      await agentPost({ text: 'I could not reset right now — a turn is still running. Please answer again in a moment.', reply_to: m.id }).catch((err) => log(`chat reply failed: ${err.message}`));
+      resetOffers.set(m.sessionId, null);
+      return true;
+    }
+    if (otherRunner) otherRunner.resetSession?.();
+    log(`session reset at the person's request (chat ${m.sessionId})`);
+    // The chat goes with it, as with the clear offer: a fresh agent should not start from the thread that overflowed the old one.
+    let cleared = true;
+    try { await deleteChatSession(m.sessionId); } catch (err) { cleared = false; log(`clearing the chat failed: ${err.message}`); }
+    // The cleared thread takes the failed message with it, so the person sends it again — nothing is replied under a deleted message.
+    await agentPost({
+      text: cleared ? 'Fresh session started and the chat history cleared — please send your request again.' : 'Fresh session started, but I could not clear the chat history — please send your request again.',
+      ...(cleared ? { session_id: m.sessionId } : { reply_to: m.id }),
+    }).catch((err) => log(`chat reply failed: ${err.message}`));
+    return true;
+  }
+
   async function runChatTurn(m) {
     log(`chat message received: "${oneLine(m.text, 80)}" (session=${m.sessionId})`);
     if (await handleClearAnswer(m)) return;
+    if (await handleResetAnswer(m)) return;
     if (m.userId) {
       chatPartners.add(m.userId);
       lastProposalAt.delete(m.userId);
@@ -2965,6 +3045,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     } catch (err) {
       failed = true;
       log(`chat turn failed: ${err.message}`);
+      if (err.promptTooLong && await offerReset(m.sessionId, m)) { chatSessionId = null; return; }
     } finally {
       chatSessionId = null;
     }
@@ -3051,6 +3132,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
           // Not finished: the entry stays open, so the next start asks the platform about it and hands it back
           // (or closes it if the agent had set DONE before the turn failed).
           log(`turn failed: ${err.message}`);
+          if (err.promptTooLong) await offerReset(p.origin_session_id ?? null); // no chat to ask in: only the log says so
         } finally {
           for (const call of calls.drain()) journalCall(call); // never ended: the turn died mid-call, so no duration
           turnPromptId = null;
