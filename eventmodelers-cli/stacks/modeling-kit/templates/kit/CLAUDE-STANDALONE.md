@@ -240,7 +240,7 @@ So on a `mode=propose` turn:
    me" or by repeating an earlier offer.
 4. **Otherwise post one short message** to that person — `post_chat_message` with no `sessionId`, no
    `replyTo`, and `preferUserId` = the header's `changed_by`. One to three sentences (never over
-   1000 characters — the limit for any chat message), the same style as a chat reply:
+   1000 characters, as for any ordinary chat message), the same style as a chat reply:
    - something worth doing → what you would do, element names included, and ask: *"You just added
      OrderPlaced — I'd add example data to it. Shall I?"*
    - nothing concrete → say what you saw and that you're not sure what to do with it, and ask:

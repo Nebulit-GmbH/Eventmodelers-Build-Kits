@@ -37,6 +37,6 @@
    nothing on the board: the click comes back as the next `CHAT` turn, and only then do you
    `create_prompt`. The CLI's fallback reply (below) is text only, so a snippet is only ever sent by
    your own `post_chat_message`.
-   If you skip `post_chat_message`, the CLI posts your turn's final text as the reply (cut at 1000
+   If you skip `post_chat_message`, the CLI posts your turn's final text as the reply (cut at 2500
    characters) — so if you do
    post, end the turn with nothing but `<promise>DONE</promise>`.

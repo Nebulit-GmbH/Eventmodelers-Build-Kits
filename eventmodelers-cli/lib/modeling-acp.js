@@ -25,7 +25,7 @@ export function tokenSummary(u) {
   return `new ${k(u.inputTokens + u.cacheWriteTokens)} · replayed from cache ${k(u.cacheReadTokens)} · out ${k(u.outputTokens)}`;
 }
 
-export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose = false, model = null, onToolUse }) {
+export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose = false, model = null, onToolUse, onSessionLost }) {
   const timeoutMs = turnTimeoutMs(cfg);
   let primed = false; // a turn has succeeded: the session has read the kit, so later turns skip the preamble
   let queue = Promise.resolve();
@@ -47,7 +47,9 @@ export function createModelingAcpRunner({ cfg, agent, projectDir, log, verbose =
     },
     model,
     log,
-    onExit: () => { primed = false; }, // a new process knows nothing of the kit, so the next turn carries the preamble again
+    // A new process knows nothing of the kit, so the next turn carries the preamble again. The loop is told at once: any
+    // turn can prime the new process before the next chat turn looks, so `keepsSession` alone doesn't show the loss.
+    onExit: () => { primed = false; onSessionLost?.(); },
   });
 
   async function runTurnNow(text) {

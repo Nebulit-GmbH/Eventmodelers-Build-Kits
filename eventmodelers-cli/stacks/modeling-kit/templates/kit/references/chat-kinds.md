@@ -65,6 +65,13 @@ The table in `CLAUDE-CHAT.md` step 3 names the kinds; this is the full rule for 
      person which way to go, don't pick a side. You never reply into the board chat itself; your reply is the usual
      one in the agent chat. A second ask about the same conversation arrives in the same agent chat with a newer
      `lastSeq` — read only what is new.
+   - **compact** — `context=` carries `compactChat: true`: **summarize this agent chat**, whatever the text says (it is not a
+     "summarize this" about a board chat or an element): create no prompt and change nothing on the board. The header carries
+     `first_read=true`, so read the session without `afterMessageId`. Your one reply is the summary, sent with
+     `context: {"compactSummary": true}` — without that mark it is an ordinary reply and nothing is compacted. Your later
+     reads of this conversation start at this request, so write what you need to carry on: what was asked, what was decided
+     and changed (element names and ids), and what is still open. It is the exception to the short-reply rule: up to
+     **2500 characters**. If you could not read the conversation, say so in one line, **without** that context.
    - **clarify** — too vague to act on even with the session behind it: do no work.
    - **work** — it asks for a change to the board: create the work now, as in `CLAUDE-CHAT.md` ("Creating work") — a request is its
      own go-ahead, in every mode.

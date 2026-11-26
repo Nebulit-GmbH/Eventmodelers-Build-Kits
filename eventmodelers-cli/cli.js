@@ -34,6 +34,7 @@ import { guardSnippetReply } from './lib/snippet-guard.js';
 import { modelingPermissions } from './lib/agent-permissions.js';
 import { createTurnUsage } from './lib/turn-usage.js';
 import { isPromptTooLong, shouldCompact, contextWindow } from './lib/context-guard.js';
+import { readAfter, resetRunnerSession } from './lib/chat-memory.js';
 import { showBanner } from './lib/banner.js';
 // Not a root-level adapter like spec-kitty-adapter.js above: this is the one canonical
 // copy that every useShared:true stack also gets copied into its installed kit (see
@@ -2317,6 +2318,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     const { createModelingAcpRunner } = await import('./lib/modeling-acp.js');
     execRunner = createModelingAcpRunner({
       cfg, agent: acp, projectDir, log, verbose, model,
+      onSessionLost: () => chatCursor.clear(), // the process went, and what it had read of the chats with it
       onToolUse: (name, input) => { const id = `acp-${++localCallSeq}`; noteToolStart(id, name, input); return (outcome) => noteToolEnd(id, outcome); },
     });
   }
@@ -2331,7 +2333,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     'relevant slice or column node on the board, then continue with your best interpretation of the prompt. ' +
     'The one exception is a CHAT turn: there a person is waiting in the chat, so you ask back with post_chat_message ' +
     '(see .agent-modeling-kit/CLAUDE-CHAT.md), and never by pausing the session. ' +
-    'A chat message is at most 1000 characters.\n\n';
+    'Keep a chat message under 1000 characters; the platform refuses one over 2500.\n\n';
 
   // CLAUDE.md is the core; each kind of turn has its steps in a file of its own that the agent reads the first time that
   // kind arrives (CLAUDE-STANDALONE.md works the same way). The pointer rides on every such turn, so it needs no state
@@ -2475,7 +2477,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
 
   let lastTurnEndedAt = 0; // when the last turn finished — the standalone lane's echo window (see below)
   const turnUsage = createTurnUsage(); // what each turn cost and where its tokens went (--verbose prints it)
-  let compactRequested = false; // a chat was cleared: the next turn starts with a /compact of the warm conversation
+  let compactRequested = false; // a chat was cleared or compacted: the next turn starts with a /compact of the warm conversation
   let compacting = false; // the in-flight turn is the /compact, not work: its figures are nobody's to record
   let chatSessionId = null; // the chat session the in-flight turn answers, if it is a chat turn — what its cost is filed under
   let postedSessionId = null; // ...or the session a message the agent started itself (post_chat_message) landed in during a board-change/standalone turn
@@ -2597,6 +2599,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       firstTurn = true; // a respawned process is a fresh session — needs MODE=modeling again
       warmUp = null; // …and a fresh warm-up before its first real turn
       warmingUp = false;
+      chatCursor.clear(); // …nor read any chat session — and the next turn's text is built before it is respawned
       if (pending) {
         const turn = pending;
         pending = null;
@@ -2704,10 +2707,10 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
         log(`the conversation carries ${turnUsage.lastTurn().contextTokens} tokens — compacting it before this turn`);
         compactRequested = true;
       }
-      // The person cleared a chat: the history the warm conversation carries is shrunk to a summary first, so it stops being re-read on every call.
+      // The person cleared or compacted a chat: the history the warm conversation carries is shrunk to a summary first, so it stops being re-read on every call.
       if (compactRequested) {
         compactRequested = false;
-        log('compacting the conversation before this turn (a chat was cleared)');
+        log('compacting the conversation before this turn');
         compacting = true;
         try { await sendTurn('/compact'); } catch (err) { log(`compaction failed (the turn goes on without it): ${err.message}`); } finally { compacting = false; }
       }
@@ -2845,8 +2848,13 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     return files;
   }
 
+  // The person asked to compact the conversation (the app's mark; the text doesn't matter). An ordinary chat turn: the
+  // agent's reply, sent with context.compactSummary, is the summary, and the platform starts its later reads there.
+  // Nothing is deleted.
+  const isCompactRequest = (m) => m.context?.compactChat === true;
+
   function buildChatTurn(m, cachedFiles = []) {
-    const after = chatCursor.get(m.sessionId);
+    const after = readAfter(chatCursor, m.sessionId, { compact: isCompactRequest(m), localRunner, execRunner });
     const fields = [
       `CHAT message_id=${m.id}`,
       `session_id=${m.sessionId}`,
@@ -2869,11 +2877,13 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
   }
 
   // The backend rejects a chat message over this many characters (CHAT_TEXT_TOO_LONG).
-  const CHAT_TEXT_MAX_LENGTH = 1000;
+  const CHAT_TEXT_MAX_LENGTH = 2500;
 
   // Posted only if the turn didn't answer — the backend checks (only_if_unanswered), so a reply
   // the agent did post is never doubled. What makes "every message gets an answer" hold even for a
   // turn that errored or forgot its post_chat_message.
+  // Returns true when the platform says a summary is stored as the reply to this message — the only proof a compact
+  // request was carried out (a fallback is never a summary, and a failed request here proves nothing).
   async function replyIfUnanswered(m, text) {
     try {
       const res = await fetch(`${cfg.baseUrl}/api/org/${cfg.organizationId}/boards/${encodeURIComponent(cfg.boardId)}/chat/agent-messages`, {
@@ -2888,9 +2898,11 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       });
       if (!res.ok) log(`chat fallback reply failed: HTTP ${res.status}`);
       else if (res.status === 201) log(`chat turn left message ${m.id} unanswered — posted its final text as the reply`);
+      else return (await res.json()).compactSummary === true;
     } catch (err) {
       log(`chat fallback reply failed: ${err.message}`);
     }
+    return false;
   }
 
   // Every CLEAR_OFFER_EVERY messages of a conversation the agent offers, in the chat, to clear it. The answer is the person's: nothing is
@@ -2942,8 +2954,11 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     }
     try {
       await deleteChatSession(m.sessionId);
-      compactRequested = true; // the history this process carries goes too — not by killing it, by compacting it before its next turn
-      log(`chat session ${m.sessionId} cleared at the person's request — compacting the conversation before the next turn`);
+      // The history the agent carries goes too — for the warm claude process not by killing it, by compacting it before
+      // its next turn; another runner can't be compacted from here, so its session starts over.
+      if (otherRunner) await resetRunnerSession(otherRunner, chatCursor);
+      else compactRequested = true;
+      log(`chat session ${m.sessionId} cleared at the person's request — ${otherRunner ? 'the next turn does not carry it' : 'compacting the conversation before the next turn'}`);
     } catch (err) {
       log(`clearing the chat failed: ${err.message}`);
     }
@@ -3015,7 +3030,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
       resetOffers.set(m.sessionId, null);
       return true;
     }
-    if (otherRunner) otherRunner.resetSession?.();
+    if (otherRunner) await resetRunnerSession(otherRunner, chatCursor);
     log(`session reset at the person's request (chat ${m.sessionId})`);
     // The chat goes with it, as with the clear offer: a fresh agent should not start from the thread that overflowed the old one.
     let cleared = true;
@@ -3049,10 +3064,19 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
     } finally {
       chatSessionId = null;
     }
-    chatCursor.set(m.sessionId, m.id);
+    if (!failed) chatCursor.set(m.sessionId, m.id); // a failed turn may have read nothing: the next one reads it again
     const text = String(result ?? '').replace(/<promise>[^<]*<\/promise>/g, '').trim();
-    await replyIfUnanswered(m, text && !failed ? text : 'Sorry — I could not finish that just now. Please try again.');
-    await offerClear(m);
+    const summaryStored = await replyIfUnanswered(m, text && !failed ? text : 'Sorry — I could not finish that just now. Please try again.');
+    if (isCompactRequest(m) && summaryStored) {
+      // What the agent carries of the conversation is shrunk too: the warm claude process compacts before its next turn;
+      // another runner's session starts over, and reads the conversation from the summary on.
+      if (otherRunner) await resetRunnerSession(otherRunner, chatCursor);
+      else compactRequested = true;
+      chatCounts.delete(m.sessionId); // the conversation is short again: count from here to the next clear offer
+      clearOffered.delete(m.sessionId); // an offer nobody answered is settled by compacting: it must not hold back the next one
+    } else {
+      await offerClear(m);
+    }
     // Edits they made while their last proposal waited for this answer get their turn now.
     if (m.userId && proposalBuffer.has(m.userId)) armProposalTurn(STANDALONE_DEBOUNCE_MS);
   }
@@ -3138,7 +3162,7 @@ async function runModeling(kitDir, projectDir, { codeDir = null, verbose = false
           turnPromptId = null;
           // --reset-session: a prompt is self-contained work, so the next turn starts a fresh conversation rather than
           // carrying this one's reads and renders along.
-          if (resetSession) { if (otherRunner) otherRunner.resetSession?.(); else resetClaudeSession(); }
+          if (resetSession) { if (otherRunner) await resetRunnerSession(otherRunner, chatCursor); else resetClaudeSession(); }
         }
       }
     } finally {
