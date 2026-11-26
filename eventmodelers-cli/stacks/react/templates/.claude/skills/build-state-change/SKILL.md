@@ -35,6 +35,7 @@ From the slice definition, extract:
   `slice.json` `notes[]`, parse only its `ui-contract` block — an OpenAPI operation). It fixes the request: the path (+ path `parameters`), the exact `requestBody` properties, the 2xx `responses` entry, and every non-2xx response (status + description) — surface each error code as its own user-facing state, not one generic failure. When absent, the backend slice isn't
   built or re-fetched yet: build against `slice.json` and note the assumption as a code comment.
 
+> **Slice documentation**: the slice's own `description` (slice.json, top level — markdown with the general rules and information about the slice) states what the slice covers and which rules apply. Read it before building; its rules, defaults and constraints are requirements like the specifications (never override them, never invent beyond them), and an `## Implementation Guidelines` section in it is to be followed. Absent when the slice has none.
 > **Comments & description**: each element carries a `comments: string[]` array (board comments) and a `description` field — use them as implementation hints, and resolve consumed comments via `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
 
 ---

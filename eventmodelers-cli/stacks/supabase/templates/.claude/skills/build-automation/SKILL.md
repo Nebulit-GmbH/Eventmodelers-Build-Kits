@@ -44,6 +44,7 @@ From the slice definition, extract:
 - **commands[]** — command data fields
 - **events[]** — events emitted by the command
 - **storylines[]** (optional) — narrated walkthroughs; see the note in Step 2
+> **Slice documentation**: the slice's own `description` (slice.json, top level — markdown with the general rules and information about the slice) states what the slice covers and which rules apply. Read it before building; its rules, defaults and constraints are requirements like the specifications (never override them, never invent beyond them), and an `## Implementation Guidelines` section in it is to be followed. Absent when the slice has none.
 > **Comments & description**: Each element (commands, events, readmodels, processors, screens, tables) carries a `comments: string[]` array (board comments on that node) and a `description` field. The slice itself also has `comments: string[]`. Use these as implementation hints — pass them as code comments, documentation, or validation logic where they add value. When done, resolve each used comment: `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get comment IDs first via GET on the same path without the last two segments).
 
 

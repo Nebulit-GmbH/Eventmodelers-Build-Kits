@@ -29,6 +29,7 @@ routing table. Where it and this skill disagree, this skill wins (it is verified
 
 Read `.build-kit/.slices/{context}/{slicename}/slice.json`. Extract, and use **only** what's there:
 
+- `description` (top level, optional) → the slice's general rules and information (markdown): what the slice covers and which rules apply. Its rules, defaults and constraints are requirements like the specifications — never override them, never invent beyond them; an `## Implementation Guidelines` section in it is to be followed
 - `commands[].fields[]` → Command record fields, in order
 - `events[].fields[]` → Event record fields, in order
 - `specifications[]` (GWT scenarios) → one test method per scenario

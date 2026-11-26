@@ -30,6 +30,7 @@ From the slice definition, extract:
 - **events[]** — list of events emitted by each command
 - **specifications[]** — test scenarios (given/when/then)
 
+> **Slice documentation**: the slice's own `description` (slice.json, top level — markdown with the general rules and information about the slice) states what the slice covers and which rules apply. Read it before building; its rules, defaults and constraints are requirements like the specifications (never override them, never invent beyond them), and an `## Implementation Guidelines` section in it is to be followed. Absent when the slice has none.
 > **Comments & description**: each element carries a `comments: string[]` array (board comments) and a `description` field — use them as implementation hints, and resolve consumed comments via `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
 
 ---

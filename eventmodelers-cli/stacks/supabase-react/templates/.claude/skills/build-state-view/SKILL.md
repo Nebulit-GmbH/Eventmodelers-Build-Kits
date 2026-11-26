@@ -94,6 +94,7 @@ Extract:
   opens, a row is selected, a list is filtered, the user goes to another page), as ordered steps of *user does →
   UI reacts* with resolved read-model / screen links. When present it is part of what you build: Step 3b.
 
+> **Slice documentation**: the slice's own `description` (slice.json, top level — markdown with the general rules and information about the slice) states what the slice covers and which rules apply. Read it before building; its rules, defaults and constraints are requirements like the specifications (never override them, never invent beyond them), and an `## Implementation Guidelines` section in it is to be followed. Absent when the slice has none.
 > **Comments**: as in `build-state-change` — resolve consumed ones via the same node-comment
 > endpoint.
 

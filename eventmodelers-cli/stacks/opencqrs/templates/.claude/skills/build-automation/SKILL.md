@@ -34,6 +34,7 @@ There are two kinds:
 
 ## Step 0: Discover target project conventions
 
+> **Slice documentation**: the slice's own `description` (slice.json, top level — markdown with the general rules and information about the slice) states what the slice covers and which rules apply. Read it before building; its rules, defaults and constraints are requirements like the specifications (never override them, never invent beyond them), and an `## Implementation Guidelines` section in it is to be followed. Absent when the slice has none.
 > **Comments & description**: Each element in the slice carries a `comments: string[]` array and a
 > `description` field. Use these as implementation hints. When done, resolve each used comment:
 > `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve` (get

@@ -9,10 +9,19 @@ Build structured slice data from board state.
 - `contextId` OR `contextName` (one required) — a MODEL_CONTEXT node, or a timeline name (a timeline with no assigned/connected context scopes to that timeline alone).
 - `sliceId?` — one slice only.
 - `sliceIds?` — comma-separated slice ids: just these slices, in ONE call (never one call per slice). Without `projection` each comes with its fields and its specs. An unknown id is `404 SLICE_NOT_FOUND`. Omit for every slice. (MCP `get_slice_data`: `sliceIds` is an array.)
-- `projection?: "outline" | "fields" | "specs"` — `outline` = slice header + every element list as `{id, title, type}` (no fields, specs, comments); `fields` = header + elements with their fields and dependencies, plus actors and aggregates (no specs, storylines, comments, prompts, notes); `specs` = header + specifications and storylines, no elements. Omit for the full graph.
+- `projection?: "outline" | "fields" | "specs"` — `outline` = slice header + every element list as `{id, title, type}` (no fields, specs, comments); `fields` = header + the slice's `description` + elements with their fields and dependencies, plus actors and aggregates (no specs, storylines, comments, prompts, notes); `specs` = header + the slice's `description` + specifications and storylines, no elements. (`outline` leaves the `description` out — it can be long.) Omit for the full graph.
 - `format?: "json" | "yaml" | "textual" | "toon" | "emlang" | "esdm"` (default `json`). `outline` and `specs` encode only as `json`, `yaml` or `toon`; `fields` works with every format.
 
 **Response**: `200` — slice data matching event modeling schema, in the requested format. `400` — no context given, unsupported format, `PROJECTION_INVALID`, or `PROJECTION_FORMAT_UNSUPPORTED` (`outline`/`specs` with `textual`/`emlang`/`esdm`). `404` — no context or timeline matches, or `SLICE_NOT_FOUND` (unknown `sliceId`).
+
+---
+
+### Slice documentation (`description`)
+
+A slice's **description** is free-form markdown with general rules and information about the slice: what it covers, its rules and context. It lives on the SLICE_BORDER as `meta.description`, and the slice data carries it as `description` on the **slice** (omitted when empty; not to be confused with the `description` of each element inside it).
+
+- **Use**: it is part of the slice's requirements, read it before building or changing the slice. Business rules, defaults and constraints it states are as binding as the specifications; an `## Implementation Guidelines` section in it is to be followed. It does not replace the specifications or the element fields, and never overrides them.
+- **Set** (only when the user asks): a `node:changed` event on the SLICE_BORDER with `changedAttributes: ["description"]` and `meta: {"type": "SLICE_BORDER", "description": "<markdown>"}`. Writes are merged, so title and status stay as they are.
 
 ---
 
