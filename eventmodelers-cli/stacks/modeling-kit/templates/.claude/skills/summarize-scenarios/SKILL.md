@@ -1,13 +1,13 @@
 ---
 name: summarize-scenarios
-description: Summarize all Given/When/Then scenarios (and storylines) of one slice into a single consistent, readable narrative text — what the slice does, which rules it enforces, which cases are accepted or rejected, with the concrete example values woven in — and store it as the documentation (`meta.description`) of the slice's specification node. Rerunning replaces the previous text. Use for reviews, stakeholder read-outs, onboarding, or as a plain-language spec.
+description: Summarize all Given/When/Then scenarios (and storylines) of one slice into a single consistent, readable narrative text — what the slice does, which rules it enforces, which cases are accepted or rejected, with the concrete example values woven in — and store it as a marked, generated section inside the documentation (`meta.description`) of the slice's specification node. Rerunning replaces only that section — text people wrote around it is preserved. Use for reviews, stakeholder read-outs, onboarding, or as a plain-language spec.
 ---
 
 # Summarize Scenarios — a slice's scenarios as one narrative
 
 > **Before doing anything else**, invoke the `connect` skill — if not already connected — to resolve `TOKEN`, `BOARD_ID`, `ORG_ID`, and `BASE_URL`.
 
-Prefer `mcp__eventmodelers__*` tools when available. **The only thing this skill writes is the documentation text on the slice's specification node** — no scenarios, elements or statuses change. If the scenarios are wrong or thin, say so in the report; fixing them is `eventmodeling-elaborating-scenarios`.
+Prefer `mcp__eventmodelers__*` tools when available. **The only thing this skill writes is its own generated section of the documentation text on the slice's specification node** (never the text people added by hand) — no scenarios, elements or statuses change. If the scenarios are wrong or thin, say so in the report; fixing them is `eventmodeling-elaborating-scenarios`.
 
 Result: one coherent prose text per slice that a domain expert can read top to bottom — not a list of scenarios re-typed, but the *behaviour* the scenarios jointly specify.
 
@@ -75,7 +75,24 @@ Style rules — they make it read as *one* text rather than a scenario dump:
 
 ## Step 5 — Store it as documentation on the spec node
 
-Read the spec node first (`get_node`) and keep its whole existing `meta`; set only `meta.description` to the markdown text (the node's documentation — rendered as markdown in the doc and slice views; **not** `meta.content`, which is never rendered). Whatever was in `description` before is replaced, so a rerun refreshes the text. Link elements with `ref:<nodeId>` where it helps a reader jump to them (see `learn-eventmodelers-api` → "Linking to elements in markdown"), but keep the prose readable without the links.
+Read the spec node first (`get_node`) and keep its whole existing `meta`; set only `meta.description` (the node's documentation — rendered as markdown in the doc and slice views; **not** `meta.content`, which is never rendered). **Never overwrite what people wrote by hand**: the generated text lives between two marker comments, and only that span is ever replaced.
+
+```
+<!-- summarize-scenarios:start — generated; edits between these markers are overwritten on rerun. Write your own notes outside them. -->
+<the narrative from Step 4>
+<!-- summarize-scenarios:end -->
+```
+
+Build the new `description` from the existing one (`existing`):
+
+| `existing` is… | New `description` |
+|---|---|
+| empty / missing | the marked block |
+| contains the start and end markers | `existing` with only the span from start marker to end marker (inclusive) replaced by the new marked block — everything before and after stays byte-for-byte identical |
+| non-empty, no markers, first line is `# … — what it does` | an earlier generated text from before markers existed: replace it entirely with the marked block (one-time migration) |
+| non-empty, no markers, anything else | manual text: keep it unchanged and append the marked block after a blank line |
+
+Only one start marker without an end marker (or vice versa) means someone damaged it: treat the whole `existing` as manual, append a fresh block, and mention it in the Step 6 report. Link elements with `ref:<nodeId>` where it helps a reader jump to them (see `learn-eventmodelers-api` → "Linking to elements in markdown"), but keep the prose readable without the links.
 
 Send it as a `node:changed` event for the spec node (`changedAttributes: ["description"]`, `meta` = existing meta + `description`) with `mcp__eventmodelers__submit_node_events`, or via `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/events` with the same body. Several slices = one batched array of `node:changed` events.
 
@@ -83,4 +100,4 @@ If `file` was given, write the same text there too; otherwise create no files.
 
 ## Step 6 — Report
 
-One line per slice: slice, spec node, number of scenarios and storylines summarized, and any open points found (reported here only — never written into the documentation). Include the text itself in the reply only when no write was possible.
+One line per slice: slice, spec node, number of scenarios and storylines summarized, whether the section was created, regenerated or appended to existing manual text (and that manual text was preserved), and any open points found (reported here only — never written into the documentation). Include the text itself in the reply only when no write was possible.
