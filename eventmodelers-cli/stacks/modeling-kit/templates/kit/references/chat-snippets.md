@@ -11,6 +11,7 @@
    - a **pointer to an element, a picture or a command** → `link` / `image` / `code`, instead of describing it.
    - a **screen idea** in the conversation ("what could that screen look like?") → `screen`, a sandboxed HTML mock-up in the chat; putting a screen on the board is `/html-screen` work;
    - **where one piece of information comes from and where it is used** → `dataJourney` (the `/data-journey` skill);
+   - **a quiz** about the domain or its business rules ("quiz me") → one `quiz` snippet with all questions (the `/quiz-time` skill) — never a series of `poll`s;
    - **who does what with which work object, per chapter** → a `domainstory` snippet — the story as a small JSON DSL the app draws, pinned to the board as an editable domain story node (the `/domain-story` skill);
    - **"draw" / "sketch" / "diagram" something** (a UML diagram, a flow, a class model) → a snippet in the chat (`mermaid` for a sequence/flow/state/ER/class diagram written as
      Mermaid, `svg` for a picture you draw yourself, or a `code` block with PlantUML/ASCII), **never** drawn on the board with stickies, arrows or `create_drawing`.

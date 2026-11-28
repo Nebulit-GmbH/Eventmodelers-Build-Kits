@@ -21,6 +21,7 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 | to explain how a feature works, or walk through what a planned feature takes, slice by slice ("how does registration work?", "we need to add an email — walk me through it") | `walkthrough` | nothing — selecting a step pans the canvas |
 | to show what a screen could look like, without putting it on the board | `screen` | nothing |
 | to show several screens at once — a list, a gallery, a storyboard ("show me all screens of X") | `walkthrough`, one step per screen | nothing — selecting a step pans the canvas |
+| to quiz the person's team on the domain and its business rules (the `/quiz-time` skill) | `quiz` — all questions in one snippet, never one `poll` per question | `I took the quiz …` with the score and the free-text answers to grade; or the person pins it to the board, and closing it sends a message with `context.quizClosed` (see *Quiz results* below) |
 | to answer where one piece of information comes from and where it ends up ("where is the customer email used?") | `dataJourney` | nothing — element names pan the canvas |
 | to explain something as a story — a chapter, a slice, an idea, for onboarding or marketing — in pictures with speech bubbles ('explain it as a comic') | `comic` (the `comic` skill draws and posts it) | nothing |
 | to tell who does what with which work object — a domain story, per chapter or for any process | `domainstory` (the `/domain-story` skill) | nothing — parts with a `ref` zoom to their board element; pinning creates an editable node |
@@ -77,6 +78,12 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
                  field?: string,                                                  // the field holding it here — names change along the way (email → customerEmail)
                  slice?: string,
                  note?: string }> }                                               // how it is used or changed here, a few words
+{ kind: 'quiz', title?: string, intro?: string,                                  // see the `/quiz-time` skill; 1–30 questions, ≤ 60000 chars in all
+  questions: Array<{ type: 'single' | 'multiple' | 'truefalse' | 'text', question: string,
+                     options?: Array<{ label: string, correct?: boolean }>,       // single/multiple: 2–8; single has exactly one correct, multiple at least one
+                     correct?: boolean,                                           // truefalse
+                     answer?: string,                                             // text: the expected answer, required
+                     explanation?: string, nodeId?: string, source?: string }> }  // one invalid question makes the whole snippet invisible
 { kind: 'svg', svg: string,                                                       // a standalone <svg>…</svg> document (≤ 60000 chars), shown as an image
   title?: string, caption?: string,
   links?: Array<{ nodeId: string, x: number, y: number,                           // ≤ 200 clickable areas over the picture, in the svg's viewBox coordinates;
@@ -132,6 +139,17 @@ Rule of thumb: if you are about to write "Shall I…?", "Want me to…?", "A or 
 - **`table`** is for anything that is rows and columns and not a chart: a comparison of options, an incidence matrix (rows = stressors, columns = elements, `true` where it hits), a short list with a few attributes per item. It computes nothing — totals are a row you add. Put element ids in `nodeId` (header or cell) so names are links; a row longer than the columns is cut, a shorter one padded, an empty one dropped. Prefer `report` for numbers you want *seen* as a trend or share, `dataJourney` for one piece of data's path.
 - **`prototype`** runs a prototype in the chat: the page the platform stored for `timelineId` (the `contextId` the `prototype` skill uploaded under — any timeline of that context works too), in a sandboxed iframe with **Restart** (empty event log) and **Full screen** (the same player as the timeline's ▶). Send it only after `upload` succeeded — before that it shows "No prototype has been built for this yet". The `text` is the short report of what was built; the prototype itself is the snippet.
 - A snippet is shown exactly as you send it — keep secrets and tokens out of `code` and `image`.
+
+### Quiz results (a pinned quiz that was closed)
+
+A chat message with `context.quizClosed = {quizId, nodeId}` means a pinned quiz was closed: the quiz id is **only** in the context, not in the text. The agent grades it itself over the REST API (there is no MCP tool for this), with `x-token` (the org token) — the `/quiz-time` skill, Step 6, has the steps.
+
+| Call | Purpose |
+|---|---|
+| `GET /api/org/:orgId/boards/:boardId/quizzes/:quizId/answers` | `[{quiz_id, orga_id, board_id, user_id, answers, answered_at}]`, one entry per person; `answers` has one string per question in order — the typed text, or the chosen option indexes (`"0,2"`). Empty once the result is recorded. The questions and expected answers are on the QUIZ node (`meta.quizJson`, read with `get_node` on `nodeId`). |
+| `POST /api/org/:orgId/boards/:boardId/quizzes/:quizId/result` | body `{result: [{userId, percentage}]}` (both strings). Records the result and closes the quiz for everyone — once (`409 QUIZ_RESULT_ALREADY_RECORDED`; `409 QUIZ_NOT_STARTED` = wrong id; `400 QUIZ_RESULT_INVALID`). Returns `{ok, winners, …}`: the userId(s) with the highest percentage, several on a tie. |
+
+Afterwards the agent posts the report as a `report` snippet — a bar chart, one label per person, unit `%` — and names the winner(s) in the text.
 
 ### Custom snippet types
 A customer can define their own snippet types — a risk card, a sign-off, a checklist — for one board. A type is data only: a **schema** for its data, an HTML **template**, answer **actions** (buttons) and **instructions** for you (when to use it, how to fill it). `list_snippet_types` shows the board's types; prefer a matching custom type over a built-in kind whenever its `instructions` say it fits.

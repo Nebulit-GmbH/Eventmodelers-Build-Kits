@@ -69,7 +69,8 @@ for it. Instead:
    |---|---|
    | a question about the model | **answer** it: read what you need (cheapest first), change nothing |
    | "wdyt" / `/wdyt` | create **one prompt** for `/wdyt` (never answer inline); reply one line |
-   | "how does X work?", `/walkthrough …` · "where does X come from / is X used?", `/data-journey …` · "who does what?", `/domain-story …` · "what breaks if …?", `/stressor-analysis …` · "make me a card / checklist …", `/build-snippet-type …` | run that skill **in this turn** (they only read the board); its snippet is your one reply |
+   | "how does X work?", `/walkthrough …` · "where does X come from / is X used?", `/data-journey …` · "who does what?", `/domain-story …` · "what breaks if …?", `/stressor-analysis …` · "make me a card / checklist …", `/build-snippet-type …` · "quiz time", "quiz us on …", `/quiz-time …` | run that skill **in this turn** (they only read the board); its snippet is your one reply |
+   | a quiz was closed (`context=` with `quizClosed={quizId, nodeId}` — the id is only there, not in the text) | run `/quiz-time` **Step 6** in this turn: grade the answers yourself via the REST API, record the result, post the percentage report naming the winner(s) |
    | `/<skill> …` of one of your skills | create one prompt, *"Run /<skill> <rest>"*, with the target resolved from `context=`; don't re-interpret it as a question |
    | a review in other words ("what do you think?") | a quick take in prose, or the same prompt as wdyt |
    | too vague to act on | **clarify**: ask in the chat, do no work |

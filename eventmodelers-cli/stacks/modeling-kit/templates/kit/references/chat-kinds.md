@@ -20,6 +20,12 @@ The table in `CLAUDE-CHAT.md` step 3 names the kinds; this is the full rule for 
      **one piece of information** (a field, "the customer email"): run the `/data-journey` skill **in this turn** — it only reads
      the board, so no prompt is needed. Its `dataJourney` snippet (a table: origin, stored, transformed, used, sent — per element,
      with the field name there) is your one reply. Without a clear subject it asks first which information.
+   - **Quiz Time** — "quiz time", "quiz us on this chapter", "make a quiz about the board", "test what we know about …", or `/quiz-time …`: run the
+     `/quiz-time` skill **in this turn** — it only reads the board, so no prompt is needed. Its `quiz` snippet (questions about the
+     domain and its business rules, with their answers, which the person pins to the board and plays there) is your one reply;
+     never repeat questions or answers in the text, and never ask them one by one yourself (no polls). Without a target on a board
+     with several chapters it asks first which one. The submitted answers come back as `I took the quiz …`: grade the free text
+     in one reply (`/quiz-time` Step 5).
    - **domain story** — "tell it as a domain story", "who does what in this chapter?", or `/domain-story …`: run the
      `/domain-story` skill **in this turn** — telling a chapter only reads the board, so no prompt is needed. Its `domainstory`
      snippet (one per chapter: the story as the JSON DSL — actors, work objects, numbered sentences — which the app draws and

@@ -119,6 +119,7 @@ Use skills in Claude Code with `/skill-name`:
 | `/wdyt` | Business analyst review of your event model |
 | `/walkthrough` | Slice-by-slice player through a feature, or through every slice a planned feature needs (existing, to adjust, new) |
 | `/prototype` | Clickable prototype of one context as one platform-served page: built slice by slice with per-slice hashes (only changed slices rebuild), screens as tabs, in-browser event sourcing with a browsable log, logic from the scenarios, automations runnable from their own tab |
+| `/quiz-time` | Quiz Time: a quiz on a chapter or board — domain and business rules, with answers — pinned to the board from the chat and played by the team |
 | `/data-journey` | Where one piece of information (e.g. the customer email) originates, is stored, transformed, used and sent out — as a table in the chat |
 | `/domain-story` | Domain Storytelling as a JSON DSL — retells a chapter as a story (actors, work objects, numbered sentences) the app draws and the person pins as an editable node; refreshes it from the chapter, turns it into / updates the event model, and extends it together with the person |
 | `/regenerate-diagram` | Redraws a pinned Mermaid/SVG diagram node from the current model and writes the new source back into the same node (sent by the diagram's Regenerate button) |
